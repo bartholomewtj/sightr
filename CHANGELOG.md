@@ -14,3 +14,9 @@ adds an entry here and keeps the three version files in step; CI refuses a build
 - Renamed from Sighter. Every identifier moved with it: the `herdr.sightr` plugin id, the `SIGHTR_*`
   environment variables, `sightr-ctl.ps1`, the state and config directories. On first start the bridge
   copies a pre-1.0 Sighter state directory into the new one if the new one is empty.
+
+### Fixed
+- `start` and `restart` keep an existing Task Scheduler registration when re-registering it is
+  denied, so `restart` from a normal shell no longer leaves the bridge stopped.
+- `start` and `restart` compile the Herdr action launcher when `build/` is missing, so a linked
+  checkout's Herdr actions work without a separate `build`.
