@@ -185,11 +185,6 @@ describe("api client — request paths", () => {
     expect(urls[2]).toBe("/api/pane/w1%3Ap1/reply");
   });
 
-  it("appends traces=1 when the phone is on Traces", async () => {
-    const urls = captureUrls();
-    await fetchSnapshot(undefined, true);
-    expect(urls[0]).toBe("/api/snapshot?traces=1");
-  });
 });
 
 // The fetch layer is where liveness is stamped onto the shared lib/connection-health anchor (the same

@@ -133,17 +133,6 @@ function isPaneUrl(url: string | undefined): boolean {
   }
 }
 
-/** True when this loader run is for the Traces destination — snapshot then rechecks sssf.db. */
-function isTracesUrl(url: string | undefined): boolean {
-  if (!url) return false;
-  try {
-    const path = new URL(url).pathname;
-    return path === "/traces" || path.startsWith("/traces/");
-  } catch {
-    return url.includes("/traces");
-  }
-}
-
 function toHomeData(
   snap: SnapshotResponse,
   error: boolean,
@@ -230,7 +219,7 @@ export async function rootLoader({ request }: { request?: Request } = {}): Promi
   }
 
   try {
-    const snap = await fetchSnapshot(request?.signal, isTracesUrl(url));
+    const snap = await fetchSnapshot(request?.signal);
     const at = Date.now();
     applySnapshot(snap, false);
     rememberAuthError(false);

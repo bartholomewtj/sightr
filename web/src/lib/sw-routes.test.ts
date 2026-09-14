@@ -73,17 +73,7 @@ describe("service-worker navigation passthrough", () => {
     expect(NAVIGATION_NETWORK_ONLY.map(String)).toEqual([
       String(/^\/api\//),
       String(/^\/auth(?:[/?]|$)/),
-      String(/^\/sssf(?:[/?]|$)/),
       String(/^\/cdn-cgi\//),
     ]);
-  });
-
-  // The SSSF traces tab frames a page the bridge serves under /sssf/ (bridge/sssf-viz.ts); the
-  // precached shell must never answer it. Same shape as /auth: with or without a slash or query.
-  it("passes /sssf navigations straight to the network, but not a route merely starting with it", () => {
-    expect(isNetworkOnlyNavigation("/sssf")).toBe(true);
-    expect(isNetworkOnlyNavigation("/sssf/")).toBe(true);
-    expect(isNetworkOnlyNavigation("/sssf/?ws=w1&embed=1")).toBe(true);
-    expect(isNetworkOnlyNavigation("/sssfx")).toBe(false);
   });
 });

@@ -40,9 +40,6 @@ export const NAVIGATION_NETWORK_ONLY = [
   // strategy buffer or replay it.
   /^\/api\//,
   /^\/auth(?:[/?]|$)/,
-  // The SSSF traces tab frames a page the bridge serves under /sssf/ (bridge/sssf-viz.ts). It is
-  // not part of this app; the precached shell answering its navigation would put Sightr inside Sightr.
-  /^\/sssf(?:[/?]|$)/,
   // Cloudflare Access serves its login and callback under `/cdn-cgi/access/` and the path is NOT
   // relocatable, so pointing the operator at `/auth/` cannot help them — the flow would break on a
   // callback the precache swallowed. `/cdn-cgi/` is Cloudflare-reserved; Sightr will never route it.

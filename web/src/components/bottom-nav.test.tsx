@@ -10,20 +10,16 @@ function LocationProbe() {
 }
 
 describe("BottomNav files", () => {
-  it("hides Files when disabled", () => { render(<MemoryRouter><BottomNav traces files={false} /></MemoryRouter>); expect(screen.queryByText("Files")).toBeNull(); });
-  it("shows Files between Traces and Settings and navigates", async () => {
-    render(<MemoryRouter><BottomNav traces files /><LocationProbe /></MemoryRouter>);
+  it("hides Files when disabled", () => {
+    render(<MemoryRouter><BottomNav files={false} /></MemoryRouter>);
+    expect(screen.queryByText("Files")).toBeNull();
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Spaces", "Settings"]);
+  });
+  it("shows Files between Spaces and Settings and navigates", async () => {
+    render(<MemoryRouter><BottomNav files /><LocationProbe /></MemoryRouter>);
     const labels = screen.getAllByRole("button").map((b) => b.textContent);
-    expect(labels).toEqual(["Spaces", "Traces", "Files", "Settings"]);
-    expect(screen.getByText("Traces")).toBeTruthy();
+    expect(labels).toEqual(["Spaces", "Files", "Settings"]);
     await userEvent.click(screen.getByText("Files"));
     expect(screen.getByTestId("loc").textContent).toBe("/files");
-  });
-
-  it("dots Traces and names every live repo", () => {
-    render(<MemoryRouter><BottomNav traces liveRepos={["bench", "sightr"]} files={false} /></MemoryRouter>);
-    expect(screen.getByRole("button", { name: "Traces, bench, sightr running" })).toBeTruthy();
-    expect(screen.getByText("bench, sightr")).toBeTruthy();
-    expect(screen.getByText("Traces")).toBeTruthy();
   });
 });

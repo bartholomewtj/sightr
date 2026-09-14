@@ -77,7 +77,7 @@ type Drawer = "switcher" | null;
 // confirmed via the header status line (`setStatus`), then a revalidation pulls the fresh output.
 //
 // This shell owns the pane frame: the header (one line; its title opens the pane details sheet with
-// the cwd, statusline, tab panes, Find, Traces and the cross-space switcher; the find bar takes the
+// the cwd, statusline, tab panes, Find and the cross-space switcher; the find bar takes the
 // row over while find is open), the terminal mirror (freeze, find highlighting, transcript above
 // the live tail, load-older scrollback on shells), and the switcher sheet. The composer cluster —
 // draft, send, keys, slash-commands, image upload, display prefs — lives in <Composer>; it reaches
@@ -119,11 +119,6 @@ export function AgentChat({
   // tappable below the verbatim dump, which remains available as the keys-pad escape hatch.
   const stripChrome = !prefs.rawTerminal;
   const isShell = agent?.kind === "shell";
-  // The ADW runs this pane launched (bridge-stamped from the tracer's pane_id). The header offers a
-  // Traces button only when there is at least one, and dots it while any of them is still running.
-  const paneRuns = agent?.sssf?.runs ?? [];
-  const latestRun = paneRuns[0];
-  const runLive = paneRuns.some((r) => r.status === "running");
   // This device isn't allowlisted to type into agents: the backend rejects every write, so the
   // composer drops to read-only (and shows a banner). The mirror still polls (reading is fine).
   const readOnly = isReadOnly(device);
@@ -313,7 +308,6 @@ export function AgentChat({
         }}
         pane={{ paneId, tabLabel, isShell, hasOutput: display !== "" }}
         agent={agent}
-        runs={{ latest: latestRun, live: runLive }}
         onBack={onBack}
         onOpenSpace={openSpace}
         details={{

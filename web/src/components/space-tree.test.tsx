@@ -83,10 +83,6 @@ function renderTree(
         path: "/pane/:paneId",
         element: <div data-testid="pane-cli">PANE CLI</div>,
       },
-      {
-        path: "/traces/:spaceId/:repo",
-        element: <div data-testid="trace-view">TRACE VIEW</div>,
-      },
     ],
     { initialEntries: [initialPath] },
   );
@@ -548,62 +544,9 @@ describe("SpaceTree — Needs you inbox", () => {
   });
 });
 
-describe("SpaceTree — traces and filter", () => {
+describe("SpaceTree — filter", () => {
   beforeEach(() => {
     localStorage.clear();
-  });
-
-  it("does not show traces button on space rows even when sssf data is present", () => {
-    const w = ws("w1", "my-space", {
-      sssf: {
-        state: "ready",
-        token: "tok",
-        repos: [{ name: "repo-a", state: "ready", running: true }],
-      },
-    });
-    const t = tab("w1:t1", "w1", "tab 1");
-    const p = agent("w1:p1", "w1", "w1:t1");
-
-    renderTree({
-      workspaces: [w],
-      tabs: [t],
-      agents: [p],
-    });
-
-    expect(screen.queryByRole("button", { name: /ADW runs in this space/i })).not.toBeInTheDocument();
-  });
-
-  it("does not show traces button on tab rows even when pane has sssf runs", async () => {
-    const user = userEvent.setup();
-    // 2 tabs so expanding space shows tab row without navigating
-    const w = ws("w1", "my-space", { paneCount: 2, tabCount: 2 });
-    const t1 = tab("w1:t1", "w1", "tab-one", 1);
-    const t2 = tab("w1:t2", "w1", "tab-two", 1);
-    const p1 = agent("w1:p1", "w1", "w1:t1", {
-      sssf: {
-        runs: [
-          {
-            repo: "repo-a",
-            adwId: "adw-1",
-            status: "running",
-            startedAt: "2025-01-01T00:00:00Z",
-          },
-        ],
-      },
-    });
-    const p2 = agent("w1:p2", "w1", "w1:t2");
-
-    renderTree({
-      workspaces: [w],
-      tabs: [t1, t2],
-      agents: [p1, p2],
-    });
-
-    // Expand space
-    await user.click(screen.getByRole("button", { name: /expand space my-space/i }));
-    expect(screen.getByText("tab-one")).toBeInTheDocument();
-
-    expect(screen.queryByRole("button", { name: /ADW runs in this tab/i })).not.toBeInTheDocument();
   });
 
   it("filter is hidden until header icon is tapped; typing filters spaces", async () => {

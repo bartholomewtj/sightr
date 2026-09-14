@@ -105,12 +105,11 @@ describe('desktop Ctrl+F', () => {
     function dispatch(options: KeyboardEventInit = {}) { const event = new KeyboardEvent("keydown", { key: "f", ctrlKey: true, cancelable: true, ...options }); act(() => window.dispatchEvent(event)); return event; }
     it("focuses the Files input without opening pane find", () => { const fn = vi.fn(); const off = onFindOpenRequest(fn); mount("/files", "p"); const input = screen.getByRole("textbox"); expect(dispatch().defaultPrevented).toBe(true); expect(document.activeElement).toBe(input); expect(fn).not.toHaveBeenCalled(); off(); });
     it("opens find only on an unarmed pane", () => { const fn = vi.fn(); const off = onFindOpenRequest(fn); mount("/pane/p", "p"); expect(dispatch().defaultPrevented).toBe(true); expect(fn).toHaveBeenCalledOnce(); off(); });
-    it("declines while armed on Files, with a missing input, on Traces, and outside panes", () => {
+    it("declines while armed on Files, with a missing input, and outside panes", () => {
       const fn = vi.fn(); const off = onFindOpenRequest(fn);
       mount("/files", "p"); const input = screen.getByRole("textbox"); setDirectArmed(true);
       expect(dispatch().defaultPrevented).toBe(false); expect(document.activeElement).not.toBe(input); expect(fn).not.toHaveBeenCalled();
       cleanup(); __resetDirectArm(); mount("/files", "p", false); expect(dispatch().defaultPrevented).toBe(false);
-      cleanup(); mount("/traces", "p"); expect(dispatch().defaultPrevented).toBe(false);
       cleanup(); mount("/pane/p"); expect(dispatch().defaultPrevented).toBe(false); expect(fn).not.toHaveBeenCalled(); off();
     });
     it("does not prevent or arm Ctrl+` on Files", () => { const fn = vi.fn(); const off = onArmToggleRequest(fn); mount("/files", "p"); const event = new KeyboardEvent("keydown", { key: "`", ctrlKey: true, cancelable: true }); act(() => window.dispatchEvent(event)); expect(event.defaultPrevented).toBe(false); expect(fn).not.toHaveBeenCalled(); off(); });

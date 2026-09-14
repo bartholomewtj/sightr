@@ -1,6 +1,6 @@
 // Public browser types. The HTTP shapes live in shared/ so bridge and web cannot drift.
 export type {
-  AgentStatus, PaneSssfRun, WorkspaceView, WorkspaceWorktree, ClosedWorktree, TabView, BridgeStatus,
+  AgentStatus, WorkspaceView, WorkspaceWorktree, ClosedWorktree, TabView, BridgeStatus,
   DeviceAuth, FileEntry, FilesResponse,
   FileSearchResponse, FolderGitResponse, SnapshotResponse, PaneHistoryResponse,
   TranscriptPart, TranscriptEntry, ActionResponse, UploadResponse, CreateResponse,

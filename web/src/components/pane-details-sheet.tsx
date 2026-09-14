@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionPopover } from "@/components/ui/popover";
 import { useDesktop } from "@/lib/desktop";
-import { LanesIcon } from "@/components/sssf-frame";
 import { PaneStrip } from "@/components/pane-strip";
 import { MIRROR_INVERT, MIRROR_SPACE, styleFor } from "@/components/mirror-space";
 import type { MenuPoint } from "@/lib/menu-anchor";
@@ -15,9 +14,9 @@ import type { AgentView } from "@/lib/types";
 
 // Everything the one-line pane header no longer has room for, one tap (or a swipe on the title)
 // away: the full working directory, the agent's own statusline, the other panes in this tab, and
-// the actions that used to be header buttons (space overview, Find, Traces). Phone: a bottom sheet.
+// the actions that used to be header buttons (space overview, Find). Phone: a bottom sheet.
 // Desktop: a popover under the title. Every row closes the sheet when chosen, so the thing it opened
-// (the find bar, the traces page, another pane) is not stacked under a dialog.
+// (the find bar, another pane) is not stacked under a dialog.
 
 export interface PaneDetailsProps {
   agent: AgentView;
@@ -39,8 +38,6 @@ export interface PaneDetailsProps {
   onOpenSpace: () => void;
   /** Find in output — offered only when there is buffered output to search. */
   find: { available: boolean; onOpen: () => void };
-  /** Traces — offered only when the pane launched at least one ADW run; `live` dots it. */
-  traces: { available: boolean; live: boolean; onOpen: () => void };
   /** The cross-space switcher (ThreadSidebar). Omit on desktop, where the sidebar lists every pane. */
   onSwitchPane?: () => void;
   /**
@@ -67,7 +64,6 @@ export function PaneDetailsSheet({
   onClosed,
   onOpenSpace,
   find,
-  traces,
   onSwitchPane,
   onContext,
 }: PaneDetailsProps & {
@@ -81,8 +77,8 @@ export function PaneDetailsSheet({
     [statusLines.map(lineText).join("\n"), dumpText ?? ""].join("\n"),
   );
 
-  // Close first, then act: the find bar takes over the header row and the traces page navigates
-  // away, and neither should happen under a still-open dialog.
+  // Close first, then act: the find bar takes over the header row, and that should not happen
+  // under a still-open dialog.
   function pick(action: () => void) {
     onClose();
     action();
@@ -135,21 +131,6 @@ export function PaneDetailsSheet({
             icon={<Search className="size-4 shrink-0" />}
             label="Find in output"
             onClick={() => pick(find.onOpen)}
-          />
-        )}
-        {traces.available && (
-          <Row
-            icon={<LanesIcon className="size-4 shrink-0" />}
-            label="Traces"
-            trailing={
-              traces.live ? (
-                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span aria-hidden="true" className="size-1.5 rounded-full bg-status-running" />
-                  running
-                </span>
-              ) : undefined
-            }
-            onClick={() => pick(traces.onOpen)}
           />
         )}
         {onSwitchPane && (

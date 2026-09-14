@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { useNavigate } from "react-router";
 import { TerminalSquare } from "lucide-react";
 import { AppHeader } from "@/components/app-header";
 import { FindBar } from "@/components/find-bar";
@@ -7,11 +6,9 @@ import { AgentIcon } from "@/components/agent-icon";
 import { ShellBadge, StatusDot } from "@/components/status-badge";
 import { PaneDetailsSheet, type PaneDetailsProps } from "@/components/pane-details-sheet";
 import { useSwipeUp } from "@/hooks/use-swipe";
-import { tracePath } from "@/lib/nav";
 import { shownStatus } from "@/lib/triage";
 import type { MenuPoint } from "@/lib/menu-anchor";
 import type { AgentView, BridgeStatus } from "@/lib/types";
-type PaneRun = NonNullable<NonNullable<AgentView["sssf"]>["runs"]>[number];
 type PaneHeaderProps = {
   connection: {
     bridge: BridgeStatus;
@@ -37,7 +34,6 @@ type PaneHeaderProps = {
     hasOutput: boolean;
   };
   agent: AgentView | undefined;
-  runs: { latest: PaneRun | undefined; live: boolean };
   onBack: () => void;
   onOpenSpace: (workspaceId: string) => void;
   /** What the title sheet shows beyond the header's own data (statusline, tab panes, switcher). */
@@ -55,21 +51,18 @@ type PaneHeaderProps = {
   >;
 };
 // One line: back, agent logo, title, status dot. Everything else the header used to carry — the
-// cwd subline, Find, Traces, the status pill — sits behind the title in PaneDetailsSheet. The find
+// cwd subline, Find, the status pill — sits behind the title in PaneDetailsSheet. The find
 // bar still takes over this row while it's open (`override`).
 export function PaneHeader({
   connection,
   find,
   pane,
   agent,
-  runs,
   onBack,
   onOpenSpace,
   details,
 }: PaneHeaderProps) {
-  const navigate = useNavigate();
   const { bridge, error, stalled, connecting } = connection;
-  const latestRun = runs.latest;
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [anchor, setAnchor] = useState<MenuPoint | null>(null);
   const titleRef = useRef<HTMLButtonElement>(null);
@@ -176,16 +169,6 @@ export function PaneHeader({
           onOpenSpace={() => onOpenSpace(agent.workspaceId)}
           // Offered only when there's buffered output to search; opening it freezes the tail.
           find={{ available: pane.hasOutput, onOpen: find.onOpen }}
-          // Traces opens the SSSF visualiser scoped to the ADW runs THIS pane launched — the tracer
-          // wrote the pane's HERDR_PANE_ID on each run, so this is attribution, not a guess from
-          // cwd. Offered only when the pane has at least one such run; `live` while one still goes.
-          traces={{
-            available: latestRun !== undefined,
-            live: runs.live,
-            onOpen: () => {
-              if (latestRun) navigate(tracePath(agent.workspaceId, latestRun.repo, { pane: pane.paneId }));
-            },
-          }}
           {...details}
         />
       )}

@@ -11,7 +11,6 @@ import { BottomNav } from "@/components/bottom-nav";
 import { DesktopShell } from "@/components/desktop-shell";
 import { useDesktop } from "@/lib/desktop";
 import { homePath } from "@/lib/nav";
-import { liveTraceRepos } from "@/routes/traces";
 import { PANE_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 import { bucketOf } from "@/lib/triage";
 import { useEffect } from "react";
@@ -45,13 +44,11 @@ export function RootLayout() {
   useAgentTransitions(data.agents, paneId ?? null);
   usePushSetup(data.device);
 
-  // The bottom bar shows on the top-level destinations (Spaces tree, Traces list, Files, Settings).
-  // A pane, one repo's traces, a file preview, and history are leaf screens that own the bottom
+  // The bottom bar shows on the top-level destinations (Spaces tree, Files, Settings).
+  // A pane, a file preview, and history are leaf screens that own the bottom
   // edge (composer, frame) and get a header back button instead.
   const { pathname } = useLocation();
-  const showNav = pathname === "/" || pathname === "/traces" || pathname === "/files" || pathname === "/settings";
-  const anyTraces = data.workspaces.some((w) => w.sssf);
-  const liveRepos = liveTraceRepos(data);
+  const showNav = pathname === "/" || pathname === "/files" || pathname === "/settings";
   const desktop = useDesktop().on;
   useEffect(() => {
     if (!desktop) return;
@@ -75,7 +72,7 @@ export function RootLayout() {
         lastSeenAt={shownLastSeenAt(data, pane)}
       />
       {desktop ? <DesktopShell /> : <Outlet />}
-      {!desktop && showNav && <BottomNav traces={anyTraces} liveRepos={liveRepos} files={data.files === true} />}
+      {!desktop && showNav && <BottomNav files={data.files === true} />}
     </div>
   );
 }

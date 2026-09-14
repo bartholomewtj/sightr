@@ -64,34 +64,33 @@ it("keeps Off pinned even when the desktop query matches", async () => {
   } finally { window.matchMedia = original; }
 });
 
-const tracesData: HomeData = {
+const filesData: HomeData = {
   ...data,
-  files: false,
+  files: true,
   workspaces: [{
     workspaceId: "w1", number: 1, label: "home", focused: false, activeTabId: "t1", tabCount: 1, paneCount: 1,
-    sssf: { state: "ready", token: "t", repos: [{ name: "sightr", state: "ready", running: true }] },
   }],
 };
 
-function renderTracesRoot(path: string) {
+function renderFilesRoot(path: string) {
   const router = createMemoryRouter([{
-    id: "root", path: "/", loader: () => tracesData, element: <RootLayout />, children: [
-      { path: "traces", element: <div>list</div> },
-      { path: "traces/:spaceId/:repo", element: <div>frame</div> },
+    id: "root", path: "/", loader: () => filesData, element: <RootLayout />, children: [
+      { path: "files", element: <div>list</div> },
+      { path: "files/*", element: <div>preview</div> },
     ],
   }], { initialEntries: [path] });
   return render(<RouterProvider router={router} />);
 }
 
-it("keeps the phone bottom bar on the Traces list", async () => {
-  renderTracesRoot("/traces");
+it("keeps the phone bottom bar on the Files list", async () => {
+  renderFilesRoot("/files");
   await waitFor(() => expect(screen.getByText("list")).toBeInTheDocument());
   expect(screen.getByRole("navigation", { name: "Main" })).toBeInTheDocument();
 });
 
-it("hides the phone bottom bar on a repo's traces", async () => {
-  renderTracesRoot("/traces/w1/sightr");
-  await waitFor(() => expect(screen.getByText("frame")).toBeInTheDocument());
+it("hides the phone bottom bar on a file preview", async () => {
+  renderFilesRoot("/files/src/nav.ts");
+  await waitFor(() => expect(screen.getByText("preview")).toBeInTheDocument());
   expect(screen.queryByRole("navigation", { name: "Main" })).toBeNull();
 });
 

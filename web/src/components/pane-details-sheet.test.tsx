@@ -36,7 +36,6 @@ function show(overrides: Partial<Parameters<typeof PaneDetailsSheet>[0]> = {}) {
     onSelectPane: vi.fn(),
     onOpenSpace: vi.fn(),
     find: { available: true, onOpen: vi.fn() },
-    traces: { available: true, live: false, onOpen: vi.fn() },
     onSwitchPane: vi.fn(),
     ...overrides,
   };
@@ -173,20 +172,6 @@ describe("PaneDetailsSheet", () => {
     cleanup();
     show({ find: { available: false, onOpen: vi.fn() } });
     expect(screen.queryByRole("button", { name: "Find in output" })).toBeNull();
-  });
-
-  it("offers Traces only when the pane has ADW runs, marked running while one is live", () => {
-    const { traces } = show();
-    const row = screen.getByRole("button", { name: "Traces" });
-    expect(within(row).queryByText("running")).toBeNull();
-    fireEvent.click(row);
-    expect(traces.onOpen).toHaveBeenCalledOnce();
-    cleanup();
-    show({ traces: { available: true, live: true, onOpen: vi.fn() } });
-    expect(screen.getByRole("button", { name: /^Traces.*running$/ })).toBeInTheDocument();
-    cleanup();
-    show({ traces: { available: false, live: false, onOpen: vi.fn() } });
-    expect(screen.queryByRole("button", { name: /^Traces/ })).toBeNull();
   });
 
   it("puts Switch pane… last and drops it when no switcher is wired", () => {

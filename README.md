@@ -12,8 +12,7 @@ you, read its chat, and answer with buttons or an ordinary text box, so phone di
   socket is a named pipe.
 
 Sightr started as a fork of [AltanS/collie](https://github.com/AltanS/collie) and has been a separate
-product since. It does not track collie. Versions before 1.0.0 were published under the name Sighter;
-see [Upgrading from Sighter](#upgrading-from-sighter).
+product since. It does not track collie.
 
 [![Sightr runtime architecture](docs/archify/sightr-runtime.architecture.visual-check.1440x900.dark.png)](https://bartholomewtj.github.io/sightr/archify/sightr-runtime.architecture.html)
 
@@ -149,7 +148,6 @@ keep theirs.
 | `SIGHTR_PUSH_ALLOWED_HOSTS` | unset | Extra push-service hosts |
 | `SIGHTR_STATE_DIR` | `~/.local/state/sightr` | Runtime state, when Herdr did not inject `HERDR_PLUGIN_STATE_DIR` |
 | `HERDR_SOCKET_PATH` | `%APPDATA%\herdr\herdr.sock` | Herdr's control socket |
-| `SSSF_VIZ_DIR` | unset | Source of an external trace visualiser to serve under `/sssf/`. Off when unset |
 
 ### Control-script settings
 
@@ -184,7 +182,7 @@ branch.
 are blue bubbles; the agent's replies are plain text. Runs of tool calls fold into one line, thinking
 collapses to "Thought for 12s". The live terminal hides while the agent is idle and returns when it
 is blocked, a prompt is on screen, Type is armed, Find is open, or there is no session log. Tap the
-title for the working directory, statusline, context fill, sibling panes, Find, Traces and Switch
+title for the working directory, statusline, context fill, sibling panes, Find and Switch
 pane. Detected prompts become buttons. A blocked agent with no detected buttons gets **Yes** and
 **No** above the reply box.
 
@@ -282,7 +280,7 @@ header and the device allowlist, the write is queued per pane, sent over the Her
 | `bridge/state-migrate.ts` | One-time copy of a pre-1.0 Sighter state directory |
 | `shared/agents.ts` | The harness descriptor table: brand, slash commands, journal roots |
 | `shared/wire.ts`, `shared/limits.ts` | Types and limits both sides agree on |
-| `web/src/routes/` | Spaces tree, pane view, files, settings, traces |
+| `web/src/routes/` | Spaces tree, pane view, files, settings |
 | `web/src/lib/harness/` | Screen parsers per harness: prompts, ask-cards, permission cards |
 | `web/src/lib/`, `web/src/hooks/`, `web/src/components/` | API client, ANSI parsing, transcript folding, UI |
 | `web/src/fixtures/panes/` | Captured terminal screens the harness parsers are tested against |

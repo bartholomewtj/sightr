@@ -10,6 +10,7 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   Claude/Pi/Grok/Antigravity/Cursor adapters, WebAuthn reconnect lock, audit trail, Web Push.
 
 ### Changed
+- Removed the SSSF trace visualiser and its Traces tab; it is becoming a separate tool.
 - Renamed from Sighter. Every identifier moved with it: the `herdr.sightr` plugin id, the `SIGHTR_*`
   environment variables, `sightr-ctl.ps1`, the state and config directories. On first start the bridge
   copies a pre-1.0 Sighter state directory into the new one if the new one is empty.

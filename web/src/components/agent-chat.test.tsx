@@ -148,7 +148,7 @@ describe("AgentChat — header title block", () => {
     // The agent is conveyed by its icon (aria-label only), so its name isn't repeated as text.
     expect(screen.queryByText(/claude/i)).toBeNull();
     expect(screen.getByRole("button", { name: "Pane details" })).toBeInTheDocument();
-    // No header buttons for Find / Traces any more, and no status pill text.
+    // No header button for Find any more, and no status pill text.
     expect(screen.queryByRole("button", { name: "Find in output" })).toBeNull();
     expect(screen.queryByText("needs you")).toBeNull();
   });
@@ -817,33 +817,6 @@ describe("AgentChat — shared header: stale-status dimming", () => {
   });
 });
 
-// The Traces row in the details sheet opens the SSSF visualiser scoped to the ADW runs THIS pane
-// launched — the bridge stamps `sssf.runs` from the tracer's recorded pane id, so the row is
-// attribution, not a cwd guess. Gated on at least one run; marked running while one is still going.
-describe("AgentChat — traces affordance", () => {
-  const runs = [
-    { repo: "sightr", adwId: "ab12cd34", status: "running", startedAt: "2026-08-18T08:00:00+00:00" },
-    { repo: "gene", adwId: "9f9f9f9f", status: "success", startedAt: "2026-08-17T08:00:00+00:00" },
-  ];
-
-  it("is offered in the details sheet when the pane launched an ADW run, and says so when one is running", () => {
-    const agent = { ...fixtureAgents[0]!, sssf: { runs } };
-    renderChat({ agent, agents: [agent] });
-    expect(screen.queryByRole("button", { name: /traces/i })).toBeNull(); // not on the header row
-    const sheet = openPaneDetails();
-    expect(within(sheet).getByRole("button", { name: /^Traces.*running$/ })).toBeInTheDocument();
-  });
-
-  it("is hidden when no run recorded this pane", () => {
-    renderChat();
-    expect(within(openPaneDetails()).queryByRole("button", { name: /^Traces/ })).toBeNull();
-    cleanup();
-    const agent = { ...fixtureAgents[0]!, sssf: { runs: [] } };
-    renderChat({ agent, agents: [agent] });
-    expect(within(openPaneDetails()).queryByRole("button", { name: /^Traces/ })).toBeNull();
-  });
-});
-
 describe("AgentChat — touch targets (#233)", () => {
   it("pans long mirror lines instead of wrapping them", () => {
     renderChat({ text: "a very long line" });
@@ -853,11 +826,11 @@ describe("AgentChat — touch targets (#233)", () => {
   });
 
   it("uses a 44px-tall title button and full-width rows for the pane actions", () => {
-    const agent = { ...fixtureAgents[0]!, hasSession: true, sssf: { runs: [{ repo: "sightr", adwId: "run", status: "success", startedAt: "2026-08-18T08:00:00Z" }] } };
+    const agent = { ...fixtureAgents[0]!, hasSession: true };
     renderChat({ agent, agents: [agent] });
     expect(screen.getByRole("button", { name: "Pane details" })).toHaveClass("min-h-11");
     const sheet = openPaneDetails();
-    for (const name of ["Find in output", "Traces", "Open space overview"]) {
+    for (const name of ["Find in output", "Open space overview"]) {
       expect(within(sheet).getByRole("button", { name })).toHaveClass("w-full");
     }
   });

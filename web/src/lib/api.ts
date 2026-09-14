@@ -259,12 +259,8 @@ export function openSnapshotStream(
   return source;
 }
 
-export async function fetchSnapshot(
-  signal?: AbortSignal,
-  traces = false,
-): Promise<SnapshotResponse> {
-  const path = traces ? "/api/snapshot?traces=1" : "/api/snapshot";
-  const snap = await req<SnapshotResponse>(path, { signal });
+export async function fetchSnapshot(signal?: AbortSignal): Promise<SnapshotResponse> {
+  const snap = await req<SnapshotResponse>("/api/snapshot", { signal });
   // A snapshot whose herd link is UP is a provably-live moment — stamp the shared connection-health
   // anchor so escalation is measured from here. A snapshot that 200s but reports `bridge:
   // "disconnected"` is NOT live (the pill/banner still escalate on it), so it must NOT reset the

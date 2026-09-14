@@ -29,31 +29,12 @@ it("puts the sightr mark next to Sightr, and tapping it goes to Spaces", () => {
   expect(router.state.location.pathname).toBe("/");
 });
 
-it("shows Files only when files are available and Traces only when a workspace has traces", async () => {
+it("shows Files only when files are available", async () => {
   const { rerender } = renderSidebar();
   await waitFor(() => expect(screen.getByText("Files")).toBeInTheDocument());
-  expect(screen.queryByText("Traces")).not.toBeInTheDocument();
-  const traced: HomeData["workspaces"][number] = { workspaceId: "w1", number: 1, label: "one", focused: false, activeTabId: "w1:t1", tabCount: 0, paneCount: 0, sssf: { state: "ready", token: "t", repos: [] } };
-  rerender(<RouterProvider router={createMemoryRouter([{ id: "root", path: "/", element: <DesktopSidebar data={{ ...data, files: false, workspaces: [traced] }} />}], { initialEntries: ["/"] })} />);
+  const space: HomeData["workspaces"][number] = { workspaceId: "w1", number: 1, label: "one", focused: false, activeTabId: "w1:t1", tabCount: 0, paneCount: 0 };
+  rerender(<RouterProvider router={createMemoryRouter([{ id: "root", path: "/", element: <DesktopSidebar data={{ ...data, files: false, workspaces: [space] }} />}], { initialEntries: ["/"] })} />);
   expect(screen.queryByText("Files")).not.toBeInTheDocument();
-  expect(screen.getByText("Traces")).toBeInTheDocument();
-});
-
-it("names every live repo on the Traces item", async () => {
-  const traced: HomeData["workspaces"][number] = {
-    workspaceId: "w1", number: 1, label: "one", focused: false, activeTabId: "w1:t1", tabCount: 0, paneCount: 0,
-    sssf: {
-      state: "ready", token: "t",
-      repos: [
-        { name: "bench", state: "ready", running: true },
-        { name: "sightr", state: "ready", running: true },
-        { name: "soon", state: "pending", running: false },
-      ],
-    },
-  };
-  renderSidebar([traced], false);
-  expect(await screen.findByRole("button", { name: "Traces, bench, sightr running" })).toBeInTheDocument();
-  expect(screen.getByText("bench, sightr")).toBeInTheDocument();
 });
 
 it("opens the new-space dialog and creates a space with the real action", async () => {
