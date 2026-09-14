@@ -1,0 +1,15 @@
+﻿  Phase 3 gate is runs 16–17. Run 16 is merged; run 17 is the live end-to-end smoke.
+
+  Want me to start with the install + overlay setup?
+
+
+
+
+  → /model composer
+
+
+ Models matching "composer"                                                                                                                                                                          Max mode: OFF
+
+ →  Composer 2.5             (Tab to modify)
+
+ Edit prompt to filter • Enter to select • Tab to edit

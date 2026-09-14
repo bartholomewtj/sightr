@@ -35,6 +35,8 @@ const allPiFixtures = readdirSync(PANES_DIR)
 const PINNED = [
   "cursor--ask-fruit-other-focused.txt",
   "cursor--ask-fruit.txt",
+  "cursor--autocomplete-model-c.txt",
+  "cursor--autocomplete-model-composer.txt",
   "cursor--autocomplete-slash-clear.txt",
   "cursor--autocomplete-slash.txt",
   "cursor--debug-idle.txt",
@@ -42,6 +44,8 @@ const PINNED = [
   "cursor--draft-single.txt",
   "cursor--draft-wrapped.txt",
   "cursor--fresh-idle.txt",
+  "cursor--idle-fable-split.txt",
+  "cursor--idle-fable.txt",
   "cursor--permission-command-moved.txt",
   "cursor--permission-command-review-hint.txt",
   "cursor--permission-command.txt",
@@ -65,6 +69,8 @@ const DIALOG = [
 // popup sits more than PROMPT_TAIL_LINES below the prompt so composerPrompt correctly returns null
 // (unbound write). Kept out of the conformance neutral cohort — that suite requires the two to agree.
 const AUTOCOMPLETE = [
+  "cursor--autocomplete-model-c.txt",
+  "cursor--autocomplete-model-composer.txt",
   "cursor--autocomplete-slash-clear.txt",
   "cursor--autocomplete-slash.txt",
 ];
@@ -178,6 +184,20 @@ describe("cursorBuildBlocks", () => {
     expect(draftCarriesSend(sent, draft)).toBe(true);
     expect(locateComposer(lines)).not.toBeNull();
   });
+
+  // Live 2026-09-14: Fable (and other named-model) status rows are not Auto/Composer-prefixed.
+  // Unrecognised, they were folded into the draft and phone sends stalled.
+  it.each(["cursor--idle-fable.txt", "cursor--idle-fable-split.txt"])(
+    "does not fold named-model status into the draft (%s)",
+    (fixture) => {
+      const sent = "open a terminal browser in a pane";
+      const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, fixture), "utf8")));
+      expect(cursorAdapter.composerReady!(lines)).toBe(true);
+      const draft = cursorAdapter.extractInputDraft(lines);
+      expect(draft).toBe(sent);
+      expect(draftCarriesSend(sent, draft)).toBe(true);
+    },
+  );
 
   it("strips the prompt + status from the raw mirror", () => {
     const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "cursor--fresh-idle.txt"), "utf8")));

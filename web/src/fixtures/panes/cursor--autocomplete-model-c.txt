@@ -1,0 +1,26 @@
+﻿  Phase 3 gate is runs 16–17. Run 16 is merged; run 17 is the live end-to-end smoke.
+
+  Want me to start with the install + overlay setup?
+
+
+
+
+  → /model c
+
+
+ Models matching "c"                                                                                                                                                                                 Max mode: OFF
+
+    Cursor Grok 4.6          High Fast
+ →  Composer 2.5             (Tab to modify)
+    Claude Opus 5            300K High
+    Claude Opus 4.8          300K High
+    Claude Fable 5.1         300K High
+    Claude Fable 5           300K High
+    Cursor Grok 4.5          High Fast
+    Claude Sonnet 5          300K Medium
+    Claude Sonnet 4.6        200K Medium
+    Codex 5.3                Medium
+
+ 1-10 of 17
+
+ Edit prompt to filter • Enter to select • Tab to edit

@@ -1,0 +1,10 @@
+Live 2026-09-14 — Cursor idle chrome with a named model instead of Auto/Composer. Unrecognised,
+the model and usage rows matched `isDraftContinuationRow` and were folded into `extractInputDraft`,
+so phone sends stalled with "Message didn't reach the input box" while the text sat in the prompt
+(wAC:p3X, Fable 5.1 300K High).
+
+  → open a terminal browser in a pane
+
+
+  Claude Fable 5.1 300K High · 72.6% · 20 files edited
+  C:\claudeOS
