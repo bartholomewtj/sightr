@@ -129,7 +129,7 @@ function Invoke-SightrCtl([string[]]$Arguments, [switch]$NoExit) {
   exit $LASTEXITCODE
 }
 
-# Retained for remaining wrapper verbs.
+# Compiles the Herdr action launcher once; a no-op when build\sightr-action-v1.exe already exists.
 function Write-SightrActionLauncher {
   $launcherDir = Join-Path $script:PluginRoot "build"
   $launcher = Join-Path $launcherDir "sightr-action-v1.exe"
@@ -148,9 +148,11 @@ function Write-SightrActionLauncher {
 if ($MyInvocation.InvocationName -eq ".") { return }
 
 switch ($Command) {
-  "start" { Invoke-SightrCtl @("start") }
+  # Herdr actions run through build\sightr-action-v1.exe, so a linked checkout (where Herdr never
+  # runs the [[build]] step) needs the launcher compiled by the first start, not only by `build`.
+  "start" { Write-SightrActionLauncher; Invoke-SightrCtl @("start") }
   "stop" { Invoke-SightrCtl @("stop") }
-  "restart" { Invoke-SightrCtl @("restart") }
+  "restart" { Write-SightrActionLauncher; Invoke-SightrCtl @("restart") }
   "uninstall" { Invoke-SightrCtl @("uninstall") }
   "serve" { Invoke-SightrCtl @("serve") }
   "unserve" { Invoke-SightrCtl @("unserve") }

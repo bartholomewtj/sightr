@@ -60,7 +60,8 @@ herdr plugin install bartholomewtj/sightr
 herdr plugin action invoke start --plugin herdr.sightr
 ```
 
-Or link a local checkout. A linked checkout builds the web app on its first `start` instead.
+Or link a local checkout. A linked checkout builds the web app and the Herdr action launcher on
+its first `start` instead.
 
 ```powershell
 git clone https://github.com/bartholomewtj/sightr.git
@@ -75,8 +76,9 @@ fails, the bridge is still reachable on `127.0.0.1:8787`.
 
 If `start` prints `could not register the scheduled task ... Access is denied`, your account cannot
 create scheduled tasks from a normal shell. Run that one `start` from a PowerShell window opened as
-Administrator. The task itself still runs as your user at limited privilege, and later `stop`,
-`restart` and `update` calls work from any shell.
+Administrator. The task itself still runs as your user at limited privilege. Later `stop`, `restart`
+and `update` calls work from any shell: when re-registration is denied but the task already exists,
+`start` warns, keeps the existing registration and starts it.
 
 Then configure it. The bridge reads `.env` from the plugin config directory once, at startup.
 
