@@ -4,7 +4,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { http, HttpResponse } from "msw";
 import { server } from "@/test/setup";
 import { DesktopSidebar } from "./desktop-sidebar";
-import { sidebarSlot, filesRelFromPath, isTracesDest, FILES_FIND_ID, FILES_TREE_ID } from "./desktop-sidebar-slot";
+import { sidebarSlot, filesRelFromPath, FILES_FIND_ID, FILES_TREE_ID } from "./desktop-sidebar-slot";
 import { __resetDesktop, setDesktop } from "@/lib/desktop";
 import { __resetFilesTree } from "@/lib/files-tree";
 import type { HomeData } from "@/lib/loaders";
@@ -20,15 +20,8 @@ describe("desktop sidebar Files slot", () => {
   beforeEach(() => { __resetDesktop(); setDesktop(true); __resetFilesTree(); });
   afterEach(() => { __resetDesktop(); __resetFilesTree(); });
   it.each([
-    ["/", "spaces"], ["/settings", "spaces"], ["/pane/a", "spaces"], ["/traces/a/r?pane=p", "spaces"], ["/files", "files"], ["/files/a.txt", "files"], ["/traces", "traces"], ["/traces/a/r", "traces"],
-  ])("maps %s to %s", (path, expected) => expect(sidebarSlot(path.split("?")[0]!, path.includes("?") ? `?${path.split("?")[1]}` : "")).toBe(expected));
-  it.each([
-    ["/", "", false],
-    ["/traces", "", true],
-    ["/traces/w1/sightr", "", true],
-    ["/traces/w1/sightr", "?pane=w1:p1", false],
-    ["/files", "", false],
-  ])("isTracesDest(%s %s) is %s", (path, search, expected) => expect(isTracesDest(path, search)).toBe(expected));
+    ["/", "spaces"], ["/settings", "spaces"], ["/pane/a", "spaces"], ["/files", "files"], ["/files/a.txt", "files"],
+  ])("maps %s to %s", (path, expected) => expect(sidebarSlot(path)).toBe(expected));
   it("decodes file paths", () => {
     expect(filesRelFromPath("/files")).toBe("");
     expect(filesRelFromPath("/files/src/nav.ts")).toBe("src/nav.ts");

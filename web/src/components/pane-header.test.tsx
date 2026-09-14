@@ -35,17 +35,13 @@ function show(overrides: Partial<ComponentProps<typeof PaneHeader>> = {}) {
     },
     pane: { paneId: working.paneId, tabLabel: "main", isShell: false, hasOutput: true },
     agent: working,
-    runs: { latest: undefined, live: false },
     onBack: vi.fn(),
     onOpenSpace: vi.fn(),
     details: { statusLines: [], panes: [working], onSelectPane: vi.fn(), onSwitchPane: vi.fn() },
     ...overrides,
   };
   const router = createMemoryRouter(
-    [
-      { path: "/", element: <PaneHeader {...props} /> },
-      { path: "/traces/:spaceId/:repo", element: <div data-testid="traces">TRACES</div> },
-    ],
+    [{ path: "/", element: <PaneHeader {...props} /> }],
     { initialEntries: ["/"] },
   );
   render(<RouterProvider router={router} />);
@@ -60,11 +56,10 @@ describe("PaneHeader — one line", () => {
     expect(within(header).getByRole("img", { name: "claude logo" })).toHaveClass("size-6");
     expect(within(header).getByText("webapp › main")).toBeInTheDocument();
     expect(within(header).getByRole("img", { name: "working" })).toBeInTheDocument();
-    // Gone from the row: the cwd subline, Find, Traces, and the status pill's text.
+    // Gone from the row: the cwd subline, Find, and the status pill's text.
     expect(within(header).queryByText(/webapp$/)).toBeNull();
     expect(within(header).queryByText("~/webapp")).toBeNull();
     expect(within(header).queryByRole("button", { name: "Find in output" })).toBeNull();
-    expect(within(header).queryByRole("button", { name: /traces/i })).toBeNull();
     expect(within(header).queryByText("working")).toBeNull();
   });
 
@@ -147,15 +142,5 @@ describe("PaneHeader — title opens the details sheet", () => {
     show({ find: { ...props.find, open: true } });
     expect(screen.getByRole("textbox")).toBeInTheDocument(); // the find bar's input
     expect(screen.queryByRole("button", { name: "Pane details" })).toBeNull();
-  });
-
-  it("Traces navigates to the pane-scoped trace page", () => {
-    const { router } = show({
-      runs: { latest: { repo: "sightr", adwId: "ab12cd34", status: "running", startedAt: "2026-08-18T08:00:00Z" }, live: true },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Pane details" }));
-    fireEvent.click(screen.getByRole("button", { name: /^Traces.*running$/ }));
-    expect(router.state.location.pathname).toBe("/traces/w1/sightr");
-    expect(router.state.location.search).toContain("pane=w1%3Ap1");
   });
 });

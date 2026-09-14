@@ -1,4 +1,4 @@
-# ADR 0026: The Files tab is the third filesystem reader
+# ADR 0026: The Files tab is the second filesystem reader
 
 Date: 2026-08-22
 
@@ -6,8 +6,9 @@ Status: **Accepted**
 
 ## Context
 
-ADR 0024 permits a second filesystem reader under strict containment terms. A phone browser of the
-operator's work directory is a third. Serving a tree without opt-in would expose every deployment's
+`CLAUDE.md` holds the journal (`bridge/journal/`) to be the only thing in the bridge that touches
+the filesystem. A phone browser of the operator's work directory is a second reader, and it needs
+the same containment terms. Serving a tree without opt-in would expose every deployment's
 home; an extension allow-list fails open on unknown secrets; and inline downloads could execute an
 HTML file from the work root same-origin with the bridge.
 

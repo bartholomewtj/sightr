@@ -63,9 +63,9 @@ export interface DesktopHotkeyArgs {
 
 export function useDesktopHotkeys({ agents, currentPaneId }: DesktopHotkeyArgs): void {
   const navigate = useNavigate();
-  const { pathname, search } = useLocation();
-  const latest = useRef({ agents, currentPaneId, pathname, search });
-  latest.current = { agents, currentPaneId, pathname, search };
+  const { pathname } = useLocation();
+  const latest = useRef({ agents, currentPaneId, pathname });
+  latest.current = { agents, currentPaneId, pathname };
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const binding = DESKTOP_HOTKEYS.find((candidate) => candidate.matches(event));
@@ -77,10 +77,10 @@ export function useDesktopHotkeys({ agents, currentPaneId }: DesktopHotkeyArgs):
         return;
       }
 
-      const route = sidebarSlot(latest.current.pathname, latest.current.search);
+      const route = sidebarSlot(latest.current.pathname);
       switch (binding.id) {
         case "direct":
-          if (route === "files" || route === "traces") return;
+          if (route === "files") return;
           event.preventDefault();
           if (desktopPrefs().typing === "composer") setTyping("direct");
           requestArmToggle();
@@ -95,7 +95,7 @@ export function useDesktopHotkeys({ agents, currentPaneId }: DesktopHotkeyArgs):
             (input as HTMLInputElement).select();
             return;
           }
-          if (latest.current.currentPaneId === undefined || route === "traces") return;
+          if (latest.current.currentPaneId === undefined) return;
           event.preventDefault();
           requestFindOpen();
           return;

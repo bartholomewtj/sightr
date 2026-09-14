@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { Config } from "./config.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { JournalAdapter, TranscriptEntry, TranscriptSource } from "./journal/types.ts";
-import { snapshotRoute, snapshotWantsTraces, type SnapshotDeps } from "./snapshot-route.ts";
+import { snapshotRoute, type SnapshotDeps } from "./snapshot-route.ts";
 import type { AgentView } from "./state-engine.ts";
 import type { SnapshotResponse } from "./snapshot-route.ts";
 
@@ -134,10 +134,6 @@ function depsFor(
       }),
     },
     activity: { get: () => undefined },
-    sssfViz: {
-      decoratePanes: <T>(panes: T[]) => panes,
-      decorate: <T>(workspaces: T[]) => workspaces,
-    },
     worktrees: {
       decorate: async <T>(workspaces: T[]) => workspaces,
       invalidate: () => undefined,
@@ -198,19 +194,5 @@ describe("snapshotRoute — runningCommand stays off the poll", () => {
     await store.flushRunningCommandRefresh(adapter, REF);
     expect(calls.load).toBe(1);
     expect(store.peekRunningCommand(adapter, REF)).toBe(true);
-  });
-});
-
-// Folded from snapshot-wants-traces.test.ts.
-describe('snapshotWantsTraces', () => {
-  describe("snapshotWantsTraces", () => {
-    test("true only when the poll carries traces=1", () => {
-      expect(snapshotWantsTraces(new Request("http://127.0.0.1/api/snapshot"))).toBe(false);
-      expect(snapshotWantsTraces(new Request("http://127.0.0.1/api/snapshot?session=lab"))).toBe(false);
-      expect(snapshotWantsTraces(new Request("http://127.0.0.1/api/snapshot?traces=1"))).toBe(true);
-      expect(snapshotWantsTraces(new Request("http://127.0.0.1/api/snapshot?session=lab&traces=1"))).toBe(
-        true,
-      );
-    });
   });
 });

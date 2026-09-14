@@ -1,4 +1,4 @@
-import { homePath, panePath, tracePath } from "./nav";
+import { homePath, panePath } from "./nav";
 
 describe("panePath", () => {
   it("URL-encodes the colon in a pane id", () => {
@@ -20,19 +20,5 @@ describe("panePath", () => {
 describe("homePath", () => {
   it("is '/'", () => {
     expect(homePath()).toBe("/");
-  });
-});
-
-describe("tracePath", () => {
-  it("is space + repo, encoded, with no query when there is no scope", () => {
-    expect(tracePath("w1", "sightr")).toBe("/traces/w1/sightr");
-    expect(tracePath("w1", "my repo")).toBe("/traces/w1/my%20repo");
-  });
-
-  it("carries a pane scope and a pinned run, encoded", () => {
-    expect(tracePath("w1", "sightr", { pane: "w1:p2" })).toBe("/traces/w1/sightr?pane=w1%3Ap2");
-    expect(tracePath("w1", "sightr", { pane: "w1:p2", adw: "ab12" })).toBe(
-      "/traces/w1/sightr?pane=w1%3Ap2&adw=ab12",
-    );
   });
 });

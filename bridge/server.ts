@@ -20,15 +20,14 @@ import { createOperatorKeys, createOperatorWheel } from "./operator-keys.ts";
 import type { HerdrClient } from "./herdr-client.ts";
 import type { NotificationCoordinator } from "./notifications.ts";
 import type { StateEngine } from "./state-engine.ts";
-import { createSssfViz } from "./sssf-viz.ts";
 import { createWorkdir } from "./workdir.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { TranscriptStore } from "./journal/store.ts";
 
-import { isLoopbackPeer, marksPaneSeen, guard, startupWarnings, isHostAllowed, deviceAuth } from "./access.ts";
+import { isLoopbackPeer, marksPaneSeen, guard, startupWarnings, deviceAuth } from "./access.ts";
 import type { AuditLog } from "./audit.ts";
-import { CONTENT_TYPES, CSP, json, requireJsonBody, secure, text, failureText, decodePathSegment } from "./responses.ts";
-import { serveStatic, isReservedAuthPath, resolveStaticPath, cacheControlFor, reservedAuthPlaceholder } from "./static-assets.ts";
+import { CONTENT_TYPES, json, requireJsonBody, secure, text, failureText, decodePathSegment } from "./responses.ts";
+import { serveStatic, isReservedAuthPath, reservedAuthPlaceholder } from "./static-assets.ts";
 import { readPane, paneHistory } from "./pane-read-routes.ts";
 import { replyPane, keysPane, closePane, renamePane, uploadPane } from "./pane-write-routes.ts";
 import { renameTab, renameWorkspace, closeTab, closeWorkspace, createTab, createWorkspace, removeWorktree, openWorktree } from "./tree-routes.ts";
@@ -58,7 +57,7 @@ export function startServer(opts: {
   onEvents?: (events: SnapshotEvents) => void;
 }) {
   const { cfg, herdr, engine, notifications, push, notifyPrefs, settings, activity, lock, audit } = opts;
-  const snapshotDeps = () => ({ cfg, engine, activity, sssfViz, workdir, worktrees, journals, transcripts, offerHistory });
+  const snapshotDeps = () => ({ cfg, engine, activity, workdir, worktrees, journals, transcripts, offerHistory });
   let events!: SnapshotEvents;
   events = createSnapshotEvents(async () => {
     const request = new Request("http://localhost/api/snapshot", { headers: { host: "localhost" } });
@@ -82,12 +81,6 @@ export function startServer(opts: {
     const adapter = adapterFor(journals ?? {}, agent);
     return adapter !== undefined && (hasSessionRef || typeof adapter.inferFromCwd === "function");
   };
-  // The SSSF traces tab (bridge/sssf-viz.ts). Inert unless SSSF_VIZ_DIR is set; it borrows the
-  // gate/static helpers below rather than importing this file back.
-  const sssfViz = createSssfViz(cfg, {
-    guard, isHostAllowed, requireJsonBody, failureText, resolveStaticPath, cacheControlFor, secure,
-    csp: CSP, contentTypes: CONTENT_TYPES,
-  });
   // One line per write, attributed to the device the request cleared the gate as. Only called inside
   // a write branch, so a read costs nothing.
   const auditFor = (req: Request): AuditLog => audit.scoped({ device: deviceAuth(req, cfg).device });
@@ -136,10 +129,9 @@ export function startServer(opts: {
 
       const url = new URL(req.url);
       const { pathname } = url;
-      const gated = lockGate(req, url, cfg, lock, sssfViz.owns, sssfViz.lockExempt);
+      const gated = lockGate(req, url, cfg, lock);
       if (gated) return gated;
 
-      if (sssfViz.owns(pathname)) return sssfViz.handle(req, url);
       if (workdir.owns(pathname)) return workdir.handle(req, url);
 
       if (pathname === "/api/snapshot") return snapshotRoute(req, snapshotDeps());

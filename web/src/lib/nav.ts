@@ -5,26 +5,6 @@ export function panePath(paneId: string): string {
   return `/pane/${encodeURIComponent(paneId)}`;
 }
 
-/** The Traces list (every SSSF repo the bridge found, across spaces) — the bottom bar's Traces tab. */
-export function tracesPath(): string {
-  return `/traces`;
-}
-
-/** One repo's trace visualiser, full screen. The workspace picks the db on the bridge; the repo is a
- *  name from that workspace's `sssf.repos` (never a path). `pane` scopes the screen to the runs that
- *  pane launched (its Traces button; back then returns to the pane), `adw` opens on one run. */
-export function tracePath(
-  spaceId: string,
-  repo: string,
-  scope: { pane?: string; adw?: string } = {},
-): string {
-  const q = new URLSearchParams();
-  if (scope.pane) q.set("pane", scope.pane);
-  if (scope.adw) q.set("adw", scope.adw);
-  const search = q.toString();
-  return `/traces/${encodeURIComponent(spaceId)}/${encodeURIComponent(repo)}${search ? `?${search}` : ""}`;
-}
-
 /** The home path (Spaces tree). */
 export function homePath(): string {
   return "/";

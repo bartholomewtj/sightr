@@ -1,6 +1,6 @@
 import { fireEvent, screen } from "@testing-library/react";
 
-// The pane header is one line; the cwd, Context, Find, Traces, the tab's pane list, the agent statusline and
+// The pane header is one line; the cwd, Context, Find, the tab's pane list, the agent statusline and
 // the Switch pane row live behind the title ("Pane details"). Tests that used to reach those
 // straight off the header open the sheet first. Synchronous fireEvent so the helpers work inside
 // both fireEvent- and userEvent-driven tests without an await.

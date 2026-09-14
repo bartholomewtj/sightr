@@ -3,7 +3,6 @@ import { createBrowserRouter } from "react-router";
 import { BootSplash, RootError, RootLayout } from "@/routes/root";
 import { TreeRoute } from "@/routes/tree";
 import { SpacesRedirect, SpaceRedirect } from "@/routes/redirects";
-import { TraceRoute, TracesRoute } from "@/routes/traces";
 import { DetailRoute } from "@/routes/detail";
 import { SettingsRoute } from "@/routes/settings";
 import { FilesRoute } from "@/routes/files";
@@ -41,8 +40,6 @@ export const router = createBrowserRouter([
       { index: true, element: <TreeRoute /> },
       { path: "spaces", element: <SpacesRedirect /> },
       { path: "space/:spaceId", element: <SpaceRedirect /> },
-      { path: "traces", element: <TracesRoute /> },
-      { path: "traces/:spaceId/:repo", element: <TraceRoute /> },
       { path: "settings", element: <SettingsRoute /> },
       { path: "files", loader: filesLoader, element: <FilesRoute />, shouldRevalidate: filesShouldRevalidate },
       { path: "files/*", loader: filesLoader, element: <FilesRoute />, shouldRevalidate: filesShouldRevalidate },

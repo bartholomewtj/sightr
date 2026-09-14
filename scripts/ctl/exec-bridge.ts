@@ -22,7 +22,7 @@ export type ExecIo = {
 
 /**
  * How the supervisor decides a live bridge process has stopped working. Probes start after
- * `graceMs` (the bridge builds the visualiser UI on first start), repeat every `intervalMs`, and
+ * `graceMs` (a cold start has work to do before it listens), repeat every `intervalMs`, and
  * `failures` misses in a row mean restart. Defaults give a wedged bridge about a minute.
  */
 export type Watchdog = { graceMs: number; intervalMs: number; failures: number };

@@ -102,35 +102,23 @@ const routeClient = (type: string, challenge: string) =>
 describe("device unlock routes", () => {
   test("gate is inert when off and exempts the shell and unlock endpoints", () => {
     const s = createLockStore("/no-such-dir");
-    for (const p of ["/api/snapshot", "/api/pane/w1:p1/reply", "/sssf/x"]) {
-      expect(lockGate(request(p), url(p), cfg, s, (path) => path.startsWith("/sssf/"))).toBeNull();
+    for (const p of ["/api/snapshot", "/api/pane/w1:p1/reply"]) {
+      expect(lockGate(request(p), url(p), cfg, s)).toBeNull();
     }
   });
 
-  test("credentials keep APIs closed but permit the visualiser's token/static GETs", async () => {
+  test("credentials keep the APIs closed but leave the app shell reachable", async () => {
     const s = await store();
-    const exempt = (req: Request, u: URL) =>
-      req.method === "GET" &&
-      (u.pathname === "/sssf/" ||
-        u.pathname.startsWith("/sssf/assets/") ||
-        (u.pathname.startsWith("/sssf/api/") && u.searchParams.get("t") === "valid"));
     const rows = [
-      ["/api/snapshot", "GET", false],
-      ["/sssf/api/sessions", "GET", false],
-      ["/sssf/api/sessions?t=wrong", "GET", false],
-      ["/sssf/api/sessions?t=valid", "GET", true],
-      ["/sssf/api/sessions/x/archive?t=valid", "POST", false],
-      ["/sssf/assets/index.js", "GET", true],
-      ["/sssf/", "GET", true],
+      ["/api/snapshot", "GET"],
+      ["/api/pane/w1:p1", "GET"],
+      ["/api/pane/w1:p1/reply", "POST"],
     ] as const;
-    for (const [p, method, passes] of rows) {
-      const r = lockGate(request(p, method), url(p), cfg, s, (x) => x === "/sssf/" || x.startsWith("/sssf/"), exempt);
-      if (passes) expect(r).toBeNull();
-      else {
-        expect(r?.status).toBe(401);
-        expect(await r!.text()).toBe("unlock required");
-        expect(r!.headers.get("x-sightr-lock")).toBe("required");
-      }
+    for (const [p, method] of rows) {
+      const r = lockGate(request(p, method), url(p), cfg, s);
+      expect(r?.status).toBe(401);
+      expect(await r!.text()).toBe("unlock required");
+      expect(r!.headers.get("x-sightr-lock")).toBe("required");
     }
     for (const [p, method] of [
       ["/api/lock", "GET"],
@@ -141,7 +129,7 @@ describe("device unlock routes", () => {
       ["/assets/app.js", "GET"],
       ["/auth/", "GET"],
     ] as const) {
-      expect(lockGate(request(p, method), url(p), cfg, s, () => false)).toBeNull();
+      expect(lockGate(request(p, method), url(p), cfg, s)).toBeNull();
     }
   });
 
@@ -152,23 +140,14 @@ describe("device unlock routes", () => {
     await s.addCredential({ id: "device", publicKey: new Uint8Array([4, ...new Uint8Array(64)]), name: "Phone", counter: 0 });
     const token = s.issue();
     expect(
-      lockGate(request("/api/snapshot", "GET", undefined, { cookie: `sightr_lock=${token}` }), url("/api/snapshot"), cfg, s, () => false),
-    ).toBeNull();
-    expect(
-      lockGate(
-        request("/sssf/api/sessions", "GET", undefined, { cookie: `sightr_lock=${token}` }),
-        url("/sssf/api/sessions"),
-        cfg,
-        s,
-        () => true,
-      ),
+      lockGate(request("/api/snapshot", "GET", undefined, { cookie: `sightr_lock=${token}` }), url("/api/snapshot"), cfg, s),
     ).toBeNull();
     now = 12 * 60 * 60 * 1000 + 1;
     expect(
-      lockGate(request("/api/snapshot", "GET", undefined, { cookie: `sightr_lock=${token}` }), url("/api/snapshot"), cfg, s, () => false)?.status,
+      lockGate(request("/api/snapshot", "GET", undefined, { cookie: `sightr_lock=${token}` }), url("/api/snapshot"), cfg, s)?.status,
     ).toBe(401);
     expect(
-      lockGate(request("/api/snapshot", "GET", undefined, { cookie: "sightr_lock=junk" }), url("/api/snapshot"), cfg, s, () => false)?.status,
+      lockGate(request("/api/snapshot", "GET", undefined, { cookie: "sightr_lock=junk" }), url("/api/snapshot"), cfg, s)?.status,
     ).toBe(401);
   });
 
@@ -213,15 +192,15 @@ describe("device unlock routes", () => {
 
   test("credential-only locks expose only unlock endpoints", async () => {
     const s = await store();
-    expect(lockGate(request("/api/snapshot"), url("/api/snapshot"), cfg, s, () => false)?.status).toBe(401);
+    expect(lockGate(request("/api/snapshot"), url("/api/snapshot"), cfg, s)?.status).toBe(401);
     const challenges = createChallenges();
     expect(webauthnChallengeRoute(request("/api/lock/webauthn/challenge", "POST", { purpose: "assert" }), url("/api/lock/webauthn/challenge"), cfg, s, challenges)).resolves.toMatchObject({ status: 200 });
-    expect(lockGate(request("/api/lock/webauthn/challenge", "POST"), url("/api/lock/webauthn/challenge"), cfg, s, () => false)).toBeNull();
+    expect(lockGate(request("/api/lock/webauthn/challenge", "POST"), url("/api/lock/webauthn/challenge"), cfg, s)).toBeNull();
     expect(webauthnUnlockRoute(request("/api/lock/webauthn/unlock", "POST", {}), url("/api/lock/webauthn/unlock"), cfg, s, challenges)).resolves.toMatchObject({ status: 401 });
-    expect(lockGate(request("/api/lock/webauthn/unlock", "POST"), url("/api/lock/webauthn/unlock"), cfg, s, () => false)).toBeNull();
+    expect(lockGate(request("/api/lock/webauthn/unlock", "POST"), url("/api/lock/webauthn/unlock"), cfg, s)).toBeNull();
     expect(webauthnRegisterRoute(request("/api/lock/webauthn/register", "POST", {}), url("/api/lock/webauthn/register"), cfg, s, challenges)).resolves.toMatchObject({ status: 401 });
     expect(webauthnRemoveRoute(request("/api/lock/webauthn/remove", "POST", { id: "device" }), url("/api/lock/webauthn/remove"), cfg, s)).resolves.toMatchObject({ status: 401 });
-    expect(lockGate(request("/api/lock/webauthn/register", "POST"), url("/api/lock/webauthn/register"), cfg, s, () => false)?.status).toBe(401);
+    expect(lockGate(request("/api/lock/webauthn/register", "POST"), url("/api/lock/webauthn/register"), cfg, s)?.status).toBe(401);
     expect(challenges.size()).toBeGreaterThan(0);
   });
 
@@ -454,8 +433,8 @@ describe("device unlock routes", () => {
 
   test("only status, challenge and unlock bypass the gate — other /api/lock paths are gated", async () => {
     const s = await store();
-    expect(lockGate(request("/api/lock/unlock", "POST"), url("/api/lock/unlock"), cfg, s, () => false)?.status).toBe(401);
-    expect(lockGate(request("/api/lock/set", "POST"), url("/api/lock/set"), cfg, s, () => false)?.status).toBe(401);
-    expect(lockGate(request("/api/lock/clear", "POST"), url("/api/lock/clear"), cfg, s, () => false)?.status).toBe(401);
+    expect(lockGate(request("/api/lock/unlock", "POST"), url("/api/lock/unlock"), cfg, s)?.status).toBe(401);
+    expect(lockGate(request("/api/lock/set", "POST"), url("/api/lock/set"), cfg, s)?.status).toBe(401);
+    expect(lockGate(request("/api/lock/clear", "POST"), url("/api/lock/clear"), cfg, s)?.status).toBe(401);
   });
 });

@@ -23,7 +23,6 @@ export interface PaneCommon {
   readableLines?: number;
   tabLabel?: string;
   terminalTitle?: string;
-  sssf?: PaneSssf;
   runningCommand?: boolean;
   lastActiveAt?: number;
   lastSeenAt?: number;
@@ -35,8 +34,6 @@ export interface WirePane extends PaneCommon {
   hasSession?: boolean;
 }
 
-export interface PaneSssfRun { repo: string; adwId: string; adwName?: string; status: string; startedAt: string; }
-export interface PaneSssf { runs: PaneSssfRun[]; }
 /** Git checkout provenance on a workspace (Herdr `workspace.worktree`). */
 export interface WorkspaceWorktree {
   repoKey: string;
@@ -58,10 +55,6 @@ export interface WorkspaceView {
   tabCount: number; paneCount: number;
   worktree?: WorkspaceWorktree;
   closedWorktrees?: ClosedWorktree[];
-  sssf?: { state: "ready" | "pending"; token: string; repos: Array<{
-    name: string; state: "ready" | "pending"; running: boolean;
-    lastRun?: { status: string; startedAt: string };
-  }>; attached?: { repo: string; adwId?: string } };
 }
 export interface TabView { tabId: string; workspaceId: string; number: number; label: string; focused: boolean; paneCount: number; }
 export type BridgeStatus = "connected" | "disconnected";

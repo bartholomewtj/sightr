@@ -8,7 +8,6 @@ import type { JournalAdapter } from "./journal/types.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { StateEngine } from "./state-engine.ts";
 import type { Push } from "./push.ts";
-import type { createSssfViz } from "./sssf-viz.ts";
 import type { createWorkdir } from "./workdir.ts";
 import type { WorktreeIndex } from "./worktrees.ts";
 import type { AgentView } from "./state-engine.ts";
@@ -20,19 +19,10 @@ export function toPaneWire(pane: AgentView, offerHistory: (agent: string, hasSes
 
 export interface SnapshotDeps {
   cfg: Config; engine: StateEngine; activity: ActivityLedger;
-  sssfViz: ReturnType<typeof createSssfViz>; workdir: ReturnType<typeof createWorkdir>;
+  workdir: ReturnType<typeof createWorkdir>;
   worktrees: WorktreeIndex;
   journals: Record<string, JournalAdapter> | null; transcripts: TranscriptStore | null;
   offerHistory: (agent: string, hasSessionRef: boolean) => boolean;
-}
-
-/** True when this snapshot poll should recheck SSSF traces (the phone is on /traces). */
-export function snapshotWantsTraces(req: Request): boolean {
-  try {
-    return new URL(req.url).searchParams.get("traces") === "1";
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -86,14 +76,9 @@ export async function snapshotRoute(req: Request, deps: SnapshotDeps): Promise<R
       // has no journal for doesn't advertise a History button that can only ever come back empty.
       // withActivity runs FIRST: it returns an AgentView, which is what toPaneWire consumes,
       // and the two timestamps then ride through its rest-spread onto the wire shape.
-      // decoratePanes hangs each pane's ADW runs on it (bridge/sssf-viz.ts) — a plain stamp
-      // from the last discovery pass, so it costs no I/O here; identity when the feature is off.
-      agents: deps.sssfViz.decoratePanes(decoratedAgents).map((p) => toPaneWire(withActivity(p), deps.offerHistory)),
-      shellPanes: deps.sssfViz.decoratePanes(shellPanes).map((p) => toPaneWire(withActivity(p), deps.offerHistory)),
-      workspaces: await deps.worktrees.decorate(
-        deps.sssfViz.decorate(workspaces, [...agents, ...shellPanes], snapshotWantsTraces(req)),
-        [...agents, ...shellPanes],
-      ),
+      agents: decoratedAgents.map((p) => toPaneWire(withActivity(p), deps.offerHistory)),
+      shellPanes: shellPanes.map((p) => toPaneWire(withActivity(p), deps.offerHistory)),
+      workspaces: await deps.worktrees.decorate(workspaces, [...agents, ...shellPanes]),
       tabs,
       ...(deps.workdir.enabled ? { files: true as const } : {}),
       ts: Date.now(),

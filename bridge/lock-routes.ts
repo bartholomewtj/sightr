@@ -31,12 +31,9 @@ export function lockGate(
   url: URL,
   _cfg: Config,
   lock: LockStore,
-  ownsExtra: (pathname: string) => boolean,
-  extraExempt?: (req: Request, url: URL) => boolean,
 ): Response | null {
   if (!lock.enabled()) return null;
-  const api = url.pathname.startsWith("/api/");
-  const gated = api || (ownsExtra(url.pathname) && !(extraExempt?.(req, url) ?? false));
+  const gated = url.pathname.startsWith("/api/");
   const exempt =
     (url.pathname === "/api/lock" && req.method === "GET") ||
     (url.pathname === "/api/lock/webauthn/challenge" && req.method === "POST") ||
