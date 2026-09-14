@@ -6,7 +6,8 @@
     "locale": "en",
     "quality_profile": "showcase",
     "repository": {
-      "url": "https://github.com/bartholomewtj/sightr"
+      "url": "https://github.com/bartholomewtj/sightr",
+      "revision": "458d58386624395acfd5ab21bdc90e5594d3e238"
     },
     "views": [
       {
@@ -574,7 +575,7 @@
       "items": [
         "events.subscribe re-polls at once; session.snapshot stays the source of truth",
         "SSE coalesces 250 ms and returns over the same tailnet HTTPS connection",
-        "sightr @ b530f34 — env identifiers are still spelled SIGHTR_ in the code"
+        "Every source link is checked against the pinned commit when the map is rebuilt"
       ]
     }
   ]
