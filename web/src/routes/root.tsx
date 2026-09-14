@@ -71,7 +71,13 @@ export function RootLayout() {
         authError={data.authError}
         lastSeenAt={shownLastSeenAt(data, pane)}
       />
-      {desktop ? <DesktopShell /> : <Outlet />}
+      {desktop ? (
+        <DesktopShell />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <Outlet />
+        </div>
+      )}
       {!desktop && showNav && <BottomNav files={data.files === true} />}
     </div>
   );
