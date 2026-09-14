@@ -40,6 +40,9 @@ product since. It does not track collie.
   nothing. The file is owner-only, capped at 5 MB with one rotated copy, and nothing in Sightr reads
   it back.
 - Uploads are accepted by byte signature, never by declared content type. SVG is refused.
+- `SIGHTR_WORK_ROOT` is the whole of what the Files tab can read, edit and delete, from every
+  device that can reach the bridge. Point it at the narrowest folder you need, never at a home
+  directory, and leave it unset to hide the tab.
 
 ## Requirements
 
@@ -150,7 +153,7 @@ keep theirs.
 | `SIGHTR_TRANSCRIPT` | on | Read chat history from the harness's own session log |
 | `SIGHTR_CLAUDE_ROOT`, `SIGHTR_PI_ROOT`, `SIGHTR_GROK_ROOT`, `SIGHTR_CURSOR_ROOT` | harness default | Where each harness keeps session logs, comma separated, searched in order |
 | `SIGHTR_BEACONS` | on | Read the identity files Claude's hooks write |
-| `SIGHTR_WORK_ROOT` | unset | Root of the Files tab. Unset hides the tab and its routes |
+| `SIGHTR_WORK_ROOT` | unset | Root of the Files tab, readable and writable from every device. Keep it narrow. Unset hides the tab and its routes |
 | `SIGHTR_VAPID_PUBLIC`, `SIGHTR_VAPID_PRIVATE`, `SIGHTR_VAPID_SUBJECT` | unset | Web Push keys. `push-keys` writes them |
 | `SIGHTR_PUSH_ALLOWED_HOSTS` | unset | Extra push-service hosts |
 | `SIGHTR_STATE_DIR` | `~/.local/state/sightr` | Runtime state, when Herdr did not inject `HERDR_PLUGIN_STATE_DIR` |

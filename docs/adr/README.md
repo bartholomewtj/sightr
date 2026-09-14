@@ -21,7 +21,7 @@ signal is that you find yourself explaining *why not* rather than *how*.
 
 - ✅ "We manage exactly one front door" — a NetBird PR, then a Cloudflare Tunnel PR, then a ZeroTier PR
 - ✅ "Polling, not an event stream" — perennial, and the reasoning isn't obvious from the code
-- ❌ "Use Vitest for the web suite" — that's just what the repo does; `CLAUDE.md` covers it
+- ❌ "Use Vitest for the web suite" — that's just what the repo does; the README's Development section covers it
 - ❌ Anything already legible from the code, a test name, or a commit message
 
 **The bar is high, and it is meant to be.** These are for the handful of decisions that shape the
@@ -50,10 +50,10 @@ Nothing here restates what lives elsewhere; the point is the *reasoning*, once.
 
 | Where | What belongs there |
 | --- | --- |
-| [`CLAUDE.md`](../CLAUDE.md) | The **rule** — short, normative, linking here for why |
-| [`ARCHITECTURE.md`](../ARCHITECTURE.md) | How the system is **built**, as it stands today |
-| [`README.md`](../README.md) | How an operator **runs** it |
-| `` | Why a road **wasn't** taken |
+| [`README.md`](../../README.md) | How an operator **runs** it, and the development rules |
+| [`README.md` → Architecture](../../README.md#architecture) and [`archify/`](../archify/) | How the system is **built**, as it stands today |
+| [`HERDR_API.md`](../HERDR_API.md) | The Herdr socket facts the bridge relies on |
+| `adr/` | Why a road **wasn't** taken |
 
 A superseded ADR is never deleted or edited into agreement with the present. Mark it
 `Superseded by NNNN` and write the new one — the wrong turn is the useful part.
