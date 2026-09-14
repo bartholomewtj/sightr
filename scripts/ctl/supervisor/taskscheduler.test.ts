@@ -89,6 +89,30 @@ test("install fails loudly when Register-ScheduledTask fails", async () => {
   await expect(taskSchedulerSupervisor({ SIGHTR_TASK_NAME: "herdr.sightr-test" }).install(spec(d), run)).rejects.toThrow(/could not register the scheduled task 'herdr.sightr-test'[\s\S]*Access is denied/);
 });
 
+test("install keeps an existing task when re-registration is denied", async () => {
+  const d = await dir();
+  const calls: string[] = [];
+  const errors: string[] = [];
+  const orig = console.error;
+  console.error = (m: unknown) => { errors.push(String(m)); };
+  const run: Run = async (cmd, args) => {
+    const script = cmd === "powershell" ? args[args.length - 1] ?? "" : "";
+    calls.push(script);
+    if (script.includes("Register-ScheduledTask")) return { code: 1, stdout: "", stderr: "Register-ScheduledTask : Access is denied.\nAt line:1 char:577" };
+    if (script.includes("Get-ScheduledTask")) return { code: 0, stdout: "Ready\n", stderr: "" };
+    return { code: 0, stdout: "", stderr: "" };
+  };
+  try {
+    await taskSchedulerSupervisor({ SIGHTR_TASK_NAME: "herdr.sightr-test" }).install(spec(d), run);
+  } finally {
+    console.error = orig;
+  }
+  expect(calls.filter((c) => c.includes("Get-ScheduledTask") && !c.includes("Register-ScheduledTask"))).toHaveLength(1);
+  expect(errors).toHaveLength(1);
+  expect(errors[0]).toMatch(/warn: could not re-register the scheduled task 'herdr.sightr-test' \(Register-ScheduledTask : Access is denied\.\); keeping the existing registration/);
+  await expect(readFile(path.join(d, "exec-bridge.vbs"), "ascii")).resolves.toContain("_exec-bridge");
+});
+
 test("install omits -TaskSocketPath when no socket path is known", async () => {
   const d = await dir();
   const run: Run = async () => ({ code: 0, stdout: "", stderr: "" });

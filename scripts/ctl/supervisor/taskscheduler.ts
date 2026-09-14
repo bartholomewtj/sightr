@@ -24,9 +24,20 @@ export function taskSchedulerSupervisor(env:Record<string,string|undefined>,isAd
    if(level==="highest"&&!isAdmin())throw new Error("SIGHTR_TASK_RUN_LEVEL=highest requires Administrator PowerShell");
    const body=`$a=New-ScheduledTaskAction -Execute \"$env:SystemRoot\\System32\\wscript.exe\" -Argument \"//nologo ${v}\"; $t=New-ScheduledTaskTrigger -AtLogOn; $p=New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel ${level==="highest"?"Highest":"Limited"}; $s=New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable; Register-ScheduledTask -TaskName '${q}' -Action $a -Trigger $t -Principal $p -Settings $s -Force; Enable-ScheduledTask -TaskName '${q}'`;
    const reg=await r("powershell",["-NoProfile","-Command",`$ErrorActionPreference='Stop'; ${body}; if (-not (Get-ScheduledTask -TaskName '${q}' -ErrorAction SilentlyContinue)) { throw 'task missing after Register-ScheduledTask' }`]);
-   if(reg.code!==0)throw new CtlError(`error: could not register the scheduled task '${name}':
+   if(reg.code!==0){
+    // Register-ScheduledTask -Force needs Administrator on some accounts even to re-register a task
+    // the user already owns. A task that exists from an earlier (elevated) start still points at the
+    // vbs just rewritten above, so keep it and let enableNow start it: `restart` from a normal shell
+    // must not take the bridge down for good.
+    const existing=await r("powershell",["-NoProfile","-Command",`(Get-ScheduledTask -TaskName '${q}' -ErrorAction SilentlyContinue).State`]);
+    if(existing.code===0&&existing.stdout.trim()){
+     console.error(`warn: could not re-register the scheduled task '${name}' (${((reg.stderr||reg.stdout).trim().split(/\r?\n/)[0]??"").trim()}); keeping the existing registration. Run start from an Administrator PowerShell if the task definition needs to change.`);
+     return;
+    }
+    throw new CtlError(`error: could not register the scheduled task '${name}':
 ${(reg.stderr||reg.stdout).trim()}
        the bridge is not supervised; fix the cause and run start again`);
+   }
   },
   async enableNow(s,r){
    await stopAllBridges({pluginRoot:s.paths.pluginRoot,vbsPath:path.join(s.paths.configDir,"exec-bridge.vbs"),processFile:path.join(s.paths.configDir,"sightr-processes"),port:s.port},r);
