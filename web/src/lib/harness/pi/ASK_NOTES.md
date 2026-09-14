@@ -29,7 +29,7 @@ Source: `~/.pi/agent/extensions/ask.ts` (tool implementation) and `@earendil-wor
 3. **Screen layout & Footer:**
    On a live pane, the ask frame sits in the editor slot (`ctx.ui.custom`).
    Below the closing rule sit 2 or 3 footer rows:
-   - PWD row (e.g. `~/Projects/tools/sightr (fix/366-pi-ask-lift)`).
+   - PWD row (e.g. `~/Projects/tools/sighter (fix/366-pi-ask-lift)`).
    - Stats row containing context usage token stats: `NN.N%/<window>` or `?/<window>` (e.g. `↑1.5k ↓3.4k 4.1%/200k (auto)  muse-spark-1.3 • medium`).
    - Optional extension status row.
    The detector allows 0, 2, or 3 footer rows below the closing rule, and requires the second to match the stats pattern when footer rows are present.
@@ -61,7 +61,7 @@ Source: `~/.pi/agent/extensions/ask.ts` (tool implementation) and `@earendil-wor
 - **Input mode:** When input mode is active (Enter pressed on `Type something.`), the options remain for reference and `Your answer:` / editor appears. The frame stays raw and is not lifted into buttons.
 
 ## Fixture Provenance
-- `web/src/fixtures/panes/pi--ask-*.txt` were generated using Pi's own `createQuestionnaireUI(...).render(94)` via `jiti` import from `~/.pi/agent/extensions/ask.ts`.
+- `web/src/fixtures/panes/pi--ask-*.txt` were generated using Pi's own `createQuestionnaireUI(...).render(94)` via `jiti` import from `C:/Users/barth/.pi/agent/extensions/ask.ts`.
 - Upstream header rows 1–2 (`── ⠴ Working ──` and blank row) were prepended from `upstream/main:web/src/fixtures/panes/pi--v085-working-editor.txt`.
 - Footer rows (PWD and token stats) were appended to represent the full live pane layout.
 - These are rendered output + spliced headers/footers, not live captures. They should be replaced by live captures when an interactive Herdr session is captured.

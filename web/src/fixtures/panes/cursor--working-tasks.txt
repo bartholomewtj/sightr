@@ -21,10 +21,10 @@
   produces that exact banner. Fixing it now.
 
   $ herdr pane read wAC:p1M --lines 40 2>&1 | Out-File -Encoding utf8
-    "C:\Users\alice\Projects\the-bridge\web\src\fixtures\panes\cursor--working-tasks.txt"; Write-Output
+    "C:\claudeOS\Projects\tools\sighter\web\src\fixtures\panes\cursor--working-tasks.txt"; Write-Output
     "lines:"; (Get-Content
-    "C:\Users\alice\Projects\the-bridge\web\src\fixtures\panes\cursor--working-tasks.txt").Count;
-    Get-Content "C:\Users\alice\Projects\the-bridge\web\src\fixtures\panes\cursor--working-tasks.txt"
+    "C:\claudeOS\Projects\tools\sighter\web\src\fixtures\panes\cursor--working-tasks.txt").Count;
+    Get-Content "C:\claudeOS\Projects\tools\sighter\web\src\fixtures\panes\cursor--working-tasks.txt"
     -Tail 12 206ms
 
  ⠠⠜ Running  33.72k tokens
@@ -36,4 +36,4 @@
 
   1 task
   Auto · 26.3%                                                                           Run Everything
-  C:\work-dir
+  C:\claudeOS

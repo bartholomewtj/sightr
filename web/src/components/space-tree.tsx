@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { ChevronDown, ChevronRight, FolderPlus, GitBranch, LayoutGrid, Plus, Search, WifiOff, X } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderPlus, GitBranch, LayoutGrid, Plug, Plus, Search, TerminalSquare, WifiOff, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { SectionHeader } from "@/components/section-header";
@@ -460,8 +460,18 @@ export function SpaceTree({
                                         actionsEnabled ? (at) => { setSheetAnchor(at); setSheetPane(p); } : undefined
                                       }
                                     >
-                                      <StatusDot status={pStatus} runningCommand={p.runningCommand} />
-                                      <span className="sr-only">{STATUS_LABEL[pStatus]}</span>
+                                      {p.kind === "shell" ? (
+                                        p.paneLabel ? (
+                                          <Plug className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                                        ) : (
+                                          <TerminalSquare className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                                        )
+                                      ) : (
+                                        <>
+                                          <StatusDot status={pStatus} runningCommand={p.runningCommand} />
+                                          <span className="sr-only">{STATUS_LABEL[pStatus]}</span>
+                                        </>
+                                      )}
                                       <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground hover:text-foreground">
                                         {paneDisplayName(p)}
                                       </span>

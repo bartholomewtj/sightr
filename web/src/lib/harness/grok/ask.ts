@@ -10,7 +10,7 @@ import { regionSignature, rstrip, lastNonBlankIndex } from "../scan";
 // Esc-park keeps the same card; its footer differs and must still match. Radio prepends Tab so a
 // tap re-enters before the digit. Checkbox sets `parked` so the Tab/Space walk Tabs once to re-enter
 // before Space; Enter is `Tab, Enter`. Radio `z` is modelled as `purpose: "free-text"` so a focused
-// row can lock the option buttons; Sightr does not type into it. Pure; no pane access.
+// row can lock the option buttons; Sighter does not type into it. Pure; no pane access.
 //
 // When a radio card's hint row contains `[n/m]` with m ≥ 2, it lifts as a `wizard` (question phase)
 // rather than `prompt-select`. Stepper chips show 1/m..m/m; Right/Left navigate between questions

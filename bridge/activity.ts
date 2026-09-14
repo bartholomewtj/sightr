@@ -1,14 +1,15 @@
 import { rename } from "node:fs/promises";
+import { isHostProfileTerminalTitle } from "../shared/titles.ts";
 import { readJsonOr, writeJsonAtomic } from "./json-file.ts";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
 
 // When did each pane last DO something, and when did you last LOOK at it? Herdr answers neither —
-// its pane records carry no timestamps at all (HERDR_API.md) — so Sightr derives and owns both.
+// its pane records carry no timestamps at all (HERDR_API.md) — so Sighter derives and owns both.
 //
 // Two numbers per pane are enough for the whole dashboard:
 //   • activeAt — the last agent status transition this bridge observed
-//   • seenAt   — the last time you opened or drove the pane THROUGH SIGHTR
+//   • seenAt   — the last time you opened or drove the pane through Sightr
 //
 // "Unseen" is then a comparison, not a stored fact: an agent is newly-finished-and-unread exactly
 // when `status === "done" && activeAt > seenAt`. Opening the pane sets seenAt = now, and the row
@@ -18,11 +19,11 @@ import type { Config } from "./config.ts";
 // desk in Herdr itself — see .adr/0003-one-shared-seen.md. Persisted to the state dir like
 // NotifyPrefsStore, so it survives the `systemctl restart` every backend change needs.
 
-/** The two timestamps Sightr keeps for a pane. Epoch ms. */
+/** The two timestamps Sighter keeps for a pane. Epoch ms. */
 export interface PaneActivity {
   /** Last agent status transition observed by the state engine. */
   activeAt: number;
-  /** Last time you opened or drove this pane through Sightr. */
+  /** Last time you opened or drove this pane through Sighter. */
   seenAt: number;
 }
 
@@ -89,9 +90,9 @@ const SHELL_LOCATOR = /^[^\s@:]+@[^\s@:]+(:.*)?$/;
  *
  * Herdr reports the pane's OSC title and its own stripped form. The stripped form is NOT usable
  * directly: it removes the settled `✳` but leaves Claude's rotating spinner frames (live-observed
- * 2026-08-15 in one snapshot — `✳ Read Notes From Underground` stripped, `◐ Custom UI for Sightr…`
+ * 2026-08-15 in one snapshot — `✳ Read Notes From Underground` stripped, `◐ Custom UI for Sighter…`
  * not). Since those frames advance on every poll, binding a row's label to it makes every working
- * agent's name flicker. So Sightr strips the glyph itself, on whichever of the two strings is
+ * agent's name flicker. So Sighter strips the glyph itself, on whichever of the two strings is
  * already the shorter — Herdr having done the job is a fine head start, it just can't be trusted to
  * have finished it.
  *
@@ -99,12 +100,16 @@ const SHELL_LOCATOR = /^[^\s@:]+@[^\s@:]+(:.*)?$/;
  * back to the process name, so an agent that sets no title reports `claude`), or the workspace
  * label that is line one of every row. Case-insensitive, because neither comparison is about case.
  *
- * A shell's locator title (`altan@bluefin:~/projects/sightr`) is dropped for the same reason: it is
+ * A shell's locator title (`altan@bluefin:~/projects/sighter`) is dropped for the same reason: it is
  * not what the process is doing, it is a restatement of the cwd the row already carries on that very
  * line — longer, and rewritten on every `cd`. Dropped unconditionally rather than only when the path
  * matches: the row's cwd is the fresher of the two (a locator only updates at the next prompt), and
  * `\w`'s `~` belongs to a user the bridge cannot resolve a HOME for. Titles a shell sets for a
  * running command (`vim foo.ts`, `htop`) are not locators and survive — those are the work.
+ *
+ * A Windows Terminal profile's default title (`Windows PowerShell`, `Command Prompt`) is dropped for
+ * the same reason as a locator: it names the host, not the work. An agent running inside that shell
+ * would otherwise flicker between the harness label and the host title on every poll.
  *
  * Pure + exported so the rule is unit-tested and lives in ONE place, exactly as
  * {@link meaningfulTabLabel} is.
@@ -129,6 +134,7 @@ export function meaningfulTerminalTitle(
   const cleaned = shortest.replace(LEADING_STATUS_GLYPH, "").trim();
   if (!cleaned) return undefined;
   if (SHELL_LOCATOR.test(cleaned)) return undefined;
+  if (isHostProfileTerminalTitle(cleaned)) return undefined;
 
   const fold = cleaned.toLowerCase();
   if (fold === agent.trim().toLowerCase()) return undefined;
@@ -214,7 +220,7 @@ export class ActivityLedger {
     this.markDirty();
   }
 
-  /** You opened or drove the pane through Sightr. Clears its unread state by construction. */
+  /** You opened or drove the pane through Sighter. Clears its unread state by construction. */
   noteSeen(session: string, paneId: string): void {
     const panes = this.panesFor(session);
     const t = this.now();

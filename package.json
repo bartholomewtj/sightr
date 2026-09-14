@@ -1,6 +1,6 @@
 {
   "name": "sightr",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "license": "MIT",
   "description": "Sightr — a mobile web UI to monitor and reply to your Herdr agent herd over Tailscale",

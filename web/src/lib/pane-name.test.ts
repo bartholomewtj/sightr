@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { paneParts, paneTitleInTab } from "./pane-name";
+import { paneHeaderTitle, paneParts, paneTitleInTab } from "./pane-name";
 import type { AgentView } from "./types";
 
 function pane(over: Partial<AgentView> = {}): AgentView {
@@ -92,7 +92,7 @@ describe("paneParts — the second line", () => {
     // The herd this change exists for: same project, same cwd, no hand-set names. Before the title
     // was read, all three rows rendered identically.
     const rendered = [
-      "Custom UI for Sightr",
+      "Custom UI for Sighter",
       "Read Notes From Underground",
       "Reconcile book lists",
     ].map((terminalTitle) => {
@@ -112,15 +112,15 @@ describe("paneParts — the second line", () => {
     expect(t.secondary).toBe("oauth-refactor");
   });
 
-  it("does not repeat the tab or project as the second line — 'Main · Sightr' over 'Sightr'", () => {
+  it("does not repeat the tab or project as the second line — 'Main · Sighter' over 'Sighter'", () => {
     // Herdr names a new tab after its pane, so the terminal title and the tab label coincide.
-    const t = paneParts(pane({ tabLabel: "Sightr", terminalTitle: "sightr" }));
-    expect(join(t)).toBe("moonward_os · Sightr");
+    const t = paneParts(pane({ tabLabel: "Sighter", terminalTitle: "sighter" }));
+    expect(join(t)).toBe("moonward_os · Sighter");
     expect(t.secondary).toBe("~/dev/moonward"); // falls through to the cwd rule
     // A hand-set name equal to the project is the same repetition.
     expect(paneParts(pane({ paneLabel: "moonward_os", cwd: "" })).secondary).toBeNull();
     // Only an EXACT repeat is dropped — a name that adds a word still shows.
-    expect(paneParts(pane({ tabLabel: "Sightr", terminalTitle: "Sightr: fixing nav" })).secondary).toBe("Sightr: fixing nav");
+    expect(paneParts(pane({ tabLabel: "Sighter", terminalTitle: "Sighter: fixing nav" })).secondary).toBe("Sighter: fixing nav");
   });
 });
 
@@ -135,23 +135,50 @@ describe("paneParts — the cwd fallback only when it says something", () => {
   it("drops the cwd when the directory is just the project again", () => {
     // The space is named after its directory on almost every row, so the fallback was printing
     // line 1 twice.
-    expect(paneParts(pane({ workspaceLabel: "sightr", cwd: "/home/kon/dev/ai/sightr" })).secondary)
+    expect(paneParts(pane({ workspaceLabel: "sighter", cwd: "/home/kon/dev/ai/sighter" })).secondary)
       .toBeNull();
   });
 
   it("is case-insensitive about that match", () => {
-    expect(paneParts(pane({ workspaceLabel: "Sightr", cwd: "/home/kon/dev/ai/sightr" })).secondary)
+    expect(paneParts(pane({ workspaceLabel: "Sighter", cwd: "/home/kon/dev/ai/sighter" })).secondary)
       .toBeNull();
   });
 
   it("KEEPS the cwd when the pane sits somewhere else — a worktree or a subdir", () => {
-    expect(paneParts(pane({ workspaceLabel: "sightr", cwd: "/home/kon/dev/ai/sightr/web" })).secondary)
-      .toBe("~/dev/ai/sightr/web");
+    expect(paneParts(pane({ workspaceLabel: "sighter", cwd: "/home/kon/dev/ai/sighter/web" })).secondary)
+      .toBe("~/dev/ai/sighter/web");
   });
 
   it("still prefers the pane's own name over either", () => {
-    const t = paneParts(pane({ workspaceLabel: "sightr", cwd: "/home/kon/dev/ai/sightr", sessionName: "oauth" }));
+    const t = paneParts(pane({ workspaceLabel: "sighter", cwd: "/home/kon/dev/ai/sighter", sessionName: "oauth" }));
     expect(t.secondary).toBe("oauth");
+  });
+});
+
+describe("paneHeaderTitle — the mobile pane header", () => {
+  it("keeps a user label or session name over space › tab", () => {
+    expect(paneHeaderTitle(pane({ paneLabel: "deploy", tabLabel: "main" }), "main")).toBe("deploy");
+    expect(paneHeaderTitle(pane({ sessionName: "oauth-refactor", tabLabel: "main" }), "main")).toBe(
+      "oauth-refactor",
+    );
+  });
+
+  it("falls back to space › tab for an unnamed agent instead of a host profile title", () => {
+    expect(
+      paneHeaderTitle(
+        pane({ agent: "cursor", kind: "agent", workspaceLabel: "MAIN", tabLabel: "Sighter", terminalTitle: "Windows PowerShell" }),
+        "Sighter",
+      ),
+    ).toBe("MAIN › Sighter");
+  });
+
+  it("shows a plugin shell's pane label", () => {
+    expect(
+      paneHeaderTitle(
+        pane({ kind: "shell", agent: "shell", paneLabel: "win-terminal-browser", workspaceLabel: "MAIN", tabLabel: "Sighter" }),
+        "Sighter",
+      ),
+    ).toBe("win-terminal-browser");
   });
 });
 
@@ -166,6 +193,6 @@ describe("paneTitleInTab — inside a space view, where project and tab are alre
     expect(paneTitleInTab(pane({ paneLabel: "hand-named", sessionName: "auto" })).primary).toBe("hand-named");
     expect(paneTitleInTab(pane({ agentName: "planner-7dba2785" })).primary).toBe("planner-7dba2785");
     expect(paneTitleInTab(pane()).primary).toBe("claude");
-    expect(paneTitleInTab(pane({ kind: "shell", agent: "shell" })).primary).toBe("shell");
+    expect(paneTitleInTab(pane({ kind: "shell", agent: "shell" })).primary).toBe("moonward");
   });
 });

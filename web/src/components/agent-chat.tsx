@@ -31,6 +31,7 @@ import {
   thinkSnip,
   type PendingUserSend,
 } from "@/lib/thinking-pulse";
+import { sortPanesInTab } from "@/lib/spaces";
 import { isReadOnly } from "@/lib/types";
 import { canonicalAgent } from "@shared/agents";
 import type { AgentView, BridgeStatus, DeviceAuth } from "@/lib/types";
@@ -50,7 +51,7 @@ interface AgentChatProps {
   revision?: number;
   /** Per-device auth from the snapshot; an unauthorised device drops the composer to read-only. */
   device?: DeviceAuth;
-  // Global connection state — fed straight to the shared AppHeader, which drives the header Sightr
+  // Global connection state — fed straight to the shared AppHeader, which drives the header Sighter
   // mark (gallop/rest, identically to the dashboard), and lets us dim the stale StatusBadge while not
   // live. Defaults describe a healthy link so tests that don't care render "live".
   bridge?: BridgeStatus | undefined;
@@ -77,7 +78,7 @@ type Drawer = "switcher" | null;
 // confirmed via the header status line (`setStatus`), then a revalidation pulls the fresh output.
 //
 // This shell owns the pane frame: the header (one line; its title opens the pane details sheet with
-// the cwd, statusline, tab panes, Find and the cross-space switcher; the find bar takes the
+// the cwd, statusline, tab panes, Find, Traces and the cross-space switcher; the find bar takes the
 // row over while find is open), the terminal mirror (freeze, find highlighting, transcript above
 // the live tail, load-older scrollback on shells), and the switcher sheet. The composer cluster —
 // draft, send, keys, slash-commands, image upload, display prefs — lives in <Composer>; it reaches
@@ -109,7 +110,7 @@ export function AgentChat({
 }: AgentChatProps) {
   const revalidator = useRevalidator();
   // Poll-truth "is the data on screen not live". The header (AppHeader) reads the same inputs to drive
-  // the Sightr mark + pill; here we use it to dim the StatusBadge, so the badge stops presenting the
+  // the Sighter mark + pill; here we use it to dim the StatusBadge, so the badge stops presenting the
   // last snapshot's status as current while we're reconnecting/lost, and restores instantly on recovery.
   const connecting = isConnecting({ bridge, error, stalled });
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
@@ -288,7 +289,7 @@ export function AgentChat({
         desktop ? "flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden" : "flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col overflow-x-hidden"
       }
     >
-      {/* Header — the SAME AppHeader shell the dashboard and space mount, so the Sightr mark is
+      {/* Header — the SAME AppHeader shell the dashboard and space mount, so the Sighter mark is
           identical on every screen (no hand-rolled bar to drift). One line: back, agent logo, title,
           status dot; the find bar takes the row over while searching. The title opens the details
           sheet, which carries the tab's other panes (with rename / close), the statusline, and the
@@ -314,9 +315,11 @@ export function AgentChat({
           statusLines,
           dumpText: lines.map(lineText).join("\n"),
           panes: agent
-            ? [...agents, ...shellPanes]
-                .filter((p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId)
-                .sort((a, b) => a.paneId.localeCompare(b.paneId))
+            ? sortPanesInTab(
+                [...agents, ...shellPanes].filter(
+                  (p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId,
+                ),
+              )
             : [],
           onSelectPane: switchTo,
           readOnly,

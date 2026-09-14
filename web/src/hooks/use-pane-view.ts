@@ -614,7 +614,7 @@ export function usePaneView(args: PaneViewArgs) {
   //    someone expects who is trying to interact with a LINE rather than reply to it, and they read
   //    it as the tap being absorbed. Off, the mirror keeps its buttons and its links; it just stops
   //    volunteering the keyboard. (What it still cannot offer is a tappable agent-printed hyperlink:
-  //    herdr's `pane.read` strips OSC 8, so the link target never reaches Sightr at all.)
+  //    herdr's `pane.read` strips OSC 8, so the link target never reaches Sighter at all.)
   //  - the tap landed on an interactive control INSIDE the mirror — a native prompt/wizard/preview
   //    button, the Load-older button, or the note editor's own textarea. Their click bubbles up to
   //    this handler, and focusing the composer here would pop the soft keyboard on every option tap

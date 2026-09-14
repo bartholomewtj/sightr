@@ -19,6 +19,14 @@ interface TabGroup {
   panes: AgentView[];
 }
 
+/** Panes sharing one tab: focused first, then stable pane-id order (Herdr creation order). */
+export function sortPanesInTab(panes: readonly AgentView[]): AgentView[] {
+  return [...panes].sort((a, b) => {
+    if (a.focused !== b.focused) return a.focused ? -1 : 1;
+    return a.paneId.localeCompare(b.paneId);
+  });
+}
+
 /**
  * Group a workspace's panes (agents + shells) by tab, in tab order. Panes whose tab isn't in the
  * tab list yet (a brief poll race after a create) fall into a trailing group so they're never lost.
@@ -35,12 +43,14 @@ export function groupPanesByTab(
   const groups: TabGroup[] = wsTabs.map((t) => ({
     tabId: t.tabId,
     label: t.label,
-    panes: panes.filter((p) => p.tabId === t.tabId),
+    panes: sortPanesInTab(panes.filter((p) => p.tabId === t.tabId)),
   }));
 
   const known = new Set(wsTabs.map((t) => t.tabId));
   const orphans = panes.filter((p) => !known.has(p.tabId));
-  if (orphans.length) groups.push({ tabId: `${workspaceId}:other`, label: "…", panes: orphans });
+  if (orphans.length) {
+    groups.push({ tabId: `${workspaceId}:other`, label: "…", panes: sortPanesInTab(orphans) });
+  }
 
   return groups;
 }

@@ -100,13 +100,13 @@ describe("claude--draft-paste-placeholder.txt — a collapsed long send is compo
   });
 });
 
-// The SPLIT shape (collie#110), both halves captured live on 2026-08-17 in the sightr-demo sandbox (pane
+// The SPLIT shape (collie#110), both halves captured live on 2026-08-17 in the sighter-demo sandbox (pane
 // `w6:p1`, 200-col PTY, Claude Code current): a long multi-line head collapsed into one token, then
 // two short tails typed after a pause so they stayed literal beside it. The COMPLETE capture has the
 // third tail as well; the PARTIAL one is the same screen with that last chunk never arriving.
 //
 // This pair is the whole point of the fix: before it, `draftCarriesSend` said TRUE to both, so the
-// guard pressed Enter on a message that was still missing its last chunk and Sightr reported success.
+// guard pressed Enter on a message that was still missing its last chunk and Sighter reported success.
 // The complete capture is the positive control — the tightening must not turn a real send into a
 // permanent "didn't reach the input box" stall, which is the worse failure of the two.
 describe("claude--draft-paste-split-*.txt — a token + literal tail, complete vs half-arrived", () => {

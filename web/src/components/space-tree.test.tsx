@@ -83,6 +83,10 @@ function renderTree(
         path: "/pane/:paneId",
         element: <div data-testid="pane-cli">PANE CLI</div>,
       },
+      {
+        path: "/traces/:spaceId/:repo",
+        element: <div data-testid="trace-view">TRACE VIEW</div>,
+      },
     ],
     { initialEntries: [initialPath] },
   );
@@ -598,23 +602,23 @@ describe("SpaceTree — filter", () => {
   });
 
   it("nests a linked worktree under its primary checkout and shows a closed sibling", () => {
-    const parent = ws("w1", "sightr", {
+    const parent = ws("w1", "sighter", {
       worktree: {
-        repoKey: "repo-sightr",
-        repoName: "sightr",
-        repoRoot: "/sightr",
-        checkoutPath: "/sightr",
+        repoKey: "repo-sighter",
+        repoName: "sighter",
+        repoRoot: "/sighter",
+        checkoutPath: "/sighter",
         isLinkedWorktree: false,
         branch: "main",
       },
-      closedWorktrees: [{ path: "/sightr-bar", label: "bar", branch: "feat/bar", isDetached: false }],
+      closedWorktrees: [{ path: "/sighter-bar", label: "bar", branch: "feat/bar", isDetached: false }],
     });
     const child = ws("w2", "foo", {
       worktree: {
-        repoKey: "repo-sightr",
-        repoName: "sightr",
-        repoRoot: "/sightr",
-        checkoutPath: "/sightr-foo",
+        repoKey: "repo-sighter",
+        repoName: "sighter",
+        repoRoot: "/sighter",
+        checkoutPath: "/sighter-foo",
         isLinkedWorktree: true,
         branch: "feat/foo",
       },
@@ -624,7 +628,7 @@ describe("SpaceTree — filter", () => {
       tabs: [tab("w1:t1", "w1"), tab("w2:t1", "w2")],
       agents: [agent("w1:p1", "w1", "w1:t1"), agent("w2:p1", "w2", "w2:t1")],
     });
-    expect(screen.getByRole("button", { name: "Expand space sightr" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand space sighter" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Expand space foo" })).toBeInTheDocument();
     expect(screen.getByText("closed")).toBeInTheDocument();
     expect(screen.getByText("feat/bar")).toBeInTheDocument();

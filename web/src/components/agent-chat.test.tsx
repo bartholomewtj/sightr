@@ -148,7 +148,7 @@ describe("AgentChat — header title block", () => {
     // The agent is conveyed by its icon (aria-label only), so its name isn't repeated as text.
     expect(screen.queryByText(/claude/i)).toBeNull();
     expect(screen.getByRole("button", { name: "Pane details" })).toBeInTheDocument();
-    // No header button for Find any more, and no status pill text.
+    // No header buttons for Find / Traces any more, and no status pill text.
     expect(screen.queryByRole("button", { name: "Find in output" })).toBeNull();
     expect(screen.queryByText("needs you")).toBeNull();
   });
@@ -1109,12 +1109,12 @@ describe("AgentChat — dialog presence glue (#372)", () => {
     const grokAgent: AgentView = {
       paneId: "w2:p1",
       workspaceId: "w2",
-      workspaceLabel: "sightr",
+      workspaceLabel: "sighter",
       workspaceNumber: 2,
       tabId: "w2:t1",
       agent: "grok",
       status: "working",
-      cwd: "/home/you/sightr",
+      cwd: "/home/you/sighter",
       focused: true,
       lastActiveAt: 10,
     };
@@ -1147,4 +1147,4 @@ describe("AgentChat — dialog presence glue (#372)", () => {
 
     expect(withDialogPresence([grokAgent])[0]!.dialogPresent).toBeUndefined();
   });
-});
+});

@@ -3,6 +3,11 @@
 Sightr uses [Semantic Versioning](https://semver.org). `bun scripts/bump.ts patch|minor|major --note "..."`
 adds an entry here and keeps the three version files in step; CI refuses a build where they disagree.
 
+## [1.0.1] - 2026-09-14
+
+### Changed
+- Merge Sighter 0.124.5–0.129.0: phone ask lifts (Cursor, Pi, Grok, Claude), dialog snapshot guard, split-pane pane naming, Cursor working-chrome fixes.
+
 ## [1.0.0] - 2026-09-14
 
 ### Added

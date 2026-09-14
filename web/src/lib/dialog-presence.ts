@@ -1,4 +1,4 @@
-// Which panes Sightr has SEEN holding a parsed ask card (#372). The snapshot carries no screen text,
+// Which panes Sighter has SEEN holding a parsed ask card (#372). The snapshot carries no screen text,
 // so the only parse the browser runs is the open pane's (hooks/use-pane-view.ts). That parse reports
 // here, and the root loader stamps `dialogPresent` onto the herd (lib/loaders.ts → toHomeData), which
 // is what lets bucketOf put a Grok ask Herdr calls "working" into Needs you.

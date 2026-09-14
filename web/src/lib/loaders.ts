@@ -41,7 +41,7 @@ import type {
 // stale-data/error-banner path would flash a spurious "reconnecting…" on every fast poll.
 function isAbortError<TThrown>(e: TThrown): boolean {
   // `fetch` rejects an aborted request with a DOMException, which is an Error subclass in every
-  // engine Sightr runs in (and in jsdom) — so an `instanceof Error` test reaches it without having
+  // engine Sighter runs in (and in jsdom) — so an `instanceof Error` test reaches it without having
   // to inspect the shape of an arbitrary thrown value.
   return e instanceof Error && e.name === "AbortError";
 }
@@ -344,7 +344,7 @@ const NO_ECHO_TAIL_LINES = 40;
 /**
  * Whether this mirror is a pane sitting at a password prompt — the ADR 0017 exclusion.
  *
- * Recognition already exists and already changes what Sightr SAYS (lib/no-echo.ts); this is the one
+ * Recognition already exists and already changes what Sighter SAYS (lib/no-echo.ts); this is the one
  * other thing it changes, and it is a subtraction: a screen the operator is being asked to type a
  * secret into is not written to the browser's store, and whatever was written for that pane earlier is
  * dropped. Note what it is NOT about — the prompt echoes nothing, so there is no secret on the screen

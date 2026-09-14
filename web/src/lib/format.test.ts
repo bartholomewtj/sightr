@@ -1,8 +1,14 @@
-import { initials, shortCwd, timeAgo, timeAgoShort } from "./format";
+import { baseName, initials, shortCwd, timeAgo, timeAgoShort } from "./format";
+
+describe("baseName", () => {
+  it("takes the last segment on Windows paths too", () => {
+    expect(baseName("C:\\claudeOS\\Projects\\bench")).toBe("bench");
+  });
+});
 
 describe("shortCwd", () => {
   it("collapses /home/<user> to ~", () => {
-    expect(shortCwd("/home/you/projects/sightr")).toBe("~/projects/sightr");
+    expect(shortCwd("/home/you/projects/sighter")).toBe("~/projects/sighter");
   });
 
   it("collapses /Users/<user> (macOS) to ~", () => {

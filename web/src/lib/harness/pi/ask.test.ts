@@ -167,7 +167,7 @@ describe("pi ask detector", () => {
   describe("9. synthetic line arrays (raw only or positive)", () => {
     const baseRule = "─".repeat(40);
     const footerStats = "↑1.5k ↓3.4k 4.1%/200k (auto)  muse-spark-1.3 • medium";
-    const footerPwd = "~/Projects/tools/sightr (fix/366-pi-ask-lift)";
+    const footerPwd = "~/Projects/tools/sighter (fix/366-pi-ask-lift)";
 
     it("input-mode frame stays raw", () => {
       const synthetic = [

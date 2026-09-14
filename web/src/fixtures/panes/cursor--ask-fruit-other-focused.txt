@@ -1,4 +1,4 @@
-PS C:\Users\alice\Projects\my-plugin> & cursor-agent.cmd
+PS C:\claudeOS\Projects\tools\draftr> & cursor-agent.cmd
 
   ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
   │                                                                                                                                                                                                                                                       │
@@ -8,7 +8,7 @@ PS C:\Users\alice\Projects\my-plugin> & cursor-agent.cmd
   │                                                                                                                                                                                                                                                       │
   │  Do you trust the contents of this directory?                                                                                                                                                                                                         │
   │                                                                                                                                                                                                                                                       │
-  │    C:\Users\alice\Projects\my-plugin                                                                                                                                                                                                                  │
+  │    C:\claudeOS\Projects\tools\draftr                                                                                                                                                                                                                  │
   │                                                                                                                                                                                                                                                       │
   │                                                                                                                                                                                                                                                       │
   │    [a] Trust this workspace                                                                                                                                                                                                                           │
@@ -35,7 +35,7 @@ PS C:\Users\alice\Projects\my-plugin> & cursor-agent.cmd
   probe-cursor-ok
 
 
-  Create a new file at C:\Users\alice\Projects\my-plugin\tmp-sighter-probe.txt containing exactly the word hello. Do not run any shell commands.
+  Create a new file at C:\claudeOS\Projects\tools\draftr\tmp-sighter-probe.txt containing exactly the word hello. Do not run any shell commands.
 
 
     Edited tmp-sighter-probe.txt +1
@@ -63,4 +63,4 @@ PS C:\Users\alice\Projects\my-plugin> & cursor-agent.cmd
 
 
   Auto · 7.5% · 1 file edited
-  C:\Users\alice\Projects\my-plugin · main
+  C:\claudeOS\Projects\tools\draftr · main

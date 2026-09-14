@@ -6,6 +6,7 @@ import { AgentIcon } from "@/components/agent-icon";
 import { ShellBadge, StatusDot } from "@/components/status-badge";
 import { PaneDetailsSheet, type PaneDetailsProps } from "@/components/pane-details-sheet";
 import { useSwipeUp } from "@/hooks/use-swipe";
+import { paneHeaderTitle } from "@/lib/pane-name";
 import { shownStatus } from "@/lib/triage";
 import type { MenuPoint } from "@/lib/menu-anchor";
 import type { AgentView, BridgeStatus } from "@/lib/types";
@@ -143,13 +144,8 @@ export function PaneHeader({
               // pane's subject, not a second brand competing with Sightr's for the header.
               <AgentIcon agent={agent.agent} className="size-6" />
             )}
-            {/* A user-set pane label leads, then Herdr's live agent name, then Claude's
-                /rename session name, otherwise the default space › tab. */}
             <span className="min-w-0 flex-1 truncate font-semibold leading-tight">
-              {agent.paneLabel ??
-                agent.agentName ??
-                agent.sessionName ??
-                `${agent.workspaceLabel}${pane.tabLabel ? ` › ${pane.tabLabel}` : ""}`}
+              {paneHeaderTitle(agent, pane.tabLabel)}
             </span>
           </button>
         ) : (
