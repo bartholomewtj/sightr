@@ -82,3 +82,9 @@ test("stop disables the task before killing, then stops it; uninstall unregister
   expect(order.includes("unregister")).toBe(true);
   await expect(access(path.join(d, "exec-bridge.vbs"))).rejects.toThrow();
 });
+
+test("install fails loudly when Register-ScheduledTask fails", async () => {
+  const d = await dir();
+  const run: Run = async (cmd) => cmd === "powershell" ? { code: 1, stdout: "", stderr: "Register-ScheduledTask : Access is denied." } : { code: 0, stdout: "", stderr: "" };
+  await expect(taskSchedulerSupervisor({ SIGHTR_TASK_NAME: "herdr.sightr-test" }).install(spec(d), run)).rejects.toThrow(/could not register the scheduled task 'herdr.sightr-test'[\s\S]*Access is denied/);
+});

@@ -2,11 +2,12 @@ import path from "node:path";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import type { Supervisor } from "./index.ts";
 import { stopAllBridges } from "../win-processes.ts";
+import { CtlError } from "../types.ts";
 export function formatCommandArgument(s:string):string { return /[\s"]/.test(s)?`"${s.replace(/(\\*)"/g,"$1$1\\\"").replace(/(\\+)$/g,"$1$1")}"`:s; }
 export function taskSchedulerSupervisor(env:Record<string,string|undefined>,isAdmin:()=>boolean=()=>true):Supervisor {
  const name=env.SIGHTR_TASK_NAME??"herdr.sightr",q=name.replace(/'/g,"''");
  return {kind:"taskscheduler",
-  async describe(r){const x=await r("powershell",["-NoProfile","-Command",`(Get-ScheduledTask -TaskName '${q}').State`]);return x.code===0?`Task Scheduler (${name}) - ${x.stdout.trim()||"Ready"}`:"not supervised"},
+  async describe(r){const x=await r("powershell",["-NoProfile","-Command",`(Get-ScheduledTask -TaskName '${q}' -ErrorAction SilentlyContinue).State`]);if(x.code!==0)return "not supervised";const state=x.stdout.trim();return state?`Task Scheduler (${name}) - ${state}`:`Task Scheduler (${name}) - NOT REGISTERED (run start again; a registration error is printed when it fails)`},
   async install(s,r){
    const v=path.join(s.paths.configDir,"exec-bridge.vbs"); await mkdir(s.paths.configDir,{recursive:true});
    // wscript hides a console host. Call powershell (not `bun run file.ts`), which forwards _exec-bridge
@@ -20,7 +21,10 @@ export function taskSchedulerSupervisor(env:Record<string,string|undefined>,isAd
    if(level!=="limited"&&level!=="highest")throw new Error("SIGHTR_TASK_RUN_LEVEL must be 'limited' or 'highest'");
    if(level==="highest"&&!isAdmin())throw new Error("SIGHTR_TASK_RUN_LEVEL=highest requires Administrator PowerShell");
    const body=`$a=New-ScheduledTaskAction -Execute \"$env:SystemRoot\\System32\\wscript.exe\" -Argument \"//nologo ${v}\"; $t=New-ScheduledTaskTrigger -AtLogOn; $p=New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel ${level==="highest"?"Highest":"Limited"}; $s=New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable; Register-ScheduledTask -TaskName '${q}' -Action $a -Trigger $t -Principal $p -Settings $s -Force; Enable-ScheduledTask -TaskName '${q}'`;
-   await r("powershell",["-NoProfile","-Command",body]);
+   const reg=await r("powershell",["-NoProfile","-Command",`$ErrorActionPreference='Stop'; ${body}; if (-not (Get-ScheduledTask -TaskName '${q}' -ErrorAction SilentlyContinue)) { throw 'task missing after Register-ScheduledTask' }`]);
+   if(reg.code!==0)throw new CtlError(`error: could not register the scheduled task '${name}':
+${(reg.stderr||reg.stdout).trim()}
+       the bridge is not supervised; fix the cause and run start again`);
   },
   async enableNow(s,r){
    await stopAllBridges({pluginRoot:s.paths.pluginRoot,vbsPath:path.join(s.paths.configDir,"exec-bridge.vbs"),processFile:path.join(s.paths.configDir,"sightr-processes"),port:s.port},r);
