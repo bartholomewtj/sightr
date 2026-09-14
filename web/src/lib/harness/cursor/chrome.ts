@@ -47,13 +47,13 @@ export function locateComposer(lines: StyledLine[]): ComposerLoc | null {
   const end = lastNonBlankIndex(texts);
   if (end < 0) return null;
 
-  // Peel Cursor's own live `/` completion popup off the tail FIRST, before the status-row walk runs.
-  // While the operator is mid-slash-command, Cursor replaces the Auto/cwd status rows with its
-  // completion list (selected row carries a `→ ` glyph; unselected rows are 5-space indented; optional
-  // `↓ more below` footer; blank composer-chrome rows sit between prompt and popup). Those rows match
-  // neither `isStatusRow` nor a blank line, so the walk below would stop on the popup and never reach
-  // the `→ …` prompt above it. Unpeeled, that reads as "no composer on screen" while the draft is
-  // visibly sitting in a live prompt row (see autocomplete.ts — collie#34/#76 shape).
+  // Peel Cursor's live autocomplete popups off the tail FIRST, before the status-row walk runs.
+  // Two shapes: slash-command rows under `→ /partial`, and the `/model` argument picker under
+  // `→ /model …` (`Models matching "…"` header; selected row `→  Name`; optional pagination footer).
+  // Both replace Auto/cwd status rows with list rows that match neither `isStatusRow` nor blank, so
+  // the walk below would stop on the popup and never reach the `→ …` prompt above it. Unpeeled, that
+  // reads as "no composer on screen" while the draft is visibly sitting in a live prompt row (see
+  // autocomplete.ts — collie#34/#76 shape).
   const popup = findAutocompleteRun(texts, end + 1);
   if (popup !== null) {
     return { prompt: popup.promptLine, statusStart: -1, statusEnd: popup.promptLine + 1 };

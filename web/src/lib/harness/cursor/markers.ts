@@ -2,6 +2,7 @@
 // Verified against live pane dumps on 2026-09-12 (probe-cursor / wC0:p1 and the main Cursor seat).
 // `N task(s)` status row: live 2026-09-13 (wAC:p1M working chrome).
 // `Composer N.N` model row: live 2026-09-13 (wAC:p1S working chrome).
+// `Claude Fable …` / `72.6% · N files edited` rows: live 2026-09-14 (wAC:p3X idle, Fable model).
 
 import { isBlank, lineText } from "../../blocks";
 
@@ -27,6 +28,12 @@ export const CWD_STATUS = /^\s*(?:[A-Za-z]:\\|\/|~\/)/;
 /** Todo/task count Cursor paints under the follow-up prompt while a turn is running. */
 export const TASK_STATUS = /^\d+\s+tasks?$/i;
 
+/** Context usage and edit stats (`72.6% · 20 files edited`, also embedded in longer status rows). */
+export const USAGE_STATUS = /\d+\.?\d*%\s*·/;
+
+/** Model label when Cursor shows the pick outside Auto/Composer (`Claude Fable 5.1 300K High`). */
+export const MODEL_STATUS = /^(?:Claude|GPT|Gemini|Grok|Cursor)\b/i;
+
 export const WORKING_HINT = /ctrl\+c to stop/i;
 
 export function promptBody(text: string): string | null {
@@ -47,6 +54,8 @@ export function isStatusRow(text: string): boolean {
   if (MODE_STATUS.test(t)) return true;
   if (CWD_STATUS.test(t)) return true;
   if (TASK_STATUS.test(t)) return true;
+  if (USAGE_STATUS.test(t)) return true;
+  if (MODEL_STATUS.test(t)) return true;
   // Right-hand policy chip sometimes shares the Auto row; alone it is still status.
   if (/^Run Everything$/i.test(t)) return true;
   return false;
