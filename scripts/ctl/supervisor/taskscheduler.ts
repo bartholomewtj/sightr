@@ -15,7 +15,9 @@ export function taskSchedulerSupervisor(env:Record<string,string|undefined>,isAd
    const windir=env.SystemRoot??process.env.SystemRoot??"C:\\Windows";
    const powershell=path.join(windir,"System32","WindowsPowerShell","v1.0","powershell.exe");
    const ps1=path.join(s.paths.pluginRoot,"contrib","windows","sightr-ctl.ps1");
-   const inner=[powershell,"-WindowStyle","Hidden","-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File",ps1,"-TaskConfigDir",s.paths.configDir,"-TaskSocketPath",s.socket,"_exec-bridge"].map(formatCommandArgument).join(" ");
+   // An unset socket path is OMITTED, not passed empty: the bridge defaults it to the platform
+   // socket, and an empty argument would make the control script read "_exec-bridge" as the path.
+   const inner=[powershell,"-WindowStyle","Hidden","-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File",ps1,"-TaskConfigDir",s.paths.configDir,...(s.socket?["-TaskSocketPath",s.socket]:[]),"_exec-bridge"].map(formatCommandArgument).join(" ");
    await writeFile(v,["' Written by sightr-ctl; overwritten on each start.","Set sh = CreateObject(\"WScript.Shell\")",`WScript.Quit sh.Run("${inner.replace(/"/g,'""')}", 0, True)`].join("\r\n")+"\r\n","ascii");
    const level=(env.SIGHTR_TASK_RUN_LEVEL??"limited").toLowerCase();
    if(level!=="limited"&&level!=="highest")throw new Error("SIGHTR_TASK_RUN_LEVEL must be 'limited' or 'highest'");

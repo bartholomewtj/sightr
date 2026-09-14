@@ -88,3 +88,13 @@ test("install fails loudly when Register-ScheduledTask fails", async () => {
   const run: Run = async (cmd) => cmd === "powershell" ? { code: 1, stdout: "", stderr: "Register-ScheduledTask : Access is denied." } : { code: 0, stdout: "", stderr: "" };
   await expect(taskSchedulerSupervisor({ SIGHTR_TASK_NAME: "herdr.sightr-test" }).install(spec(d), run)).rejects.toThrow(/could not register the scheduled task 'herdr.sightr-test'[\s\S]*Access is denied/);
 });
+
+test("install omits -TaskSocketPath when no socket path is known", async () => {
+  const d = await dir();
+  const run: Run = async () => ({ code: 0, stdout: "", stderr: "" });
+  await taskSchedulerSupervisor({ SIGHTR_TASK_NAME: "herdr.sightr-test" }).install({ ...spec(d), socket: "" }, run);
+  const vbs = await readFile(path.join(d, "exec-bridge.vbs"), "ascii");
+  expect(vbs).not.toContain("-TaskSocketPath");
+  expect(vbs).toContain("-TaskConfigDir");
+  expect(vbs).toMatch(/_exec-bridge", 0, True/);
+});
