@@ -64,7 +64,7 @@ describe("FilesRoute", () => {
       expect(await screen.findByRole("button", { name: /Git.*Files root/ })).toBeEnabled();
     });
     it("renders Git on a selected folder", async () => {
-      renderFiles({ rel: "Projects/tools/sightr", data: { kind: "dir", path: "Projects/tools/sightr", entries: [], truncated: false } });
+      renderFiles({ rel: "Projects/tools/sighter", data: { kind: "dir", path: "Projects/tools/sighter", entries: [], truncated: false } });
       expect(await screen.findByRole("button", { name: /Git/ })).toBeInTheDocument();
     });
     it("renders Git on the Files root for the focused pane", async () => {
@@ -83,7 +83,7 @@ describe("FilesRoute", () => {
     expect(await screen.findByRole("button", { name: /Git.*Files root/ })).toBeEnabled();
   });
   it("renders Git on the phone for a selected folder", async () => {
-    renderFiles({ rel: "Projects/tools/sightr", data: { kind: "dir", path: "Projects/tools/sightr", entries: [], truncated: false } });
+    renderFiles({ rel: "Projects/tools/sighter", data: { kind: "dir", path: "Projects/tools/sighter", entries: [], truncated: false } });
     expect(await screen.findByRole("button", { name: /Git/ })).toBeInTheDocument();
   });
   it("expands a folder in place and leaves the URL alone", async () => {

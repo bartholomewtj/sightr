@@ -44,11 +44,18 @@ describe("paneDisplayName", () => {
     expect(paneDisplayName(pane({ agent: "grok" }))).toBe("grok");
   });
 
-  it("shows \"shell\" for a bare shell pane with no label or session name", () => {
-    expect(paneDisplayName(pane({ kind: "shell", agent: "shell" }))).toBe("shell");
+  it("names a bare shell pane after its cwd directory before falling back to \"shell\"", () => {
+    expect(
+      paneDisplayName(pane({ kind: "shell", agent: "shell", cwd: "C:\\claudeOS\\Projects\\bench" })),
+    ).toBe("bench");
+    expect(paneDisplayName(pane({ kind: "shell", agent: "shell", cwd: "" }))).toBe("shell");
   });
 
   it("still lets a user label win on a shell pane", () => {
     expect(paneDisplayName(pane({ kind: "shell", agent: "shell", paneLabel: "logs" }))).toBe("logs");
+  });
+
+  it("ignores a Windows Terminal profile default title in favour of the harness name", () => {
+    expect(paneDisplayName(pane({ agent: "cursor", terminalTitle: "Windows PowerShell" }))).toBe("cursor");
   });
 });

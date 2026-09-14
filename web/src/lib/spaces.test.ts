@@ -5,6 +5,7 @@ import {
   filterClusters,
   filterSpaces,
   groupPanesByTab,
+  sortPanesInTab,
   spaceLastSeenMap,
   spaceTriageMap,
   worstBucket,
@@ -52,6 +53,12 @@ describe("groupPanesByTab", () => {
     const shell = agent({ paneId: "w1:p2", workspaceId: "w1", tabId: "w1:t1", kind: "shell" });
     const group = groupPanesByTab("w1", tabs, [a1], [shell]).find((item) => item.tabId === "w1:t1");
     expect(group!.panes).toEqual([a1, shell]);
+  });
+
+  it("sorts tab panes with the focused pane first, then pane id", () => {
+    const a1 = agent({ paneId: "w1:p2", workspaceId: "w1", tabId: "w1:t1" });
+    const a2 = agent({ paneId: "w1:p1", workspaceId: "w1", tabId: "w1:t1", focused: true });
+    expect(sortPanesInTab([a1, a2])).toEqual([a2, a1]);
   });
 
   it("collects panes whose tab isn't listed yet into a trailing '…' group", () => {
@@ -178,10 +185,10 @@ const wt = (
 ): WorkspaceView => ({
   ...ws(workspaceId, label, 1),
   worktree: {
-    repoKey: "repo-sightr",
-    repoName: "sightr",
-    repoRoot: "/sightr",
-    checkoutPath: linked ? `/sightr-${label}` : "/sightr",
+    repoKey: "repo-sighter",
+    repoName: "sighter",
+    repoRoot: "/sighter",
+    checkoutPath: linked ? `/sighter-${label}` : "/sighter",
     isLinkedWorktree: linked,
     branch: linked ? label : "main",
   },
@@ -191,10 +198,10 @@ const wt = (
 describe("clusterSpaces", () => {
   it("nests linked worktrees under the primary checkout, in snapshot order of the parent", () => {
     const child = wt("w2", "foo", true);
-    const parent = wt("w1", "sightr", false);
+    const parent = wt("w1", "sighter", false);
     const other = ws("w3", "usage", 3);
     const clusters = clusterSpaces([child, parent, other]);
-    expect(clusters.map((c) => c.key)).toEqual(["repo-sightr", "w3"]);
+    expect(clusters.map((c) => c.key)).toEqual(["repo-sighter", "w3"]);
     expect(clusters[0]!.parent?.workspaceId).toBe("w1");
     expect(clusters[0]!.children.map((c) => c.workspaceId)).toEqual(["w2"]);
     expect(clusters[1]!.parent?.workspaceId).toBe("w3");
@@ -205,12 +212,12 @@ describe("clusterSpaces", () => {
     expect(clusters).toHaveLength(1);
     expect(clusters[0]!.parent).toBeNull();
     expect(clusters[0]!.children.map((c) => c.workspaceId)).toEqual(["w2", "w3"]);
-    expect(clusters[0]!.repoName).toBe("sightr");
+    expect(clusters[0]!.repoName).toBe("sighter");
   });
 
   it("dedupes closed checkouts onto the family", () => {
     const closed = [{ path: "/wt/x", label: "x", branch: "x", isDetached: false }];
-    const parent = wt("w1", "sightr", false, { closedWorktrees: closed });
+    const parent = wt("w1", "sighter", false, { closedWorktrees: closed });
     const child = wt("w2", "foo", true, { closedWorktrees: closed });
     const clusters = clusterSpaces([parent, child]);
     expect(clusters[0]!.closed).toEqual(closed);
@@ -219,10 +226,10 @@ describe("clusterSpaces", () => {
 
 describe("filterClusters", () => {
   it("keeps a parent when only a child label matches", () => {
-    const clusters = clusterSpaces([wt("w1", "sightr", false), wt("w2", "foo", true)]);
+    const clusters = clusterSpaces([wt("w1", "sighter", false), wt("w2", "foo", true)]);
     const hit = filterClusters(clusters, "foo");
     expect(hit).toHaveLength(1);
-    expect(hit[0]!.parent?.label).toBe("sightr");
+    expect(hit[0]!.parent?.label).toBe("sighter");
     expect(hit[0]!.children[0]!.label).toBe("foo");
   });
 });

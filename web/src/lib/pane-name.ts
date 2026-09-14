@@ -5,8 +5,27 @@
 //
 // Nothing is lost: the pane's own name (a herdr `pane.rename` label, or Claude's own `/rename`
 // session name) moves down one line, where it displaces the cwd.
+import { isHostProfileTerminalTitle } from "@shared/titles";
 import { baseName, shortCwd } from "./format";
 import { paneDisplayName, type AgentView } from "./types";
+
+function locationLabel(pane: AgentView, tabLabel?: string): string {
+  const tab = tabLabel ?? pane.tabLabel;
+  return `${pane.workspaceLabel}${tab ? ` › ${tab}` : ""}`;
+}
+
+/**
+ * The one-line pane header title. Uses {@link paneDisplayName} when that names the work; otherwise
+ * falls back to space › tab rather than a bare harness id ("cursor") or a generic host title that
+ * slipped through on an older bridge build.
+ */
+export function paneHeaderTitle(pane: AgentView, tabLabel?: string): string {
+  const name = paneDisplayName(pane);
+  const shell = pane.kind === "shell";
+  if (!shell && name === pane.agent) return locationLabel(pane, tabLabel);
+  if (shell && name === "shell") return locationLabel(pane, tabLabel);
+  return name;
+}
 
 /** A two-line row label. Only {@link paneTitleInTab} returns one — the herd list renders
  *  {@link PaneParts} instead, so the project can give up width before the tab does. */
@@ -62,10 +81,12 @@ export function paneParts(pane: AgentView): PaneParts {
   // because it is the only one of the three that tracks the work as it moves — and in the herd this
   // exists to untangle (several agents in ONE project) the cwd is identical on every row, so it
   // discriminates nothing.
-  const own = pane.paneLabel || pane.agentName || pane.sessionName || pane.summary || pane.terminalTitle;
+  const terminal =
+    pane.terminalTitle && !isHostProfileTerminalTitle(pane.terminalTitle) ? pane.terminalTitle : undefined;
+  const own = pane.paneLabel || pane.agentName || pane.sessionName || pane.summary || terminal;
   const tab = pane.tabLabel ?? null;
   // A name that merely repeats the title says nothing twice: Herdr names a new tab after its pane
-  // and Claude titles the terminal after the project, so "Main · Sightr" over "Sightr" was the
+  // and Claude titles the terminal after the project, so "Main · Sighter" over "Sighter" was the
   // common case, not the edge. Then the second line falls through to the cwd rule like a pane with
   // no name at all.
   const repeatsTitle = !!own && [tab, project].some((t) => t != null && sameName(t, own));

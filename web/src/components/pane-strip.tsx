@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { TerminalSquare } from "lucide-react";
+import { Plug, TerminalSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -108,6 +108,7 @@ function PanePill({
   onTapActive?: () => void;
 }) {
   const isShell = pane.kind === "shell";
+  const isPluginShell = isShell && Boolean(pane.paneLabel);
   // The "pN" suffix of the pane id disambiguates same-named panes (two claudes in one tab).
   const tag = pane.paneId.split(":").pop();
   // A user label, then Herdr's live agent name, then Claude's /rename session name, then the
@@ -147,7 +148,11 @@ function PanePill({
       )}
     >
       {isShell ? (
-        <TerminalSquare className="size-3.5 shrink-0" />
+        isPluginShell ? (
+          <Plug className="size-3.5 shrink-0" />
+        ) : (
+          <TerminalSquare className="size-3.5 shrink-0" />
+        )
       ) : (
         <StatusDot status={shownStatus(pane)} runningCommand={pane.runningCommand} live />
       )}

@@ -34,7 +34,7 @@ Live-probed:
   byte-for-byte by the `[1/2]` hint row of `grok--ask-wizard-q1.txt`. It is to be replaced by a live
   dump (pane `wDX:pE` shape).
 - Phone Keys tray, 2026-09-03, chrome-agent 390×844, Show terminal off, pane `w8R:p6`
-  (`sightr-checkbox-pass`). `Tab` then `Space` toggled Banana to `[x]` (did not submit).
+  (`sighter-checkbox-pass`). `Tab` then `Space` toggled Banana to `[x]` (did not submit).
   Another `Tab` then `Space` toggled Carrot sticks as well (Banana stayed `[x]`). `Enter`
   submitted; Grok printed `SELECTED: Banana Carrot sticks`. Tab itself does not change
   the `[ ]` text (focus is colour). Once anything is checked the footer reads
@@ -58,7 +58,7 @@ The adapter lifts a radio `prompt-select` with `keys: ["N"]` only on the complet
 layout: consecutive 1..n radios, a `z` row, and an inner `Enter:select` / `Enter:submit` /
 `Enter:edit` hint — as one contiguous `┃` run with nothing but a couple of blank rows between
 the card and its footer (the capture shows exactly one). Wizard steps and Esc-park keep that layout. `z` is modelled as
-`feedback` with `purpose: "free-text"` so a focused row locks the option buttons; Sightr
+`feedback` with `purpose: "free-text"` so a focused row locks the option buttons; Sighter
 does not type into it (the Claude plan-feedback send path is the wrong recipe). A card
 missing `z` or the Enter hint, or painting an `a`–`f` option row, returns null. Checkbox
 cards lift as `multi-select` (`tab-space-enter`). A description that wraps onto the next

@@ -10,6 +10,8 @@ export type {
 export { STATUS_RANK } from "@shared/wire";
 
 import type { WirePane, DeviceAuth, PaneReadResponse as SharedPaneReadResponse } from "@shared/wire";
+import { isHostProfileTerminalTitle } from "@shared/titles";
+import { baseName } from "./format";
 
 /** A pane as the browser sees it: the wire pane plus what the browser itself derived. */
 export type AgentView = WirePane & {
@@ -25,8 +27,12 @@ export function paneDisplayName(pane: WirePane): string {
   if (pane.agentName) return pane.agentName;
   if (pane.sessionName) return pane.sessionName;
   if (pane.summary) return pane.summary;
-  if (pane.terminalTitle) return pane.terminalTitle;
-  return pane.kind === "shell" ? "shell" : pane.agent;
+  if (pane.terminalTitle && !isHostProfileTerminalTitle(pane.terminalTitle)) return pane.terminalTitle;
+  if (pane.kind === "shell") {
+    const dir = pane.cwd ? baseName(pane.cwd) : "";
+    return dir || "shell";
+  }
+  return pane.agent;
 }
 
 export function isReadOnly(device: DeviceAuth | undefined): boolean {

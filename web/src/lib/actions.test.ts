@@ -1695,7 +1695,7 @@ describe("sendGuardedReply", () => {
   // refused at, because at a password prompt "a menu or dialog is probably up" sends the operator
   // looking for a dialog to answer and waiting for an echo that is never coming.
   it("collie#103: names the password prompt it refused at, and still types nothing", async () => {
-    const calls = harness(() => "$ sudo systemctl restart sightr\n[sudo] password for altan:");
+    const calls = harness(() => "$ sudo systemctl restart sighter\n[sudo] password for altan:");
 
     const out = await sendGuardedReply({
       paneId: "w1:p1",
@@ -1843,7 +1843,7 @@ describe("sendGuardedReply", () => {
   });
 
   it("submits when Grok rewrote an image path into [Image #N]", async () => {
-    const path = String.raw`C:\Users\me\AppData\Local\sightr\uploads\w1_p1-abc-12345678.png`;
+    const path = String.raw`C:\Users\me\AppData\Local\sighter\uploads\w1_p1-abc-12345678.png`;
     const grokBox = (draft: string) => {
       const width = 120;
       const fill = (open: string, body: string, close: string, filler: string): string =>

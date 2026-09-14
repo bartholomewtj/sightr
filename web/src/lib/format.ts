@@ -32,7 +32,7 @@ export function shortCwd(cwd: string, max = 32): string {
 
 /** The last path segment (the directory's own name), with any trailing slash ignored. */
 export function baseName(path: string): string {
-  const parts = path.split("/").filter(Boolean);
+  const parts = path.replace(/\\/g, "/").split("/").filter(Boolean);
   return parts[parts.length - 1] ?? "";
 }
 

@@ -17,7 +17,7 @@ import {
 // so no test ever races a background write — the ones that care about disk call flush() explicitly.
 function ledger(start = 1_000_000) {
   let now = start;
-  const stateDir = mkdtempSync(join(tmpdir(), "sightr-activity-"));
+  const stateDir = mkdtempSync(join(tmpdir(), "sighter-activity-"));
   const l = new ActivityLedger({ stateDir }, () => now, 60 * 60 * 1000);
   return {
     l,
@@ -34,7 +34,7 @@ function ledger(start = 1_000_000) {
 /** A ledger with a short, explicit debounce so wall-clock behaviour is testable; production uses
  *  FLUSH_DEBOUNCE_MS. */
 function timedLedger(debounceMs = 1_000) {
-  const stateDir = mkdtempSync(join(tmpdir(), "sightr-activity-flush-"));
+  const stateDir = mkdtempSync(join(tmpdir(), "sighter-activity-flush-"));
   const renames: number[] = [];
   const l = new ActivityLedger({ stateDir }, Date.now, debounceMs, async (from, to) => {
     await rename(from, to);
@@ -87,7 +87,7 @@ describe("meaningfulTerminalTitle", () => {
   test("strips the status glyph Herdr leaves behind", () => {
     // Live-observed 2026-08-15 (herdr 0.8.0): the raw title keeps its spinner frame and so does
     // Herdr's "stripped" form, because Herdr only knows the settled glyph.
-    expect(title("◐ Custom UI for Sightr", "◐ Custom UI for Sightr")).toBe("Custom UI for Sightr");
+    expect(title("◐ Custom UI for Sighter", "◐ Custom UI for Sighter")).toBe("Custom UI for Sighter");
     expect(title("✳ Read Notes From Underground", "Read Notes From Underground")).toBe(
       "Read Notes From Underground",
     );
@@ -103,7 +103,7 @@ describe("meaningfulTerminalTitle", () => {
   test("leaves a title that merely opens with punctuation alone", () => {
     // The glyph rule requires a symbol from the spinner blocks; these are neither.
     expect(title("(main) vim src/app.ts")).toBe("(main) vim src/app.ts");
-    expect(title("~/dev/sightr — bun test")).toBe("~/dev/sightr — bun test");
+    expect(title("~/dev/sighter — bun test")).toBe("~/dev/sighter — bun test");
   });
 
   test("drops a title that is only a spinner frame — it names nothing", () => {
@@ -126,6 +126,14 @@ describe("meaningfulTerminalTitle", () => {
     expect(title("user@host: ~/x")).toBeUndefined(); // Debian's variant spaces after the colon.
     expect(title("user@host")).toBeUndefined(); // …and some configs print no path at all.
     expect(title("◐ user@host:~")).toBeUndefined(); // the glyph strip runs first.
+  });
+
+  test("drops a Windows Terminal profile's default title — it names the host, not the work", () => {
+    expect(title("Windows PowerShell")).toBeUndefined();
+    expect(title("Administrator: Windows PowerShell")).toBeUndefined();
+    expect(title("Command Prompt")).toBeUndefined();
+    expect(title("PowerShell 7")).toBeUndefined();
+    expect(title("pwsh")).toBeUndefined();
   });
 
   test("keeps a shell title that names the command it is running", () => {
@@ -152,7 +160,7 @@ describe("meaningfulTerminalTitle", () => {
   });
 
   test("works on an older server that reports no stripped form at all", () => {
-    expect(meaningfulTerminalTitle("◐ Fixing the parser", undefined, "claude", "sightr")).toBe(
+    expect(meaningfulTerminalTitle("◐ Fixing the parser", undefined, "claude", "sighter")).toBe(
       "Fixing the parser",
     );
   });
@@ -390,7 +398,7 @@ describe("ActivityLedger — persistence", () => {
   });
 
   test("a missing file loads as empty rather than throwing", async () => {
-    const stateDir = mkdtempSync(join(tmpdir(), "sightr-activity-"));
+    const stateDir = mkdtempSync(join(tmpdir(), "sighter-activity-"));
     const l = new ActivityLedger({ stateDir }, () => 1);
     await l.load();
     expect(l.snapshot()).toEqual({});

@@ -8,7 +8,12 @@ import { draftCarriesSend, submitPromptOption } from "../actions";
 import { promptsEqual } from "./prompt-model";
 import { cursorAdapter } from "./cursor";
 import { askCardPresent, detectAskRegion } from "./cursor/ask";
-import { locateComposer, stripChrome } from "./cursor/chrome";
+import {
+  extractInputDraft,
+  extractStatusLines,
+  locateComposer,
+  stripChrome,
+} from "./cursor/chrome";
 import { lineText } from "./cursor/markers";
 import { detectPermissionRegion } from "./cursor/permission";
 import { detectTrustRegion } from "./cursor/trust";
@@ -115,6 +120,29 @@ describe("composerReady", () => {
   });
 });
 
+describe("Fable model chrome — narrow split panes", () => {
+  it("cursor--idle-fable.txt: composer + combined model/usage status row", () => {
+    const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "cursor--idle-fable.txt"), "utf8")));
+    expect(cursorAdapter.composerReady!(lines)).toBe(true);
+    expect(extractInputDraft(lines)).toBe("open a terminal browser in a pane");
+    const status = extractStatusLines(lines).map((l) => lineText(l).trim());
+    expect(status.some((t) => /Claude Fable/.test(t))).toBe(true);
+  });
+
+  it("cursor--idle-fable-split.txt: composer when model and usage are on separate rows", () => {
+    const lines = splitLines(
+      parseAnsi(readFileSync(join(PANES_DIR, "cursor--idle-fable-split.txt"), "utf8")),
+    );
+    expect(cursorAdapter.composerReady!(lines)).toBe(true);
+    expect(extractInputDraft(lines)).toBe("open a terminal browser in a pane");
+    expect(extractStatusLines(lines).map((l) => lineText(l).trim())).toEqual([
+      "Claude Fable 5.1 300K High",
+      "72.6% · 20 files edited",
+      "C:\\claudeOS",
+    ]);
+  });
+});
+
 describe("cursorBuildBlocks", () => {
   it("stays raw on every neutral capture", () => {
     for (const name of neutralFixtures) {
@@ -174,7 +202,7 @@ describe("cursorBuildBlocks", () => {
   // the continuation row and phone sends stalled ("Message didn't reach the input box").
   it("folds a wrapped draft and verifies a real send via draftCarriesSend", () => {
     const sent =
-      "like intercom, but within herdr sessions, so they can be used in plugin pipelines between any model. id also want to permission this communication. is something like this possible?";
+      "like intercom, but within herdr sessions, so they can be used in draftr pipelines between any model. id also want to permission this communication. is something like this possible?";
     const lines = splitLines(
       parseAnsi(readFileSync(join(PANES_DIR, "cursor--draft-wrapped.txt"), "utf8")),
     );
@@ -184,20 +212,6 @@ describe("cursorBuildBlocks", () => {
     expect(draftCarriesSend(sent, draft)).toBe(true);
     expect(locateComposer(lines)).not.toBeNull();
   });
-
-  // Live 2026-09-14: Fable (and other named-model) status rows are not Auto/Composer-prefixed.
-  // Unrecognised, they were folded into the draft and phone sends stalled.
-  it.each(["cursor--idle-fable.txt", "cursor--idle-fable-split.txt"])(
-    "does not fold named-model status into the draft (%s)",
-    (fixture) => {
-      const sent = "open a terminal browser in a pane";
-      const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, fixture), "utf8")));
-      expect(cursorAdapter.composerReady!(lines)).toBe(true);
-      const draft = cursorAdapter.extractInputDraft(lines);
-      expect(draft).toBe(sent);
-      expect(draftCarriesSend(sent, draft)).toBe(true);
-    },
-  );
 
   it("strips the prompt + status from the raw mirror", () => {
     const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "cursor--fresh-idle.txt"), "utf8")));

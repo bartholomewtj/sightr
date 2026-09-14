@@ -1,10 +1,10 @@
 Live 2026-09-13 — Cursor soft-wraps a long follow-up draft onto indented continuation rows
 between the `→` prompt and the status block (wAC:p1S, working chrome with `1 task`).
 
-  → like intercom, but within herdr sessions, so they can be used in plugin pipelines between any
+  → like intercom, but within herdr sessions, so they can be used in draftr pipelines between any
     model. id also want to permission this communication. is something like this possible?
 
 
   1 task
   Composer 2.5 · 25.2%                                                                   Run Everything
-  C:\work-dir
+  C:\claudeOS

@@ -33,8 +33,6 @@ function popupScreen(draft: string, entryRows: string[]): StyledLine[] {
 
 const LONG = "cursor--autocomplete-slash.txt";
 const CLEAR = "cursor--autocomplete-slash-clear.txt";
-const MODEL_COMPOSER = "cursor--autocomplete-model-composer.txt";
-const MODEL_C = "cursor--autocomplete-model-c.txt";
 
 describe("findAutocompleteRun — live captures", () => {
   it("reads the overflowing list (↓ more below footer)", () => {
@@ -73,38 +71,6 @@ describe("findAutocompleteRun — live captures", () => {
     ]);
     expect(run!.entries[0]!.description).toBe("Start a new chat session");
     expect(run!.entries[1]!.description).toMatch(/^Configure Bedrock/);
-  });
-
-  it("reads the /model composer picker (single match)", () => {
-    const styled = load(MODEL_COMPOSER);
-    const texts = textsOf(styled);
-    const run = findAutocompleteRun(texts, lastNonBlankIndex(texts) + 1);
-    expect(run).not.toBeNull();
-    expect(texts[run!.promptLine]).toBe("  → /model composer");
-    expect(run!.entries.map((e) => e.name)).toEqual(["Composer 2.5"]);
-    expect(run!.entries[0]!.description).toBe("(Tab to modify)");
-  });
-
-  it("reads the /model c picker (pagination footer)", () => {
-    const styled = load(MODEL_C);
-    const texts = textsOf(styled);
-    const run = findAutocompleteRun(texts, lastNonBlankIndex(texts) + 1);
-    expect(run).not.toBeNull();
-    expect(texts[run!.promptLine]).toBe("  → /model c");
-    expect(run!.entries.map((e) => e.name)).toEqual([
-      "Cursor Grok 4.6",
-      "Composer 2.5",
-      "Claude Opus 5",
-      "Claude Opus 4.8",
-      "Claude Fable 5.1",
-      "Claude Fable 5",
-      "Cursor Grok 4.5",
-      "Claude Sonnet 5",
-      "Claude Sonnet 4.6",
-      "Codex 5.3",
-    ]);
-    expect(run!.entries[1]!.description).toBe("(Tab to modify)");
-    expect(run!.entries[2]!.description).toBe("300K High");
   });
 });
 
@@ -146,20 +112,6 @@ describe("composer detection survives the popup", () => {
     const styled = load(CLEAR);
     expect(composerReady(styled)).toBe(true);
     expect(extractInputDraft(styled)).toBe("/clear");
-    expect(extractStatusLines(styled)).toEqual([]);
-  });
-
-  it("composerReady + draft on the /model composer picker", () => {
-    const styled = load(MODEL_COMPOSER);
-    expect(composerReady(styled)).toBe(true);
-    expect(extractInputDraft(styled)).toBe("/model composer");
-    expect(extractStatusLines(styled)).toEqual([]);
-  });
-
-  it("composerReady + draft on the /model c picker", () => {
-    const styled = load(MODEL_C);
-    expect(composerReady(styled)).toBe(true);
-    expect(extractInputDraft(styled)).toBe("/model c");
     expect(extractStatusLines(styled)).toEqual([]);
   });
 

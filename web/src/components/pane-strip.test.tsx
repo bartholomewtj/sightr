@@ -43,7 +43,7 @@ describe("PaneStrip", () => {
     );
     expect(screen.getByText("claude")).toBeInTheDocument();
     expect(screen.getByText("grok")).toBeInTheDocument();
-    expect(screen.getByText("shell")).toBeInTheDocument(); // shell panes show a "shell" label
+    expect(screen.getByText("proj")).toBeInTheDocument(); // bare shell: cwd basename before "shell"
     // The current pane (grok / w1:p2) is the one marked active.
     expect(screen.getByRole("button", { name: /grok/ })).toHaveAttribute("aria-current", "true");
     expect(screen.getByRole("button", { name: /claude/ })).not.toHaveAttribute("aria-current");
