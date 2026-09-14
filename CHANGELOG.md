@@ -8,6 +8,10 @@ adds an entry here and keeps the three version files in step; CI refuses a build
 ### Changed
 - Merge Sighter 0.124.5–0.129.0: phone ask lifts (Cursor, Pi, Grok, Claude), dialog snapshot guard, split-pane pane naming, Cursor working-chrome fixes.
 
+### Fixed
+- Phone Spaces scrolls inside the screen so the bottom tab bar stays pinned at the foot of the
+  viewport instead of floating mid-content when you reach the end of the tree.
+
 ## [1.0.0] - 2026-09-14
 
 ### Added

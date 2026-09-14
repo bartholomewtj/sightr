@@ -32,22 +32,20 @@ export function TreeRoute() {
         wordmark
       />
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
         <ReadOnlyBanner device={data.device} />
-        <main className="flex-1">
-          <SpaceTree
-            workspaces={data.workspaces}
-            tabs={data.tabs}
-            agents={data.agents}
-            shellPanes={data.shellPanes}
-            onNewSpace={() => setNewSpaceOpen(true)}
-            onNewTab={newTab}
-            readOnly={isReadOnly(data.device)}
-            onRenamed={() => revalidator.revalidate()}
-            error={data.error}
-            lastSeenAt={data.lastSeenAt}
-          />
-        </main>
+        <SpaceTree
+          workspaces={data.workspaces}
+          tabs={data.tabs}
+          agents={data.agents}
+          shellPanes={data.shellPanes}
+          onNewSpace={() => setNewSpaceOpen(true)}
+          onNewTab={newTab}
+          readOnly={isReadOnly(data.device)}
+          onRenamed={() => revalidator.revalidate()}
+          error={data.error}
+          lastSeenAt={data.lastSeenAt}
+        />
       </div>
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-screen-sm px-3 pb-[calc(env(safe-area-inset-bottom)_+_4rem)]">
