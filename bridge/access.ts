@@ -248,7 +248,7 @@ export function startupWarnings(cfg: Config): string[] {
     cfg.allowedOrigins.length === 0
   ) {
     warnings.push(
-      `[bridge] WARNING: no non-loopback Host is allowed — every request except one addressed to localhost/127.0.0.1 will be rejected with "host not allowed". Set SIGHTR_PUBLIC_HOSTS to the exact host(s) you serve on (required behind your own reverse proxy, see README → Variant C/E).`,
+      `[bridge] WARNING: no non-loopback Host is allowed — every request except one addressed to localhost/127.0.0.1 will be rejected with "host not allowed". Set SIGHTR_PUBLIC_HOSTS to the exact host(s) you serve on (required behind your own reverse proxy, see README.md → Configuration).`,
     );
   }
   const risky = cfg.pushAllowedHosts.filter(looksPrivateHost);
