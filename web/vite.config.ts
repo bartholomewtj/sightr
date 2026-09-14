@@ -1,0 +1,192 @@
+import { defineConfig, type Plugin } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import { VitePWA } from "vite-plugin-pwa";
+import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+// The bridge (Bun server) serves the built app from `web/dist` and proxies nothing — the
+// browser talks to the same origin for both static files and /api. In `vite dev`, proxy the
+// bridge so the SPA can hit the real socket-backed API while you iterate on the UI.
+const BRIDGE = process.env.SIGHTR_DEV_TARGET ?? "http://127.0.0.1:8787";
+
+// Dev-only: extra Host headers to accept besides localhost. Set SIGHTR_DEV_HOSTS to a comma-separated
+// list (or "*" for any) when viewing the dev server from another device — e.g. a tailnet MagicDNS
+// name like "bluefin". Vite blocks unknown Hosts by default (a DNS-rebinding guard). No effect on the
+// production bundle: the bridge, not Vite, serves prod.
+const devHosts = (process.env.SIGHTR_DEV_HOSTS ?? "")
+  .split(",")
+  .map((h) => h.trim())
+  .filter(Boolean);
+// `SIGHTR_DEV_HOSTS="*"` maps to Vite's `allowedHosts: true`, which turns OFF the dev server's
+// DNS-rebinding protection (any Host header is accepted). Dev-server-only — the bridge, not Vite,
+// serves prod — but still worth a loud warning: prefer listing explicit hostnames (e.g.
+// SIGHTR_DEV_HOSTS="bluefin,localhost") so a malicious page can't rebind to your dev server.
+const wildcardDevHost = devHosts.includes("*");
+if (wildcardDevHost) {
+  console.warn(
+    '\n\x1b[33m⚠ SIGHTR_DEV_HOSTS="*" accepts ANY Host header on the Vite dev server, disabling its\n' +
+      "  DNS-rebinding guard. This is DEV-ONLY (prod is served by the bridge), but prefer explicit\n" +
+      '  hostnames instead, e.g. SIGHTR_DEV_HOSTS="bluefin,localhost".\x1b[0m\n',
+  );
+}
+const allowedHosts = wildcardDevHost ? true : devHosts.length > 0 ? devHosts : undefined;
+
+// Build stamp. A unique id is baked into the bundle (shown in the UI footer via __BUILD_INFO__) AND
+// emitted to dist/build-info.json, which the bridge reads for the `X-Sightr-Build` header and
+// `/api/config`. Comparing the two tells you instantly whether a browser is running a stale,
+// service-worker-cached bundle (caches are per-origin) — see README → Troubleshooting. The id mixes
+// version + git sha + build time so it changes on every rebuild, even between commits.
+// Shared by gitSha() and isReleaseBuild() below.
+const git = (cmd: string) =>
+  execSync(cmd, { cwd: import.meta.dirname, stdio: ["ignore", "pipe", "ignore"] })
+    .toString()
+    .trim();
+
+function gitSha(): string {
+  let sha: string;
+  try {
+    sha = git("git rev-parse --short HEAD") || "nogit";
+  } catch {
+    return "nogit";
+  }
+  // Mark a dirty working tree so the footer stamp doesn't silently claim HEAD when the build
+  // actually contains uncommitted work — the common case while developing (the bridge serves the
+  // rebuilt `dist` straight off disk, so most builds here are pre-commit). Mirrors `git describe
+  // --dirty`. The `-dirty` also flows into the build `id`, so a dirty rebuild always reads as a
+  // fresh, distinct build to the stale-cache check. Its OWN try/catch: a `git status` failure must
+  // keep the good sha (just drop the dirty marker), not discard it back to "nogit".
+  let dirty = false;
+  try {
+    dirty = git("git status --porcelain").length > 0;
+  } catch {
+    /* keep the sha, just no dirty marker */
+  }
+  return dirty ? `${sha}-dirty` : sha;
+}
+// Clean-tree builds off a non-release commit (a preview branch, mid-development main) would
+// otherwise stamp a version string identical to the real `vX.Y.Z` release, since `-dirty` only
+// fires on an uncommitted tree. `-dev` covers that gap: true only when the `vX.Y.Z` tag exists
+// AND points at HEAD. Compare full shas (`rev-parse HEAD`, not the short one gitSha() uses) since
+// that's what the tag's rev-parse resolves to. Any failure (no tag, no git) returns true — i.e.
+// we don't add the marker — mirroring build.ts's isStaleBuild "never nag spuriously" policy.
+function isReleaseBuild(version: string): boolean {
+  try {
+    const tagCommit = git(`git rev-parse -q --verify "refs/tags/v${version}^{commit}"`);
+    const headCommit = git("git rev-parse HEAD");
+    return tagCommit === headCommit;
+  } catch {
+    return true;
+  }
+}
+const pkgVersion = (
+  JSON.parse(readFileSync(resolve(import.meta.dirname, "package.json"), "utf8")) as {
+    version: string;
+  }
+).version;
+const buildSha = gitSha();
+const buildTime = new Date().toISOString();
+const stampedVersion = isReleaseBuild(pkgVersion) ? pkgVersion : `${pkgVersion}-dev`;
+const BUILD_INFO = {
+  version: stampedVersion,
+  sha: buildSha,
+  time: buildTime,
+  id: `${stampedVersion}+${buildSha}.${Math.floor(Date.parse(buildTime) / 1000)}`,
+};
+
+// Emit dist/build-info.json so the bridge can read the current build id. Kept out of the SW precache
+// (not in workbox globPatterns) so the server always reads it fresh from disk after a rebuild.
+const buildInfoPlugin: Plugin = {
+  name: "sightr-build-info",
+  generateBundle() {
+    this.emitFile({
+      type: "asset",
+      fileName: "build-info.json",
+      source: JSON.stringify(BUILD_INFO, null, 2),
+    });
+  },
+};
+
+export default defineConfig({
+  define: { __BUILD_INFO__: JSON.stringify(BUILD_INFO) },
+  plugins: [
+    react(),
+    tailwindcss(),
+    buildInfoPlugin,
+    VitePWA({
+      // Build the manifest + service worker. We use `injectManifest` (not the default generateSW)
+      // because we hand-write the SW in `src/sw.ts` to add `push` + `notificationclick` handlers a
+      // generated SW can't give us — without a `push` listener the browser shows a generic "site
+      // updated in the background" instead of the agent's notification. The SW still precaches the
+      // app shell + SPA-falls-back navigations (see src/sw.ts); it compiles to dist/sw.js.
+      // Registration is done manually in main.tsx via the `virtual:pwa-register` module (a bundled,
+      // same-origin script) so we never inject an inline <script>, which the strict CSP blocks.
+      injectRegister: false,
+      registerType: "autoUpdate",
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts", // source; compiled to dist/sw.js (the bridge sets Service-Worker-Allowed: /)
+      includeAssets: [
+        "favicon.svg",
+        "favicon.ico",
+        "favicon-96x96.png",
+        "apple-touch-icon.png",
+        "sightr-badge.svg",
+        "sightr-badge-light.svg",
+        "sightr-loading-badge.svg",
+        "sightr-loading-badge-light.svg",
+        "sightr-loading-static.svg",
+        "sightr-loading-static-light.svg",
+      ],
+      manifest: {
+        name: "Sightr",
+        short_name: "Sightr",
+        description: "Monitor and reply to your Herdr agent herd from your phone",
+        id: "/",
+        start_url: "/",
+        scope: "/",
+        display: "standalone",
+        // Do not lock rotation: desktop mode can be reached on a landscape tablet with a mouse.
+        orientation: "any",
+        background_color: "#161b22",
+        theme_color: "#161b22",
+        icons: [
+          // The 192/512 are safe-zone-padded, so they serve as both the regular ("any") install
+          // icon and the Android adaptive ("maskable") icon. (favicon.svg is intentionally NOT a
+          // manifest icon: it's the 16/32 tab reticle only — declaring it sizes:"any" would let an
+          // installer pick the small mark as the home-screen icon.)
+          { src: "/web-app-manifest-192x192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
+          { src: "/web-app-manifest-512x512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+        ],
+      },
+      injectManifest: {
+        // Files baked into the precache manifest (injected at src/sw.ts's `self.__WB_MANIFEST`).
+        // The SPA navigation fallback + /api denylist now live in src/sw.ts (a NavigationRoute):
+        // injectManifest hands routing to the custom SW rather than generating it here.
+        // The bundled Nerd Font faces are deliberately excluded: they total ~1.1 MB and
+        // `unicode-range` already makes them lazy (index.css), so precaching them would charge
+        // every install for glyphs most herds never paint. src/sw.ts caches them on first use.
+        globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest}"],
+      },
+      // Over plain HTTP (insecure context) the SW can't register; in dev we don't want it anyway.
+      devOptions: { enabled: false },
+    }),
+  ],
+  resolve: {
+    alias: { "@": resolve(import.meta.dirname, "src"), "@shared": resolve(import.meta.dirname, "../shared") },
+  },
+  build: {
+    outDir: "dist",
+    emptyOutDir: true,
+    // A couple of small chunks beat one big one on a phone over the tailnet.
+    chunkSizeWarningLimit: 900,
+  },
+  server: {
+    port: 5173,
+    allowedHosts,
+    proxy: {
+      "/api": { target: BRIDGE, changeOrigin: true },
+    },
+  },
+});

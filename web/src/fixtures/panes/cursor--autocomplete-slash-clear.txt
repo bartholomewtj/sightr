@@ -1,0 +1,35 @@
+﻿    contrib\windows\sighter-ctl.ps1 build 2>&1 33s
+
+  $ cd C:\Users\alice\Projects\the-bridge; powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+    contrib\windows\sighter-ctl.ps1 status 2>&1 2.7s
+    … 7 output lines hidden · ctrl+o to expand
+        https://alice.tail12345.ts.net (tailnet only)
+        |-- / proxy http://127.0.0.1:8787
+
+  Build is up to date (v0.124.2+b18e7df). Now restarting the service so the running bridge picks it
+  up:
+
+  $ cd C:\Users\alice\Projects\the-bridge; powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+    contrib\windows\sighter-ctl.ps1 restart 2>&1 11s
+    … 22 output lines hidden · ctrl+o to expand
+        https://alice.tail12345.ts.net (tailnet only)
+        |-- / proxy http://127.0.0.1:8787
+
+  Restarted successfully. Sighter is running v0.124.2 with the Cursor autocomplete fix live, served
+  on the tailnet as before.
+
+  A pre-existing ACL warning showed up (unrelated to this change): herdr.sighter config folder ACL
+  still allows other users — worth rotating SIGHTER_VAPID_PRIVATE if anyone else has an account on
+  this host. Let me know if you want me to look into that.
+
+
+
+
+  → /clear
+
+
+   → /clear                    Start a new chat session
+     /bedrock [subcommand] […  Configure Bedrock in-chat (configure/status/disable/clear)
+     /autopilot                Keep a PR merge-ready by triaging comments, resolving clear conflicts,…
+     /claudesssf               software-factory — Super Simple Software Factory on the Claude Code CLI…
+     /create-rule              Create Cursor rules for persistent AI guidance. Use when you want to…

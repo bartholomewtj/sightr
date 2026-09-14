@@ -1,0 +1,79 @@
+
+  [0m[38;5;3m╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                                                                                       [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  [0m[1m[38;5;3m⚠ [0m[1mWorkspace Trust Required[0m                                                                                                                                                                                                                           [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                                                                                       [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  Cursor Agent can execute code and access files in this directory.                                                                                                                                                                                    [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                                                                                       [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  Do you trust the contents of this directory?                                                                                                                                                                                                         [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                                                                                       [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m    [0m[1m[38;5;6mC:\Users\alice\Projects\my-plugin[0m                                                                                                                                                                                                                  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                                                                                       [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                                                                                       [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  [0m[2m  [a] Trust this workspace[0m                                                                                                                                                                                                                           [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  [0m[2m  [q] Quit[0m                                                                                                                                                                                                                                           [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                                                                                       [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  [0m[38;5;4m⏳ Trusting workspace...[0m                                                                                                                                                                                                                             [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                                                                                                                                                                                       [0m[38;5;3m│[0m
+  [0m[38;5;3m╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
+
+
+  Cursor Agent
+  [0m[2mv2026.09.10-fd3934a[0m
+  [0m[2mTip: Use /debug to instrument and debug complex problems.[0m
+
+ [0m[48;2;36;36;40m                                                                                                                                                                                                                                                           [0m
+ [0m[48;2;36;36;40m Run the shell command: echo probe-cursor-ok. Do not do anything else.                                                                                                                                                                                     [0m
+ [0m[48;2;36;36;40m                                                                                                                                                                                                                                                           [0m
+
+  Running the probe command now.
+
+  $ echo probe-cursor-ok [0m[2m2m 9s[0m
+    [0m[2mprobe-cursor-ok[0m
+
+  [0m[38;2;168;181;230mprobe-cursor-ok[0m
+
+ [0m[48;2;36;36;40m                                                                                                                                                                                                                                                           [0m
+ [0m[48;2;36;36;40m Create a new file at C:\Users\alice\Projects\my-plugin\tmp-sighter-probe.txt containing exactly the word hello. Do not run any shell commands.                                                                                                            [0m
+ [0m[48;2;36;36;40m                                                                                                                                                                                                                                                           [0m
+
+  [0m[2m[38;5;7m [0m [0m[1mEdited[0m [0m[2mtmp-sighter-probe.txt[0m [0m[38;5;2m+1[0m
+
+    [0m[38;2;62;62;64m▎[0m[1m[38;2;63;185;80m[48;2;43;63;43m+[0m[48;2;43;63;43m [0m[38;2;230;237;243m[48;2;43;63;43mhello[0m[48;2;43;63;43m                                                                                                                                                                                                                                             [0m
+
+  Created [0m[38;2;168;181;230mtmp-sighter-probe.txt[0m with exactly [0m[38;2;168;181;230mhello[0m.
+
+ [0m[48;2;36;36;40m                                                                                                                                                                                                                                                           [0m
+ [0m[48;2;36;36;40m I want to add a greeting feature. Ask me clarifying questions before proposing a plan. Do not write any files.                                                                                                                                            [0m
+ [0m[48;2;36;36;40m                                                                                                                                                                                                                                                           [0m
+
+  I'll take a quick look at what this project is so the clarifying questions are relevant.
+
+  [0m[2m[38;5;7m [0m [0m[1mRead, globbed[0m [0m[2m3 files, 2 globs[0m
+    [0m[1m[2m…[0m 2 earlier items hidden
+    [0m[1m[2mGlobbed[0m "*.{md,json,ts,tsx,py,js}" in .
+    [0m[1m[2mRead[0m README.md
+    [0m[1m[2mRead[0m CONTEXT.md
+
+  A few things I need before planning:
+
+  [0m[2m1.[0m [0m[1mWhere should the greeting show up?[0m For example: when the CLI starts, on the board pane, when a seat opens, in the agent brief, or somewhere else?
+  [0m[2m2.[0m [0m[1mWhat should it say, and who is it for?[0m Fixed text (e.g. “hello”), personalized (user/repo/run name), or something else?
+
+ [0m[48;2;36;36;40m                                                                                                                                                                                                                                                           [0m
+ [0m[48;2;36;36;40m Run exactly this shell command and stop: echo sighter-cursor-approval-smoke                                                                                                                                                                               [0m
+ [0m[48;2;36;36;40m                                                                                                                                                                                                                                                           [0m
+
+  $ echo sighter-cursor-approval-smoke [0m[2mWaiting for approval...[0m
+
+[0m[38;2;167;139;250m─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ $  echo sighter-cursor-approval-smoke [0m[2min .[0m
+
+ [0m[1m[38;2;167;139;250mRun this command?[0m
+ [0m[2mNot in allowlist: echo[0m
+  [0m[38;2;167;139;250m→ [0m[1m[38;2;167;139;250mRun (once)[0m[38;2;167;139;250m (y)[0m
+    Add Shell(echo) to allowlist? (tab)
+    Run Everything (shift+tab)
+    Skip & tell the agent what to do instead (esc or n)
+
+                                                                                                                                                                                                                             [0m[2mctrl+r to review changed files[0m

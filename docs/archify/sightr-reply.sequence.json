@@ -1,0 +1,354 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Sightr",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [
+      1680,
+      810
+    ],
+    "views": [
+      {
+        "id": "authorise",
+        "label": "Authorise the write",
+        "focus": [
+          "pwa",
+          "bridge",
+          "access"
+        ],
+        "note": "Host allowlist, then same-origin, then the Tailscale login, then the device header. Any failure is a 403 before routing."
+      },
+      {
+        "id": "write-pane",
+        "label": "Write the pane",
+        "focus": [
+          "reply",
+          "queue",
+          "herdrc",
+          "pane"
+        ],
+        "note": "One promise chain per pane. Text, a 350 ms settle, then the submit key — two one-shot RPCs that must not interleave."
+      },
+      {
+        "id": "update-back",
+        "label": "Update comes back",
+        "focus": [
+          "pane",
+          "engine",
+          "sse",
+          "pwa"
+        ],
+        "note": "The Herdr event only pokes a re-poll. The fresh snapshot is what reaches the phone, coalesced onto the SSE stream."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "pwa",
+      "type": "frontend",
+      "label": "Web PWA"
+    },
+    {
+      "id": "bridge",
+      "type": "backend",
+      "label": "Bridge router"
+    },
+    {
+      "id": "access",
+      "type": "security",
+      "label": "Access gate"
+    },
+    {
+      "id": "reply",
+      "type": "backend",
+      "label": "replyPane"
+    },
+    {
+      "id": "queue",
+      "type": "messagebus",
+      "label": "Pane queue"
+    },
+    {
+      "id": "herdrc",
+      "type": "backend",
+      "label": "Herdr client"
+    },
+    {
+      "id": "pane",
+      "type": "external",
+      "label": "Herdr + pane"
+    },
+    {
+      "id": "engine",
+      "type": "backend",
+      "label": "State engine"
+    },
+    {
+      "id": "sse",
+      "type": "backend",
+      "label": "Snapshot + SSE"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 246,
+      "label": "Authorise"
+    },
+    {
+      "from": 256,
+      "to": 506,
+      "label": "Write the pane"
+    },
+    {
+      "from": 516,
+      "to": 744,
+      "label": "Update comes back"
+    }
+  ],
+  "messages": [
+    {
+      "id": "post-reply",
+      "from": "pwa",
+      "to": "bridge",
+      "y": 160,
+      "label": "POST /api/pane/:id/reply",
+      "variant": "emphasis",
+      "note": "{ text, submit, submit_keys?, expected_prompt? }"
+    },
+    {
+      "id": "guard",
+      "from": "bridge",
+      "to": "access",
+      "y": 192,
+      "label": "guard(req, cfg, \"write\")",
+      "variant": "security"
+    },
+    {
+      "id": "gate-ok",
+      "from": "access",
+      "to": "bridge",
+      "y": 224,
+      "label": "ok, else 403",
+      "variant": "return",
+      "note": "host allowlist, same-origin, Tailscale-User-Login, device header"
+    },
+    {
+      "id": "route",
+      "from": "bridge",
+      "to": "reply",
+      "y": 264,
+      "label": "replyPane(paneId, req)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "enqueue",
+      "from": "reply",
+      "to": "queue",
+      "y": 296,
+      "label": "queue.run(paneKey)",
+      "variant": "emphasis",
+      "note": "waits its turn; 503 after 10 s"
+    },
+    {
+      "id": "binding",
+      "from": "queue",
+      "to": "herdrc",
+      "y": 328,
+      "label": "verify expected_prompt",
+      "variant": "dashed"
+    },
+    {
+      "id": "send-text",
+      "from": "queue",
+      "to": "herdrc",
+      "y": 360,
+      "label": "sendPaneText(text)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "rpc-text",
+      "from": "herdrc",
+      "to": "pane",
+      "y": 392,
+      "label": "pane.send_text",
+      "variant": "emphasis"
+    },
+    {
+      "id": "send-keys",
+      "from": "queue",
+      "to": "herdrc",
+      "y": 424,
+      "label": "sendPaneKeys(submitKeys)",
+      "variant": "emphasis",
+      "note": "after a 350 ms settle"
+    },
+    {
+      "id": "rpc-keys",
+      "from": "herdrc",
+      "to": "pane",
+      "y": 456,
+      "label": "pane.send_keys",
+      "variant": "emphasis"
+    },
+    {
+      "id": "reply-200",
+      "from": "reply",
+      "to": "pwa",
+      "y": 488,
+      "label": "200 { ok: true }",
+      "variant": "return",
+      "note": "409 if the prompt moved, 503 if the pane is busy"
+    },
+    {
+      "id": "herd-event",
+      "from": "pane",
+      "to": "engine",
+      "y": 528,
+      "label": "pane.agent_status_changed",
+      "variant": "dashed"
+    },
+    {
+      "id": "poke",
+      "from": "engine",
+      "to": "herdrc",
+      "y": 560,
+      "label": "pokeNow() re-poll",
+      "variant": "emphasis"
+    },
+    {
+      "id": "rpc-snapshot",
+      "from": "herdrc",
+      "to": "pane",
+      "y": 592,
+      "label": "session.snapshot"
+    },
+    {
+      "id": "snapshot-reply",
+      "from": "pane",
+      "to": "herdrc",
+      "y": 624,
+      "label": "panes, agents, spaces",
+      "variant": "return"
+    },
+    {
+      "id": "engine-state",
+      "from": "herdrc",
+      "to": "engine",
+      "y": 656,
+      "label": "EngineSnapshot",
+      "variant": "return"
+    },
+    {
+      "id": "notify",
+      "from": "engine",
+      "to": "sse",
+      "y": 688,
+      "label": "onUpdate to notify()",
+      "variant": "emphasis"
+    },
+    {
+      "id": "sse-out",
+      "from": "sse",
+      "to": "pwa",
+      "y": 720,
+      "label": "event: snapshot",
+      "variant": "emphasis",
+      "note": "250 ms coalesce, 15 s keep-alive"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "bridge",
+      "from": 154,
+      "to": 274,
+      "type": "backend"
+    },
+    {
+      "participant": "access",
+      "from": 186,
+      "to": 230,
+      "type": "security"
+    },
+    {
+      "participant": "reply",
+      "from": 258,
+      "to": 498,
+      "type": "backend"
+    },
+    {
+      "participant": "queue",
+      "from": 290,
+      "to": 466,
+      "type": "messagebus"
+    },
+    {
+      "participant": "herdrc",
+      "from": 322,
+      "to": 466,
+      "type": "backend"
+    },
+    {
+      "participant": "pane",
+      "from": 386,
+      "to": 466,
+      "type": "external"
+    },
+    {
+      "participant": "engine",
+      "from": 522,
+      "to": 698,
+      "type": "backend"
+    },
+    {
+      "participant": "herdrc",
+      "from": 554,
+      "to": 666,
+      "type": "backend"
+    },
+    {
+      "participant": "pane",
+      "from": 586,
+      "to": 634,
+      "type": "external"
+    },
+    {
+      "participant": "sse",
+      "from": 682,
+      "to": 730,
+      "type": "backend"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Two RPCs, one queue",
+      "items": [
+        "A reply is send_text, a 350 ms settle, then send_keys — never interleaved",
+        "Each pane owns a promise chain; a 10 s wait throws PaneBusyError and answers 503",
+        "If the text lands but the key fails, textDelivered: true tells the phone not to resend"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Events are only a poke",
+      "items": [
+        "EventPoker debounces every Herdr event 200 ms into engine.pokeNow()",
+        "The session.snapshot poll is the source of truth; a missed event costs one interval",
+        "A healthy stream relaxes SIGHTR_POLL_MS to SIGHTR_POLL_IDLE_MS"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Back on the phone",
+      "items": [
+        "applySnapshot updates the herd; with no pane open the frame also revalidates loaders",
+        "With a pane open the 1.5 s timer still runs — pane text comes from /api/pane/:id",
+        "Every write appends one JSON line to <state-dir>/audit.log with the device id"
+      ]
+    }
+  ]
+}

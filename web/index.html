@@ -1,0 +1,85 @@
+<!doctype html>
+<!-- No theme class here: `color-scheme: light dark` in index.css follows the OS, and
+     public/theme-init.js stamps `light`/`dark` before first paint only when the user has pinned
+     one. The cascade decides, not the markup. --><html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <!-- Blocking, and first: the pin class must be on <html> before anything paints. Same-origin,
+         so `script-src 'self'` already allows it. -->
+    <script src="/theme-init.js"></script>
+    <!-- Browser chrome follows the OS for System users. useTheme rewrites these at runtime for
+         someone who has pinned the opposite of their OS. -->
+    <meta name="theme-color" content="#f4f6f8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#161b22" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Sightr" />
+    <title>Sightr</title>
+    <!-- The web manifest <link> is injected by vite-plugin-pwa at build time. -->
+    <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <!-- First-paint splash: the knockout loader shown the instant the PWA opens, bridging the
+         OS launch splash and React mount (createRoot replaces #root, so it clears itself). Critical
+         CSS is inlined here so it paints before the app bundle/index.css load — no JS. It mirrors
+         routes/root.tsx's BootSplash (same 4rem mark, copy) so the hand-off is seamless. Same
+         cream-disk knockout as the home-screen icon. Two files because an <img> SVG cannot see
+         page CSS variables. -->
+    <style>
+      /* index.css has not loaded at this point, so the splash declares `color-scheme` itself —
+         otherwise light-dark() below has nothing to resolve against and every value falls to its
+         light branch. These three rules mirror index.css exactly; keep them in step. */
+      :root {
+        color-scheme: light dark;
+      }
+      :root.light {
+        color-scheme: light;
+      }
+      :root.dark {
+        color-scheme: dark;
+      }
+      .boot-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        /* --background / --muted-foreground rasterized, because index.css has not loaded yet.
+           Keep in step with index.css console paper. */
+        background: light-dark(#f4f6f8, #161b22);
+        color: light-dark(#57606a, #8b949e);
+        font: 500 0.875rem/1.4 "Segoe UI", system-ui, sans-serif;
+      }
+      .boot-splash__mark {
+        width: 4rem;
+        height: 4rem;
+      }
+      .boot-splash__mark--dark { display: none; }
+      .boot-splash__mark--light { display: block; }
+      @media (prefers-color-scheme: dark) {
+        :root:not(.light) .boot-splash__mark--dark { display: block; }
+        :root:not(.light) .boot-splash__mark--light { display: none; }
+      }
+      :root.dark .boot-splash__mark--dark { display: block; }
+      :root.dark .boot-splash__mark--light { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="boot-splash" role="status" aria-label="Loading Sightr">
+        <img class="boot-splash__mark boot-splash__mark--dark" src="/sightr-loading-badge.svg" alt="" width="64" height="64" />
+        <img class="boot-splash__mark boot-splash__mark--light" src="/sightr-loading-badge-light.svg" alt="" width="64" height="64" />
+        <span>Connecting to the herd…</span>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

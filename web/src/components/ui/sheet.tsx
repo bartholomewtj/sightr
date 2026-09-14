@@ -1,0 +1,328 @@
+import * as React from "react";
+import { X } from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+
+// Minimal modal focus handling (no deps, no full trap): on open move focus into the panel so
+// keyboard / screen-reader users land inside the dialog; on close restore focus to whatever was
+// focused before it opened. The panel must carry tabIndex={-1} to be a focus target.
+export function useDialogFocus(open: boolean, panelRef: React.RefObject<HTMLElement | null>) {
+  React.useEffect(() => {
+    if (!open) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+    return () => {
+      previouslyFocused?.focus?.();
+    };
+  }, [open, panelRef]);
+}
+
+// Remove the page behind a modal from keyboard and assistive-technology navigation. Walk the
+// ancestor path so this also works when the modal is nested inside the router tree.
+export function useInertBehind(open: boolean, containerRef: React.RefObject<HTMLElement | null>) {
+  React.useEffect(() => {
+    if (!open || !containerRef.current) return;
+    const root = document.getElementById("root");
+    if (!root) return;
+    const marked: HTMLElement[] = [];
+    let child: HTMLElement = containerRef.current;
+    while (child.parentElement && child.parentElement !== root) {
+      const parent = child.parentElement;
+      for (const sibling of Array.from(parent.children)) {
+        if (sibling !== child && sibling instanceof HTMLElement && !sibling.hasAttribute("inert")) {
+          sibling.setAttribute("inert", ""); marked.push(sibling);
+        }
+      }
+      child = parent;
+    }
+    for (const sibling of Array.from(root.children)) {
+      if (sibling !== child && sibling instanceof HTMLElement && !sibling.hasAttribute("inert")) {
+        sibling.setAttribute("inert", ""); marked.push(sibling);
+      }
+    }
+    return () => marked.forEach((node) => node.removeAttribute("inert"));
+  }, [open, containerRef]);
+}
+
+// A minimal bottom sheet — no Radix, no portals, no extra deps. Renders nothing when closed.
+// Dismisses on backdrop tap or Escape. Animations come from tw-animate-css (already imported).
+interface BottomSheetProps {
+  open: boolean;
+  onClose: () => void;
+  title?: string;
+  children: React.ReactNode;
+  className?: string;
+  /** Entrance. "slide" (default) rises from below the fold; "fade" appears in place, so rows are
+   *  never below the viewport even on the first frame. */
+  enter?: "slide" | "fade";
+  /** Extra inline style for the panel (e.g. a visual-viewport max-height / bottom offset).
+   *  The drag-to-dismiss transform/transition always win over these keys. */
+  panelStyle?: React.CSSProperties;
+}
+
+export function BottomSheet({
+  open,
+  onClose,
+  title,
+  children,
+  className,
+  enter = "slide",
+  panelStyle,
+}: BottomSheetProps) {
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const drag = React.useRef({ startY: 0, atTop: false, engaged: false, dy: 0 });
+  const [dragY, setDragY] = React.useState(0);
+  const titleId = React.useId();
+  useDialogFocus(open, panelRef);
+  useInertBehind(open, containerRef);
+
+  // Backdrop dismiss requires press AND release on the backdrop itself (the Radix
+  // outside-pointerdown rule) — NOT just whatever the browser happens to synthesize a `click` on.
+  // The sheet opens from a button tap or a contextmenu event, and the browser can still deliver a
+  // trailing click after it mounts that lands on the backdrop — without this guard that click would
+  // immediately close the sheet it just opened. Arming only on a backdrop `pointerdown` means a
+  // click that originated elsewhere never dismisses.
+  const backdropArmed = React.useRef(false);
+  React.useEffect(() => {
+    if (open) backdropArmed.current = false;
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  // Drag-to-dismiss: pull the sheet down from the top to close it. The touchmove listener is
+  // attached NON-PASSIVE so we can `preventDefault()` the downward pull — that's what suppresses
+  // the browser's pull-to-refresh (otherwise a pull-down at the top would reload the whole app
+  // instead of closing the sheet). A gesture that starts mid-scroll falls through to normal list
+  // scrolling; only a pull that begins at the top engages the dismiss.
+  React.useEffect(() => {
+    const panel = panelRef.current;
+    if (!open || !panel) return;
+    setDragY(0);
+    const SLOP = 6; // ignore taps / tiny jitter before engaging the drag
+    const CLOSE = 90; // px past which release closes instead of snapping back
+
+    const onStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!t) return;
+      drag.current = { startY: t.clientY, atTop: panel.scrollTop <= 0, engaged: false, dy: 0 };
+    };
+    const onMove = (e: TouchEvent) => {
+      const d = drag.current;
+      if (!d.atTop) return;
+      const t = e.touches[0];
+      if (!t) return;
+      const dy = t.clientY - d.startY;
+      if (!d.engaged && dy > SLOP) d.engaged = true;
+      if (d.engaged) {
+        e.preventDefault();
+        const off = Math.max(0, dy);
+        d.dy = off;
+        setDragY(off);
+      }
+    };
+    const onEnd = () => {
+      const off = drag.current.dy;
+      drag.current = { startY: 0, atTop: false, engaged: false, dy: 0 };
+      if (off > CLOSE) onClose();
+      else setDragY(0);
+    };
+
+    panel.addEventListener("touchstart", onStart, { passive: true });
+    panel.addEventListener("touchmove", onMove, { passive: false });
+    panel.addEventListener("touchend", onEnd);
+    panel.addEventListener("touchcancel", onEnd);
+    return () => {
+      panel.removeEventListener("touchstart", onStart);
+      panel.removeEventListener("touchmove", onMove);
+      panel.removeEventListener("touchend", onEnd);
+      panel.removeEventListener("touchcancel", onEnd);
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      ref={containerRef}
+      className="fixed inset-0 z-50 flex flex-col justify-end"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={title ? titleId : undefined}
+    >
+      {/* Backdrop: still dismisses on tap, but hidden from assistive tech — the ✕ in the header is
+          the single accessible "Close", so the dialog isn't announced with a giant duplicate. Dismiss
+          fires only when the pointer went DOWN on the backdrop too — see backdropArmed above. */}
+      <button
+        type="button"
+        aria-hidden="true"
+        tabIndex={-1}
+        className="absolute inset-0 bg-black/50 duration-200 animate-in fade-in"
+        onPointerDown={() => {
+          backdropArmed.current = true;
+        }}
+        onClick={() => {
+          if (!backdropArmed.current) return;
+          backdropArmed.current = false;
+          onClose();
+        }}
+      />
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        style={{
+          ...panelStyle,
+          transform: dragY ? `translateY(${dragY}px)` : undefined,
+          transition: drag.current.engaged ? "none" : "transform 0.2s ease-out",
+        }}
+        className={cn(
+          "relative z-10 max-h-[82dvh] w-full overflow-y-auto overscroll-contain rounded-t-xl border-t-2 border-foreground bg-card duration-200 animate-in motion-reduce:animate-none",
+          enter === "fade" ? "fade-in" : "slide-in-from-bottom",
+          "pb-[calc(env(safe-area-inset-bottom)_+_1rem)]",
+          className,
+        )}
+      >
+        <div className="sticky top-0 z-10 border-b-2 border-border bg-card">
+          {/* Grab handle — pull down (from anywhere at the top) to dismiss. */}
+          <div className="flex justify-center pt-2 pb-1">
+            <span className="h-1 w-9 rounded-full bg-muted-foreground/40" />
+          </div>
+          <div className="flex items-center justify-between px-4 pb-3">
+            <span id={title ? titleId : undefined} className="text-sm font-semibold">
+              {title}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={onClose}
+              aria-label="Close"
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+        </div>
+        <div className="px-4 py-3">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// A left-edge drawer — same no-deps approach as BottomSheet, but slides in from the side and fills
+// the viewport height with a scrollable body. Used for the thread sidebar (TUI-style switcher).
+interface SideSheetProps {
+  open: boolean;
+  onClose: () => void;
+  title?: string;
+  /** Optional action(s) rendered in the header, to the left of the close (✕) button. */
+  headerAction?: React.ReactNode;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  className?: string;
+}
+
+export function SideSheet({
+  open,
+  onClose,
+  title,
+  headerAction,
+  children,
+  footer,
+  className,
+}: SideSheetProps) {
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const titleId = React.useId();
+  useDialogFocus(open, panelRef);
+  useInertBehind(open, containerRef);
+
+  // Backdrop dismiss requires press AND release on the backdrop itself (the Radix
+  // outside-pointerdown rule) — NOT just whatever the browser happens to synthesize a `click` on.
+  // The sheet opens from a button tap or a contextmenu event, and the browser can still deliver a
+  // trailing click after it mounts that lands on the backdrop — without this guard that click would
+  // immediately close the sheet it just opened. Arming only on a backdrop `pointerdown` means a
+  // click that originated elsewhere never dismisses.
+  const backdropArmed = React.useRef(false);
+  React.useEffect(() => {
+    if (open) backdropArmed.current = false;
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      ref={containerRef}
+      className="fixed inset-0 z-50 flex"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={title ? titleId : undefined}
+    >
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        className={cn(
+          "relative z-10 flex h-full w-[86%] max-w-sm flex-col border-r-2 border-foreground bg-card duration-200 animate-in motion-reduce:animate-none slide-in-from-left",
+          className,
+        )}
+      >
+        <div className="flex shrink-0 items-center justify-between border-b-2 border-border bg-card px-4 py-3 [padding-top:calc(env(safe-area-inset-top)_+_0.75rem)]">
+          <span id={title ? titleId : undefined} className="text-sm font-semibold">
+            {title}
+          </span>
+          <div className="flex items-center gap-1">
+            {headerAction}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={onClose}
+              aria-label="Close"
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
+        {footer && (
+          <div className="shrink-0 border-t border-border/60 px-3 py-2 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]">
+            {footer}
+          </div>
+        )}
+      </div>
+      {/* Backdrop: dismisses on tap but hidden from assistive tech — the header ✕ is the accessible
+          "Close", so the drawer isn't announced with a giant duplicate close target. Dismiss fires
+          only when the pointer went DOWN on the backdrop too — see backdropArmed above. */}
+      <button
+        type="button"
+        aria-hidden="true"
+        tabIndex={-1}
+        className="flex-1 bg-black/50 duration-200 animate-in fade-in"
+        onPointerDown={() => {
+          backdropArmed.current = true;
+        }}
+        onClick={() => {
+          if (!backdropArmed.current) return;
+          backdropArmed.current = false;
+          onClose();
+        }}
+      />
+    </div>
+  );
+}

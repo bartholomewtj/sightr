@@ -1,0 +1,39 @@
+﻿    }
+    fixture composerReady true
+
+    Grepped, read 1 grep, 1 file
+    Grepped "...y|paste|clipboard|writePane|pane type" in
+    Projects\tools\sighter\web\src\lib\actions.ts
+    Read ...ools\sighter\web\src\lib\harness\cursor.test.ts
+
+  $ # Does bridge log recent stalls?
+    $logDirs = @( 4.2s
+    … 5 input lines hidden · ctrl+o to expand
+
+
+    Grepped, read 5 greps, 4 files
+    … 6 earlier items hidden
+    Read ...sighter\web\src\fixtures\panes\cursor--done.txt lines 40-69
+    Read ...ls\sighter\web\src\components\composer.test.tsx lines 200-279
+    Grepped "force|Send anyway|type anyway" in Projects\tools\sighter\web\src
+
+  Root cause: Cursor’s new 1 task status row breaks composer detection; a “Type anyway?” retry then
+  produces that exact banner. Fixing it now.
+
+  $ herdr pane read wAC:p1M --lines 40 2>&1 | Out-File -Encoding utf8
+    "C:\Users\alice\Projects\the-bridge\web\src\fixtures\panes\cursor--working-tasks.txt"; Write-Output
+    "lines:"; (Get-Content
+    "C:\Users\alice\Projects\the-bridge\web\src\fixtures\panes\cursor--working-tasks.txt").Count;
+    Get-Content "C:\Users\alice\Projects\the-bridge\web\src\fixtures\panes\cursor--working-tasks.txt"
+    -Tail 12 206ms
+
+ ⠠⠜ Running  33.72k tokens
+    Tip: Use /plan to iterate on an implementation plan before code changes.
+
+
+  → Add a follow-up                                                                      ctrl+c to stop
+
+
+  1 task
+  Auto · 26.3%                                                                           Run Everything
+  C:\work-dir

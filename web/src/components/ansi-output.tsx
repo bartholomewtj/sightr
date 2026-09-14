@@ -1,0 +1,356 @@
+import { Fragment, memo, useEffect, useMemo, useRef } from "react";
+import type { ReactNode } from "react";
+
+import { cn } from "@/lib/utils";
+import {
+  lineText,
+  presentBlocks,
+  type Block,
+  type StyledLine,
+  type MenuModel,
+  type MultiSelectModel,
+  type PreviewSelectModel,
+  type PromptModel,
+  type WizardModel,
+} from "@/lib/blocks";
+import { MIRROR_SPACE, MIRROR_INVERT, styleFor } from "@/components/mirror-space";
+import { findMatches, splitSegment, type FindMatch } from "@/lib/find";
+import { findLinks } from "@/lib/links";
+import { PromptSelectBlock, type PromptBlockAction } from "@/components/prompt-select-block";
+import { WizardBlock } from "@/components/wizard-block";
+import { PreviewSelectBlock, type PreviewBlockAction } from "@/components/preview-select-block";
+import { MultiSelectBlock } from "@/components/multi-select-block";
+import { MenuBlock, type MenuBlockAction } from "@/components/menu-block";
+import { AutocompleteBlock } from "@/components/autocomplete-block";
+import type { MultiSelectIntent } from "@/lib/actions";
+
+/** A raw block, narrowed off the Block union (the highlight/offset paths only touch these). */
+type RawBlock = Extract<Block, { kind: "raw" }>;
+/** The (at most one) prompt-select block — always at the tail. */
+type PromptBlock = Extract<Block, { kind: "prompt-select" }>;
+/** The (at most one) wizard block — always at the tail, mutually exclusive with prompt-select. */
+type WizBlock = Extract<Block, { kind: "wizard" }>;
+/** The (at most one) preview-select block — tail, mutually exclusive with the other two. */
+type PrevBlock = Extract<Block, { kind: "preview-select" }>;
+/** The (at most one) multi-select block — tail, mutually exclusive with the other dialog blocks. */
+type MultiBlock = Extract<Block, { kind: "multi-select" }>;
+/** The (at most one) generic-menu block — tail, and only ever lifted when all four above declined. */
+type GenericMenuBlock = Extract<Block, { kind: "menu" }>;
+/** The (at most one) completion-popup block — tail, and the only non-raw kind that is NOT a modal:
+ *  the agent's input box is live under it, so it renders with no controls and locks nothing. */
+type AutoBlock = Extract<Block, { kind: "autocomplete" }>;
+
+// Stable empty result so the "not searching" path keeps the same `matches` reference across polls
+// (no needless effect re-runs / parent count updates while find is closed).
+const NO_MATCHES: FindMatch[] = [];
+
+// The mirror's dark colour space and its light-theme inversion live in mirror-space.ts — the
+// statusline strip renders the same terminal segments and the two must not drift.
+
+// An autolinked URL keeps the colour the agent printed — recolouring it would lie about the
+// terminal's own output — and is marked by an underline in `currentColor`, which is legible against
+// whatever the mirror's background is under either theme.
+//
+// `py-[0.35em]` is the tap target, and it is free: vertical padding on an INLINE box doesn't grow
+// the line box, so the mirror's height and the terminal grid are identical with or without it
+// (measured: same <pre> height either way) while the hit area goes from ~14px to ~22px on a phone.
+// It must stay em-relative and small, and the reason is NOT that the padded box fits the line box —
+// it doesn't: ~14px of content plus 2x4.2px of padding is ~22px against a 15px line advance, so it
+// overlaps its neighbours by design. Two things make that safe, and both must hold:
+//   1. The pad never reaches the neighbouring line's CENTRE at any size the A+/A- control offers.
+//      A px value tuned for 12px text would, at the 9px floor — and a tap on ordinary output would
+//      silently open a link. This is why it stays em-relative.
+//   2. Where the overlap does cover the next line's text, that line's spans come later in DOM order
+//      and win inline hit-testing, so a tap on visible text goes to the text. Only empty space
+//      beside a link can bleed to the anchor.
+// Don't convert it to a px value, and don't "fix" it to fit the line box — that would undo (1).
+const LINK_CLASS =
+  "underline decoration-1 underline-offset-2 cursor-pointer py-[0.35em]";
+
+function preClass(className?: string): string {
+  return cn(
+    "m-0 font-mono leading-[1.25] tracking-normal text-foreground [font-variant-ligatures:none]",
+    MIRROR_SPACE,
+    MIRROR_INVERT,
+    // Horizontal pan, column-faithful. The overflow rules stay because `overflow-x-auto` forces
+    // `overflow-y` to compute to `auto` (CSS overflow quirk), and a flex item with non-visible
+    // overflow may shrink below its content height — the <pre> then becomes the vertical scroller
+    // and ChatMessageList's stickiness is a no-op (pane opens stuck at the oldest scrollback).
+    // `shrink-0` keeps the pre at content height so vertical scroll stays on the outer list;
+    // x-scroll still works.
+    "min-w-0 w-full max-w-full shrink-0 overflow-x-auto overscroll-x-contain [touch-action:pan-x_pan-y] whitespace-pre",
+    className,
+  );
+}
+
+// Faithful, colored mirror of a pane's recent terminal output. Rendering flows through the Block AST
+// (blocks.ts): parseAnsi → styled lines → typed blocks → React. Text is always rendered as React
+// text nodes (escaped); only color/weight come from the ANSI parse — no XSS surface.
+//
+// For a Claude pane the AST may lift the tail into a `prompt-select` block (native buttons) and strip
+// the agent's own input-box chrome; everything else stays a `raw` block that reproduces exactly what
+// the flat renderer produced (one <span> per segment, "\n" text nodes between lines). Raw blocks go
+// inside the <pre>; the prompt-select block renders after it as its own button group.
+//
+// Find-in-output highlights matches over the RAW blocks only — the prompt-select block's text is
+// rendered as buttons, not searchable mirror text. The haystack is the concatenation of the raw
+// blocks' line text (newlines included), and the renderer threads a running offset through
+// blocks → lines → segments so each segment maps back to that same coordinate space. (A find query
+// can't contain a newline, so no match straddles the inter-line separators.)
+//
+// Autolinked URLs (lib/links.ts) live in that SAME coordinate space and are applied over the raw
+// blocks too, as anchors wrapping the find-highlighted runs. Only `http(s)://` text becomes a link,
+// and the href is the matched text itself — no scheme can appear that wasn't printed by the agent.
+//
+// Performance: AgentChat parses ANSI and builds blocks once per display change, then passes those
+// results into this mirror. The link scan still runs once per parsed buffer; React.memo prevents
+// re-renders when props are unchanged — critical for the polling cadence on mobile. With no query
+// and no links the render skips splitSegment entirely and emits the segment's own string, exactly as
+// the pre-find flat renderer did.
+export interface AnsiMirrorProps {
+  lines: StyledLine[];
+  blocks: Block[];
+  className?: string;
+  /** Monospace font size in px. Default 11. */
+  fontSize?: number;
+  query?: string;
+  currentMatch?: number;
+  onMatchCount?: (count: number) => void;
+  rawDump?: boolean;
+  onPromptAction?: (action: PromptBlockAction, prompt: PromptModel) => boolean | void | Promise<boolean | void>;
+  onWizardAction?: (keys: string[], wizard: WizardModel) => void | Promise<void>;
+  onPreviewAction?: (action: PreviewBlockAction, preview: PreviewSelectModel) => void | Promise<void>;
+  onMultiSelectAction?: (action: MultiSelectIntent, multi: MultiSelectModel) => void | Promise<void>;
+  onMenuAction?: (action: MenuBlockAction, menu: MenuModel) => void | Promise<void>;
+  promptDisabled?: boolean;
+  /** Skip the dump `<pre>`; still render a lifted prompt/wizard/menu. Hide-terminal keeps buttons. */
+  hideRaw?: boolean;
+}
+
+export const AnsiMirror = memo(function AnsiMirror({
+  lines,
+  blocks: detectedBlocks,
+  className,
+  fontSize = 11,
+  query = "",
+  currentMatch = -1,
+  onMatchCount,
+  rawDump = false,
+  onPromptAction,
+  onWizardAction,
+  onPreviewAction,
+  onMultiSelectAction,
+  onMenuAction,
+  promptDisabled,
+  hideRaw = false,
+}: AnsiMirrorProps) {
+  const blocks = useMemo(() => {
+    if (!rawDump) return presentBlocks(detectedBlocks);
+
+    // Raw mode is the escape hatch: preserve every line in the dump, including lines lifted into a
+    // dialog, then append the detected widget below it. Menu blocks retain their own lines by design.
+    const dialogBlocks = presentBlocks(detectedBlocks.filter((block) => block.kind !== "raw"));
+    return [{ kind: "raw" as const, lines }, ...dialogBlocks];
+  }, [lines, detectedBlocks, rawDump]);
+  const rawBlocks = useMemo(
+    () => blocks.filter((b): b is RawBlock => b.kind === "raw"),
+    [blocks],
+  );
+  const promptBlock = useMemo(
+    () => blocks.find((b): b is PromptBlock => b.kind === "prompt-select") ?? null,
+    [blocks],
+  );
+  const wizardBlock = useMemo(
+    () => blocks.find((b): b is WizBlock => b.kind === "wizard") ?? null,
+    [blocks],
+  );
+  const previewBlock = useMemo(
+    () => blocks.find((b): b is PrevBlock => b.kind === "preview-select") ?? null,
+    [blocks],
+  );
+  const multiBlock = useMemo(
+    () => blocks.find((b): b is MultiBlock => b.kind === "multi-select") ?? null,
+    [blocks],
+  );
+  const menuBlock = useMemo(
+    () => blocks.find((b): b is GenericMenuBlock => b.kind === "menu") ?? null,
+    [blocks],
+  );
+  const autoBlock = useMemo(
+    () => blocks.find((b): b is AutoBlock => b.kind === "autocomplete") ?? null,
+    [blocks],
+  );
+
+  // Find offsets live over the *raw* mirror text (raw blocks joined by "\n", lines joined by "\n").
+  // The join only runs while actually searching, so the idle polling path pays nothing.
+  const haystack = useMemo(
+    () => rawBlocks.map((b) => b.lines.map(lineText).join("\n")).join("\n"),
+    [rawBlocks],
+  );
+  const matches = useMemo(() => {
+    if (!query) return NO_MATCHES;
+    return findMatches(haystack, query);
+  }, [haystack, query]);
+
+  // Autolinked URLs, in the SAME offset space as find matches — both are ranges over `haystack`, so
+  // one running offset serves both splits. Recomputed only when the mirror text changes.
+  const links = useMemo(() => findLinks(haystack), [haystack]);
+
+  useEffect(() => {
+    onMatchCount?.(matches.length);
+  }, [matches, onMatchCount]);
+
+  const currentRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    if (currentMatch < 0) return;
+    currentRef.current?.scrollIntoView({ block: "center", behavior: "auto" });
+  }, [currentMatch, matches]);
+
+  // Muted = box-drawing / rule glyphs. Drop ANSI dim opacity so table borders stay visible —
+  // var(--border) + dim made them nearly invisible on mobile. See styleFor in mirror-space.ts.
+
+  const prompt = promptBlock ? (
+    <PromptSelectBlock
+      prompt={promptBlock.prompt}
+      disabled={promptDisabled || !onPromptAction}
+      onAction={(action) => onPromptAction?.(action, promptBlock.prompt) ?? false}
+    />
+  ) : wizardBlock ? (
+    <WizardBlock
+      wizard={wizardBlock.wizard}
+      disabled={promptDisabled || !onWizardAction}
+      onAction={(keys) => onWizardAction?.(keys, wizardBlock.wizard)}
+    />
+  ) : previewBlock ? (
+    <PreviewSelectBlock
+      preview={previewBlock.preview}
+      disabled={promptDisabled || !onPreviewAction}
+      onAction={(action) => onPreviewAction?.(action, previewBlock.preview)}
+    />
+  ) : multiBlock ? (
+    <MultiSelectBlock
+      multi={multiBlock.multi}
+      disabled={promptDisabled || !onMultiSelectAction}
+      onAction={(action) => onMultiSelectAction?.(action, multiBlock.multi)}
+    />
+  ) : menuBlock ? (
+    <MenuBlock
+      menu={menuBlock.menu}
+      lines={menuBlock.lines}
+      disabled={promptDisabled || !onMenuAction}
+      onAction={(action) => onMenuAction?.(action, menuBlock.menu)}
+    />
+  ) : autoBlock ? (
+    // No handler and no `disabled`: the completion popup emits no keystroke, so there is nothing
+    // for a read-only device to be refused. It is last only because it is the least specific tail
+    // shape; the grammars above are mutually exclusive with it anyway (a popup means an input box,
+    // and every dialog above means there isn't one).
+    <AutocompleteBlock autocomplete={autoBlock.autocomplete} />
+  ) : null;
+
+  // Thread a running global offset through raw blocks → lines → segments (advancing by 1 for each
+  // inter-line/inter-block "\n" separator) so both splits below can map a segment's slices back to
+  // the haystack. With no query and no links this costs one addition per segment and allocates
+  // nothing beyond the spans — the polling path stays as cheap as the old flat render.
+  let offset = 0;
+  let currentAssigned = false;
+
+  // A run of plain text at global offset `start` → nodes, with find matches split out and
+  // highlighted. `currentAssigned` refs only the first slice of the focused match (a match can span
+  // segments on a colour change) so scrollIntoView targets one stable node.
+  const renderFind = (text: string, start: number): ReactNode => {
+    if (matches.length === 0) return text;
+    return splitSegment(text, start, matches).map((p, j) => {
+      if (p.matchIndex === null) return p.text;
+      const isCurrent = p.matchIndex === currentMatch;
+      const attach = isCurrent && !currentAssigned;
+      if (attach) currentAssigned = true;
+      return (
+        <span
+          key={j}
+          ref={attach ? currentRef : undefined}
+          data-find-match={isCurrent ? "current" : "other"}
+          className={cn(
+            "rounded-[2px]",
+            // Asymmetric on purpose, and the asymmetry is the whole subtlety.
+            //
+            // The CURRENT match re-applies the mirror's filter to cancel it, because otherwise
+            // yellow-400 comes out of invert+hue-rotate as a dark brown that reads as a redaction
+            // bar. It can do that safely only because `text-black` pins its text: black → inner
+            // invert → white → outer invert → black.
+            //
+            // A non-current match sets no text colour, so its text is INHERITED from the segment —
+            // dark-space, i.e. light. Double-inverting sends it light → dark → light and it lands
+            // light-on-light, erasing the very text you searched for. So the others take the plain
+            // single inversion, which renders them as a pale tan wash with the mapped text on top.
+            // See .adr/0002 — "cancel the filter only on an element that fully specifies both its
+            // foreground and its background".
+            isCurrent ? cn(MIRROR_INVERT, "bg-yellow-400 text-black") : "bg-yellow-400/30",
+          )}
+        >
+          {p.text}
+        </span>
+      );
+    });
+  };
+
+  // A segment's text → nodes: autolinked URLs as anchors, wrapping find-highlighted runs. Two
+  // splits over one coordinate space, links outermost, so a find hit *inside* a URL still lights up.
+  // A URL that straddles a colour change yields one <a> per segment slice, each with the same href.
+  const renderSegment = (text: string, start: number): ReactNode => {
+    if (links.length === 0) return renderFind(text, start);
+    let at = start;
+    return splitSegment(text, start, links).map((p, i) => {
+      const pieceStart = at;
+      at += p.text.length;
+      if (p.matchIndex === null) return <Fragment key={i}>{renderFind(p.text, pieceStart)}</Fragment>;
+      return (
+        <a key={i} href={links[p.matchIndex]!.href} target="_blank" rel="noopener noreferrer" className={LINK_CLASS}>
+          {renderFind(p.text, pieceStart)}
+        </a>
+      );
+    });
+  };
+
+  const renderLineBody = (line: StyledLine, li: number, leadingNewline = li > 0) => {
+    if (leadingNewline) offset += 1; // the "\n" separating this line from the previous
+    const segNodes = line.segments.map((s, si) => {
+      const segStart = offset;
+      offset += s.text.length;
+      return (
+        <span key={si} style={styleFor(s)}>
+          {renderSegment(s.text, segStart)}
+        </span>
+      );
+    });
+    return (
+      <Fragment key={li}>
+        {leadingNewline ? "\n" : null}
+        {segNodes}
+      </Fragment>
+    );
+  };
+
+  const renderBlock = (block: RawBlock, bi: number) => {
+    if (bi > 0) offset += 1; // the "\n" separating this block from the previous
+    const parts: ReactNode[] = [];
+    if (bi > 0) parts.push("\n");
+
+    for (let li = 0; li < block.lines.length; li++) {
+      parts.push(renderLineBody(block.lines[li]!, li));
+    }
+
+    return <Fragment key={bi}>{parts}</Fragment>;
+  };
+
+  return (
+    <>
+      {!hideRaw && rawBlocks.length > 0 && (
+        <pre className={preClass(className)} style={{ fontSize: `${fontSize}px` }}>
+          {rawBlocks.map(renderBlock)}
+        </pre>
+      )}
+      {prompt}
+    </>
+  );
+});
