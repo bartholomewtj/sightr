@@ -1,0 +1,42 @@
+PS C:\Users\alice\Projects\my-plugin> & cursor-agent.cmd
+
+  ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │                                                                                                                                                                                                                                                       │
+  │  ⚠ Workspace Trust Required                                                                                                                                                                                                                           │
+  │                                                                                                                                                                                                                                                       │
+  │  Cursor Agent can execute code and access files in this directory.                                                                                                                                                                                    │
+  │                                                                                                                                                                                                                                                       │
+  │  Do you trust the contents of this directory?                                                                                                                                                                                                         │
+  │                                                                                                                                                                                                                                                       │
+  │    C:\Users\alice\Projects\my-plugin                                                                                                                                                                                                                  │
+  │                                                                                                                                                                                                                                                       │
+  │                                                                                                                                                                                                                                                       │
+  │    [a] Trust this workspace                                                                                                                                                                                                                           │
+  │    [q] Quit                                                                                                                                                                                                                                           │
+  │                                                                                                                                                                                                                                                       │
+  │  ⏳ Trusting workspace...                                                                                                                                                                                                                             │
+  │                                                                                                                                                                                                                                                       │
+  ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+
+  Cursor Agent
+  v2026.09.10-fd3934a
+  Tip: Use /debug to instrument and debug complex problems.
+
+
+  Run the shell command: echo probe-cursor-ok. Do not do anything else.
+
+
+  Running the probe command now.
+
+  $ echo probe-cursor-ok Waiting for approval...
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ $  echo probe-cursor-ok in .
+
+ Run this command?
+ Not in allowlist: echo
+  → Run (once) (y)
+    Add Shell(echo) to allowlist? (tab)
+    Run Everything (shift+tab)
+    Skip & tell the agent what to do instead (esc or n)

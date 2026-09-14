@@ -1,0 +1,68 @@
+
+    Read, grepped, globbed 2 files, 1 grep, 1 glob
+    Read IDENTITY.md
+    Read CONTEXT.md
+    Grepped "" in .
+    Globbed "**/*sighter*" in .
+
+  Sighter lives in Projects\tools\sighter. Checking its state and any Cursor-specific build-out work.
+
+    Read, globbed, grepped 2 files, 1 glob, 1 grep
+    Read Projects\tools\sighter\CONTEXT.md
+    Read Projects\tools\sighter\STATE.md
+    Globbed "**/*cursor*" in Projects\tools\sighter
+    Grepped "cursor" in Projects\tools\sighter
+
+  STATE points at the Cursor TUI harness as the remaining work. I'll mirror the Grok adapter pattern and check for live pane fixtures.
+
+    Globbed, read 2 globs, 1 file
+    Globbed "**/harness/**/*" in Projects\tools\sighter\web\src\lib
+    Globbed "**/fixtures/panes/**/*" in Projects\tools\sighter\web\src
+    Read ...s\tools\sighter\web\src\lib\harness\registry.ts
+
+    To-do Working on 5 to-dos
+    ◐ Study grok HarnessAdapter + conformance pattern
+    ○ Capture/locate live Cursor pane fixtures
+    ○ Implement web/src/lib/harness/cursor/ (Tier 1+2)
+    ○ Register cursor + describeAdapterConformance + fixtures
+    ○ Run tests; update STATE.md
+
+    Read, globbed 4 files, 1 glob
+    … 2 earlier items hidden
+    Read ...ools\sighter\web\src\lib\harness\conformance.ts
+    Read ...\tools\sighter\web\src\lib\harness\grok.test.ts
+    Globbed "**/*cursor*" in Projects\tools\sighter
+
+  $ Get-ChildItem "C:\Users\alice\.cursor\projects\C-work-dir\agent-transcripts" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 15 Name, LastWriteTime; if (Test-Path
+    "C:\Users\alice\Projects\the-bridge\archive") { Get-ChildItem "C:\Users\alice\Projects\the-bridge\archive" -Recurse -Filter "*cursor*" | Select-Object FullName } 1.6s
+
+
+    Globbed "**/HARNESS*" in Projects\tools\sighter
+    Found 0 files
+
+  $ herdr agent 2>&1; herdr pane list 2>&1; Get-ChildItem "C:\Users\alice\.cursor\projects\C-work-dir\agent-transcripts" -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 10 Name, LastWriteTime
+    1.3s
+    … 21 output lines hidden · ctrl+o to expand
+    {"id":"cli:pane:list","result":{"panes":[{"agent_status":"unknown","cwd":"C:\\work-dir","focused":false,"pane_id":"wAD:p1","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":69},"tab_id":"wAD:t1","terminal_id…
+
+
+    Grepped, read 1 grep, 2 files
+    Grepped "... TUI|harness/cursor|finish the cursor" in ...h\.cursor\projects\C-work-dir\agent-transcripts
+    Read Projects\tools\sighter\CHANGELOG.md
+    Read ...\tools\sighter\web\src\lib\harness\agy\index.ts
+
+  There's a live Cursor pane (wAC:p1E). Capturing its screens and digging into how Cursor's TUI chrome looks.
+
+  $ New-Item -ItemType Directory -Force -Path "C:\Users\alice\Projects\the-bridge\tmp-cursor-captures" | Out-Null; herdr agent read wAC:p1E --source detection --format ansi --ansi 2>&1 | Out-File -Encoding utf8
+    "C:\Users\alice\Projects\the-bridge\tmp-cursor-captures\working-detection.ansi"; herdr agent read wAC:p1E --source visible --format ansi --ansi 2>&1 | Out-File -Encoding utf8
+    "C:\Users\alice\Projects\the-bridge\tmp-cursor-captures\working-visible.ansi"; herdr agent get wAC:p1E 2>&1 | Out-File -Encoding utf8 "C:\Users\alice\Projects\the-bridge\tmp-cursor-captures\agent-get.json"; Write-Host "done"; (Get-Item
+    "C:\Users\alice\Projects\the-bridge\tmp-cursor-captures\*").FullName; (Get-Item "C:\Users\alice\Projects\the-bridge\tmp-cursor-captures\working-detection.ansi").Length 220ms
+
+ ⠘⠣ Running  36.86k tokens
+
+
+  → Add a follow-up                                                                                                                                                                                                                          ctrl+c to stop
+
+
+  Auto · 21.2%                                                                                                                                                                                                                               Run Everything
+  C:\work-dir

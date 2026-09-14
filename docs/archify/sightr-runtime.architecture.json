@@ -1,0 +1,581 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Sightr",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/bartholomewtj/sightr"
+    },
+    "views": [
+      {
+        "id": "reply-path",
+        "label": "Reply path",
+        "focus": [
+          "webpwa",
+          "tailscale",
+          "bridge",
+          "panequeue",
+          "herdrclient",
+          "herdr",
+          "panes"
+        ],
+        "note": "A phone reply crosses the tailnet, clears the gate, waits its turn in the pane queue, and lands as two one-shot RPCs."
+      },
+      {
+        "id": "snapshot-path",
+        "label": "Snapshot + SSE",
+        "focus": [
+          "engine",
+          "herdrclient",
+          "herdr",
+          "snapshot",
+          "bridge",
+          "webpwa"
+        ],
+        "note": "The poll is the source of truth. Herdr events only poke it; each fresh snapshot is pushed to the phone over SSE."
+      },
+      {
+        "id": "security",
+        "label": "Security boundary",
+        "focus": [
+          "webpwa",
+          "tailscale",
+          "access",
+          "bridge",
+          "audit"
+        ],
+        "note": "Tailscale proves the device, not the person. The bridge binds loopback and gates host, origin, identity and device."
+      },
+      {
+        "id": "notifications",
+        "label": "Background notifications",
+        "focus": [
+          "engine",
+          "push",
+          "webpwa"
+        ],
+        "note": "Optional. A status transition debounces into one herd-tagged Web Push message; the service worker renders it."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "webpwa",
+      "type": "frontend",
+      "label": "Web PWA",
+      "sublabel": "operator phone",
+      "tag": "React Router + Vite",
+      "pos": [
+        40,
+        214
+      ],
+      "size": [
+        150,
+        76
+      ],
+      "sources": [
+        {
+          "path": "web/src/lib/api.ts",
+          "line": 245,
+          "end_line": 261,
+          "label": "openSnapshotStream"
+        },
+        {
+          "path": "web/src/hooks/use-polling.ts",
+          "line": 49,
+          "end_line": 82,
+          "label": "usePolling"
+        },
+        {
+          "path": "web/src/sw.ts",
+          "line": 99,
+          "end_line": 143,
+          "label": "push + click"
+        }
+      ]
+    },
+    {
+      "id": "tailscale",
+      "type": "cloud",
+      "label": "Tailscale serve",
+      "sublabel": "https:443 on the tailnet",
+      "tag": "ctl serve",
+      "pos": [
+        258,
+        214
+      ],
+      "size": [
+        150,
+        76
+      ],
+      "sources": [
+        {
+          "path": "scripts/ctl.ts",
+          "line": 19,
+          "end_line": 42,
+          "label": "ctl verbs"
+        },
+        {
+          "path": "scripts/ctl/serve.ts",
+          "line": 103,
+          "end_line": 141,
+          "label": "serve"
+        },
+        {
+          "path": "scripts/ctl/tailscale.ts",
+          "line": 18,
+          "end_line": 25,
+          "label": "bridgeUrl"
+        }
+      ]
+    },
+    {
+      "id": "access",
+      "type": "security",
+      "label": "Access gate",
+      "sublabel": "origin · identity · device",
+      "pos": [
+        461,
+        60
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "bridge/access.ts",
+          "line": 86,
+          "end_line": 137,
+          "label": "checkAccess"
+        },
+        {
+          "path": "bridge/access.ts",
+          "line": 164,
+          "end_line": 172,
+          "label": "guard"
+        },
+        {
+          "path": "bridge/webauthn.ts",
+          "line": 14,
+          "end_line": 39,
+          "label": "challenges"
+        }
+      ]
+    },
+    {
+      "id": "audit",
+      "type": "database",
+      "label": "Audit log",
+      "sublabel": "state dir · JSONL",
+      "pos": [
+        684,
+        60
+      ],
+      "size": [
+        165,
+        64
+      ],
+      "sources": [
+        {
+          "path": "bridge/audit.ts",
+          "line": 318,
+          "end_line": 326,
+          "label": "createAuditLog"
+        }
+      ]
+    },
+    {
+      "id": "bridge",
+      "type": "backend",
+      "label": "Bridge",
+      "sublabel": "Bun.serve router",
+      "tag": "loopback only",
+      "pos": [
+        476,
+        214
+      ],
+      "size": [
+        140,
+        76
+      ],
+      "sources": [
+        {
+          "path": "bridge/server.ts",
+          "line": 128,
+          "end_line": 259,
+          "label": "fetch router"
+        },
+        {
+          "path": "bridge/index.ts",
+          "line": 57,
+          "end_line": 95,
+          "label": "wiring"
+        }
+      ]
+    },
+    {
+      "id": "panequeue",
+      "type": "messagebus",
+      "label": "Pane write queue",
+      "sublabel": "one chain per pane",
+      "pos": [
+        684,
+        214
+      ],
+      "size": [
+        165,
+        76
+      ],
+      "sources": [
+        {
+          "path": "bridge/pane-write-routes.ts",
+          "line": 83,
+          "end_line": 140,
+          "label": "replyPane"
+        },
+        {
+          "path": "bridge/pane-queue.ts",
+          "line": 27,
+          "end_line": 58,
+          "label": "createPaneQueue"
+        }
+      ]
+    },
+    {
+      "id": "herdrclient",
+      "type": "backend",
+      "label": "Herdr client",
+      "sublabel": "one-shot JSON-RPC",
+      "pos": [
+        917,
+        214
+      ],
+      "size": [
+        150,
+        76
+      ],
+      "sources": [
+        {
+          "path": "bridge/herdr-client.ts",
+          "line": 196,
+          "end_line": 296,
+          "label": "request"
+        },
+        {
+          "path": "bridge/herdr-client.ts",
+          "line": 494,
+          "end_line": 502,
+          "label": "send_text / keys"
+        },
+        {
+          "path": "bridge/dial.ts",
+          "line": 54,
+          "end_line": 91,
+          "label": "named pipe"
+        }
+      ]
+    },
+    {
+      "id": "herdr",
+      "type": "external",
+      "label": "Herdr",
+      "sublabel": "control socket",
+      "tag": "0.7.0+",
+      "pos": [
+        1135,
+        214
+      ],
+      "size": [
+        135,
+        76
+      ]
+    },
+    {
+      "id": "snapshot",
+      "type": "backend",
+      "label": "Snapshot + SSE",
+      "sublabel": "/api/snapshot · /api/events",
+      "pos": [
+        461,
+        380
+      ],
+      "size": [
+        170,
+        76
+      ],
+      "sources": [
+        {
+          "path": "bridge/snapshot-route.ts",
+          "line": 57,
+          "end_line": 107,
+          "label": "snapshotRoute"
+        },
+        {
+          "path": "bridge/events-route.ts",
+          "line": 19,
+          "end_line": 79,
+          "label": "createSnapshotEvents"
+        },
+        {
+          "path": "shared/wire.ts",
+          "line": 33,
+          "end_line": 101,
+          "label": "wire types"
+        }
+      ]
+    },
+    {
+      "id": "engine",
+      "type": "backend",
+      "label": "State engine",
+      "sublabel": "poll + event poker",
+      "pos": [
+        917,
+        380
+      ],
+      "size": [
+        150,
+        76
+      ],
+      "sources": [
+        {
+          "path": "bridge/state-engine.ts",
+          "line": 106,
+          "end_line": 244,
+          "label": "StateEngine"
+        },
+        {
+          "path": "bridge/event-poker.ts",
+          "line": 77,
+          "end_line": 146,
+          "label": "EventPoker"
+        }
+      ]
+    },
+    {
+      "id": "panes",
+      "type": "external",
+      "label": "Agent panes",
+      "sublabel": "claude · grok · cursor",
+      "pos": [
+        1135,
+        380
+      ],
+      "size": [
+        135,
+        76
+      ],
+      "sources": [
+        {
+          "path": "shared/agents.ts",
+          "line": 1,
+          "end_line": 7,
+          "label": "harness list"
+        }
+      ]
+    },
+    {
+      "id": "push",
+      "type": "cloud",
+      "label": "Web Push",
+      "sublabel": "VAPID service",
+      "tag": "optional",
+      "pos": [
+        917,
+        546
+      ],
+      "size": [
+        150,
+        68
+      ],
+      "sources": [
+        {
+          "path": "bridge/push.ts",
+          "line": 179,
+          "end_line": 304,
+          "label": "Push.send"
+        },
+        {
+          "path": "bridge/notifications.ts",
+          "line": 58,
+          "end_line": 71,
+          "label": "notify sink"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "Tailnet — proves the device, not the person",
+      "wraps": [
+        "webpwa",
+        "tailscale"
+      ],
+      "pad": 18
+    },
+    {
+      "kind": "region",
+      "label": "Windows host — bridge binds loopback",
+      "wraps": [
+        "access",
+        "audit",
+        "bridge",
+        "panequeue",
+        "herdrclient",
+        "snapshot",
+        "engine"
+      ],
+      "pad": 18
+    },
+    {
+      "kind": "security-group",
+      "label": "Herd — real shells on the host",
+      "wraps": [
+        "herdr",
+        "panes"
+      ],
+      "pad": 18
+    }
+  ],
+  "connections": [
+    {
+      "id": "pwa-tailscale",
+      "from": "webpwa",
+      "to": "tailscale",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "tailscale-bridge",
+      "from": "tailscale",
+      "to": "bridge",
+      "label": "proxy to 127.0.0.1:SIGHTR_PORT",
+      "variant": "emphasis",
+      "labelDy": -56
+    },
+    {
+      "id": "bridge-access",
+      "from": "bridge",
+      "to": "access",
+      "label": "guard(read | write)",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "bridge-panequeue",
+      "from": "bridge",
+      "to": "panequeue",
+      "label": "POST /api/pane/:id/reply",
+      "variant": "emphasis",
+      "labelDy": 62
+    },
+    {
+      "id": "panequeue-audit",
+      "from": "panequeue",
+      "to": "audit",
+      "label": "one line per write",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "panequeue-herdrclient",
+      "from": "panequeue",
+      "to": "herdrclient",
+      "label": "send_text, then send_keys",
+      "variant": "emphasis",
+      "labelDy": -56
+    },
+    {
+      "id": "herdrclient-herdr",
+      "from": "herdrclient",
+      "to": "herdr",
+      "label": "JSON-RPC over the named pipe",
+      "variant": "emphasis",
+      "labelDy": 62
+    },
+    {
+      "id": "herdr-panes",
+      "from": "herdr",
+      "to": "panes",
+      "label": "types into the pane",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 60
+    },
+    {
+      "id": "engine-herdrclient",
+      "from": "engine",
+      "to": "herdrclient",
+      "label": "session.snapshot + events.subscribe",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "engine-snapshot",
+      "from": "engine",
+      "to": "snapshot",
+      "label": "onUpdate notifies the stream"
+    },
+    {
+      "id": "bridge-snapshot",
+      "from": "bridge",
+      "to": "snapshot",
+      "label": "GET /api/snapshot, /api/events",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 66
+    },
+    {
+      "id": "snapshot-pwa",
+      "from": "snapshot",
+      "to": "webpwa",
+      "label": "event: snapshot (SSE)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "engine-push",
+      "from": "engine",
+      "to": "push",
+      "label": "status transition",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 40
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Three trust levels",
+      "items": [
+        "Tailscale proves the device; SIGHTR_TRUSTED_USER must match the injected login",
+        "The bridge refuses a non-loopback bind, and drops non-loopback peers before routing",
+        "Host allowlist precedes Origin; a write also needs an allowlisted device header"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "One socket adapter",
+      "items": [
+        "herdr-client.ts is the only file that knows Herdr's method names",
+        "Each RPC opens a connection, reads one line, closes — a named pipe on Windows",
+        "A reply is send_text, a 350 ms settle, then send_keys; the queue 503s after 10 s"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Events are only a poke",
+      "items": [
+        "events.subscribe re-polls at once; session.snapshot stays the source of truth",
+        "SSE coalesces 250 ms and returns over the same tailnet HTTPS connection",
+        "sightr @ b530f34 — env identifiers are still spelled SIGHTR_ in the code"
+      ]
+    }
+  ]
+}

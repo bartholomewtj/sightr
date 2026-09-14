@@ -1,0 +1,120 @@
+id = "herdr.sightr"
+name = "Sightr"
+version = "1.0.0"
+min_herdr_version = "0.7.0"
+description = "Mobile web UI to monitor and reply to your agent herd, served over Tailscale"
+platforms = ["windows"]
+
+# Windows only. Every verb has one implementation in scripts/ctl.ts, run by Bun. Herdr actions call
+# build/sightr-action-v1.exe (a tiny launcher `build` compiles from contrib/windows/sightr-action.cs),
+# which runs contrib/windows/sightr-ctl.ps1, which locates Bun and forwards the verb to scripts/ctl.ts.
+# The bridge is supervised by Task Scheduler (scripts/ctl/supervisor/taskscheduler.ts).
+
+# Build the web UI at install time. Herdr runs [[build]] steps ONLY on `herdr plugin install`
+# (GitHub) — NOT on `herdr plugin link` (local dev), which instead builds lazily on first `start`.
+[[build]]
+command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "contrib/windows/sightr-ctl.ps1", "build"]
+platforms = ["windows"]
+
+[[actions]]
+id = "start"
+title = "Start web bridge"
+contexts = ["workspace"]
+platforms = ["windows"]
+command = ["build/sightr-action-v1.exe", "start"]
+
+[[actions]]
+id = "stop"
+title = "Stop web bridge"
+contexts = ["workspace"]
+platforms = ["windows"]
+command = ["build/sightr-action-v1.exe", "stop"]
+
+[[actions]]
+id = "restart"
+title = "Restart web bridge"
+contexts = ["workspace"]
+platforms = ["windows"]
+command = ["build/sightr-action-v1.exe", "restart"]
+
+# Full teardown: stops + disables the scheduled task, unregisters it, and removes Sightr's own
+# tailscale serve mapping. Leaves the .env and the checkout (so `start` can bring it right back).
+# See scripts/ctl/lifecycle.ts → uninstall.
+[[actions]]
+id = "uninstall"
+title = "Uninstall web bridge (remove service)"
+contexts = ["workspace"]
+platforms = ["windows"]
+command = ["build/sightr-action-v1.exe", "uninstall"]
+
+# Link-mode plugins ARE their on-disk git checkout (Herdr has no native `plugin update`), so this
+# action pulls + rebuilds + restarts in one step. See scripts/ctl/update.ts.
+[[actions]]
+id = "update"
+title = "Update plugin"
+contexts = ["workspace"]
+platforms = ["windows"]
+command = ["build/sightr-action-v1.exe", "update"]
+
+# The consent for a MAJOR upgrade (ADR 0025). `update` stays inside the major this install is on, so
+# crossing one is a separate, deliberate invocation — and it has to be invokable from HERE, because a
+# plugin action runs with no TTY and the phone banner that announces the major has no terminal at
+# all. The flag IS the consent; there is no prompt behind it. See scripts/ctl/update.ts →
+# updateCheckout.
+[[actions]]
+id = "update-major"
+title = "Update across a major version"
+contexts = ["workspace"]
+platforms = ["windows"]
+command = ["build/sightr-action-v1.exe", "update", "--major"]
+
+[[actions]]
+id = "url"
+title = "Show bridge URL"
+contexts = ["workspace"]
+platforms = ["windows"]
+command = ["build/sightr-action-v1.exe", "url"]
+
+[[actions]]
+id = "status"
+title = "Bridge status"
+contexts = ["workspace"]
+platforms = ["windows"]
+command = ["build/sightr-action-v1.exe", "status"]
+
+[[actions]]
+id = "version"
+title = "Show version"
+contexts = ["workspace"]
+platforms = ["windows"]
+command = ["build/sightr-action-v1.exe", "version"]
+
+[[actions]]
+id = "env-check"
+title = "Check Sightr environment"
+contexts = ["workspace"]
+platforms = ["windows"]
+command = ["build/sightr-action-v1.exe", "env-check"]
+
+# Turning push on is two steps that both used to happen OUTSIDE Herdr: generate a VAPID keypair with
+# a tool you had to know about, then hand-edit a .env in a directory you had to go looking for. Both
+# are actions now, because "which .env" is the part that actually goes wrong — `push-keys` writes to
+# the same config dir every other verb resolves, and `push-test` proves the result without waiting
+# for an agent to block. Restart between them; the keys are read at start.
+#
+# NOTE: on Herdr <0.8.0 a managed install invokes the action set cached at INSTALL time (ADR 0006),
+# so these two appear only after the next `herdr plugin install`. The PowerShell verbs work
+# immediately either way.
+[[actions]]
+id = "push-keys"
+title = "Generate push keys"
+contexts = ["workspace"]
+platforms = ["windows"]
+command = ["build/sightr-action-v1.exe", "keys"]
+
+[[actions]]
+id = "push-test"
+title = "Send a test notification"
+contexts = ["workspace"]
+platforms = ["windows"]
+command = ["build/sightr-action-v1.exe", "push-test"]

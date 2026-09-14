@@ -1,0 +1,33 @@
+PS C:\Users\alice\Projects\my-plugin> & cursor-agent.cmd
+
+  ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │                                                                                                                                                                                                                                                       │
+  │  ⚠ Workspace Trust Required                                                                                                                                                                                                                           │
+  │                                                                                                                                                                                                                                                       │
+  │  Cursor Agent can execute code and access files in this directory.                                                                                                                                                                                    │
+  │                                                                                                                                                                                                                                                       │
+  │  Do you trust the contents of this directory?                                                                                                                                                                                                         │
+  │                                                                                                                                                                                                                                                       │
+  │    C:\Users\alice\Projects\my-plugin                                                                                                                                                                                                                  │
+  │                                                                                                                                                                                                                                                       │
+  │                                                                                                                                                                                                                                                       │
+  │    [a] Trust this workspace                                                                                                                                                                                                                           │
+  │    [q] Quit                                                                                                                                                                                                                                           │
+  │                                                                                                                                                                                                                                                       │
+  │  ⏳ Trusting workspace...                                                                                                                                                                                                                             │
+  │                                                                                                                                                                                                                                                       │
+  ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+
+  Cursor Agent
+  v2026.09.10-fd3934a
+  Tip: Use /debug to instrument and debug complex problems.
+
+
+
+
+  → Plan, search, build anything
+
+
+  Auto
+  C:\Users\alice\Projects\my-plugin · main

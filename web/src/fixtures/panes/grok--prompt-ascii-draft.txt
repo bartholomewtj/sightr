@@ -1,0 +1,8 @@
+Stranded draft in the ASCII-prompt Grok composer (live 2026-08-30).
+
+
+  ╭────────────────────────────────────────────────────────────────────────────────────╮
+  │ > hello from the phone                                                             │
+  ╰─────────────────────────────────────────────────────────── Grok 4.6 (high) · auto ─╯
+
+  Enter:send  │  Shift+Tab:mode  │  Ctrl+x:shortcuts

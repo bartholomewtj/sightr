@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+
+# A new push to a PR supersedes the old run — don't burn a runner on the stale one.
+# The job only reads the repo — no releases, no comments, no packages. Naming the scope here stops
+# the workflow inheriting whatever the repository default happens to be.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: typecheck + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2
+
+      - name: Install (root)
+        run: bun install --frozen-lockfile
+      # The three version files + the newest CHANGELOG heading must agree.
+      - name: Version consistency
+        run: bun scripts/check-version.ts
+      - name: Typecheck (root)
+        run: bun run typecheck
+      # `bun run test` already covers scripts/ctl (see package.json "test").
+      # Those tests mock PowerShell; they do not need a Windows runner.
+      - name: Test (bridge + ctl)
+        run: bun run test
+
+      - name: Install (web)
+        run: cd web && bun install --frozen-lockfile
+      - name: Typecheck (web)
+        run: cd web && bun run typecheck
+      - name: Test (web)
+        run: cd web && bun run test
+      - name: Build (web)
+        run: cd web && bun run build

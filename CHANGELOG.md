@@ -1,0 +1,15 @@
+# Changelog
+
+Sightr uses [Semantic Versioning](https://semver.org). `bun scripts/bump.ts patch|minor|major --note "..."`
+adds an entry here and keeps the three version files in step; CI refuses a build where they disagree.
+
+## [1.0.0] - 2026-09-14
+
+### Added
+- First public release as Sightr. Bridge, phone PWA, Windows control script, Herdr plugin manifest,
+  Claude/Pi/Grok/Antigravity/Cursor adapters, WebAuthn reconnect lock, audit trail, Web Push.
+
+### Changed
+- Renamed from Sighter. Every identifier moved with it: the `herdr.sightr` plugin id, the `SIGHTR_*`
+  environment variables, `sightr-ctl.ps1`, the state and config directories. On first start the bridge
+  copies a pre-1.0 Sighter state directory into the new one if the new one is empty.

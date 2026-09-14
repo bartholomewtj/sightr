@@ -1,0 +1,6 @@
+import { expect, test } from "bun:test";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+test("unknown ctl verb reports usage and exits 2",async()=>{const p=Bun.spawn([process.execPath,'scripts/ctl.ts','unknown'],{stdout:'pipe',stderr:'pipe'});expect(await p.exited).toBe(2);const err=await new Response(p.stderr).text();expect(err).toContain('env-check');expect(err).toContain('start');expect(err).toContain('serve');expect(err).toContain('uninstall');expect(err).toContain('update');expect(err).toContain('logs');expect(err).toContain('url');expect(err).toContain('qr');expect(err).toContain('version');expect(err).toContain('push-test');});
+test("env-check can run against a temporary config directory",async()=>{const dir=await mkdtemp(path.join(tmpdir(),'sightr-')); const root=path.resolve(import.meta.dir,'../..'); const p=Bun.spawn([process.execPath,'scripts/ctl.ts','env-check'],{cwd:root,env:{...process.env,HERDR_PLUGIN_CONFIG_DIR:dir},stdout:'pipe',stderr:'pipe'}); expect(await p.exited).toBe(0); const out=await new Response(p.stdout).text(); expect(out).toContain(dir); expect(out).toContain('exists: no');});

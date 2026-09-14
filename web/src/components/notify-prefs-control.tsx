@@ -1,0 +1,61 @@
+import { BellRing, Loader2 } from "lucide-react";
+
+import { Card } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { useNotifyPrefs } from "@/hooks/use-notify-prefs";
+import type { NotifyPrefs } from "@/lib/api";
+
+// Which lifecycle events are worth a push. Bridge-wide (fans out to every device),
+// so the copy says so. Two switches: "Needs input" (blocked, default on) and "Finished" (done,
+// default off). Optimistic toggle with revert on failure — see useNotifyPrefs.
+
+const ROWS: ReadonlyArray<{ key: keyof NotifyPrefs; label: string; hint: string }> = [
+  { key: "blocked", label: "Needs input", hint: "an agent is waiting on you" },
+  { key: "done", label: "Finished", hint: "an agent completes its task" },
+];
+
+export function NotifyPrefsControl({ readOnly = false }: { readOnly?: boolean } = {}) {
+  const { prefs, busy, toggle } = useNotifyPrefs();
+
+  return (
+    <Card className="gap-0 py-0">
+      <div className="flex items-center justify-between gap-4 p-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <BellRing className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <div className="font-medium">Notify when</div>
+            <p className="text-sm text-muted-foreground">
+              {readOnly
+                ? "Read-only — this device isn't authorised to change notification settings."
+                : "Applies to all devices."}
+            </p>
+          </div>
+        </div>
+        {!prefs && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />}
+      </div>
+
+      {/* Rendered before `prefs` lands, not after. ROWS is static, so the card's SHAPE is known from
+          the first frame — only the switch values are pending. Gating the whole list on `prefs` grew
+          this card by ~180px a moment after paint and pushed the rest of the page down with it. The
+          switches stay disabled until the real values arrive, so nothing can be toggled from a
+          placeholder state. */}
+      {ROWS.map((row) => (
+          <div
+            key={row.key}
+            className="flex items-center justify-between gap-4 border-t border-border/60 px-4 py-3"
+          >
+            <div className="min-w-0">
+              <div className="text-sm font-medium">{row.label}</div>
+              <p className="text-xs text-muted-foreground">{row.hint}</p>
+            </div>
+            <Switch
+              checked={prefs?.[row.key] ?? false}
+              disabled={busy || !prefs || readOnly}
+              onCheckedChange={(next) => void toggle(row.key, next)}
+              aria-label={row.label}
+            />
+          </div>
+      ))}
+    </Card>
+  );
+}

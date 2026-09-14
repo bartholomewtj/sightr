@@ -1,0 +1,55 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.*
+
+# Build output
+dist/
+build/
+out/
+target/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Bun / Node
+.bun/
+bun.lockb
+
+# Editor & OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Scratch / local
+*.local
+.cache/
+
+# Agent / local tooling state
+.claude/
+.tracker/
+
+# Bug-repro screenshots — evidence for a fix, not documentation. Keep them local;
+# the fix commit and its CHANGELOG line are the durable record.
+.screenshot-bugs/
+docs/bugs/
+
+# Local tooling scratch (browser-automation captures, test temp dirs)
+.playwright-mcp/
+.tmp-*/
+
+__pycache__/
+*.pyc
+
+# Local pickup notes; never committed.
+/STATE.md
