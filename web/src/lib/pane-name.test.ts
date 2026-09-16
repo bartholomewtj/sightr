@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { paneHeaderTitle, paneParts, paneTitleInTab } from "./pane-name";
+import { paneHeaderTitle, paneParts, paneRowLabel, paneTitleInTab } from "./pane-name";
 import type { AgentView } from "./types";
 
 function pane(over: Partial<AgentView> = {}): AgentView {
@@ -179,6 +179,26 @@ describe("paneHeaderTitle — the mobile pane header", () => {
         "Sighter",
       ),
     ).toBe("win-terminal-browser");
+  });
+});
+
+describe("paneRowLabel — duplicate panes in one tab", () => {
+  it("appends the pane-id suffix when several rows share a display name", () => {
+    const shells = [
+      pane({ paneId: "wAC:p56", kind: "shell", agent: "shell", paneLabel: "win-terminal-browser" }),
+      pane({ paneId: "wAC:p57", kind: "shell", agent: "shell", paneLabel: "win-terminal-browser" }),
+    ];
+    expect(paneRowLabel(shells[0]!, shells)).toBe("win-terminal-browser · p56");
+    expect(paneRowLabel(shells[1]!, shells)).toBe("win-terminal-browser · p57");
+  });
+
+  it("leaves a unique name alone", () => {
+    const panes = [
+      pane({ paneId: "wAC:p3J", agent: "cursor" }),
+      pane({ paneId: "wAC:p56", kind: "shell", agent: "shell", paneLabel: "win-terminal-browser" }),
+    ];
+    expect(paneRowLabel(panes[0]!, panes)).toBe("cursor");
+    expect(paneRowLabel(panes[1]!, panes)).toBe("win-terminal-browser");
   });
 });
 

@@ -14,12 +14,36 @@ import { effectiveSettings } from "./runtime-settings.ts";
 const MAX_READ_LINES = 10_000;
 const DEFAULT_HISTORY_LIMIT = 200;
 const MAX_HISTORY_LIMIT = 5000;
+/** Shell/TUI panes (draftr run tab, win-terminal-browser, …) only need the viewport. */
+export const SHELL_MIRROR_LINES_CAP = 120;
+
+/** How to read a pane mirror. Shell panes use `visible` so Herdr never scroll-harvests scrollback. */
+export function paneReadSpec(
+  pane: AgentView | undefined,
+  requestedLines: number,
+): { source: "visible" | "recent"; lines: number } {
+  if (pane?.kind === "shell") {
+    return {
+      source: "visible",
+      lines: Math.min(requestedLines, SHELL_MIRROR_LINES_CAP),
+    };
+  }
+  return { source: "recent", lines: requestedLines };
+}
+
+function paneForRead(engine: StateEngine | undefined, paneId: string): AgentView | undefined {
+  if (!engine) return undefined;
+  const { agents, shellPanes } = engine.current();
+  return shellPanes.find((p) => p.paneId === paneId) ?? agents.find((p) => p.paneId === paneId);
+}
+
 export async function readPane(
   herdr: HerdrClient,
   cfg: Config,
   paneId: string,
   url: URL,
   req: Request,
+  engine?: StateEngine,
 ): Promise<Response> {
   const linesParam = Number.parseInt(url.searchParams.get("lines") ?? "", 10);
   // Clamp to a sane ceiling — don't trust the client (or Herdr) to bound an enormous read.
@@ -27,13 +51,13 @@ export async function readPane(
     Number.isFinite(linesParam) && linesParam > 0
       ? Math.min(linesParam, MAX_READ_LINES)
       : effectiveSettings(cfg).readLines;
+  const { source, lines: readLines } = paneReadSpec(paneForRead(engine, paneId), lines);
   try {
-    // "ansi" so the client can render a faithful, colored terminal mirror. It is also, as far as we
-    // have probed, why this read leaves the operator's terminal alone: a `recent` read only harvests
-    // an alt-screen pane — scrolling it up and back — in `text` format. `lines` here is whatever the
-    // web app asked for (600 for the history view), well past any pane's height, so switching this
-    // to "text" would move someone's screen on every revalidate. See HERDR_API.md → `pane.read`.
-    const read = await herdr.readPane(paneId, "recent", lines, "ansi");
+    // "ansi" so the client can render a faithful, colored terminal mirror. Agent panes use `recent`
+    // for scrollback; shell/TUI panes use `visible` (see paneReadSpec) so a phone poll never drives
+    // Herdr's scroll harvester — which can take many seconds on a draftr run tab. HERDR_API.md →
+    // `pane.read`.
+    const read = await herdr.readPane(paneId, source, readLines, "ansi");
     const data = paneReadResponse(paneId, read);
     // ETag is derived from the serialised body — if content hasn't changed the client gets a 304
     // and skips the whole transfer (the big win on a cellular link).

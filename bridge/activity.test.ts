@@ -136,6 +136,14 @@ describe("meaningfulTerminalTitle", () => {
     expect(title("pwsh")).toBeUndefined();
   });
 
+  test("drops generic host and plugin chrome titles on agent panes", () => {
+    expect(title("Terminal Session")).toBeUndefined();
+    expect(title("win-terminal-browser")).toBeUndefined();
+    expect(title("Win Terminal Browser")).toBeUndefined();
+    expect(title("Terminal browser")).toBeUndefined();
+    expect(meaningfulTerminalTitle("Terminal browser", undefined, "cursor", "MAIN")).toBeUndefined();
+  });
+
   test("keeps a shell title that names the command it is running", () => {
     // The locator is dropped because it restates the cwd; a command title is the work itself.
     expect(title("vim foo.ts")).toBe("vim foo.ts");

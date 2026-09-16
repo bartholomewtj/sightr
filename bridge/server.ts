@@ -211,7 +211,7 @@ export function startServer(opts: {
         const routed = isRead ? req.method === "GET" : req.method === "POST";
         if (routed && marksPaneSeen(req, action)) { activity.noteSeen(ACTIVITY_KEY, paneId); events.notify(); }
 
-        if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req);
+        if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req, engine);
         if (action === "history" && req.method === "GET")
           return paneHistory(cfg, journals, transcripts, engine, herdr, paneId, url, req);
         if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, paneWrites, auditFor(req));

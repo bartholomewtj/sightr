@@ -202,3 +202,58 @@ export function filterClusters(clusters: readonly SpaceCluster[], query: string)
   if (!q) return [...clusters];
   return clusters.filter((c) => clusterMatches(c, q));
 }
+
+/** Herdr strips the `worktree/` prefix when auto-naming linked checkouts. */
+export function shortWorktreeBranch(branch: string): string {
+  return branch.startsWith("worktree/") ? branch.slice("worktree/".length) : branch;
+}
+
+/**
+ * Linked-worktree row label, matching Herdr's `grouped_child_display_label`: a renamed workspace
+ * keeps its label; an auto-named one shows the branch.
+ */
+export function groupedChildDisplayLabel(
+  label: string,
+  branch: string | null | undefined,
+  checkoutPath?: string,
+): string {
+  if (!branch) return label;
+  const short = shortWorktreeBranch(branch);
+  const base = checkoutPath?.split(/[/\\]/).filter(Boolean).pop();
+  const branchTail = short.split("/").pop() ?? short;
+  const autoLike =
+    label === short ||
+    label === branch ||
+    (base !== undefined &&
+      (label === base || base.endsWith(`-${label}`) || base.includes(label))) ||
+    label.replace(/-/g, "/") === short ||
+    label === branchTail ||
+    label.includes(branchTail) ||
+    branchTail.includes(label);
+  return autoLike ? short : label;
+}
+
+/** Primary label on a space row. Linked children follow Herdr; parents keep the workspace name. */
+export function spaceRowLabel(workspace: WorkspaceView, linkedChild: boolean): string {
+  if (!linkedChild) return workspace.label;
+  return groupedChildDisplayLabel(
+    workspace.label,
+    workspace.worktree?.branch,
+    workspace.worktree?.checkoutPath,
+  );
+}
+
+/**
+ * Second-row branch line for Herdr's two-row space layout. Linked children suppress git details —
+ * the branch already became the primary label.
+ */
+export function spaceBranchLine(workspace: WorkspaceView, linkedChild: boolean): string | null {
+  if (linkedChild) return null;
+  const branch = workspace.worktree?.branch;
+  return branch ? shortWorktreeBranch(branch) : null;
+}
+
+/** Whether a cluster should render as a grouped worktree family (tree connectors + frame). */
+export function isWorktreeFamily(cluster: SpaceCluster): boolean {
+  return cluster.children.length > 0 || cluster.closed.length > 0;
+}

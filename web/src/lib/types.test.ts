@@ -58,4 +58,18 @@ describe("paneDisplayName", () => {
   it("ignores a Windows Terminal profile default title in favour of the harness name", () => {
     expect(paneDisplayName(pane({ agent: "cursor", terminalTitle: "Windows PowerShell" }))).toBe("cursor");
   });
+
+  it("ignores plugin and generic host titles in favour of the harness name", () => {
+    expect(paneDisplayName(pane({ agent: "cursor", terminalTitle: "Terminal Session" }))).toBe("cursor");
+    expect(paneDisplayName(pane({ agent: "cursor", terminalTitle: "Terminal browser" }))).toBe("cursor");
+    expect(paneDisplayName(pane({ agent: "cursor", terminalTitle: "win-terminal-browser" }))).toBe("cursor");
+  });
+
+  it("still shows an explicit plugin shell label even when it matches a filtered terminal title", () => {
+    expect(
+      paneDisplayName(
+        pane({ kind: "shell", agent: "shell", paneLabel: "win-terminal-browser", terminalTitle: "win-terminal-browser" }),
+      ),
+    ).toBe("win-terminal-browser");
+  });
 });

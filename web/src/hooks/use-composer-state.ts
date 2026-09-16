@@ -253,6 +253,9 @@ export function useComposerState(args: ComposerStateArgs) {
   // Trailing-edge debounce for post-keypress revalidation: a burst of raw key sends (arrow-key
   // spam) coalesces into a single pane refetch instead of one per press.
   const keyRevalidateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Shell/TUI mirrors need a short retry ladder: the first read often races the host redraw and
+  // returns a 304 of the pre-key frame; without cache busting the phone stays frozen until reload.
+  const shellRefreshTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   // The pane's harness adapter, resolved HERE (this is where the agent is known) so the neutral
   // draft helpers below stay harness-free: they take the capability, never the grammar. Undefined for
@@ -318,9 +321,21 @@ export function useComposerState(args: ComposerStateArgs) {
     () => () => {
       if (sentTimer.current) clearTimeout(sentTimer.current);
       if (keyRevalidateTimer.current) clearTimeout(keyRevalidateTimer.current);
+      for (const t of shellRefreshTimers.current) clearTimeout(t);
+      shellRefreshTimers.current = [];
     },
     [],
   );
+
+  function clearShellRefreshTimers() {
+    for (const t of shellRefreshTimers.current) clearTimeout(t);
+    shellRefreshTimers.current = [];
+  }
+
+  function bustShellMirrorAndRevalidate() {
+    api.invalidatePaneCache(paneId);
+    revalidator.revalidate();
+  }
 
   // Preview appearance latch. A STABLE, non-echo, not-already-handled draft flips the preview on —
   // this is the ONLY gate that waits for the 1.5s stability, so a blip or an in-flight send never
@@ -415,6 +430,19 @@ export function useComposerState(args: ComposerStateArgs) {
   // repaint you waited a whole 1.5s poll to see anything. Arrow-key spam still coalesces exactly as
   // before: presses 2..n only ever schedule the one trailing refetch.
   function scheduleKeyRevalidate() {
+    // Shell/TUI panes (draftr run tab, browser embeds) have no transcript — only the live frame.
+    // Bust the ETag cache and retry across a short ladder: an immediate read often lands before the
+    // host TUI repaints and comes back 304 with the pre-key frame, which leaves the mirror frozen.
+    if (isShell) {
+      clearShellRefreshTimers();
+      bustShellMirrorAndRevalidate();
+      for (const delay of [150, 400]) {
+        shellRefreshTimers.current.push(
+          setTimeout(bustShellMirrorAndRevalidate, delay),
+        );
+      }
+      return;
+    }
     if (keyRevalidateTimer.current === null) {
       revalidator.revalidate(); // leading edge
       // Cooldown only — it fires nothing itself; a press landing before it expires replaces it with

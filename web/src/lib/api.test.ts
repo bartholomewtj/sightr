@@ -10,6 +10,7 @@ import {
   ApiError,
   fetchPane,
   fetchSnapshot,
+  invalidatePaneCache,
   sendKeys,
   sendReply,
   uploadImage,
@@ -229,6 +230,27 @@ describe("api client — connection-health stamping", () => {
 // instead. Every path that talks to the bridge must carry it, including the two that bypass `req`:
 // fetchPane builds its own header bag, and uploadImage sets none at all so the browser keeps
 // ownership of the multipart boundary.
+describe("api client — pane ETag cache", () => {
+  it("invalidatePaneCache drops the cached etag so the next read is unconditional", async () => {
+    const etags: string[] = [];
+    server.use(
+      http.get("/api/pane/:paneId", ({ request }) => {
+        etags.push(request.headers.get("if-none-match") ?? "");
+        return HttpResponse.json(
+          { paneId: "w1:p1", text: "frame", truncated: false, revision: 1 },
+          { headers: { etag: '"a"' } },
+        );
+      }),
+    );
+    await fetchPane("w1:p1");
+    await fetchPane("w1:p1");
+    expect(etags).toEqual(["", '"a"']);
+    invalidatePaneCache("w1:p1");
+    await fetchPane("w1:p1");
+    expect(etags[2]).toBe("");
+  });
+});
+
 describe("api client — XHR marker for identity proxies", () => {
   afterEach(() => vi.restoreAllMocks());
 

@@ -273,6 +273,37 @@ describe("SpaceTree — one-child shortcuts and tree expansion", () => {
     expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/");
   });
+
+  it("disambiguates duplicate plugin shell rows in an expanded tab", async () => {
+    const user = userEvent.setup();
+    const w = ws("wAC", "MAIN", { paneCount: 3, tabCount: 1 });
+    const t = tab("wAC:t3A", "wAC", "firelight", 3);
+    const cursor = agent("wAC:p3J", "wAC", "wAC:t3A", { agent: "cursor" });
+    const shell1 = agent("wAC:p56", "wAC", "wAC:t3A", {
+      kind: "shell",
+      agent: "shell",
+      paneLabel: "win-terminal-browser",
+    });
+    const shell2 = agent("wAC:p57", "wAC", "wAC:t3A", {
+      kind: "shell",
+      agent: "shell",
+      paneLabel: "win-terminal-browser",
+    });
+
+    renderTree({
+      workspaces: [w],
+      tabs: [t],
+      agents: [cursor],
+      shellPanes: [shell1, shell2],
+    });
+
+    await user.click(screen.getByRole("button", { name: /expand space MAIN/i }));
+    await user.click(screen.getByRole("button", { name: /expand tab firelight/i }));
+
+    expect(screen.getByText("win-terminal-browser · p56")).toBeInTheDocument();
+    expect(screen.getByText("win-terminal-browser · p57")).toBeInTheDocument();
+    expect(screen.getByText("cursor")).toBeInTheDocument();
+  });
 });
 
 describe("SpaceTree — row ⋯ overflow", () => {
@@ -629,10 +660,43 @@ describe("SpaceTree — filter", () => {
       agents: [agent("w1:p1", "w1", "w1:t1"), agent("w2:p1", "w2", "w2:t1")],
     });
     expect(screen.getByRole("button", { name: "Expand space sighter" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Expand space foo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand space feat/foo" })).toBeInTheDocument();
     expect(screen.getByText("closed")).toBeInTheDocument();
     expect(screen.getByText("feat/bar")).toBeInTheDocument();
-    expect(screen.getByText("feat/foo")).toBeInTheDocument();
+    expect(screen.getByText("main")).toBeInTheDocument();
+  });
+
+  it("does not draw a vertical connector on the primary checkout row", () => {
+    const parent = ws("w1", "draftr", {
+      worktree: {
+        repoKey: "repo-draftr",
+        repoName: "draftr",
+        repoRoot: "/draftr",
+        checkoutPath: "/draftr",
+        isLinkedWorktree: false,
+        branch: "main",
+      },
+    });
+    const child = ws("w2", "feat/foo", {
+      worktree: {
+        repoKey: "repo-draftr",
+        repoName: "draftr",
+        repoRoot: "/draftr",
+        checkoutPath: "/draftr-foo",
+        isLinkedWorktree: true,
+        branch: "feat/foo",
+      },
+    });
+    const { container } = renderTree({
+      workspaces: [parent, child],
+      tabs: [tab("w1:t1", "w1"), tab("w2:t1", "w2")],
+      agents: [agent("w1:p1", "w1", "w1:t1"), agent("w2:p1", "w2", "w2:t1")],
+    });
+    const connectors = [...container.querySelectorAll("[data-testid='worktree-connector']")].map(
+      (el) => el.textContent,
+    );
+    expect(connectors).not.toContain("│");
+    expect(connectors).toEqual(["", "└─"]);
   });
 });
 

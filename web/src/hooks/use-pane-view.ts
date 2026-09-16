@@ -91,6 +91,9 @@ export function usePaneView(args: PaneViewArgs) {
   const [shown, setShown] = useState({ text, revision });
   const liveRef = useRef({ text, revision });
   liveRef.current = { text, revision };
+  // Shell/TUI panes are driven entirely from the live mirror — there is no journal to scroll back
+  // into, and a frozen tail makes every key look like it did nothing until a full reload.
+  const shellMirror = agent?.kind === "shell";
   const adoptedOver = useRef<PaneSnapshot | null>(null);
 
   const adoptSnapshot = useCallback((snap: PaneSnapshot) => {
@@ -99,7 +102,7 @@ export function usePaneView(args: PaneViewArgs) {
   }, []);
 
   useEffect(() => {
-    if (!following) return;
+    if (!following && !shellMirror) return;
     if (
       adoptedOver.current &&
       text === adoptedOver.current.text &&
@@ -115,7 +118,7 @@ export function usePaneView(args: PaneViewArgs) {
         ? prev
         : { text, revision },
     );
-  }, [text, revision, following]);
+  }, [text, revision, following, shellMirror]);
   const display = shown.text;
   const hasNew = !following && display !== text;
 

@@ -110,3 +110,15 @@ export function paneTitleInTab(pane: AgentView): PaneTitle {
   // here line for line, which is two copies of the rule pane-name.ts exists to keep in one place.
   return { primary: paneDisplayName(pane), secondary: pane.cwd ? shortCwd(pane.cwd) : null };
 }
+
+/**
+ * A pane row label inside a tab. When several panes share the same {@link paneDisplayName} — two
+ * win-terminal-browser splits is the common case — appends the pane-id suffix so each row is distinct.
+ */
+export function paneRowLabel(pane: AgentView, tabPanes: readonly AgentView[]): string {
+  const base = paneDisplayName(pane);
+  const dupes = tabPanes.filter((p) => paneDisplayName(p) === base).length > 1;
+  if (!dupes) return base;
+  const tag = pane.paneId.split(":").pop();
+  return tag ? `${base} · ${tag}` : base;
+}
