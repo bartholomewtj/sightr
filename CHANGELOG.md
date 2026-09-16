@@ -3,7 +3,7 @@
 Sightr uses [Semantic Versioning](https://semver.org). `bun scripts/bump.ts patch|minor|major --note "..."`
 adds an entry here and keeps the three version files in step; CI refuses a build where they disagree.
 
-## [Unreleased]
+## [1.0.2] - 2026-09-16
 
 ### Fixed
 - Shell/TUI panes (draftr run tab): mirror updates after each key/button press without a manual PWA
