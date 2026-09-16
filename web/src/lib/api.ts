@@ -288,6 +288,11 @@ const paneCache = new Map<string, PaneCacheEntry>();
 // pane's last body). 20 comfortably covers any panes in flight on a phone.
 const PANE_CACHE_MAX = 20;
 
+/** Drop the cached ETag/body for a pane so the next read is unconditional. Used after shell keys. */
+export function invalidatePaneCache(paneId: string): void {
+  paneCache.delete(paneId);
+}
+
 export async function fetchPane(
   paneId: string,
   lines?: number,

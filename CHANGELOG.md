@@ -3,6 +3,17 @@
 Sightr uses [Semantic Versioning](https://semver.org). `bun scripts/bump.ts patch|minor|major --note "..."`
 adds an entry here and keeps the three version files in step; CI refuses a build where they disagree.
 
+## [Unreleased]
+
+### Fixed
+- Shell/TUI panes (draftr run tab): mirror updates after each key/button press without a manual PWA
+  reload. Busts the pane ETag cache and retries reads across a short ladder so post-key fetches do
+  not stick on a `304` of the pre-key frame; shell mirrors always follow the live tail.
+- Shell pane reads: use Herdr `visible` (120-line cap) instead of `recent`/600-line scroll-harvest,
+  so draftr run panes stay responsive on phone.
+- Spaces tree: parent worktree connector glyph, softer family borders, two-line row alignment.
+- Composer draft-clear: cap Backspace prefix sweep at 96 keys.
+
 ## [1.0.1] - 2026-09-14
 
 ### Changed

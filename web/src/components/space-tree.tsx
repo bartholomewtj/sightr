@@ -17,7 +17,10 @@ import {
   clusterSpaces,
   filterClusters,
   groupPanesByTab,
+  isWorktreeFamily,
+  spaceBranchLine,
   spaceLastSeenMap,
+  spaceRowLabel,
   spaceTriageMap,
   worstBucket,
 } from "@/lib/spaces";
@@ -26,7 +29,8 @@ import { setStatus } from "@/lib/status";
 import { TRIAGE_STATUS, sectionHeaderProps, shownStatus, triage } from "@/lib/triage";
 import { clockTime, timeAgo } from "@/lib/format";
 import { homePath, panePath } from "@/lib/nav";
-import { paneDisplayName, STATUS_LABEL } from "@/lib/types";
+import { paneRowLabel } from "@/lib/pane-name";
+import { STATUS_LABEL } from "@/lib/types";
 import type { AgentView, ClosedWorktree, TabView, WorkspaceView } from "@/lib/types";
 
 interface TreeRowButtonProps {
@@ -35,6 +39,32 @@ interface TreeRowButtonProps {
   className?: string;
   children: ReactNode;
   disabled?: boolean;
+}
+
+type WorktreeConnectorGlyph = "fork" | "end" | "line" | "blank";
+
+function WorktreeConnector({
+  glyph,
+  tallRow = false,
+}: {
+  glyph: WorktreeConnectorGlyph;
+  /** When the row has a second branch line, nudge the glyph down to the title row. */
+  tallRow?: boolean;
+}) {
+  const symbol =
+    glyph === "fork" ? "├─" : glyph === "end" ? "└─" : glyph === "line" ? "│" : "";
+  return (
+    <span
+      data-testid="worktree-connector"
+      className={cn(
+        "flex w-7 shrink-0 items-center justify-center font-mono text-[11px] leading-none text-muted-foreground/70",
+        tallRow && "mt-3.5",
+      )}
+      aria-hidden
+    >
+      {symbol}
+    </span>
+  );
 }
 
 function TreeRowButton({
@@ -271,16 +301,36 @@ export function SpaceTree({
           </p>
         ) : (
           clusters.map((cluster) => {
-            const rows = cluster.parent ? [cluster.parent, ...cluster.children] : cluster.children;
+            const family = isWorktreeFamily(cluster);
+            const openRows = cluster.parent ? [cluster.parent, ...cluster.children] : cluster.children;
             return (
-              <div key={cluster.key} className="flex flex-col">
+              <div
+                key={cluster.key}
+                className={cn(
+                  "flex flex-col",
+                  family && "my-1 overflow-hidden rounded-lg ring-1 ring-inset ring-border/50",
+                )}
+              >
                 {!cluster.parent && cluster.repoName ? (
-                  <div className="px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <div className="flex items-center gap-1.5 border-b border-border/50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <GitBranch className="size-3 shrink-0" aria-hidden />
                     {cluster.repoName}
                   </div>
                 ) : null}
-                {rows.map((w, rowIndex) => {
-            const indent = cluster.parent ? rowIndex > 0 : !!cluster.repoName;
+                {openRows.map((w, rowIndex) => {
+            const linkedChild = cluster.parent ? rowIndex > 0 : !!cluster.repoName;
+            const rowLabel = spaceRowLabel(w, linkedChild);
+            const branchLine = spaceBranchLine(w, linkedChild);
+            const isLastOpen = rowIndex === openRows.length - 1 && cluster.closed.length === 0;
+            const connector: WorktreeConnectorGlyph | null = !family
+              ? null
+              : linkedChild
+                ? isLastOpen
+                  ? "end"
+                  : "fork"
+                : isLastOpen || rowIndex === 0
+                  ? "blank"
+                  : "line";
             const worstBucketKey = worstBySpace.get(w.workspaceId);
             const status = worstBucketKey ? TRIAGE_STATUS[worstBucketKey] : null;
             const blocked = worstBucketKey === "needs";
@@ -297,23 +347,27 @@ export function SpaceTree({
                 className={cn(
                   "flex flex-col transition-colors",
                   !blocked && "hover:bg-muted/30",
+                  family && rowIndex > 0 && "border-t border-border/40",
                 )}
               >
                 {/* Level 1: Space Row */}
                 <div
                   className={cn(
-                    "flex flex-row items-center gap-1 px-1.5 py-2",
-                    indent && "pl-8",
+                    "flex flex-row gap-1 px-1.5 py-2",
+                    branchLine ? "items-start" : "items-center",
                     blocked && "rounded-lg border border-status-blocked/40 bg-status-blocked/5",
                   )}
                 >
+                  {connector ? (
+                    <WorktreeConnector glyph={connector} tallRow={!!branchLine} />
+                  ) : null}
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       setSpaceOpen(w.workspaceId, !isSpaceExpanded);
                     }}
-                    aria-label={isSpaceExpanded ? `Collapse space ${w.label}` : `Expand space ${w.label}`}
+                    aria-label={isSpaceExpanded ? `Collapse space ${rowLabel}` : `Expand space ${rowLabel}`}
                     className="flex size-11 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95"
                   >
                     {isSpaceExpanded ? (
@@ -326,35 +380,39 @@ export function SpaceTree({
                   <TreeRowButton
                     onClick={() => handleSpaceRowClick(w, wsTabGroups, isSpaceExpanded)}
                     onMenu={actionsEnabled ? (at) => { setSheetAnchor(at); setSheetSpace(w); } : undefined}
+                    className="py-0.5"
                   >
-                    {status ? (
-                      <>
-                        <StatusDot status={status} />
-                        <span className="sr-only">{STATUS_LABEL[status]}</span>
-                      </>
-                    ) : (
-                      <span className="size-2.5 shrink-0 rounded-full border border-muted-foreground/40" />
-                    )}
-                    <span className="min-w-0 flex-1 truncate font-medium">
-                      {w.label}
-                      {w.worktree?.branch ? (
-                        <span className="ml-1.5 font-normal text-muted-foreground">
-                          {w.worktree.branch}
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        {status ? (
+                          <>
+                            <StatusDot status={status} />
+                            <span className="sr-only">{STATUS_LABEL[status]}</span>
+                          </>
+                        ) : (
+                          <span className="size-2.5 shrink-0 rounded-full border border-muted-foreground/40" />
+                        )}
+                        <span className="min-w-0 flex-1 truncate font-medium">{rowLabel}</span>
+                        <span
+                          aria-label={`${w.paneCount} ${w.paneCount === 1 ? "pane" : "panes"}`}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium tabular-nums text-muted-foreground"
+                        >
+                          <LayoutGrid className="size-3.5" aria-hidden />
+                          {w.paneCount}
                         </span>
+                        {seen > 0 && (
+                          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                            {timeAgo(seen)}
+                          </span>
+                        )}
+                      </div>
+                      {branchLine ? (
+                        <div className="flex min-w-0 items-center gap-1.5 pl-5 text-xs text-muted-foreground">
+                          <GitBranch className="size-3 shrink-0 opacity-70" aria-hidden />
+                          <span className="truncate">{branchLine}</span>
+                        </div>
                       ) : null}
-                    </span>
-                    <span
-                      aria-label={`${w.paneCount} ${w.paneCount === 1 ? "pane" : "panes"}`}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium tabular-nums text-muted-foreground"
-                    >
-                      <LayoutGrid className="size-3.5" aria-hidden />
-                      {w.paneCount}
-                    </span>
-                    {seen > 0 && (
-                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                        {timeAgo(seen)}
-                      </span>
-                    )}
+                    </div>
                   </TreeRowButton>
                   {actionsEnabled && (
                     <RowMoreButton
@@ -473,7 +531,7 @@ export function SpaceTree({
                                         </>
                                       )}
                                       <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground hover:text-foreground">
-                                        {paneDisplayName(p)}
+                                        {paneRowLabel(p, tabPanes)}
                                       </span>
                                       {p.lastSeenAt ? (
                                         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
@@ -516,24 +574,35 @@ export function SpaceTree({
               </div>
             );
                 })}
-                {cluster.closed.map((closed) => {
+                {cluster.closed.map((closed, closedIndex) => {
                   const sourceId = cluster.parent?.workspaceId ?? cluster.children[0]?.workspaceId;
+                  const isLastClosed = closedIndex === cluster.closed.length - 1;
+                  const connector: WorktreeConnectorGlyph | null = family
+                    ? isLastClosed
+                      ? "end"
+                      : "fork"
+                    : null;
+                  const closedLabel = closed.branch ?? (closed.isDetached ? "detached" : closed.label);
                   return (
-                    <div key={closed.path} className="flex flex-row items-center gap-1 py-1.5 pl-8 pr-1.5">
+                    <div
+                      key={closed.path}
+                      className={cn(
+                        "flex flex-row items-center gap-1 border-t border-border/40 px-1.5 py-2",
+                        family && "hover:bg-muted/20",
+                      )}
+                    >
+                      {connector ? <WorktreeConnector glyph={connector} /> : null}
                       <span className="size-11 shrink-0" />
                       <TreeRowButton
                         onClick={() => { if (!readOnly) void openClosed(sourceId, closed); }}
                       >
                         <GitBranch className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
                         <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-                          {closed.label}
-                          {closed.branch ? (
-                            <span className="ml-1.5">{closed.branch}</span>
-                          ) : closed.isDetached ? (
-                            <span className="ml-1.5">detached</span>
-                          ) : null}
+                          {closedLabel}
                         </span>
-                        <span className="shrink-0 text-xs italic text-muted-foreground">closed</span>
+                        <span className="shrink-0 rounded-full border border-dashed border-muted-foreground/50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          closed
+                        </span>
                       </TreeRowButton>
                     </div>
                   );

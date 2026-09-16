@@ -194,6 +194,7 @@ export function applySnapshot(snap: SnapshotResponse, fromPush = true): void {
   lastSnapshot = snap;
   lastSnapshotAt = at;
   saveLastSnapshot(snap, at);
+  rememberShellPanes(snap);
   rememberAuthError(false);
   if (fromPush) pushedSnapshot = true;
   if (snap.bridge !== "disconnected") markLive();
@@ -273,6 +274,13 @@ function rememberPaneText(key: string, text: string): void {
 // back through a long exchange. The live tail still follows; scrolling up freezes it (see
 // AgentChat). Larger = more scrollback but more bytes per poll — 600 holds several exchanges.
 const DETAIL_HISTORY_LINES = 600;
+/** Shell/TUI panes only mirror the viewport — match bridge paneReadSpec. */
+const SHELL_DETAIL_HISTORY_LINES = 120;
+let shellPaneIds = new Set<string>();
+
+function rememberShellPanes(snap: SnapshotResponse): void {
+  shellPaneIds = new Set((snap.shellPanes ?? []).map((p) => p.paneId));
+}
 // "Load older" raises the requested window by a step per tap, up to a cap.
 //
 // The cap is 1000 because HERDR clamps `pane.read` there — silently, and without setting `truncated`.
@@ -290,7 +298,8 @@ const requestedLines = new Map<string, number>();
 
 /** The scrollback window currently requested for a pane (defaults to the base window). */
 function getRequestedLines(paneId: string): number {
-  return requestedLines.get(paneId) ?? DETAIL_HISTORY_LINES;
+  const base = shellPaneIds.has(paneId) ? SHELL_DETAIL_HISTORY_LINES : DETAIL_HISTORY_LINES;
+  return requestedLines.get(paneId) ?? base;
 }
 
 /** True while more scrollback can still be requested (below the cap). */

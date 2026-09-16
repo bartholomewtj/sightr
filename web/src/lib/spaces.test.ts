@@ -4,9 +4,14 @@ import {
   clusterSpaces,
   filterClusters,
   filterSpaces,
+  groupedChildDisplayLabel,
   groupPanesByTab,
+  isWorktreeFamily,
+  shortWorktreeBranch,
   sortPanesInTab,
+  spaceBranchLine,
   spaceLastSeenMap,
+  spaceRowLabel,
   spaceTriageMap,
   worstBucket,
 } from "./spaces";
@@ -231,5 +236,40 @@ describe("filterClusters", () => {
     expect(hit).toHaveLength(1);
     expect(hit[0]!.parent?.label).toBe("sighter");
     expect(hit[0]!.children[0]!.label).toBe("foo");
+  });
+});
+
+describe("worktree row labels", () => {
+  it("strips worktree/ from branch lines", () => {
+    expect(shortWorktreeBranch("worktree/issue-137")).toBe("issue-137");
+    expect(shortWorktreeBranch("main")).toBe("main");
+  });
+
+  it("uses the branch for auto-named linked children", () => {
+    expect(groupedChildDisplayLabel("foo", "feat/foo", "/sighter-foo")).toBe("feat/foo");
+    expect(groupedChildDisplayLabel("herdr-issue", "worktree/issue-137", "/repo/herdr-issue")).toBe(
+      "issue-137",
+    );
+  });
+
+  it("keeps a renamed linked child label", () => {
+    expect(groupedChildDisplayLabel("renamed issue", "worktree/issue-137", "/repo/x")).toBe(
+      "renamed issue",
+    );
+  });
+
+  it("puts branch on its own row for parents only", () => {
+    const parent = wt("w1", "sighter", false);
+    const child = wt("w2", "foo", true);
+    expect(spaceRowLabel(parent, false)).toBe("sighter");
+    expect(spaceBranchLine(parent, false)).toBe("main");
+    expect(spaceRowLabel(child, true)).toBe("foo");
+    expect(spaceBranchLine(child, true)).toBeNull();
+  });
+
+  it("detects worktree families for framing", () => {
+    const family = clusterSpaces([wt("w1", "sighter", false), wt("w2", "foo", true)])[0]!;
+    expect(isWorktreeFamily(family)).toBe(true);
+    expect(isWorktreeFamily(clusterSpaces([ws("w1", "solo", 1)])[0]!)).toBe(false);
   });
 });

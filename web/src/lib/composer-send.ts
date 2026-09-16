@@ -158,7 +158,9 @@ export async function runComposerSend(
         // anything the host typed inside the poll gap (~1.5s) isn't counted. Extra Backspace on an
         // already-empty input is a no-op, so a generous margin costs nothing and shrinks the window
         // where a mid-gap host burst leaves a remnant that corrupts the send.
-        const clearCount = [...terminalLine].length + 32;
+        // Cap the sweep: each Backspace is one herdr key event. A long mirrored line over the phone
+        // link can mean hundreds of keys and seconds of PTY churn before the message even types.
+        const clearCount = Math.min([...terminalLine].length + 32, 96);
         // BOUND to the prompt row the pre-flight's read actually saw. Ordering is not a freshness
         // bound: the read's answer describes the pane at the moment the BRIDGE snapshotted it, and
         // these keys go out when the answer arrives — a whole network round-trip later, capped only

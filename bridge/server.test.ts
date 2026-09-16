@@ -5,7 +5,15 @@ import { join, normalize } from "node:path";
 import { SEEN_HEADER, marksPaneSeen, isLoopbackPeer, isStateChangingMethod, checkAccess, isHostAllowed, guard, deviceAuth, startupWarnings } from "./access.ts";
 import { decodePathSegment, failureText, isJsonContentType } from "./responses.ts";
 import { BUILD_HEADER, withBuildHeader, resolveStaticPath, isReservedAuthPath, cacheControlFor, isPrivateStaticFile } from "./static-assets.ts";
-import { paneReadResponse, historyParams, readPane, panePeersAtCwd, foldCwd } from "./pane-read-routes.ts";
+import {
+  paneReadResponse,
+  historyParams,
+  readPane,
+  panePeersAtCwd,
+  foldCwd,
+  paneReadSpec,
+  SHELL_MIRROR_LINES_CAP,
+} from "./pane-read-routes.ts";
 import type { AgentView } from "./state-engine.ts";
 import { sendReplySteps, replyPane, keysPane, type ReplySender } from "./pane-write-routes.ts";
 import { normalizeLabel } from "./tree-routes.ts";
@@ -745,6 +753,20 @@ describe("pane write prompt binding", () => {
       expect(fresh.texts).toEqual([]);
       expect(fresh.keys).toEqual([]);
     }
+  });
+});
+
+describe("paneReadSpec", () => {
+  test("shell panes read the visible viewport only", () => {
+    expect(
+      paneReadSpec({ paneId: "w:p1", kind: "shell" } as import("./state-engine.ts").AgentView, 600),
+    ).toEqual({ source: "visible", lines: SHELL_MIRROR_LINES_CAP });
+  });
+
+  test("agent panes keep recent scrollback reads", () => {
+    expect(
+      paneReadSpec({ paneId: "w:p1", kind: "agent" } as import("./state-engine.ts").AgentView, 600),
+    ).toEqual({ source: "recent", lines: 600 });
   });
 });
 
