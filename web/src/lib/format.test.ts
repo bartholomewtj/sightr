@@ -2,7 +2,7 @@ import { baseName, initials, shortCwd, timeAgo, timeAgoShort } from "./format";
 
 describe("baseName", () => {
   it("takes the last segment on Windows paths too", () => {
-    expect(baseName("C:\\claudeOS\\Projects\\bench")).toBe("bench");
+    expect(baseName("C:\\Users\\you\\Projects\\demo")).toBe("demo");
   });
 });
 

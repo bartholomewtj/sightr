@@ -1,5 +1,5 @@
 // Cursor CLI ask-question card detector (`AskQuestionForm`).
-// Source ground truth: `C:\Users\barth\AppData\Local\cursor-agent\versions\2026.09.10-fd3934a\3484.index.js`
+// Source ground truth: `C:\Users\you\AppData\Local\cursor-agent\versions\2026.09.10-fd3934a\3484.index.js`
 // (`./src/components/ask-question-form.tsx` and `./src/utils/interaction-utils.ts`).
 //
 // Recipe: from pointer row `p` to option row `i`: |i - p| × (Down if i > p else Up), then Enter.

@@ -46,8 +46,8 @@ describe("paneDisplayName", () => {
 
   it("names a bare shell pane after its cwd directory before falling back to \"shell\"", () => {
     expect(
-      paneDisplayName(pane({ kind: "shell", agent: "shell", cwd: "C:\\claudeOS\\Projects\\bench" })),
-    ).toBe("bench");
+      paneDisplayName(pane({ kind: "shell", agent: "shell", cwd: "C:\\Users\\you\\Projects\\demo" })),
+    ).toBe("demo");
     expect(paneDisplayName(pane({ kind: "shell", agent: "shell", cwd: "" }))).toBe("shell");
   });
 

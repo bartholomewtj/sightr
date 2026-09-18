@@ -15,7 +15,7 @@ Question 1 of 1
 
 ## Source ground truth
 
-Source file: `C:\Users\barth\AppData\Local\cursor-agent\versions\2026.09.10-fd3934a\3484.index.js`.
+Source file: `C:\Users\you\AppData\Local\cursor-agent\versions\2026.09.10-fd3934a\3484.index.js`.
 Components:
 - `./src/components/ask-question-form.tsx` (`AskQuestionForm`): paints cyan single-border box (`┌─┐ │ └─┘`) at screen width − 2 inside `paddingX:1`, column `paddingX:1, gap:1` (title, `Question k of n`, `${k}. ${prompt}` with optional ` (multi-select)`, option rows with `marginLeft:2`, and the footer).
 - `./src/utils/interaction-utils.ts` (`Q7`): option rows, always appending freeform row `__freeform_other__` (`Other: (type to answer)` / `Other: <text>`).
