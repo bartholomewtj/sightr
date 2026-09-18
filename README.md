@@ -18,6 +18,7 @@ you, read its chat, and answer with buttons or an ordinary text box, so phone di
   or you ask for it.
 
   <img src="docs/features/chat.jpg" alt="Pane chat from the agent's session log" width="360">
+  <img src="docs/features/chat-live-terminal.jpg" alt="Same pane with the live terminal open" width="360">
 
 - **Tap to answer.** Detected prompts, permission cards and ask-cards become buttons. A blocked
   agent with no buttons still gets Yes and No. The reply box is an ordinary text field, so phone
