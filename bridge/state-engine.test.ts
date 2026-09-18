@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { BeaconSweepDeps } from "./beacon/reader.ts";
-import { overlayFromAgent, StateEngine, type EngineSnapshot } from "./state-engine.ts";
+import { overlayFromAgent, StateEngine, STATUS_HOLD_MS, type EngineSnapshot } from "./state-engine.ts";
 import type { HerdrClient, WireAgent } from "./herdr-client.ts";
 import type { AgentStatus } from "../shared/wire.ts";
 
@@ -96,9 +96,9 @@ class FakeHerdr {
   }
 }
 
-function makeEngine() {
+function makeEngine(now: () => number = Date.now) {
   const herdr = new FakeHerdr();
-  const engine = new StateEngine(herdr as unknown as HerdrClient, 1500);
+  const engine = new StateEngine(herdr as unknown as HerdrClient, 1500, now);
   const transitions: Array<{ pane: string; from: AgentStatus; to: AgentStatus }> = [];
   engine.onTransition((a, from, to) => transitions.push({ pane: a.paneId, from, to }));
   const removed: string[] = [];
@@ -132,6 +132,89 @@ describe("StateEngine — transition detection", () => {
     await poll(); // pruned from prevStatus
     herdr.panes = [pane("w1:p1", "w1", "blocked", "claude")];
     await poll(); // reappears — must be treated as new, not a transition
+    expect(transitions).toEqual([]);
+  });
+});
+
+describe("StateEngine — working→resting hold", () => {
+  // Grok keeps the composer on screen during a turn, so Herdr reports `done` between tool calls.
+  // Publishing that as a finish makes Ready · unseen (green) flash against Working on every tool.
+
+  function heldEngine() {
+    let now = 1_000_000;
+    const { herdr, engine, transitions, poll } = makeEngine(() => now);
+    const status = () => engine.current().agents[0]?.status;
+    return {
+      herdr,
+      transitions,
+      status,
+      poll,
+      advance: (ms: number) => {
+        now += ms;
+      },
+    };
+  }
+
+  test("a brief done after working stays working and fires no transition", async () => {
+    const { herdr, transitions, status, poll, advance } = heldEngine();
+    herdr.panes = [pane("w1:p1", "w1", "working", "grok")];
+    await poll();
+    herdr.panes = [pane("w1:p1", "w1", "done", "grok")];
+    await poll();
+    expect(status()).toBe("working");
+    expect(transitions).toEqual([]);
+    advance(STATUS_HOLD_MS - 1);
+    await poll();
+    expect(status()).toBe("working");
+    expect(transitions).toEqual([]);
+  });
+
+  test("done that lasts the hold becomes done and fires one working→done transition", async () => {
+    const { herdr, transitions, status, poll, advance } = heldEngine();
+    herdr.panes = [pane("w1:p1", "w1", "working", "grok")];
+    await poll();
+    herdr.panes = [pane("w1:p1", "w1", "done", "grok")];
+    await poll();
+    advance(STATUS_HOLD_MS);
+    await poll();
+    expect(status()).toBe("done");
+    expect(transitions).toEqual([{ pane: "w1:p1", from: "working", to: "done" }]);
+  });
+
+  test("working→done→working before the hold elapses is one continuous working run", async () => {
+    const { herdr, transitions, status, poll, advance } = heldEngine();
+    herdr.panes = [pane("w1:p1", "w1", "working", "grok")];
+    await poll();
+    herdr.panes = [pane("w1:p1", "w1", "done", "grok")];
+    await poll();
+    advance(400);
+    herdr.panes = [pane("w1:p1", "w1", "working", "grok")];
+    await poll();
+    expect(status()).toBe("working");
+    expect(transitions).toEqual([]);
+    herdr.panes = [pane("w1:p1", "w1", "done", "grok")];
+    await poll();
+    advance(STATUS_HOLD_MS - 1);
+    await poll();
+    expect(status()).toBe("working");
+    expect(transitions).toEqual([]);
+  });
+
+  test("working→blocked is not held — a permission card is not a blip", async () => {
+    const { herdr, transitions, status, poll } = heldEngine();
+    herdr.panes = [pane("w1:p1", "w1", "working", "grok")];
+    await poll();
+    herdr.panes = [pane("w1:p1", "w1", "blocked", "grok")];
+    await poll();
+    expect(status()).toBe("blocked");
+    expect(transitions).toEqual([{ pane: "w1:p1", from: "working", to: "blocked" }]);
+  });
+
+  test("a first sighting that is already done is not held", async () => {
+    const { herdr, transitions, status, poll } = heldEngine();
+    herdr.panes = [pane("w1:p1", "w1", "done", "grok")];
+    await poll();
+    expect(status()).toBe("done");
     expect(transitions).toEqual([]);
   });
 });
