@@ -108,15 +108,26 @@ export function opensBox(text: string): boolean {
 // `Space:prompt`, `a:approve`, `Tab:plan`, …). A ghost completion adds
 // `Tab/→:accept suggestion` as the first segment (phone screenshot 2026-08-30, pane w56:p7);
 // without that token locateComposer treated a writable box as a torn frame.
+//
+// Once the draft is non-empty, Grok inserts the newline chord next to `Enter:send` (or
+// `Enter:queue` while a turn is running): `Shift+Enter/Alt+Enter:newline`, or `Alt+Enter`
+// alone on SSH/tmux. Phone screenshot 2026-09-18: the empty-box bar classified, typing
+// landed, then this segment appeared and locateComposer returned null — "Message didn't
+// reach the input box" with the text sitting in a live composer. Matching only
+// `Shift+Enter` leaves `/Alt+Enter:newline` and refuses the row.
+//
 // locateComposer may only treat those as hints. Arbitrary `word:word` transcript under the
 // box is a torn/stale frame, not a hint run — treating it as a hint kept the composer
 // writable after the dialog had replaced the bar. A bare `[stable]` chip was originally
 // refused on the same reasoning, but a live capture proved it real chrome, not a torn frame
 // — see isStatusChipRow below.
 //
-// Longer tokens first so `Tab/→` / `Tab/Space` are not read as `Tab` and `Enter` is not `E`.
-const HINT_SEGMENT =
-  /^(?:(?:Shift|Ctrl)\+(?:Tab|Space|Esc|Enter|Up|Down|[A-Za-z.])|Tab\/(?:Space|→)|Tab|Space|Esc|Enter|Up|Down|[A-Za-z]):\S/;
+// Slash-alternates (`Tab/→`, `Shift+Enter/Alt+Enter`) are consumed as one token so a prefix
+// cannot win. `Enter` / `Tab` beat a single letter so `Enter:send` is not read as `E`.
+const HINT_KEY = "(?:Tab|Space|Esc|Enter|Up|Down|[A-Za-z.→])";
+const HINT_MOD = "(?:Shift|Ctrl|Alt)";
+const HINT_TOKEN = `(?:${HINT_MOD}\\+)?${HINT_KEY}(?:\\/(?:${HINT_MOD}\\+)?${HINT_KEY})*`;
+const HINT_SEGMENT = new RegExp(`^${HINT_TOKEN}:\\S`);
 
 /**
  * True when the row is Grok's key-hint bar. Used to refuse a composer whose "hint run" is

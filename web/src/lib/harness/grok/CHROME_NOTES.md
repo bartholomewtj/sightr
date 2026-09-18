@@ -23,6 +23,18 @@ predict.
 No live composer capture of the chip yet. The matcher is unit-tested; a pane.read of a stalled
 image send would pin the on-screen shape.
 
+## Newline chord on a non-empty draft
+
+Grok's composer footer shows `Enter:send` (or `Enter:queue` mid-turn) on an empty box.
+Once the draft is non-empty it inserts `Shift+Enter/Alt+Enter:newline` (or `Alt+Enter`
+alone over SSH/tmux) next to that token — Grok user-guide *Keyboard Shortcuts*.
+
+`isComposerHint` has to accept the slash-combo as one token. Matching only `Shift+Enter`
+leaves `/Alt+Enter:newline`, `locateComposer` returns null, and the reply guard stalls
+with "Message didn't reach the input box" after `pane.send_text` has already landed.
+Reproduced live 2026-09-18 (phone screenshot): empty-box pre-flight passed, verification
+read failed, draft sitting in the box, Enter withheld.
+
 ## Italic ghost completion
 
 Live 2026-09-07, pane `w9C:p2`, Grok Build 1.0.13. Empty composer showing a history suggestion:

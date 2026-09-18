@@ -212,6 +212,28 @@ describe("composerPrompt / hasComposer / composerReady", () => {
     expect(extractInputDraft(lines)).toBe("merge pr and update docs");
   });
 
+  // Live 2026-09-18, Grok pane (phone screenshot): empty-box footer classified, send_text
+  // landed, then Grok painted `Shift+Enter/Alt+Enter:newline` next to `Enter:send`. That
+  // token was missing from isComposerHint, so locateComposer returned null on the
+  // verification read, Enter was withheld, and the stall read "didn't reach the input box"
+  // while the draft sat in a live composer.
+  it("a Shift+Enter/Alt+Enter:newline footer is still a writable composer", () => {
+    const screen = [
+      "  ╭────────────────────────────────────────╮",
+      "  │ > deploy and restart, then do a live click through once deployed │",
+      "  ╰──────────────────── Grok 4.6 (high) ─╯",
+      "",
+      "  Enter:send  │  Shift+Enter/Alt+Enter:newline  │  Shift+Tab:mode  │  Ctrl+x:shortcuts",
+    ].join("\n");
+    const lines = splitLines(parseAnsi(screen));
+    expect(locateComposer(lines)).not.toBeNull();
+    expect(hasComposer(lines)).toBe(true);
+    expect(composerReady(lines)).toBe(true);
+    expect(extractInputDraft(lines)).toBe(
+      "deploy and restart, then do a live click through once deployed",
+    );
+  });
+
   it("a bare [stable] chip under the box is startup chrome — the composer is writable", () => {
     const screen = [
       "  ╭────────────────────────────────────────╮",
