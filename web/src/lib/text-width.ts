@@ -194,6 +194,12 @@ export function displayWidth(text: string): number {
   return width;
 }
 
+/** The same walk `displayWidth` uses, as (glyph, columns) pairs so a renderer can lock each
+ *  cluster to `Nch` without re-deriving the table. Combining-only clusters report `cols: 0`. */
+export function displayCells(text: string): ReadonlyArray<{ readonly glyph: string; readonly cols: number }> {
+  return clusters(text).map((glyph) => ({ glyph, cols: clusterWidth(glyph) }));
+}
+
 // There is deliberately NO companion "error bar" function here, and one must not be re-added. A round
 // of this adapter shipped `widthUncertainty(text)` — a per-cluster count of the glyphs this table
 // resolves by default rather than by evidence — so a detector could compare two measured widths

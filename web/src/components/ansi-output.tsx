@@ -16,6 +16,7 @@ import {
 import { MIRROR_SPACE, MIRROR_INVERT, styleFor } from "@/components/mirror-space";
 import { findMatches, splitSegment, type FindMatch } from "@/lib/find";
 import { findLinks } from "@/lib/links";
+import { partitionMirrorRuns } from "@/lib/mirror-cells";
 import { PromptSelectBlock, type PromptBlockAction } from "@/components/prompt-select-block";
 import { WizardBlock } from "@/components/wizard-block";
 import { PreviewSelectBlock, type PreviewBlockAction } from "@/components/preview-select-block";
@@ -69,7 +70,7 @@ const LINK_CLASS =
 
 function preClass(className?: string): string {
   return cn(
-    "m-0 font-mono leading-[1.25] tracking-normal text-foreground [font-variant-ligatures:none]",
+    "m-0 font-mono leading-[1.25] tracking-normal text-foreground [font-variant-ligatures:none] [font-kerning:none] [text-rendering:geometricPrecision]",
     MIRROR_SPACE,
     MIRROR_INVERT,
     // Horizontal pan, column-faithful. The overflow rules stay because `overflow-x-auto` forces
@@ -80,6 +81,30 @@ function preClass(className?: string): string {
     // x-scroll still works.
     "min-w-0 w-full max-w-full shrink-0 overflow-x-auto overscroll-x-contain [touch-action:pan-x_pan-y] whitespace-pre",
     className,
+  );
+}
+
+// Non-ASCII clusters lock to Nch so a ✓ or ─ occupies the same column as a Latin letter. ASCII
+// stays a text run (long agent scrollback must not explode into a span per character).
+const CELL_CLASS = "inline-block overflow-hidden text-center align-bottom [line-height:inherit]";
+
+function renderCells(text: string): ReactNode {
+  const runs = partitionMirrorRuns(text);
+  if (runs.length === 0) return text;
+  if (runs.length === 1 && runs[0]!.kind === "text") return runs[0]!.text;
+  return runs.map((run, i) =>
+    run.kind === "text" ? (
+      run.text
+    ) : (
+      <span
+        key={i}
+        data-cell={run.cols}
+        className={CELL_CLASS}
+        style={{ width: `${run.cols}ch`, maxWidth: `${run.cols}ch` }}
+      >
+        {run.glyph}
+      </span>
+    ),
   );
 }
 
@@ -259,9 +284,9 @@ export const AnsiMirror = memo(function AnsiMirror({
   // highlighted. `currentAssigned` refs only the first slice of the focused match (a match can span
   // segments on a colour change) so scrollIntoView targets one stable node.
   const renderFind = (text: string, start: number): ReactNode => {
-    if (matches.length === 0) return text;
+    if (matches.length === 0) return renderCells(text);
     return splitSegment(text, start, matches).map((p, j) => {
-      if (p.matchIndex === null) return p.text;
+      if (p.matchIndex === null) return <Fragment key={j}>{renderCells(p.text)}</Fragment>;
       const isCurrent = p.matchIndex === currentMatch;
       const attach = isCurrent && !currentAssigned;
       if (attach) currentAssigned = true;
@@ -288,7 +313,7 @@ export const AnsiMirror = memo(function AnsiMirror({
             isCurrent ? cn(MIRROR_INVERT, "bg-yellow-400 text-black") : "bg-yellow-400/30",
           )}
         >
-          {p.text}
+          {renderCells(p.text)}
         </span>
       );
     });

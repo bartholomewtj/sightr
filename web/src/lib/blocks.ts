@@ -205,6 +205,11 @@ function styledLine(segments: AnsiSegment[]): StyledLine {
 // plus a █ scrollbar cell) and a blank vpad row between markdown lines. This pass drops that canvas
 // fill (user-prompt / code-block greys stay), strips trailing █, collapses right-aligned timestamp
 // pads, and removes coloured all-space vpad rows. Plain unstyled blank lines are kept.
+//
+// A TUI (draftr swimlanes, other Ratatui panes) paints a column grid with box-drawing and a card
+// fill. Trailing spaces and the long gap on an axis row ARE the grid — stripping or collapsing
+// them shears the bars off the ticks. Box-drawing rows keep their pad; a non-canvas fill on a
+// long gap skips the timestamp collapse. Canvas vpad still drops.
 
 const MIN_TRAILING_PAD = 2;
 // Grok's scrollbar thumb. Same alphabet grok/markers.ts rstrip already uses; presentLine has to
@@ -302,6 +307,16 @@ function removeChars(segments: AnsiSegment[], start: number, count: number): Ans
   return out;
 }
 
+function rangeHasTuiFill(segments: AnsiSegment[], start: number, end: number): boolean {
+  let i = 0;
+  for (const seg of segments) {
+    const segEnd = i + seg.text.length;
+    if (segEnd > start && i < end && seg.bg && !isCanvasBg(seg.bg)) return true;
+    i = segEnd;
+  }
+  return false;
+}
+
 function collapseRightAlignedPad(segments: AnsiSegment[]): AnsiSegment[] {
   const text = segments.map((s) => s.text).join("");
   const m = RIGHT_ALIGN_PAD.exec(text);
@@ -311,6 +326,10 @@ function collapseRightAlignedPad(segments: AnsiSegment[]): AnsiSegment[] {
   const gapEnd = text.length - rightLen;
   const remove = gapEnd - leftLen - 2;
   if (remove <= 0) return segments;
+  // A TUI paints its card fill onto the gap (draftr's Gantt axis is `0s` … `1m` with CARD-coloured
+  // spaces). Collapsing that gap to two spaces shears the axis off the bars. Grok's timestamp pad
+  // is canvas-coloured (or unstyled after invert), so it still collapses.
+  if (rangeHasTuiFill(segments, leftLen, gapEnd)) return segments;
   return removeChars(segments, leftLen + 2, remove);
 }
 
@@ -346,6 +365,15 @@ function stripTrailingSpaces(segments: AnsiSegment[], count: number): AnsiSegmen
   return result;
 }
 
+/** Box-drawing and block elements — the glyphs a TUI uses to paint a column grid. */
+function hasTuiGridGlyph(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c >= 0x2500 && c <= 0x259f) return true;
+  }
+  return false;
+}
+
 /**
  * Strip trailing padded spaces / █ and drop Grok's near-black canvas fill.
  * Operates purely on presentation.
@@ -359,7 +387,9 @@ function presentLine(line: StyledLine): StyledLine {
     newSegments = [];
   } else {
     const trailing = trailingPadCount(text);
-    if (trailing > 0) {
+    // Keep trailing pad on a TUI grid row — those spaces are the panel to the right of a short
+    // bar. Highlight / Grok rows have no box-drawing, so they still strip (avoids a 200-col pan).
+    if (trailing > 0 && !hasTuiGridGlyph(text)) {
       newSegments = stripTrailingSpaces(line.segments, trailing);
     }
     newSegments = collapseRightAlignedPad(newSegments);

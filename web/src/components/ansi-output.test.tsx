@@ -67,7 +67,7 @@ describe("terminal mirror colour space", () => {
 
   it("keeps muted rule glyphs on a literal dark-space grey", () => {
     const pre = mirror("├────────────┤\n");
-    const span = [...pre.querySelectorAll("span")].find((s) => s.textContent?.includes("─"));
+    const span = [...pre.querySelectorAll("span")].find((s) => (s as HTMLElement).style.color === "rgb(161, 161, 161)");
     expect(span).toBeDefined();
     expect(span!.style.color).toBe("rgb(161, 161, 161)"); // #a1a1a1, --muted-foreground's dark half
   });
@@ -139,6 +139,17 @@ describe("mirror always pans", () => {
     const pannedPre = panned.querySelector("pre")!;
     expect(pannedPre.className).toContain("overflow-x-auto");
     expect(pannedPre.textContent).toBe(`${tableRow}\n`);
+  });
+
+  it("locks box-drawing and checkmarks to 1ch cells and leaves ASCII as a text run", () => {
+    const { container } = render(<AnsiOutput text={"pla ─✓\n"} />);
+    const pre = container.querySelector("pre")!;
+    expect(pre.textContent).toBe("pla ─✓\n");
+    const cells = [...pre.querySelectorAll("[data-cell]")];
+    expect(cells.map((el) => el.textContent)).toEqual(["─", "✓"]);
+    expect(cells.every((el) => (el as HTMLElement).style.width === "1ch")).toBe(true);
+    const ascii = [...pre.querySelectorAll("span")].find((s) => s.textContent === "pla ");
+    expect(ascii?.hasAttribute("data-cell")).toBeFalsy();
   });
 });
 
