@@ -11,26 +11,43 @@ you, read its chat, and answer with buttons or an ordinary text box, so phone di
 - **Windows only.** The supervisor is Task Scheduler, the launcher is PowerShell, and Herdr's control
   socket is a named pipe.
 
-## What you get
+## Features
 
 - **Needs you.** Blocked agents sit in an inbox above the space / tab / pane tree, most recently
   active first. A pane Herdr has named shows that name on the row, the header and a push.
+
+  <img src="docs/features/spaces.png" alt="Spaces: the herd tree on the phone" width="360">
+
 - **Chat from the agent's own log.** Your messages are bubbles; tool-call runs fold to one line;
   thinking collapses to "Thought for 12s". The live terminal stays hidden until the agent is blocked
   or you ask for it.
+
+  <img src="docs/features/chat.jpg" alt="Pane chat from the agent's session log" width="360">
+
 - **Tap to answer.** Detected prompts, permission cards and ask-cards become buttons. A blocked
   agent with no buttons still gets Yes and No. The reply box is an ordinary text field, so phone
   dictation works.
 - **Desktop mode.** Settings → Desktop: System, On or Off, stored per browser. Resizable sidebar,
   Composer or Direct typing, `Ctrl+backtick` arms typing, `Ctrl+F` finds, `Ctrl+Alt+Up`/`Down`
   change panes.
+
+  <img src="docs/features/desktop.png" alt="Desktop mode: Needs you inbox, spaces, and a Grok pane">
+
 - **Push.** Opt in per device. The phone can notify when an agent needs input.
 - **Reconnect lock.** Windows Hello or Face ID on the HTTPS tailnet URL, so an unlocked phone is
   not an open shell by itself.
 - **Files.** Point `SIGHTR_WORK_ROOT` at a narrow folder and browse, preview, edit, or attach a
   file to a reply (images and text, 10 MB). Unset hides the tab.
+
+  <img src="docs/features/files.png" alt="Files: preview, copy path, download, and edit" width="480">
+
 - **Keys and commands.** Esc, Ctrl+C, arrows, a gesture wheel, and the harness's slash commands
-  plus your `commands.toml`.
+  plus your `commands.toml`. Hold the circle on the reply box to fan the wheel; Settings picks the
+  slices, up to six.
+
+  <img src="docs/features/gesture-wheel.jpg" alt="Gesture wheel fanned out from the reply box" width="360">
+
+  <img src="docs/features/gesture-wheel-settings.jpg" alt="Settings: choose up to six keys for the wheel" width="360">
 
 Sightr started as a fork of [AltanS/collie](https://github.com/AltanS/collie) and has been a separate
 product since. It does not track collie.
