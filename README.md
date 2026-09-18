@@ -14,8 +14,9 @@ you, read its chat, and answer with buttons or an ordinary text box, so phone di
 ## Features
 
 - **Chat from the agent's own log.** Your messages are bubbles; tool-call runs fold to one line;
-  thinking collapses to "Thought for 12s". The live terminal stays hidden until the agent is blocked
-  or you ask for it.
+  thinking collapses to "Thought for 12s". A pane opens on the recent end of that log and keeps
+  fetching while you watch; swipe up for older turns. The live terminal stays hidden until the agent
+  is blocked or you ask for it.
 
   <img src="docs/features/chat.jpg" alt="Pane chat from the agent's session log" width="360">
   <img src="docs/features/chat-live-terminal.jpg" alt="Same pane with the live terminal open" width="360">

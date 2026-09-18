@@ -3,6 +3,14 @@
 Sightr uses [Semantic Versioning](https://semver.org). `bun scripts/bump.ts patch|minor|major --note "..."`
 adds an entry here and keeps the three version files in step; CI refuses a build where they disagree.
 
+## [1.0.5] - 2026-09-19
+
+### Changed
+- Prefetch 160 journal turns on pane open (was 80); swipe up still pages older ones.
+
+### Fixed
+- Refresh the session log while a pane is open, not only while Working, so chat catches up on every harness.
+
 ## [1.0.4] - 2026-09-18
 
 ### Fixed

@@ -9,6 +9,7 @@ import {
   INLINE_HISTORY_PAGE,
   INLINE_HISTORY_STEP,
   INLINE_IDLE_RETRY_MS,
+  INLINE_REFRESH_MS,
   mergeNewest,
   useInlineHistory,
 } from "./use-inline-history";
@@ -250,6 +251,27 @@ describe("useInlineHistory refresh", () => {
     rerender({ status: "idle" });
     await act(async () => {});
     expect(hits).toBe(1);
+  });
+
+  it("keeps refetching the newest page while the pane is open, even when idle", async () => {
+    let hits = 0;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/history/, () => {
+        hits += 1;
+        return hits === 1
+          ? page(fixtureTranscript)
+          : page([...fixtureTranscript, olderTurn("t3")]);
+      }),
+    );
+    const { result } = renderHook(() =>
+      useInlineHistory({ paneId: "w1:p1", enabled: true, status: "idle", getScrollElement }),
+    );
+    await waitFor(() => expect(result.current.entries.map((e) => e.uuid)).toEqual(["t1", "t2"]));
+    expect(hits).toBe(1);
+    await waitFor(() => expect(result.current.entries.map((e) => e.uuid)).toEqual(["t1", "t2", "t3"]), {
+      timeout: INLINE_REFRESH_MS + 1000,
+    });
+    expect(hits).toBeGreaterThanOrEqual(2);
   });
 });
 

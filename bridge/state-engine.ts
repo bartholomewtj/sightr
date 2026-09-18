@@ -58,9 +58,10 @@ export const SESSION_NAME_TTL_MS = 60_000;
 
 /**
  * How long a resting status (`idle` / `done` / `unknown`) must persist after `working` before the
- * snapshot believes the turn ended. Grok keeps its composer on screen during a turn, so Herdr's
- * detector often reports `done` between tool calls; treating that as a finish paints Ready · unseen
- * (green) then Working on every tool. Blocked is never held — a permission card is not a blip.
+ * snapshot believes the turn ended. Several harnesses keep the composer on screen during a turn, so
+ * Herdr's detector often reports `done` between tool calls; treating that as a finish paints
+ * Ready · unseen (green) then Working on every tool. Blocked is never held — a permission card is
+ * not a blip.
  */
 export const STATUS_HOLD_MS = 3_000;
 
