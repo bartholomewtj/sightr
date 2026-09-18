@@ -7,4 +7,4 @@ between the `→` prompt and the status block (wAC:p1S, working chrome with `1 t
 
   1 task
   Composer 2.5 · 25.2%                                                                   Run Everything
-  C:\claudeOS
+  C:\Users\you

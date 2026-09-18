@@ -61,7 +61,7 @@ Source: `~/.pi/agent/extensions/ask.ts` (tool implementation) and `@earendil-wor
 - **Input mode:** When input mode is active (Enter pressed on `Type something.`), the options remain for reference and `Your answer:` / editor appears. The frame stays raw and is not lifted into buttons.
 
 ## Fixture Provenance
-- `web/src/fixtures/panes/pi--ask-*.txt` were generated using Pi's own `createQuestionnaireUI(...).render(94)` via `jiti` import from `C:/Users/barth/.pi/agent/extensions/ask.ts`.
+- `web/src/fixtures/panes/pi--ask-*.txt` were generated using Pi's own `createQuestionnaireUI(...).render(94)` via `jiti` import from `C:/Users/you/.pi/agent/extensions/ask.ts`.
 - Upstream header rows 1–2 (`── ⠴ Working ──` and blank row) were prepended from `upstream/main:web/src/fixtures/panes/pi--v085-working-editor.txt`.
 - Footer rows (PWD and token stats) were appended to represent the full live pane layout.
 - These are rendered output + spliced headers/footers, not live captures. They should be replaced by live captures when an interactive Herdr session is captured.

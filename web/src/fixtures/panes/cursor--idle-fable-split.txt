@@ -5,4 +5,4 @@ Live 2026-09-14 — same failure when Cursor splits model and usage onto separat
 
   Claude Fable 5.1 300K High
   72.6% · 20 files edited
-  C:\claudeOS
+  C:\Users\you

@@ -7,4 +7,4 @@ so phone sends stalled with "Message didn't reach the input box" while the text 
 
 
   Claude Fable 5.1 300K High · 72.6% · 20 files edited
-  C:\claudeOS
+  C:\Users\you

@@ -1,4 +1,4 @@
-PS C:\claudeOS\Projects\tools\draftr> & cursor-agent.cmd
+PS C:\Users\you\Projects\demo> & cursor-agent.cmd
 
   ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
   │                                                                                                                                                                                                                                                       │
@@ -8,7 +8,7 @@ PS C:\claudeOS\Projects\tools\draftr> & cursor-agent.cmd
   │                                                                                                                                                                                                                                                       │
   │  Do you trust the contents of this directory?                                                                                                                                                                                                         │
   │                                                                                                                                                                                                                                                       │
-  │    C:\claudeOS\Projects\tools\draftr                                                                                                                                                                                                                  │
+  │    C:\Users\you\Projects\demo                                                                                                                                                                                                                  │
   │                                                                                                                                                                                                                                                       │
   │                                                                                                                                                                                                                                                       │
   │    [a] Trust this workspace                                                                                                                                                                                                                           │
@@ -35,7 +35,7 @@ PS C:\claudeOS\Projects\tools\draftr> & cursor-agent.cmd
   probe-cursor-ok
 
 
-  Create a new file at C:\claudeOS\Projects\tools\draftr\tmp-sighter-probe.txt containing exactly the word hello. Do not run any shell commands.
+  Create a new file at C:\Users\you\Projects\demo\tmp-sighter-probe.txt containing exactly the word hello. Do not run any shell commands.
 
 
     Edited tmp-sighter-probe.txt +1
@@ -63,4 +63,4 @@ PS C:\claudeOS\Projects\tools\draftr> & cursor-agent.cmd
 
 
   Auto · 7.5% · 1 file edited
-  C:\claudeOS\Projects\tools\draftr · main
+  C:\Users\you\Projects\demo · main

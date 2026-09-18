@@ -138,7 +138,7 @@ describe("Fable model chrome — narrow split panes", () => {
     expect(extractStatusLines(lines).map((l) => lineText(l).trim())).toEqual([
       "Claude Fable 5.1 300K High",
       "72.6% · 20 files edited",
-      "C:\\claudeOS",
+      "C:\\Users\\you",
     ]);
   });
 });
