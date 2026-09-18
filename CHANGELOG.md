@@ -3,6 +3,11 @@
 Sightr uses [Semantic Versioning](https://semver.org). `bun scripts/bump.ts patch|minor|major --note "..."`
 adds an entry here and keeps the three version files in step; CI refuses a build where they disagree.
 
+## [1.0.4] - 2026-09-18
+
+### Fixed
+- Hold Grok working→done blips so Ready · unseen does not flash between tool calls.
+
 ## [1.0.3] - 2026-09-18
 
 ### Fixed

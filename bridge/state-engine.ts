@@ -56,6 +56,16 @@ const SESSION_NAME_READ_LINES = 40;
 /** How stale a cached `/rename` name may get before the next poll re-reads it. */
 export const SESSION_NAME_TTL_MS = 60_000;
 
+/**
+ * How long a resting status (`idle` / `done` / `unknown`) must persist after `working` before the
+ * snapshot believes the turn ended. Grok keeps its composer on screen during a turn, so Herdr's
+ * detector often reports `done` between tool calls; treating that as a finish paints Ready · unseen
+ * (green) then Working on every tool. Blocked is never held — a permission card is not a blip.
+ */
+export const STATUS_HOLD_MS = 3_000;
+
+const RESTING_STATUS: ReadonlySet<AgentStatus> = new Set(["idle", "done", "unknown"]);
+
 // Claude renders its input box as a horizontal rule, the ❯ prompt line, then a closing rule. After
 // `/rename <name>` the TOP rule carries the session name inside it: "────────── my-name ──". This
 // matches that named rule. `\S` also matches box-drawing chars, but a *plain* rule has no embedded
@@ -125,6 +135,8 @@ export class StateEngine {
    * TTL rule, unchanged.
    */
   private readonly nameReadRevisions = new Map<string, number>();
+  /** Pane id → when a working→resting hold began. Cleared on working/blocked, a real rest, or removal. */
+  private readonly statusHold = new Map<string, number>();
   private readonly transitionListeners = new Set<TransitionListener>();
   private readonly removeListeners = new Set<RemoveListener>();
   private readonly updateListeners = new Set<UpdateListener>();
@@ -193,6 +205,34 @@ export class StateEngine {
     this.started = false;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+  }
+
+  /**
+   * Keep publishing `working` until a resting status has lasted {@link STATUS_HOLD_MS}. Incoming
+   * `working` / `blocked` (and a first sighting) pass through. Pure against `prevStatus` + the hold
+   * map; the published status is what transitions and unseen then see.
+   */
+  private applyStatusHold(agents: AgentView[]): AgentView[] {
+    const now = this.now();
+    const live = new Set(agents.map((a) => a.paneId));
+    for (const id of this.statusHold.keys()) {
+      if (!live.has(id)) this.statusHold.delete(id);
+    }
+    return agents.map((a) => {
+      const prev = this.prevStatus.get(a.paneId);
+      if (prev === "working" && RESTING_STATUS.has(a.status)) {
+        const since = this.statusHold.get(a.paneId);
+        if (since === undefined) {
+          this.statusHold.set(a.paneId, now);
+          return { ...a, status: "working" };
+        }
+        if (now - since < STATUS_HOLD_MS) return { ...a, status: "working" };
+        this.statusHold.delete(a.paneId);
+        return a;
+      }
+      this.statusHold.delete(a.paneId);
+      return a;
+    });
   }
 
   /**
@@ -340,10 +380,11 @@ export class StateEngine {
         : new Map();
       // Sorted AFTER decoration, because a beacon can change a pane's status and the herd list is
       // ordered by it — a pane that says it is waiting on you belongs at the top of the list, not
-      // wherever the poll's own reading had put it.
-      const agents: AgentView[] = polled
-        .map((a) => decorateAgent(a, identities.get(a.paneId)))
-        .sort(byTriage);
+      // wherever the poll's own reading had put it. The hold runs before the sort so a pane we are
+      // still calling `working` does not jump into Ready · unseen for a beat.
+      const agents: AgentView[] = this.applyStatusHold(
+        polled.map((a) => decorateAgent(a, identities.get(a.paneId))),
+      ).sort(byTriage);
 
       // Bare shell panes (no agent), ordered by space then pane so a space's panes read top-down.
       const shellPanes: AgentView[] = panes
@@ -399,6 +440,7 @@ export class StateEngine {
         this.sessionNames.delete(id); // drop the cached name so a reused pane id starts clean
         this.nameReads.delete(id);
         this.nameReadRevisions.delete(id);
+        this.statusHold.delete(id);
         for (const fn of this.removeListeners) fn(id);
       }
 
