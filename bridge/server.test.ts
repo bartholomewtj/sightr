@@ -524,6 +524,13 @@ describe("sendReplySteps — two-step send & partial-failure clarity", () => {
     expect(out).toEqual({ ok: true, textDelivered: true });
     expect(client.calls).toEqual(["text"]);
   });
+
+  test("sends each submit key as its own write so Enter is not coalesced with a flush key", async () => {
+    const client = new FakeClient();
+    const out = await sendReplySteps(client, "p1", "hello", true, ["Right", "Enter"], noSleep);
+    expect(out).toEqual({ ok: true, textDelivered: true });
+    expect(client.calls).toEqual(["text", "keys", "keys"]);
+  });
 });
 
 describe("pane write prompt binding", () => {
@@ -731,7 +738,7 @@ describe("pane write prompt binding", () => {
     const res = await replyPane(client as unknown as HerdrClient, cfg(), "w1:p1",
       request({ text: "hi", submit_keys: ["enter", "  ctrl+C  "] }), createPaneQueue());
     expect(res.status).toBe(200);
-    expect(client.keys).toEqual([["w1:p1", ["Enter", "ctrl+C"]]]);
+    expect(client.keys).toEqual([["w1:p1", ["Enter"]], ["w1:p1", ["ctrl+C"]]]);
     const noSubmit = await replyPane(client as unknown as HerdrClient, cfg(), "w1:p1",
       request({ text: "draft", submit: false }), createPaneQueue());
     expect(noSubmit.status).toBe(200);

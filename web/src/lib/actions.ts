@@ -1004,7 +1004,7 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
     } catch {
       continue; // transient read failure — the bounded loop is the timeout
     }
-    if (draftCarriesSend(args.text, draft)) return submitOnly(args, adapter.submitKeys);
+    if (draftCarriesSend(args.text, draft)) return finishSubmit(args, adapter);
     // The adapter gets a second look, and only a second look: a harness can SWALLOW what we typed and
     // paint a token of its own instead (Claude collapses anything past its paste threshold into
     // `[Pasted text #N +M lines]`), so the box never holds our words and the match above structurally
@@ -1012,7 +1012,7 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
     // thing that knows its harness's token and whether this one is consistent with THIS send
     // (.adr/0010). It can only widen the evidence, never narrow it, so a harness without the
     // capability is untouched.
-    if (draft !== null && adapter.draftCarriesSend?.(args.text, draft)) return submitOnly(args, adapter.submitKeys);
+    if (draft !== null && adapter.draftCarriesSend?.(args.text, draft)) return finishSubmit(args, adapter);
   }
 
   // The text never showed up on the input line. The likeliest cause is a dialog holding focus and
@@ -1179,6 +1179,57 @@ async function submitOnly(args: GuardedReplyArgs, submitKeys?: string[]): Promis
   } catch (e) {
     return { status: "error", error: message(e), textDelivered: true };
   }
+}
+
+/**
+ * Press submit, then confirm the draft actually left the box. Cursor CLI and Grok (and Codex on
+ * Windows ConPTY) can accept the typed text but swallow or rewrite the following Enter — the
+ * message sits in the composer unsubmitted. A second bare Enter is the proven rescue (a later
+ * input event flushes the buffered submit). Only fire it when a fresh read still shows OUR text;
+ * if the composer is gone or the box is empty, the turn started and another Enter would be a new
+ * prompt or an interrupt.
+ */
+async function finishSubmit(args: GuardedReplyArgs, adapter: HarnessAdapter): Promise<ReplyOutcome> {
+  const first = await submitOnly(args, adapter.submitKeys);
+  if (first.status === "error" && !first.textDelivered) return first;
+  if (await submitClearedDraft(args, adapter)) {
+    return first.status === "sent" ? first : { status: "sent" };
+  }
+  const rescue = await submitOnly(args, ["Enter"]);
+  if (rescue.status === "sent") return rescue;
+  if (first.status === "sent" || typedUnsubmitted(first) || typedUnsubmitted(rescue)) {
+    return {
+      status: "error",
+      error: "typed into the pane but not submitted — check the pane before resending",
+      textDelivered: true,
+    };
+  }
+  return rescue;
+}
+
+function typedUnsubmitted(out: ReplyOutcome): boolean {
+  return out.status === "error" && out.textDelivered === true;
+}
+
+/** True when the box no longer holds this send — composer gone, empty, or a different remnant. */
+async function submitClearedDraft(args: GuardedReplyArgs, adapter: HarnessAdapter): Promise<boolean> {
+  const sleep = args.sleep ?? defaultSleep;
+  for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
+    if (attempt > 0) await sleep(POLL_DELAY_MS);
+    try {
+      const fresh = await fetchPane(args.paneId, args.requestedLines);
+      const lines = parseLines(fresh.text);
+      if (adapter.composerReady?.(lines) === false) return true;
+      const draft = adapter.extractInputDraft(lines);
+      const stillOurs =
+        draftCarriesSend(args.text, draft) ||
+        (draft !== null && adapter.draftCarriesSend?.(args.text, draft) === true);
+      if (!stillOurs) return true;
+    } catch {
+      continue;
+    }
+  }
+  return false;
 }
 
 function message(e: unknown): string {

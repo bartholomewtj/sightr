@@ -63,7 +63,14 @@ export async function sendReplySteps(
     }
     if (submit) {
       if (txt) await sleep(REPLY_SETTLE_MS);
-      await client.sendPaneKeys(paneId, submitKeys);
+      // One RPC per key. A single pane.send_keys write of [Right, Enter] (or paste-terminator +
+      // Enter) is what Cursor CLI and Grok on Windows ConPTY swallow: the TUI inserts the text and
+      // buffers Enter until a later input event, so the composer shows the message unsubmitted.
+      // Separate writes, with the same settle as type-then-Enter, keep the submit on its own event.
+      for (let i = 0; i < submitKeys.length; i++) {
+        if (i > 0) await sleep(REPLY_SETTLE_MS);
+        await client.sendPaneKeys(paneId, [submitKeys[i]!]);
+      }
     }
     return { ok: true, textDelivered };
   } catch (err) {
