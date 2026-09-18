@@ -1,6 +1,6 @@
 id = "herdr.sightr"
 name = "Sightr"
-version = "1.0.2"
+version = "1.0.3"
 min_herdr_version = "0.7.0"
 description = "Mobile web UI to monitor and reply to your agent herd, served over Tailscale"
 platforms = ["windows"]

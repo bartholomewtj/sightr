@@ -31,6 +31,19 @@ describe("isComposerHint", () => {
     expect(
       isComposerHint("  Tab/→:accept suggestion  │  Shift+Tab:mode  │  Ctrl+x:shortcuts"),
     ).toBe(true);
+    // Non-empty draft: Grok inserts the newline chord (user-guide § keyboard shortcuts;
+    // phone screenshot 2026-09-18). This is the bar that used to refuse locateComposer.
+    expect(
+      isComposerHint(
+        "  Enter:send  │  Shift+Enter/Alt+Enter:newline  │  Shift+Tab:mode  │  Ctrl+x:shortcuts",
+      ),
+    ).toBe(true);
+    expect(
+      isComposerHint(
+        "  Enter:queue  │  Shift+Enter/Alt+Enter:newline  │  Shift+Tab:mode  │  Ctrl+x:shortcuts",
+      ),
+    ).toBe(true);
+    expect(isComposerHint("  Enter:send  │  Alt+Enter:newline  │  Shift+Tab:mode")).toBe(true);
   });
 
   it("rejects ordinary transcript, chips, and colon-shaped noise", () => {
