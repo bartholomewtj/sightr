@@ -271,3 +271,21 @@ describe("presentBlocks — agent neutrality (claude, grok, agy/undefined)", () 
   });
 });
 
+describe("presentBlocks — TUI grid geometry", () => {
+  const card = `${ESC}[48;2;24;24;37m`; // draftr CARD, above the Grok canvas threshold
+  const rawOf = (text: string) =>
+    presentBlocks(buildBlocks(splitLines(parseAnsi(text))))[0] as { kind: "raw"; lines: StyledLine[] };
+
+  it("keeps trailing spaces on a box-drawing row (short swimlane bar + panel fill)", () => {
+    const row = `${card}pla ────${" ".repeat(20)}${ESC}[0m\n`;
+    const presented = lineText(rawOf(row).lines[0]!);
+    expect(presented).toBe(`pla ────${" ".repeat(20)}`);
+  });
+
+  it("does not collapse a TUI axis gap (0s … 1m on card fill)", () => {
+    const axis = `${card}0s${" ".repeat(20)}1m${ESC}[0m\n`;
+    const presented = lineText(rawOf(axis).lines[0]!);
+    expect(presented).toBe(`0s${" ".repeat(20)}1m`);
+  });
+});
+

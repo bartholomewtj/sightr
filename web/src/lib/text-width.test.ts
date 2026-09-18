@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import { displayWidth, WIDE_RANGES, COMBINING_RANGES } from "./text-width";
+import { displayCells, displayWidth, WIDE_RANGES, COMBINING_RANGES } from "./text-width";
 
 describe("displayWidth", () => {
   it("counts ASCII as one column each", () => {
     expect(displayWidth("abc")).toBe(3);
   });
+
+  it("displayCells walks the same clusters displayWidth sums", () => {
+    expect(displayCells("a─日")).toEqual([
+      { glyph: "a", cols: 1 },
+      { glyph: "─", cols: 1 },
+      { glyph: "日", cols: 2 },
+    ]);
+    expect(displayCells("a─日").reduce((n, c) => n + c.cols, 0)).toBe(displayWidth("a─日"));
+  });
+
 
   it("counts CJK ideographs/kana as two columns each", () => {
     expect(displayWidth("日本語")).toBe(6);

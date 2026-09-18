@@ -83,10 +83,6 @@ function renderTree(
         path: "/pane/:paneId",
         element: <div data-testid="pane-cli">PANE CLI</div>,
       },
-      {
-        path: "/traces/:spaceId/:repo",
-        element: <div data-testid="trace-view">TRACE VIEW</div>,
-      },
     ],
     { initialEntries: [initialPath] },
   );
