@@ -1429,13 +1429,18 @@ const paneWithDraft = (draft: string) => `some output\n${BOX_RULE}\n❯ ${draft}
 // A focused permission dialog: no input box at the tail at all, so extractInputDraft sees nothing.
 const paneWithDialog = "Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel";
 
-/** Record every reply POST, and let the fake pane's screen be swapped per test. */
-function harness(screen: () => string) {
+/** Record every reply POST, and let the fake pane's screen be swapped per test.
+ *  After a submit POST, reads return an empty composer unless `keepDraftAfterSubmit` — a live
+ *  successful send drops the draft (or the composer) and the confirm-and-rescue pass must not
+ *  fire a second Enter at that screen. */
+function harness(screen: () => string, opts?: { keepDraftAfterSubmit?: boolean }) {
   const calls: Array<{ text: string; submit: boolean; submit_keys?: string[] }> = [];
   server.use(
-    http.get(/\/api\/pane\/[^/]+$/, () =>
-      HttpResponse.json({ paneId: "w1:p1", text: screen(), truncated: false, revision: 1 }),
-    ),
+    http.get(/\/api\/pane\/[^/]+$/, () => {
+      const submitted = calls.some((c) => c.submit);
+      const text = submitted && !opts?.keepDraftAfterSubmit ? paneWithDraft("") : screen();
+      return HttpResponse.json({ paneId: "w1:p1", text, truncated: false, revision: 1 });
+    }),
     http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
       const body = (await request.json()) as { text: string; submit: boolean; submit_keys?: string[] };
       calls.push(body);
@@ -1669,6 +1674,47 @@ describe("sendGuardedReply", () => {
     expect(calls).toEqual([
       { text: "ship it please", submit: false },
       { text: "", submit: true },
+    ]);
+  });
+
+  it("rescues with a second Enter when the draft is still in the box after submit", async () => {
+    // Cursor CLI / Grok on Windows ConPTY: the first Enter is swallowed or rewritten as a newline,
+    // so the verified text sits unsubmitted. A later input event flushes it.
+    const calls = harness(() => paneWithDraft("ship it please"), { keepDraftAfterSubmit: true });
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "ship it please",
+      agent: "claude",
+      ...instant,
+    });
+
+    expect(out).toEqual({ status: "sent" });
+    expect(calls).toEqual([
+      { text: "ship it please", submit: false },
+      { text: "", submit: true },
+      { text: "", submit: true, submit_keys: ["Enter"] },
+    ]);
+  });
+
+  it("flushes Cursor's paste burst with Right before Enter", async () => {
+    const cursorPane = [
+      "→ hello from phone",
+      "",
+      "Auto",
+      String.raw`C:\claudeOS`,
+    ].join("\n");
+    const calls = harness(() => cursorPane);
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "hello from phone",
+      agent: "cursor",
+      ...instant,
+    });
+    expect(out).toEqual({ status: "sent" });
+    expect(calls).toEqual([
+      { text: "hello from phone", submit: false },
+      { text: "", submit: true, submit_keys: ["Right", "Enter"] },
     ]);
   });
 
@@ -2140,17 +2186,22 @@ describe("onComposerSeen — destructive pre-type work needs positive evidence",
     // The common send: no stranded draft, so the callback sends no keys and the pre-flight's read is
     // still the freshest thing there is. Paying for a second read there would be pure latency.
     let reads = 0;
+    let submitted = false;
     server.use(
       http.get(/\/api\/pane\/[^/]+$/, () => {
         reads += 1;
         return HttpResponse.json({
           paneId: "w1:p1",
-          text: paneWithDraft("ship it please"),
+          text: submitted ? paneWithDraft("") : paneWithDraft("ship it please"),
           truncated: false,
           revision: 1,
         });
       }),
-      http.post(/\/api\/pane\/[^/]+\/reply$/, () => HttpResponse.json({ ok: true })),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = (await request.json()) as { submit?: boolean };
+        if (body.submit) submitted = true;
+        return HttpResponse.json({ ok: true });
+      }),
     );
 
     const out = await sendGuardedReply({
@@ -2162,7 +2213,9 @@ describe("onComposerSeen — destructive pre-type work needs positive evidence",
     });
 
     expect(out.status).toBe("sent");
-    expect(reads).toBe(2); // the pre-flight and the verification poll — no re-confirm in between
+    // pre-flight, verification poll, then one post-submit confirm that the draft left. No
+    // re-confirm between sweep (none) and type.
+    expect(reads).toBe(3);
   });
 
   it("aborts with nothing typed when the pre-type work fails or throws", async () => {

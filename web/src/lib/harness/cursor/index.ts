@@ -67,4 +67,9 @@ export const cursorAdapter: HarnessAdapter = {
   extractInputDraft,
   composerReady,
   composerPrompt,
+  // Windows ConPTY: Cursor CLI treats a paste burst as still open and either rewrites the next
+  // Enter into a newline or buffers it until a later input event (forum 166674). A Right arrow
+  // after the typed text flushes that burst without submitting; Enter then submits on its own
+  // write. Grok cannot use this — its footer binds → to accept a ghost suggestion.
+  submitKeys: ["Right", "Enter"],
 };

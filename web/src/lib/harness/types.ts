@@ -89,6 +89,10 @@ export interface HarnessAdapter {
   /**
    * Keys this harness's TUI uses to submit a reply, in Herdr pane.send_keys spelling and order.
    * When omitted, the bridge uses its configured default (SIGHTR_SUBMIT_KEYS, then Enter).
+   * The bridge sends each key as its own PTY write so a trailing Enter is not coalesced into the
+   * same ConPTY chunk as the typed text (Cursor CLI / Grok on Windows otherwise leave the draft
+   * sitting unsubmitted). `sendGuardedReply` then re-reads the box and fires one rescue Enter if
+   * the draft is still there.
    */
   submitKeys?: string[];
   /** The adapter lifts dialogs but cannot read its composer (no captured input box). Replies keep the

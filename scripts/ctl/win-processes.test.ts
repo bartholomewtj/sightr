@@ -71,6 +71,18 @@ test("a remaining foreign listener throws naming the pid and #41", async () => {
   await expect(waitPortFree({ port: "8787" }, run, async () => {})).rejects.toThrow(/#41/);
 });
 
+test("port occupancy query is loopback LISTEN only (not IPv6-any or TimeWait)", async () => {
+  let command = "";
+  const run: Run = async (_c, args) => {
+    command = args.join(" ");
+    return { code: 0, stdout: "[]", stderr: "" };
+  };
+  await waitPortFree({ port: "8787" }, run, async () => {});
+  expect(command).toContain("-State Listen");
+  expect(command).toContain("-LocalAddress @('127.0.0.1','::1')");
+  expect(command).not.toContain("0.0.0.0");
+});
+
 test("stopRecorded throws on a malformed record and only kills matching command lines", async () => {
   const d = await mkdtemp(path.join(tmpdir(), "sightr-"));
   const file = path.join(d, "sightr-processes");
