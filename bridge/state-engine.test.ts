@@ -137,7 +137,7 @@ describe("StateEngine — transition detection", () => {
 });
 
 describe("StateEngine — working→resting hold", () => {
-  // Grok keeps the composer on screen during a turn, so Herdr reports `done` between tool calls.
+  // Grok / Cursor / Pi keep the composer on screen during a turn, so Herdr reports `done` between tool calls.
   // Publishing that as a finish makes Ready · unseen (green) flash against Working on every tool.
 
   function heldEngine() {
