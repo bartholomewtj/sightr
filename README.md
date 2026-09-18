@@ -1,6 +1,6 @@
 # Sightr
 
-Sightr is a phone web UI for your [Herdr](https://herdr.dev) agent herd. A small Bun bridge runs on
+Sightr is a phone/desktop web UI for your [Herdr](https://herdr.dev) agent herd. A small Bun bridge runs on
 the Windows host next to Herdr, and your phone opens it over Tailscale. You see which agent needs
 you, read its chat, and answer with buttons or an ordinary text box, so phone dictation works.
 
@@ -12,11 +12,6 @@ you, read its chat, and answer with buttons or an ordinary text box, so phone di
   socket is a named pipe.
 
 ## Features
-
-- **Needs you.** Blocked agents sit in an inbox above the space / tab / pane tree, most recently
-  active first. A pane Herdr has named shows that name on the row, the header and a push.
-
-  <img src="docs/features/spaces.png" alt="Spaces: the herd tree on the phone" width="360">
 
 - **Chat from the agent's own log.** Your messages are bubbles; tool-call runs fold to one line;
   thinking collapses to "Thought for 12s". The live terminal stays hidden until the agent is blocked
@@ -39,8 +34,6 @@ you, read its chat, and answer with buttons or an ordinary text box, so phone di
 - **Files.** Point `SIGHTR_WORK_ROOT` at a narrow folder and browse, preview, edit, or attach a
   file to a reply (images and text, 10 MB). Unset hides the tab. The Git panel shows read-only
   status and diff.
-
-  <img src="docs/features/files.png" alt="Files: preview, copy path, download, and edit" width="480">
 
   <img src="docs/features/git-diff.png" alt="Files Git panel: status list and a redacted diff" width="360">
 
