@@ -37,9 +37,12 @@ you, read its chat, and answer with buttons or an ordinary text box, so phone di
 - **Reconnect lock.** Windows Hello or Face ID on the HTTPS tailnet URL, so an unlocked phone is
   not an open shell by itself.
 - **Files.** Point `SIGHTR_WORK_ROOT` at a narrow folder and browse, preview, edit, or attach a
-  file to a reply (images and text, 10 MB). Unset hides the tab.
+  file to a reply (images and text, 10 MB). Unset hides the tab. The Git panel shows read-only
+  status and diff.
 
   <img src="docs/features/files.png" alt="Files: preview, copy path, download, and edit" width="480">
+
+  <img src="docs/features/git-diff.png" alt="Files Git panel: status list and a redacted diff" width="360">
 
 - **Keys and commands.** Esc, Ctrl+C, arrows, a gesture wheel, and the harness's slash commands
   plus your `commands.toml`. Hold the circle on the reply box to fan the wheel; Settings picks the
