@@ -11,10 +11,29 @@ you, read its chat, and answer with buttons or an ordinary text box, so phone di
 - **Windows only.** The supervisor is Task Scheduler, the launcher is PowerShell, and Herdr's control
   socket is a named pipe.
 
+## What you get
+
+- **Needs you.** Blocked agents sit in an inbox above the space / tab / pane tree, most recently
+  active first. A pane Herdr has named shows that name on the row, the header and a push.
+- **Chat from the agent's own log.** Your messages are bubbles; tool-call runs fold to one line;
+  thinking collapses to "Thought for 12s". The live terminal stays hidden until the agent is blocked
+  or you ask for it.
+- **Tap to answer.** Detected prompts, permission cards and ask-cards become buttons. A blocked
+  agent with no buttons still gets Yes and No. The reply box is an ordinary text field, so phone
+  dictation works.
+- **Desktop mode.** Settings → Desktop: System, On or Off, stored per browser. Resizable sidebar,
+  Composer or Direct typing, `Ctrl+backtick` arms typing, `Ctrl+F` finds, `Ctrl+Alt+Up`/`Down`
+  change panes.
+- **Push.** Opt in per device. The phone can notify when an agent needs input.
+- **Reconnect lock.** Windows Hello or Face ID on the HTTPS tailnet URL, so an unlocked phone is
+  not an open shell by itself.
+- **Files.** Point `SIGHTR_WORK_ROOT` at a narrow folder and browse, preview, edit, or attach a
+  file to a reply (images and text, 10 MB). Unset hides the tab.
+- **Keys and commands.** Esc, Ctrl+C, arrows, a gesture wheel, and the harness's slash commands
+  plus your `commands.toml`.
+
 Sightr started as a fork of [AltanS/collie](https://github.com/AltanS/collie) and has been a separate
 product since. It does not track collie.
-
-[![Sightr runtime architecture](docs/archify/sightr-runtime.architecture.visual-check.1440x900.dark.png)](https://bartholomewtj.github.io/sightr/archify/sightr-runtime.architecture.html)
 
 **[Open the interactive system map ↗](https://bartholomewtj.github.io/sightr/archify/sightr-runtime.architecture.html)**
 · [one phone reply, as a sequence ↗](https://bartholomewtj.github.io/sightr/archify/sightr-reply.sequence.html)
@@ -287,7 +306,7 @@ header and the device allowlist, the write is queued per pane, sent over the Her
 | `bridge/beacon/`, `bridge/beacon-io.ts` | Claude hook identity files |
 | `bridge/webauthn.ts`, `bridge/lock.ts` | Reconnect lock, WebAuthn verification from scratch |
 | `bridge/audit.ts`, `bridge/uploads.ts`, `bridge/push.ts` | Audit trail, attachments, Web Push |
-| `bridge/state-migrate.ts` | One-time copy of a pre-1.0 Sighter state directory |
+| `bridge/state-migrate.ts` | One-time copy of a sibling state directory if this one is empty |
 | `shared/agents.ts` | The harness descriptor table: brand, slash commands, journal roots |
 | `shared/wire.ts`, `shared/limits.ts` | Types and limits both sides agree on |
 | `web/src/routes/` | Spaces tree, pane view, files, settings |
@@ -329,19 +348,6 @@ bun run build                  # typecheck both, build web/dist
   the version gate, typecheck and tests for root and web, then the web build. It only reads the repo.
 - **Vite dev from another device.** `SIGHTR_DEV_TARGET` points the proxy at a bridge;
   `SIGHTR_DEV_HOSTS` adds Host names the dev server accepts.
-
-## Upgrading from Sighter
-
-Sightr 1.0.0 renamed everything from the pre-1.0 Sighter plugin.
-
-1. Stop and uninstall the old plugin: `herdr plugin action invoke uninstall --plugin herdr.sighter`.
-2. Install Sightr as above.
-3. Copy your old `.env` into the new config directory and rename every `SIGHTER_` key to `SIGHTR_`.
-   Copy `commands.toml` and `keys.toml` unchanged.
-4. Start Sightr. On first start, if its state directory is empty and a sibling directory named
-   `sighter` exists, the bridge copies the old pins, WebAuthn credentials, settings and push
-   subscriptions across, and logs where it copied from. Nothing is deleted.
-5. Re-add the app to the phone's Home Screen; the old PWA points at the old plugin's URL.
 
 ## Troubleshooting
 
