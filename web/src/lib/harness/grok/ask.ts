@@ -29,6 +29,7 @@ import {
   gutterCardRange,
   lineText,
   } from "./markers";
+import { parseDecisionMarkerLine } from "@shared/decision-marker";
 
 export interface AskRegion {
   model: PromptModel;
@@ -101,6 +102,7 @@ function parseRadioAsk(lines: StyledLine[]): RadioAskParse | null {
   const options: PromptOption[] = [];
   let question = "";
   let questionLine = -1;
+  let decision: { thread: string; run: string } | undefined;
   let step: { n: number; m: number } | null = null;
   let feedback: PromptFeedback | undefined;
   let sawHint = false;
@@ -164,6 +166,11 @@ function parseRadioAsk(lines: StyledLine[]): RadioAskParse | null {
     if (FOREIGN_OPTION.test(t)) return null;
     const body = t.replace(/^\s*[┃│]\s*/, "").trim().replace(/\s+█$/, "");
     if (body === "") continue;
+    const marker = parseDecisionMarkerLine(body);
+    if (marker.kind === "found") {
+      decision = { thread: marker.thread, run: marker.run };
+      continue;
+    }
     // Unclassified text is QUESTION only above the first option row — where the captured cards
     // put it. Below the options, a gutter continuation is a wrapped description; anything else
     // is an unprobed widget row: refuse.
@@ -222,6 +229,7 @@ function parseRadioAsk(lines: StyledLine[]): RadioAskParse | null {
         feedback,
         coreSignature: question,
         signature,
+        ...(decision ? { decision } : {}),
       },
     },
     questionLine,

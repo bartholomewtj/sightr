@@ -68,6 +68,8 @@ export interface PromptModel {
   family: PromptFamily;
   /** The dialog's inline free-text input row, when it has one. Absent on dialogs without one. */
   feedback?: PromptFeedback;
+  /** A draftr operator decision marker, when lifted from a marked card. */
+  decision?: { thread: string; run: string };
   /**
    * The dialog's identity, independent of everything OUR OWN choreography changes: the `❯` pointer,
    * the feedback row's contents, and the row's HEIGHT (a long value wraps, which re-flows the screen

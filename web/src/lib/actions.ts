@@ -1,6 +1,7 @@
 // Dialog action recipes: detect the dialog on a fresh screen, then send its keys; free-text replies use the same guard.
 
-import { sendKeys, sendReply, fetchPane } from "./api";
+import { sendKeys, sendReply, fetchPane, decisionReply } from "./api";
+import { parseDecisionMarker, parseDecisionMarkerLine, type MarkerParseResult } from "@shared/decision-marker";
 import { parseLines, type MenuModel, type MultiSelectModel, type PreviewOption, type PreviewSelectModel, type PromptModel, type PromptOption, type WizardModel } from "./blocks";
 import { guardDialog, pollDialog, readDialog, sendBoundKeys, sendGuardedKeys, type DialogTarget } from "./dialog-guard";
 import { adapterFor, type HarnessAdapter } from "./harness";
@@ -161,6 +162,45 @@ export async function submitPromptOption(
   args: PromptGuardArgs & { option: PromptOption },
 ): Promise<PromptActionResult> {
   if (args.prompt.feedback?.focused) return { status: "changed" };
+
+  let marker: MarkerParseResult = { kind: "none" };
+  if (args.prompt.decision) {
+    marker = parseDecisionMarkerLine(
+      `whistlr.decision thread=${args.prompt.decision.thread} run=${args.prompt.decision.run}`,
+    );
+  }
+  if (marker.kind === "none") {
+    marker = parseDecisionMarker(args.prompt.question);
+    if (marker.kind === "none") {
+      marker = parseDecisionMarker(args.prompt.signature);
+    }
+  }
+
+  if (marker.kind === "refused") {
+    return { status: "error", error: marker.reason };
+  }
+
+  if (marker.kind === "found") {
+    try {
+      const res = await decisionReply(args.paneId, {
+        decision: { thread: marker.thread, run: marker.run },
+        option: {
+          keyLabel: args.option.keyLabel,
+          keys: args.option.keys,
+          label: args.option.label,
+        },
+        cardText: args.prompt.signature,
+        question: args.prompt.question,
+      });
+      if (res.ok) {
+        return { status: "sent" };
+      }
+      return { status: "error", error: res.error };
+    } catch (err) {
+      return { status: "error", error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
   return sendGuardedKeys({ ...args, kind: "prompt-select", model: args.prompt }, args.option.keys);
 }
 

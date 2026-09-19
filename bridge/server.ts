@@ -30,6 +30,7 @@ import { CONTENT_TYPES, json, requireJsonBody, secure, text, failureText, decode
 import { serveStatic, isReservedAuthPath, reservedAuthPlaceholder } from "./static-assets.ts";
 import { readPane, paneHistory } from "./pane-read-routes.ts";
 import { replyPane, keysPane, closePane, renamePane, uploadPane } from "./pane-write-routes.ts";
+import { decisionReplyPane } from "./decision-reply-routes.ts";
 import { renameTab, renameWorkspace, closeTab, closeWorkspace, createTab, createWorkspace, removeWorktree, openWorktree } from "./tree-routes.ts";
 import { createWorktreeIndex } from "./worktrees.ts";
 import { snapshotRoute, bridgeConfigRoute } from "./snapshot-route.ts";
@@ -38,7 +39,7 @@ import { subscribeRoute, notifyPrefsRoute } from "./notify-routes.ts";
 import { createPaneQueue } from "./pane-queue.ts";
 
 const MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024;
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|decision-reply))?$/;
 const TAB_ACTION_ROUTE = /^\/api\/tab\/([^/]+)\/(rename|close)$/;
 const WORKSPACE_ACTION_ROUTE = /^\/api\/workspace\/([^/]+)\/(rename|close)$/;
 const WORKTREE_REMOVE_ROUTE = /^\/api\/workspace\/([^/]+)\/worktree\/remove$/;
@@ -219,6 +220,8 @@ export function startServer(opts: {
         if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, auditFor(req));
         if (action === "close" && req.method === "POST") return closePane(herdr, paneId, req, paneWrites, auditFor(req));
         if (action === "rename" && req.method === "POST") return renamePane(herdr, paneId, req, paneWrites, auditFor(req));
+        if (action === "decision-reply" && req.method === "POST")
+          return decisionReplyPane(herdr, cfg, paneId, req, paneWrites, auditFor(req));
         return text("method not allowed", 405);
       }
 

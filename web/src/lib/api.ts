@@ -9,6 +9,7 @@ import { SEEN_HEADER } from "@shared/limits";
 import { EVENTS_PATH } from "./sw-routes";
 import type {
   ActionResponse,
+  DecisionReplyRequest,
   FileSearchResponse,
   FilesResponse,
   BridgeConfig,
@@ -406,6 +407,20 @@ export function sendKeys(
         keys,
         ...(expectedPrompt !== undefined ? { expected_prompt: expectedPrompt } : {}),
       }),
+    },
+    recoverPromptChanged,
+  );
+}
+
+export function decisionReply(
+  paneId: string,
+  body: DecisionReplyRequest,
+): Promise<ActionResponse> {
+  return req<ActionResponse>(
+    `/api/pane/${encodeURIComponent(paneId)}/decision-reply`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
     },
     recoverPromptChanged,
   );
