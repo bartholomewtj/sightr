@@ -138,6 +138,38 @@ Also keep `bun run typecheck` green (it is part of `bun run test`).
 - Create a new dialog grammar family.
 - Change `WHISTLR_STATE_DIR` / `WHISTLR_CONFIG_DIR`.
 
-## Shipped
+## What shipped
 
-Operator-decision answer bridge implemented. Marked draftr cards containing the `whistlr.decision thread=<uuid> run=<8hex>` marker submit `whistlr reply --payload` via the bridge's `/api/pane/:paneId/decision-reply` route and do not send keys to the invoking pane. Unmarked prompt cards remain unchanged on the key-only path. Single-choice prompt-select lifts for Claude, Grok, and Pi support the marker trailer/line and attach `decision` to the prompt model.
+### Overview
+This change bridges draftr operator decisions to whistlr replies without sending keystrokes into the pane. When a terminal card contains the marker `whistlr.decision thread=<uuid> run=<8hex>`, selecting an option in Sightr formats and submits `whistlr reply --thread <uuid> --payload <json> --schema whistlr.decision_response.v1` and skips keystroke injection. Unmarked harness dialogs continue using existing key-sending paths.
+
+### Where it lives
+- `shared/decision-marker.ts`: Marker parser (`parseDecisionMarkerLine`, `parseDecisionMarker`) extracting `thread` (UUID) and `run` (8-char hex) or refusing malformed/truncated IDs.
+- `bridge/decision-marker.ts`: Re-exports marker parsing utilities for bridge server code.
+- `bridge/decision-payload.ts`: Builds decision payload (`buildDecisionPayload`) conforming to `whistlr.decision_response.v1` (`{ answers: { [qid]: <id|label> }, notes? }`).
+- `bridge/decision-reply.ts`: CLI invocation helper (`submitDecisionReply`) executing `whistlr reply --thread <id> --payload <json> --schema whistlr.decision_response.v1` with pluggable process runner.
+- `bridge/decision-reply-routes.ts`: HTTP route handler (`decisionReplyPane`) handling `POST /api/pane/:paneId/decision-reply`, acquiring pane queue lock, scanning marker metadata, and invoking whistlr without dispatching pane keys.
+- `bridge/server.ts`: Extends `PANE_ROUTE` regex to match `/decision-reply` and wires `decisionReplyPane`.
+- `shared/wire.ts` & `web/src/lib/types.ts`: Protocol definitions for `DecisionOption` and `DecisionReplyRequest`.
+- `web/src/lib/harness/prompt-model.ts`: Adds optional `decision?: { thread: string; run: string }` to `PromptModel`.
+- `web/src/lib/harness/claude/prompt-select.ts`: Detects decision markers in Claude cards above or below prompt lines without disrupting footer classification.
+- `web/src/lib/harness/grok/ask.ts`: Parses decision markers on gutter lines in Grok ask cards.
+- `web/src/lib/harness/pi/ask.ts`: Preserves decision markers in Pi question blocks above options.
+- `web/src/lib/api.ts`: Adds `decisionReply` API client helper for `POST /api/pane/:id/decision-reply`.
+- `web/src/lib/actions.ts`: In `submitPromptOption`, checks for decision markers on prompt model; dispatches `decisionReply` and bypasses `sendGuardedKeys` / `sendKeys`. Unmarked cards fall through to key sending.
+- `bridge/decision-reply.test.ts`: Automated test suite covering grok, claude, and pi marked cards, unmarked key-only passthrough, malformed thread refusal, and payload answer mapping.
+- `CHANGELOG.md`: Documents the feature under `## [Unreleased]`.
+- `scripts/bump.ts`: Supports consuming existing `## [Unreleased]` changelog blocks during version bumps.
+- `docs/whistlr-31f-sightr.md`: Bridge specification and delivery documentation.
+
+### How to verify
+Run the automated test suite from the repository root:
+```sh
+bun test
+```
+This runs `bun run typecheck` and `bun test ./bridge ./scripts`, validating:
+1. Marked Grok and Claude cards execute `whistlr reply` with `--thread`, `--payload`, and `--schema whistlr.decision_response.v1` without sending keys.
+2. Unmarked prompt selections send keys only without spawning whistlr.
+3. Marker parsing refuses missing or truncated thread UUIDs without spawning or typing.
+4. Option selection maps correctly to `{ answers: { q1: "<keyLabel|digit|label>" } }`.
+
