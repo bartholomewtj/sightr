@@ -4,6 +4,7 @@ export type {
   DeviceAuth, FileEntry, FilesResponse,
   FileSearchResponse, FolderGitResponse, SnapshotResponse, PaneHistoryResponse,
   TranscriptPart, TranscriptEntry, ActionResponse, UploadResponse, CreateResponse,
+  DecisionOption, DecisionReplyRequest,
   OperatorCommand, OperatorKeyRow, OperatorWheelRow, BridgeConfig, LockStatus, NotifyPrefs, BridgeSettings,
   SaveFileResponse,
 } from "@shared/wire";

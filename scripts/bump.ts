@@ -89,10 +89,15 @@ export function bump(opts: {
   }
 
   const changelog = readFileSync(changelogPath, "utf8");
-  const heading = /^## \[/m.exec(changelog);
-  if (heading?.index === undefined) throw new Error("could not find a CHANGELOG heading");
   const entry = changelogEntry(to, opts.today ?? new Date(), opts.note, section);
-  writeFileSync(changelogPath, `${changelog.slice(0, heading.index)}${entry}\n${changelog.slice(heading.index)}`);
+  const unreleasedMatch = /^## \[Unreleased\][\s\S]*?(?=^## \[\d)/m.exec(changelog);
+  if (unreleasedMatch) {
+    writeFileSync(changelogPath, changelog.replace(unreleasedMatch[0], `${entry}\n`));
+  } else {
+    const heading = /^## \[/m.exec(changelog);
+    if (heading?.index === undefined) throw new Error("could not find a CHANGELOG heading");
+    writeFileSync(changelogPath, `${changelog.slice(0, heading.index)}${entry}\n${changelog.slice(heading.index)}`);
+  }
   return { from, to };
 }
 

@@ -3,6 +3,11 @@
 Sightr uses [Semantic Versioning](https://semver.org). `bun scripts/bump.ts patch|minor|major --note "..."`
 adds an entry here and keeps the three version files in step; CI refuses a build where they disagree.
 
+## [Unreleased]
+
+### Added
+- Marked draftr operator-decision cards submit `whistlr reply --payload` and do not type into the pane.
+
 ## [1.0.5] - 2026-09-19
 
 ### Changed

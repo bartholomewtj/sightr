@@ -29,6 +29,7 @@ import {
   STATS,
   TAB_BAR,
 } from "./markers";
+import { parseDecisionMarkerLine } from "@shared/decision-marker";
 
 export interface PiAskOption {
   label: string;
@@ -47,6 +48,7 @@ export interface PiAskParse {
   steps: WizardStepChip[];
   signature: string;
   coreSignature: string;
+  decision?: { thread: string; run: string };
 }
 
 export interface PiPromptRegion {
@@ -185,8 +187,16 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
   // 4. Question: non-blank rows above blankAboveOptions, each starting with one space
   let qRow = blankAboveOptions - 1;
   const questionLines: string[] = [];
+  let decision: { thread: string; run: string } | undefined;
   while (qRow >= 0 && !isBlank(texts[qRow]!) && !RULE.test(texts[qRow]!)) {
     const t = texts[qRow]!;
+    const m = parseDecisionMarkerLine(t);
+    if (m.kind === "found") {
+      decision = { thread: m.thread, run: m.run };
+      questionLines.push(t.trim());
+      qRow--;
+      continue;
+    }
     if (!t.startsWith(" ")) return null;
     questionLines.push(t.trim());
     qRow--;
@@ -316,6 +326,7 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
     steps,
     signature,
     coreSignature,
+    ...(decision ? { decision } : {}),
   };
 }
 
@@ -332,6 +343,7 @@ export function detectPiPromptRegion(lines: StyledLine[]): PiPromptRegion | null
     feedback: parsed.feedback,
     coreSignature: parsed.coreSignature,
     signature: parsed.signature,
+    ...(parsed.decision ? { decision: parsed.decision } : {}),
   };
 
   return {

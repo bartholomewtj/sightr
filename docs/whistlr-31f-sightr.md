@@ -137,3 +137,7 @@ Also keep `bun run typecheck` green (it is part of `bun run test`).
 - Chain a second sdlc back onto draftr from this request.
 - Create a new dialog grammar family.
 - Change `WHISTLR_STATE_DIR` / `WHISTLR_CONFIG_DIR`.
+
+## Shipped
+
+Operator-decision answer bridge implemented. Marked draftr cards containing the `whistlr.decision thread=<uuid> run=<8hex>` marker submit `whistlr reply --payload` via the bridge's `/api/pane/:paneId/decision-reply` route and do not send keys to the invoking pane. Unmarked prompt cards remain unchanged on the key-only path. Single-choice prompt-select lifts for Claude, Grok, and Pi support the marker trailer/line and attach `decision` to the prompt model.

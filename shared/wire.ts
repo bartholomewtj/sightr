@@ -86,6 +86,16 @@ export type PaneHistoryResponse =
   | { paneId: string; available: false; reason: "disabled" | "no-session" | "no-log" }
   | { paneId: string; available: true; entries: TranscriptEntry[]; hasMore: boolean; total: number; fileTruncated: boolean };
 export type ActionResponse = { ok: true } | { ok: false; error: string; textDelivered?: boolean; code?: string };
+export interface DecisionOption { keyLabel?: string; keys?: string[]; label: string; }
+export interface DecisionReplyRequest {
+  option: DecisionOption;
+  decision?: { thread: string; run: string };
+  cardText?: string;
+  text?: string;
+  signature?: string;
+  question?: string;
+  notes?: string;
+}
 export type UploadResponse = { ok: true; path: string } | { ok: false; error: string };
 export interface CreatedPane { paneId: string; workspaceId: string; workspaceLabel: string; tabId: string; cwd: string; }
 export type CreateResponse = { ok: true; pane: CreatedPane } | { ok: false; error: string };
