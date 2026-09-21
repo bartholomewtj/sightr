@@ -1,0 +1,26 @@
+import type { AgentCommand } from "./types.ts";
+
+export const PI: readonly AgentCommand[] = [
+  { command: "/compact", description: "Manually compact context, optionally with instructions", takesArg: true, argHint: "[instructions]", common: true, dangerous: false },
+  { command: "/new", description: "Start a new session, clearing the current context", takesArg: false, argHint: "", common: true, dangerous: true },
+  { command: "/model", description: "Switch the active model", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/resume", description: "Pick a previous session to resume", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/session", description: "Show session file, id, messages, tokens, and cost", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/tree", description: "Jump to any earlier point in the session and continue", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/fork", description: "Start a new session from an earlier user message", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/share", description: "Upload as a private gist with a shareable HTML link", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/copy", description: "Copy the last assistant message to the clipboard", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/reload", description: "Reload keybindings, extensions, skills, prompts, and context", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/hotkeys", description: "Show all keyboard shortcuts", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/login", description: "Sign in — manage OAuth or API-key credentials", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/logout", description: "Sign out and clear stored credentials", takesArg: false, argHint: "", common: false, dangerous: true },
+  { command: "/scoped-models", description: "Enable or disable models for Ctrl+P cycling", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/settings", description: "Thinking level, theme, message delivery, transport", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/name", description: "Set the session's display name", takesArg: true, argHint: "<name>", common: false, dangerous: false },
+  { command: "/trust", description: "Save a project trust decision for future sessions", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/clone", description: "Duplicate the current active branch into a new session", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/export", description: "Export the session to HTML or JSONL", takesArg: true, argHint: "[format]", common: false, dangerous: false },
+  { command: "/import", description: "Import and resume a session from a JSONL file", takesArg: true, argHint: "<file>", common: false, dangerous: false },
+  { command: "/changelog", description: "Display version history", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/quit", description: "Quit pi", takesArg: false, argHint: "", common: false, dangerous: true },
+];

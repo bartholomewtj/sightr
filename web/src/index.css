@@ -239,15 +239,15 @@ html.sightr-desktop #root {
 }
 
 /* ── Sightr mark loader ────────────────────────────────────────────────────────────────────────
-   The app's activity indicator (components/dog-gallop.tsx). `--dog-size` is the square box; the
+   The app's activity indicator (components/sightr-mark.tsx). `--mark-size` is the square box; the
    SVG inside fills it. Motion lives in the SVG (ticks spin, bison gallops) and already stops under
-   prefers-reduced-motion. .dog-gallop--running is a state hook for tests, not an animation. */
-.dog-gallop {
-  --dog-size: 1.5rem;
+   prefers-reduced-motion. .sightr-mark--running is a state hook for tests, not an animation. */
+.sightr-mark {
+  --mark-size: 1.5rem;
   display: inline-block;
   flex: none;
-  width: var(--dog-size);
-  height: var(--dog-size);
+  width: var(--mark-size);
+  height: var(--mark-size);
 }
 
 /* Submission progress bar — a slim indeterminate strip across the very top of the viewport while a

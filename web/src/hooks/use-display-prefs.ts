@@ -26,8 +26,8 @@ export interface DisplayPrefs {
   tapToFocus: boolean;
   /**
    * Show the live terminal dump alongside the journal (default: false). The pane opens on the
-   * journal; the dump returns for blocked agents, armed Type, open Find, panes with no journal, and
-   * unlifted blocking widgets; the composer's Terminal toggle flips it.
+   * journal; the dump returns while working or blocked, armed Type, open Find, panes with no
+   * journal, and unlifted blocking widgets; the composer's Terminal toggle flips it.
    */
   showTerminal: boolean;
   /**

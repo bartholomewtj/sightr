@@ -1,11 +1,13 @@
 # 0007 — The idle lock is a pause, not a gate
 
-Status: **Accepted** (2026-08-04)
+Status: **Superseded** (idle-lock removed; reconnect lock is WebAuthn — [README.md → Reconnect lock](../../README.md#reconnect-lock))
+
+The idle-lock module (`web/src/hooks/use-idle-lock.ts`) was removed. Citations of `ARCHITECTURE.md` below referred to a file that no longer existed as a live map; the stub [`ARCHITECTURE.md`](../ARCHITECTURE.md) points at [README.md → Architecture](../../README.md#architecture). Historical Context is unchanged.
 
 ## Context
 
-The idle lock ([`use-idle-lock.ts`](../web/src/hooks/use-idle-lock.ts)) was introduced as a security
-mitigation. `ARCHITECTURE.md` justified it in those terms: Tailscale proves the *device*, not who is
+The idle lock (`web/src/hooks/use-idle-lock.ts`, removed) was introduced as a security
+mitigation. [`ARCHITECTURE.md`](../ARCHITECTURE.md) justified it in those terms: Tailscale proves the *device*, not who is
 holding it, the PWA has no session to expire, so "a stolen unlocked phone would be a root shell" — and
 the lock answered that by unmounting the router until tapped.
 
@@ -57,9 +59,9 @@ the app's one chrome-less full-viewport screen, so it states whose it is and wha
 - **Whoever picks up your unlocked phone sees your herd without tapping.** This is the cost, and it is
   accepted as approximately zero: it was one tap before, on a screen a reload dismissed. The real
   boundary is, and always was, the tailnet plus your phone's own lock screen. If that is not enough,
-  the answer is a PIN on reconnect or Tailscale ACL scoping (both still listed in `ARCHITECTURE.md`
+  the answer is a PIN on reconnect or Tailscale ACL scoping (both still listed in [`ARCHITECTURE.md`](../ARCHITECTURE.md)
   as considered-not-built) — not a longer-lived client flag.
-- **`ARCHITECTURE.md` no longer lists the idle timeout as a security measure.** Leaving it there would
+- **[`ARCHITECTURE.md`](../ARCHITECTURE.md) no longer lists the idle timeout as a security measure.** Leaving it there would
   claim a gate the code has never implemented, which is worse than not having one: it invites someone
   to skip a real control because this one looks like it is covering them.
 - **Resuming is lossless.** Draft, scroll position and open sheets survive a pause, because nothing

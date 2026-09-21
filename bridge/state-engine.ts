@@ -67,6 +67,18 @@ export const STATUS_HOLD_MS = 3_000;
 
 const RESTING_STATUS: ReadonlySet<AgentStatus> = new Set(["idle", "done", "unknown"]);
 
+/** Fast poll unless the event stream is healthy and every agent is resting. */
+export function engineCadence(
+  eventsHealthy: boolean,
+  agents: readonly { status: AgentStatus }[],
+  pollMs: number,
+  pollIdleMs: number,
+): number {
+  if (!eventsHealthy) return pollMs;
+  const active = agents.some((a) => a.status === "working" || a.status === "blocked");
+  return active ? pollMs : pollIdleMs;
+}
+
 // Claude renders its input box as a horizontal rule, the ❯ prompt line, then a closing rule. After
 // `/rename <name>` the TOP rule carries the session name inside it: "────────── my-name ──". This
 // matches that named rule. `\S` also matches box-drawing chars, but a *plain* rule has no embedded
@@ -250,7 +262,11 @@ export class StateEngine {
     void this.poll();
   }
 
-  /** Re-arm the interval at a new cadence (relaxed while events are healthy). No-op if unchanged or stopped. */
+  /**
+   * Herdr poll interval. Events accelerate; this stays the source of truth. Relax only while the
+   * stream is healthy AND nothing is working or blocked — output does not emit a poke, so a working
+   * pane would otherwise sit on {@link pollIdleMs}.
+   */
   setCadence(ms: number): void {
     if (!this.started || ms === this.cadenceMs) return;
     this.cadenceMs = ms;

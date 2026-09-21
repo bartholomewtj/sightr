@@ -6,7 +6,7 @@ import { useAgentTransitions } from "@/hooks/use-transitions";
 import { usePushSetup } from "@/hooks/use-push";
 import { useConnectionLost } from "@/hooks/use-connection-lost";
 import { ConnectionBanner } from "@/components/connection-banner";
-import { SightrMark } from "@/components/dog-gallop";
+import { SightrMark } from "@/components/sightr-mark";
 import { BottomNav } from "@/components/bottom-nav";
 import { DesktopShell } from "@/components/desktop-shell";
 import { useDesktop } from "@/lib/desktop";

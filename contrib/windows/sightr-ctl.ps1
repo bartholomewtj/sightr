@@ -164,6 +164,8 @@ switch ($Command) {
   "version" { Invoke-SightrCtl @("version") }
   "qr" { Invoke-SightrCtl @("qr") }
   "push-test" { Invoke-SightrCtl ((@("push-test")) + @($CommandArgs)) }
+  "push-list" { Invoke-SightrCtl @("push-list") }
+  "push-forget" { Invoke-SightrCtl ((@("push-forget")) + @($CommandArgs)) }
   "status" { Invoke-SightrCtl @("status") }
   "env-check" { Invoke-SightrCtl @("env-check") }
   "keys" { Invoke-SightrCtl ((@("keys")) + @($CommandArgs)) }
@@ -175,5 +177,5 @@ switch ($Command) {
     $env:SIGHTR_PORT = [string]$script:Port
     Invoke-SightrCtl ((@("_exec-bridge", "--config-dir", $script:ConfigDir, "--socket", $script:SocketPath)) + @($CommandArgs))
   }
-  default { Write-Error "usage: sightr-ctl.ps1 {start|stop|restart|uninstall|serve|unserve|update|version|build|status|env-check|keys|push-keys|url|logs|hooks|qr|push-test}" }
+  default { Write-Error "usage: sightr-ctl.ps1 {start|stop|restart|uninstall|serve|unserve|update|version|build|status|env-check|keys|push-keys|url|logs|hooks|qr|push-test|push-list|push-forget}" }
 }

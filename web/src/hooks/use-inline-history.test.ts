@@ -9,7 +9,6 @@ import {
   INLINE_HISTORY_PAGE,
   INLINE_HISTORY_STEP,
   INLINE_IDLE_RETRY_MS,
-  INLINE_REFRESH_MS,
   mergeNewest,
   useInlineHistory,
 } from "./use-inline-history";
@@ -253,7 +252,26 @@ describe("useInlineHistory refresh", () => {
     expect(hits).toBe(1);
   });
 
-  it("keeps refetching the newest page while the pane is open, even when idle", async () => {
+  it("does not refetch on a timer while status is unchanged", async () => {
+    let hits = 0;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/history/, () => {
+        hits += 1;
+        return page(fixtureTranscript);
+      }),
+    );
+    const { result } = renderHook(() =>
+      useInlineHistory({ paneId: "w1:p1", enabled: true, status: "idle", getScrollElement }),
+    );
+    await waitFor(() => expect(result.current.entries.map((e) => e.uuid)).toEqual(["t1", "t2"]));
+    expect(hits).toBe(1);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(hits).toBe(1);
+  });
+
+  it("refetches the newest page when a snapshot is applied", async () => {
     let hits = 0;
     server.use(
       http.get(/\/api\/pane\/[^/]+\/history/, () => {
@@ -267,11 +285,34 @@ describe("useInlineHistory refresh", () => {
       useInlineHistory({ paneId: "w1:p1", enabled: true, status: "idle", getScrollElement }),
     );
     await waitFor(() => expect(result.current.entries.map((e) => e.uuid)).toEqual(["t1", "t2"]));
-    expect(hits).toBe(1);
-    await waitFor(() => expect(result.current.entries.map((e) => e.uuid)).toEqual(["t1", "t2", "t3"]), {
-      timeout: INLINE_REFRESH_MS + 1000,
+    const { applySnapshot } = await import("@/lib/loaders");
+    act(() => {
+      applySnapshot({
+        bridge: "connected", agents: [], shellPanes: [], workspaces: [], tabs: [], ts: 1,
+      });
     });
-    expect(hits).toBeGreaterThanOrEqual(2);
+    await waitFor(() => expect(result.current.entries.map((e) => e.uuid)).toEqual(["t1", "t2", "t3"]));
+  });
+
+  it("refetches the newest page when the tab becomes visible", async () => {
+    let hits = 0;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/history/, () => {
+        hits += 1;
+        return hits === 1
+          ? page(fixtureTranscript)
+          : page([...fixtureTranscript, olderTurn("t3")]);
+      }),
+    );
+    const { result } = renderHook(() =>
+      useInlineHistory({ paneId: "w1:p1", enabled: true, status: "idle", getScrollElement }),
+    );
+    await waitFor(() => expect(result.current.entries.map((e) => e.uuid)).toEqual(["t1", "t2"]));
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await waitFor(() => expect(result.current.entries.map((e) => e.uuid)).toEqual(["t1", "t2", "t3"]));
   });
 });
 

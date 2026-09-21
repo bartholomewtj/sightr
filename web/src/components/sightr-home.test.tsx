@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 
 import { SightrHome } from "./sightr-home";
-import { MARK_SRC } from "./dog-gallop";
+import { MARK_SRC } from "./sightr-mark";
 
 function LocationProbe() {
   const loc = useLocation();
@@ -38,17 +38,17 @@ describe("SightrHome", () => {
   it("shows the static app icon at rest and the running loader once troubled", () => {
     const { container, rerender } = renderHome(<SightrHome trouble={false} />);
     // Rest = the static badge, no loader mounted.
-    expect(container.querySelector(".dog-gallop")).toBeNull();
+    expect(container.querySelector(".sightr-mark")).toBeNull();
     expect(container.querySelector(`img[src="${MARK_SRC}"]`)).not.toBeNull();
     rerender(<SightrHome trouble />);
     // Sustained trouble = the running loader replaces the static badge.
     expect(container.querySelector(`img[src="${MARK_SRC}"]`)).toBeNull();
-    expect(container.querySelector(".dog-gallop")).toHaveClass("dog-gallop--running");
+    expect(container.querySelector(".sightr-mark")).toHaveClass("sightr-mark--running");
   });
 
   it("rests on the muted static icon (never a frozen loader) once the outage escalates to lost", () => {
     const { container } = renderHome(<SightrHome trouble lost />);
-    expect(container.querySelector(".dog-gallop")).toBeNull();
+    expect(container.querySelector(".sightr-mark")).toBeNull();
     const icon = container.querySelector(`img[src="${MARK_SRC}"]`);
     expect(icon).not.toBeNull();
     expect(icon?.closest("span")?.className ?? "").toMatch(/grayscale/);
@@ -57,7 +57,7 @@ describe("SightrHome", () => {
 
   it("gallops while troubled but NOT yet lost", () => {
     const { container } = renderHome(<SightrHome trouble lost={false} />);
-    expect(container.querySelector(".dog-gallop")).toHaveClass("dog-gallop--running");
+    expect(container.querySelector(".sightr-mark")).toHaveClass("sightr-mark--running");
     expect(screen.getByRole("button", { name: "Sightr home — reconnecting" })).toBeInTheDocument();
   });
 

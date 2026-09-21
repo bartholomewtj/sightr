@@ -1,0 +1,59 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# JSON under docs/archify/ is the source. This job compiles the two HTML viewers and publishes
+# the docs/ tree so https://bartholomewtj.github.io/sightr/archify/*.html keep working.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: compile maps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4
+        with:
+          repository: tt-a1i/archify
+          path: .archify-tool
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: .archify-tool/archify/package-lock.json
+      - name: Install Archify
+        run: npm ci
+        working-directory: .archify-tool/archify
+      - name: Compile Archify HTML
+        # Omit --repo-root here: the JSON pins an older revision, and a source-range check against
+        # HEAD would fail a Pages deploy that only needs the compiled viewer. Local regen in
+        # docs/archify/README.md still passes --repo-root to catch stale line refs.
+        run: |
+          ARCHIFY=.archify-tool/archify/bin/archify.mjs
+          node "$ARCHIFY" deliver architecture docs/archify/sightr-runtime.architecture.json docs/archify/sightr-runtime.architecture.html --quality showcase --json
+          node "$ARCHIFY" deliver sequence docs/archify/sightr-reply.sequence.json docs/archify/sightr-reply.sequence.html --quality showcase --json
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b   # v5
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa   # v3
+        with:
+          path: docs
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e   # v4

@@ -1,7 +1,7 @@
 import { useLocation, useNavigate } from "react-router";
 
 import { cn } from "@/lib/utils";
-import { SightrMark, DogGallop } from "@/components/dog-gallop";
+import { SightrMark, SightrLoader } from "@/components/sightr-mark";
 import { homePath } from "@/lib/nav";
 
 interface SightrHomeProps {
@@ -28,7 +28,7 @@ const MARK_SIZE = "3.5rem";
 // no-op if you're already there. The dashboard shows the "Sightr" wordmark too; inside a pane
 // the mark stands alone (the breadcrumb carries the context).
 export function SightrHome({ trouble, lost = false, wordmark = false, className }: SightrHomeProps) {
-  const gallop = trouble && !lost;
+  const running = trouble && !lost;
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const onSpaces = pathname === "/" ? undefined : () => navigate(homePath(), { replace: true });
@@ -46,8 +46,8 @@ export function SightrHome({ trouble, lost = false, wordmark = false, className 
       )}
     >
       <span className="grid size-14 shrink-0 place-items-center">
-        {gallop ? (
-          <DogGallop running size={MARK_SIZE} />
+        {running ? (
+          <SightrLoader running size={MARK_SIZE} />
         ) : (
           // Live rest, and the escalated "lost" rest, are the static badge. Muted when lost so it
           // reads asleep — same box as the loader so the mark doesn't resize when it settles.

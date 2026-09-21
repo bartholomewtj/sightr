@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { SightrMark } from "@/components/dog-gallop";
+import { SightrMark } from "@/components/sightr-mark";
 import { b64uToBytes, bytesToB64u, fetchLockStatus, unlockWebauthn, webauthnChallenge } from "@/lib/api";
 
 function canUseDevice(): boolean {

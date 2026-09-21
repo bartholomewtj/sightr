@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { render, cleanup, waitFor, screen, act } from "@testing-library/react";
 import { RootLayout, BootSplash, shownLastSeenAt } from "./root";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { MARK_SRC } from "@/components/dog-gallop";
+import { MARK_SRC } from "@/components/sightr-mark";
 import { CONNECTION_LOST_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth } from "@/lib/connection-health";
 
@@ -44,7 +44,7 @@ describe("BootSplash — escalates a stuck cold start", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     // The running loader is gone — rest state is the muted static badge.
     expect(screen.queryByLabelText("Loading")).not.toBeInTheDocument();
-    expect(container.querySelector(".dog-gallop")).toBeNull();
+    expect(container.querySelector(".sightr-mark")).toBeNull();
     const icon = container.querySelector(`img[src="${MARK_SRC}"]`);
     expect(icon).not.toBeNull();
     expect(icon?.closest("span")?.className ?? "").toMatch(/grayscale/);

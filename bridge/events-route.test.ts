@@ -92,7 +92,7 @@ describe("snapshot events", () => {
     events.close();
   });
 
-  test("keep-alive also refreshes a quiet client", async () => {
+  test("keep-alive pings a quiet client without a snapshot body", async () => {
     const clock = timers();
     let now = 0;
     const sent: string[] = [];
@@ -102,7 +102,8 @@ describe("snapshot events", () => {
     clock.fire();
     await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     expect(sent.some((chunk) => chunk.startsWith(": keep-alive"))).toBe(true);
-    expect(sent.some((chunk) => chunk.startsWith("event: snapshot"))).toBe(true);
+    expect(sent.some((chunk) => chunk.startsWith("event: ping"))).toBe(true);
+    expect(sent.some((chunk) => chunk.startsWith("event: snapshot"))).toBe(false);
     events.close();
   });
 });

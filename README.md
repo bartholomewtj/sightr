@@ -15,8 +15,8 @@ you, read its chat, and answer with buttons or an ordinary text box, so phone di
 
 - **Chat from the agent's own log.** Your messages are bubbles; tool-call runs fold to one line;
   thinking collapses to "Thought for 12s". A pane opens on the recent end of that log and keeps
-  fetching while you watch; swipe up for older turns. The live terminal stays hidden until the agent
-  is blocked or you ask for it.
+  fetching while you watch; swipe up for older turns. The live terminal stays hidden while idle and
+  returns while the agent is working, blocked, or you ask for it.
 
   <img src="docs/features/chat.jpg" alt="Pane chat from the agent's session log" width="360">
   <img src="docs/features/chat-live-terminal.jpg" alt="Same pane with the live terminal open" width="360">
@@ -145,7 +145,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File contrib\windows\sightr-c
 | Remove the scheduled task and serve mapping | `uninstall` | `uninstall` |
 | Tail the bridge logs | `logs [N]` | script only |
 | Claude beacon hooks | `hooks install claude`, `hooks uninstall claude`, `hooks status` | script only |
-| Web Push keys and a test push | `push-keys`, `push-test` | `push-keys`, `push-test` |
+| Web Push keys, a test push, list or prune devices | `push-keys`, `push-test`, `push-list`, `push-forget` | `push-keys`, `push-test`; list/forget are script only |
 | Build, publish or unpublish by hand | `build`, `serve`, `unserve` | script only |
 
 `uninstall` keeps `.env` and the checkout. Read a Herdr action's captured output with
@@ -180,7 +180,7 @@ keep theirs.
 | `SIGHTR_ALLOW_ANY_HOST` | off | Disable the Host allowlist. Warned at startup |
 | `SIGHTR_DEVICE_HEADER`, `SIGHTR_DEVICE_ALLOWLIST` | unset | Optional per-device write authorisation. Unknown devices become read-only |
 | `SIGHTR_AUDIT`, `SIGHTR_AUDIT_CONTENT` | `1`, `preview` | Audit trail on/off and `preview` or `none` |
-| `SIGHTR_POLL_MS`, `SIGHTR_POLL_IDLE_MS` | `1500`, `12000` | Poll cadence, and the relaxed cadence while the Herdr event stream is healthy |
+| `SIGHTR_POLL_MS`, `SIGHTR_POLL_IDLE_MS` | `1500`, `12000` | Poll cadence, and the relaxed cadence while the Herdr event stream is healthy and every agent is resting |
 | `SIGHTR_NOTIFY_DELAY_MS` | `30000` | Wait before a blocked or finished agent pushes a notification |
 | `SIGHTR_READ_LINES` | `200` | Terminal lines pulled on open |
 | `SIGHTR_SUBMIT_KEYS` | `Enter` | Key sequence that submits a reply |
@@ -225,7 +225,7 @@ branch.
 **Pane view.** The pane reads like a chat, taken from the harness's own session log. Your messages
 are blue bubbles; the agent's replies are plain text. Runs of tool calls fold into one line, thinking
 collapses to "Thought for 12s". The live terminal hides while the agent is idle and returns when it
-is blocked, a prompt is on screen, Type is armed, Find is open, or there is no session log. Tap the
+is working, blocked, a prompt is on screen, Type is armed, Find is open, or there is no session log. Tap the
 title for the working directory, statusline, context fill, sibling panes, Find and Switch
 pane. Detected prompts become buttons. A blocked agent with no detected buttons gets **Yes** and
 **No** above the reply box.
@@ -289,8 +289,9 @@ A Bun process sits between the phone and Herdr. The browser never touches the so
 [![Sightr runtime architecture, light theme](docs/archify/sightr-runtime.architecture.visual-check.1440x900.light.png)](https://bartholomewtj.github.io/sightr/archify/sightr-runtime.architecture.html)
 
 The maps under [`docs/archify/`](docs/archify/) are [Archify](https://github.com/tt-a1i/archify)
-artifacts: typed JSON compiled into self-contained HTML. GitHub does not run them inside a README,
-so open the hosted copies to pan, search nodes, trace reach and play the named views:
+artifacts: typed JSON compiled into self-contained HTML (CI publishes the HTML; do not commit it).
+GitHub does not run them inside a README, so open the hosted copies to pan, search nodes, trace reach
+and play the named views:
 
 - [Runtime architecture ↗](https://bartholomewtj.github.io/sightr/archify/sightr-runtime.architecture.html)
   · [JSON source](docs/archify/sightr-runtime.architecture.json)
@@ -301,9 +302,14 @@ To regenerate after a change, see [`docs/archify/README.md`](docs/archify/README
 checks every source reference in the map against the current commit.
 
 **How a request travels.** The phone loads the PWA from `web/dist`, served by the bridge. The app
-polls `GET /api/snapshot` and listens on `GET /api/events` (server-sent events). The bridge keeps its
-own `events.subscribe` stream open to Herdr and pokes the SSE clients when Herdr reports a change,
-but the snapshot poll stays the source of truth, so a missed poke costs one poll interval. A reply is
+listens on `GET /api/events` (server-sent events) and polls `GET /api/snapshot` only when that stream
+is down. While EventSource is open, a snapshot event applies the herd without another GET, including
+on an open pane; the open-pane interval still refreshes `GET /api/pane/...` for the live TUI. The
+journal newest page refreshes from those snapshot events, a status flip, or the tab becoming visible
+— not a 1.5s 160-turn timer. The bridge keeps its own `events.subscribe` stream open to Herdr and
+pokes the SSE clients when Herdr reports a change. On the host, the snapshot poll stays the source of
+truth: the bridge only relaxes to `SIGHTR_POLL_IDLE_MS` while that stream is healthy and every agent
+is resting. A missed poke costs one host poll interval. A reply is
 `POST /api/pane/...`: the access layer checks peer address, Host, Origin, the Tailscale identity
 header and the device allowlist, the write is queued per pane, sent over the Herdr socket as
 `pane.send_text` plus the submit keys, and appended to the audit log.
@@ -322,7 +328,7 @@ header and the device allowlist, the write is queued per pane, sent over the Her
 | `bridge/webauthn.ts`, `bridge/lock.ts` | Reconnect lock, WebAuthn verification from scratch |
 | `bridge/audit.ts`, `bridge/uploads.ts`, `bridge/push.ts` | Audit trail, attachments, Web Push |
 | `bridge/state-migrate.ts` | One-time copy of a sibling state directory if this one is empty |
-| `shared/agents.ts` | The harness descriptor table: brand, slash commands, journal roots |
+| `shared/agents.ts`, `shared/catalog/` | The harness descriptor table and per-harness slash catalogs |
 | `shared/wire.ts`, `shared/limits.ts` | Types and limits both sides agree on |
 | `web/src/routes/` | Spaces tree, pane view, files, settings |
 | `web/src/lib/harness/` | Screen parsers per harness: prompts, ask-cards, permission cards |
@@ -333,7 +339,9 @@ header and the device allowlist, the write is queued per pane, sent over the Her
 | `contrib/windows/` | PowerShell entry point, action launcher source, their tests |
 | `docs/archify/` | System maps, served by GitHub Pages |
 | `docs/adr/` | Architecture decision records. Code comments cite them by number (`ADR 0009`) |
+| `docs/ARCHITECTURE.md`, `docs/HARNESS_CONTRIBUTING.md` | Stubs pointing at this README |
 | `docs/HERDR_API.md` | The Herdr socket protocol facts the bridge relies on |
+| `docs/specs/` | Implementable slices. Catalog: [`docs/specs/README.md`](docs/specs/README.md) |
 
 ## Development
 
@@ -361,6 +369,8 @@ bun run build                  # typecheck both, build web/dist
   fails when they disagree, and runs in CI and in `build`.
 - **CI** (`.github/workflows/ci.yml`) runs on push to `main` and on pull requests: frozen installs,
   the version gate, typecheck and tests for root and web, then the web build. It only reads the repo.
+  `.github/workflows/pages.yml` compiles Archify JSON to HTML and publishes GitHub Pages (set the
+  Pages source to GitHub Actions).
 - **Vite dev from another device.** `SIGHTR_DEV_TARGET` points the proxy at a bridge;
   `SIGHTR_DEV_HOSTS` adds Host names the dev server accepts.
 

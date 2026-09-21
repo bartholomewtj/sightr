@@ -51,5 +51,8 @@ docs/bugs/
 __pycache__/
 *.pyc
 
+# Generated Archify viewers — CI compiles JSON → HTML for GitHub Pages
+docs/archify/*.html
+
 # Local pickup notes; never committed.
 /STATE.md

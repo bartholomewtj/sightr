@@ -6,7 +6,7 @@ import type { JournalRoots } from "./journal/registry.ts";
 import { AGENTS } from "../shared/agents.ts";
 import { parseAuditContent, type AuditContent } from "./audit.ts";
 
-// All bridge configuration, resolved once at startup. Env-driven so the systemd unit and the
+// All bridge configuration, resolved once at startup. Env-driven so the Task Scheduler job and the
 // plugin launcher can configure it without code changes. Defaults are safe for a single-user,
 // tailnet-only deployment.
 
@@ -300,7 +300,7 @@ export function loadConfig(): Config {
   const allowNonLoopbackBind = envBool("SIGHTR_ALLOW_NON_LOOPBACK_BIND", false);
   // Fail at boot, not with a warning. A bridge bound off-loopback has no working write gate at all
   // (issue #4), so starting it is worse than not starting it — the operator sees a stopped service
-  // and a one-line reason, instead of an open one and a line in journalctl.
+  // and a one-line reason, instead of an open one and a line in sightr-error.log.
   if (!isLoopbackBindHost(host) && !allowNonLoopbackBind) {
     throw new Error(
       `SIGHTR_HOST=${host} is not a loopback address. Sightr binds loopback only: the ` +
@@ -313,7 +313,7 @@ export function loadConfig(): Config {
   }
   // The operator's config dir — where their `.env` lives, and now their `commands.toml` beside it.
   // Resolved exactly the way scripts/sightr-ctl.ps1 resolves it MINUS the `herdr` shell-out: the
-  // launcher passes HERDR_PLUGIN_CONFIG_DIR into the unit (and the launchd plist) precisely so this
+  // launcher passes HERDR_PLUGIN_CONFIG_DIR into the Task Scheduler job precisely so this
   // process never has to ask the CLI, and the two entry points must not disagree about which dir
   // that is. ~/.config/sightr is the same last-resort default the shim ends on.
   const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR ?? join(homedir(), ".config", "sightr");

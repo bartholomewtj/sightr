@@ -445,8 +445,7 @@ describe("AgentChat — prompt-select race guard wiring (frozen {text, revision}
     // The real detector lifted the tail menu into buttons.
     await screen.findByRole("button", { name: "Yes" });
 
-    // Freeze the mirror (opening find pins the tail — the same `following=false` state a scroll-up
-    // freeze produces).
+    // Freeze the mirror (Find pins the tail so matches do not shift as polls land).
     pickPaneDetails("Find in output");
 
     // The pane advances while frozen: new output below the menu + a bumped revision.
@@ -891,39 +890,43 @@ describe("AgentChat — Show terminal", () => {
     expect(screen.getByText(live)).toBeInTheDocument();
   });
 
-  it("hides the dump while working too when the journal is available", async () => {
+  it("force-shows the dump while working", async () => {
     const working = { ...idleWithJournal, status: "working" as const };
     writeDisplayPrefs({ showTerminal: false });
     renderChat({ agent: working, agents: [working], text: live });
     await waitFor(() => expect(screen.getByText("what changed today?")).toBeInTheDocument());
-    expect(screen.queryByText("Live")).not.toBeInTheDocument();
-    expect(screen.getByTestId("thinking-pulse")).toHaveTextContent(live);
+    expect(screen.getByText(live)).toBeInTheDocument();
+    expect(screen.getByText("Live")).toBeInTheDocument();
+    expect(screen.queryByTestId("thinking-pulse")).not.toBeInTheDocument();
   });
 
-  it("shows a thinking pulse instead of the dump while working", async () => {
+  it("does not pulse while working — the dump is the live tell", async () => {
     const working = { ...idleWithJournal, status: "working" as const };
     writeDisplayPrefs({ showTerminal: false });
     renderChat({ agent: working, agents: [working], text: live });
-    await waitFor(() => expect(screen.getByTestId("thinking-pulse")).toBeInTheDocument());
-    expect(screen.getByTestId("thinking-pulse")).toHaveTextContent(/Thinking 0:00/);
-    expect(screen.getByTestId("thinking-pulse")).toHaveTextContent(live);
-    expect(screen.queryByText("Live")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(live)).toBeInTheDocument());
+    expect(screen.queryByTestId("thinking-pulse")).not.toBeInTheDocument();
   });
 
   it("hides the pulse snip when Show thinking is off, but keeps the timer", async () => {
-    const working = { ...idleWithJournal, status: "working" as const };
+    const user = userEvent.setup();
     writeDisplayPrefs({ showTerminal: false, showThinking: false });
-    renderChat({ agent: working, agents: [working], text: live });
+    renderChat({ agent: idleWithJournal, agents: [idleWithJournal], text: live });
+    await waitFor(() => expect(screen.getByText("what changed today?")).toBeInTheDocument());
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "looks good");
+    await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(screen.getByTestId("thinking-pulse")).toBeInTheDocument());
     expect(screen.getByTestId("thinking-pulse")).toHaveTextContent(/Thinking 0:00/);
     expect(screen.getByTestId("thinking-pulse")).not.toHaveTextContent(live);
   });
 
-  it("still pulses when a tool is running — runningCommand is the previous journal tail", async () => {
+  it("shows the dump while a tool is running — runningCommand is the previous journal tail", async () => {
     const working = { ...idleWithJournal, status: "working" as const, runningCommand: true };
     writeDisplayPrefs({ showTerminal: false });
     renderChat({ agent: working, agents: [working], text: live });
-    await waitFor(() => expect(screen.getByTestId("thinking-pulse")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(live)).toBeInTheDocument());
+    expect(screen.queryByTestId("thinking-pulse")).not.toBeInTheDocument();
   });
 
   it("does not pulse when the dump is showing", async () => {
@@ -942,16 +945,15 @@ describe("AgentChat — Show terminal", () => {
     renderChat({ agent: grok, agents: [grok], paneId: grok.paneId, text });
     await waitFor(() => expect(screen.getByRole("checkbox", { name: /Cheese/ })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Submit" })).toBeInTheDocument();
-    expect(screen.queryByText("Live")).not.toBeInTheDocument();
   });
 
-  it("still hides ordinary Grok working output when the dump is off", async () => {
+  it("shows ordinary Grok working output even when the Terminal toggle is off", async () => {
     const grok = { ...fixtureAgents[1]!, status: "working" as const, hasSession: true };
     writeDisplayPrefs({ showTerminal: false });
     renderChat({ agent: grok, agents: [grok], paneId: grok.paneId, text: "live terminal output" });
     await waitFor(() => expect(screen.getByText("what changed today?")).toBeInTheDocument());
-    expect(screen.queryByText("Live")).not.toBeInTheDocument();
-    expect(screen.getByTestId("thinking-pulse")).toHaveTextContent("live terminal output");
+    expect(screen.getByText("live terminal output")).toBeInTheDocument();
+    expect(screen.queryByTestId("thinking-pulse")).not.toBeInTheDocument();
   });
 
   it("keeps lifted Grok ask buttons when the dump is hidden", async () => {

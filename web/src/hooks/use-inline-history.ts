@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { fetchHistory } from "@/lib/api";
+import { subscribeSnapshotApplied } from "@/lib/loaders";
 import { mergeNewest } from "@/lib/transcript-merge";
 import type { TranscriptEntry } from "@/lib/types";
 
@@ -16,12 +17,12 @@ export { mergeNewest };
 // The newest end is REFRESHED, not fetched once: a pane stays open for hours, and every turn the
 // agent writes after open used to be invisible — scrolling up went from the 50-row live viewport
 // straight into a snapshot from open time (and after `/clear`, into the previous session entirely).
-// A status transition still refetches immediately, and a tick keeps the page fresh while the pane
-// is open. Several harnesses keep the composer on screen, so Herdr reports idle/done during a
-// turn; gating the tick on Working left jsonl writes unseen on every agent until the next real
-// status flip. Cadence matches the open-pane dump poll (use-polling HOT_MS). The fresh page is
-// spliced in by uuid: overlap replaces (a tool call picks up its result), the rest appends; no
-// overlap at all means a different session, so the fresh page replaces the lot.
+// A status transition still refetches immediately, an SSE snapshot (or the fallback poll's apply)
+// refreshes the page, and a visibility change catches up after the tab was hidden. There is no
+// 1.5s 160-turn gulp. Several harnesses keep the composer on screen, so Herdr reports idle/done
+// during a turn; gating only on Working left jsonl writes unseen. The fresh page is spliced in by
+// uuid: overlap replaces (a tool call picks up its result), the rest appends; no overlap at all
+// means a different session, so the fresh page replaces the lot.
 
 /** Turns fetched on pane open — a few screens, cheap enough to prefetch. */
 export const INLINE_HISTORY_PAGE = 160;
@@ -29,8 +30,6 @@ export const INLINE_HISTORY_PAGE = 160;
 export const INLINE_HISTORY_STEP = 120;
 /** Distance from the top of the scroller that triggers growth, in px. */
 export const INLINE_GROW_THRESHOLD = 800;
-/** How often the newest page is refetched while the pane is open, in ms. */
-export const INLINE_REFRESH_MS = 1_500;
 /** Extra refetch after working → idle/done, so the last turn is in the journal. Claude writes the
  *  jsonl line as the turn completes; the status flip can beat that write by a beat. */
 export const INLINE_IDLE_RETRY_MS = 2000;
@@ -182,12 +181,25 @@ export function useInlineHistory({
         retry = setTimeout(() => void refreshNewest(), INLINE_IDLE_RETRY_MS);
       }
     }
-    const id = setInterval(() => void refreshNewest(), INLINE_REFRESH_MS);
     return () => {
       if (retry) clearTimeout(retry);
-      clearInterval(id);
     };
   }, [enabled, status, refreshNewest]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const onVisible = () => {
+      if (!document.hidden) void refreshNewest();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    const unsub = subscribeSnapshotApplied(() => {
+      if (!document.hidden) void refreshNewest();
+    });
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      unsub();
+    };
+  }, [enabled, refreshNewest]);
 
   /**
    * Drop the loaded turns now — for when the operator sends `/clear` (or an alias). The agent has

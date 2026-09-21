@@ -9,7 +9,7 @@ export const MARK_LIGHT_SRC = "/sightr-badge-light.svg";
 const RUN_SRC = "/sightr-loading-badge.svg";
 const RUN_LIGHT_SRC = "/sightr-loading-badge-light.svg";
 
-interface DogGallopProps {
+interface SightrLoaderProps {
   /** Play the sightr loader (ticks spin, bison gallops). When false, the static badge. */
   running?: boolean;
   /** Any CSS length for the (square) render size. Defaults to 1.5rem — the header logo size. */
@@ -45,14 +45,14 @@ export function SightrMark({ className, muted = false }: { className?: string; m
 //
 // Rest is the static badge, not a paused run-frame. Callers that mean "at rest" should mount
 // <SightrMark/> so a reduced-motion user never sees the loader file at all.
-export function DogGallop({ running = false, size = "1.5rem", label, className }: DogGallopProps) {
+export function SightrLoader({ running = false, size = "1.5rem", label, className }: SightrLoaderProps) {
   return (
     <span
       role={label ? "img" : undefined}
       aria-label={label}
       aria-hidden={label ? undefined : true}
-      style={{ "--dog-size": size } as CSSProperties}
-      className={cn("dog-gallop", running && "dog-gallop--running", className)}
+      style={{ "--mark-size": size } as CSSProperties}
+      className={cn("sightr-mark", running && "sightr-mark--running", className)}
     >
       <Pair
         dark={running ? RUN_SRC : MARK_SRC}

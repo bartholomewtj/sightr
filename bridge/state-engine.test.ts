@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { BeaconSweepDeps } from "./beacon/reader.ts";
-import { overlayFromAgent, StateEngine, STATUS_HOLD_MS, type EngineSnapshot } from "./state-engine.ts";
+import { overlayFromAgent, engineCadence, StateEngine, STATUS_HOLD_MS, type EngineSnapshot } from "./state-engine.ts";
 import type { HerdrClient, WireAgent } from "./herdr-client.ts";
 import type { AgentStatus } from "../shared/wire.ts";
 
@@ -776,6 +776,15 @@ describe("StateEngine — poke / cadence / onUpdate", () => {
     expect(cadence()).toBe(12_000);
     expect(timer()).not.toBe(before);
     engine.stop();
+  });
+
+  test("engineCadence is fast when events are down or any pane is working/blocked", () => {
+    expect(engineCadence(false, [], 1500, 12_000)).toBe(1500);
+    expect(engineCadence(true, [{ status: "idle" }], 1500, 12_000)).toBe(12_000);
+    expect(engineCadence(true, [{ status: "working" }], 1500, 12_000)).toBe(1500);
+    expect(engineCadence(true, [{ status: "blocked" }], 1500, 12_000)).toBe(1500);
+    expect(engineCadence(true, [{ status: "idle" }, { status: "working" }], 1500, 12_000)).toBe(1500);
+    expect(engineCadence(true, [{ status: "done" }], 1500, 12_000)).toBe(12_000);
   });
 });
 

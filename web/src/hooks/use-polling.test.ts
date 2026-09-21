@@ -148,6 +148,20 @@ describe("usePolling — SSE mode", () => {
     expect(rr.revalidate).toHaveBeenCalled();
   });
 
+  it("revalidates from a pushed snapshot while a pane is open", () => {
+    let onSnapshot: ((snapshot: unknown) => void) | undefined;
+    push.open.mockImplementation((callback: (snapshot: unknown) => void) => {
+      onSnapshot = callback;
+      return { addEventListener: vi.fn((name: string, fn: () => void) => { if (name === "open") fn(); }), close: vi.fn() };
+    });
+    renderHook(() => usePolling(makeData([makeAgent("w1:p1", "idle")]), "w1:p1"));
+    rr.revalidate.mockClear();
+    act(() => onSnapshot?.({
+      bridge: "connected", agents: [], shellPanes: [], workspaces: [], tabs: [], ts: 1,
+    }));
+    expect(rr.revalidate).toHaveBeenCalled();
+  });
+
   it("resumes polling when the stream errors", () => {
     const stream = { addEventListener: vi.fn(), close: vi.fn() };
     push.open.mockReturnValue(stream);

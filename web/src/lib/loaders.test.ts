@@ -465,3 +465,26 @@ describe("filesShouldRevalidate", () => {
     expect(filesShouldRevalidate({ currentUrl: folder, nextUrl: nested })).toBe(true);
   });
 });
+
+describe("snapshotShouldRevalidate", () => {
+  it("skips a same-URL poll while SSE is connected and there is no pending push", async () => {
+    const { setSnapshotPushMode, snapshotShouldRevalidate } = await import("./loaders");
+    setSnapshotPushMode(false);
+    setSnapshotPushMode(true);
+    const home = new URL("http://x/");
+    expect(snapshotShouldRevalidate({ currentUrl: home, nextUrl: home })).toBe(false);
+    expect(snapshotShouldRevalidate({ currentUrl: home, nextUrl: new URL("http://x/pane/w1:p1") })).toBe(true);
+    setSnapshotPushMode(false);
+  });
+
+  it("revalidates a same-URL run when a pushed snapshot is waiting", async () => {
+    const { applySnapshot, snapshotShouldRevalidate, setSnapshotPushMode } = await import("./loaders");
+    setSnapshotPushMode(true);
+    applySnapshot({
+      bridge: "connected", agents: [], shellPanes: [], workspaces: [], tabs: [], ts: 1,
+    });
+    const home = new URL("http://x/");
+    expect(snapshotShouldRevalidate({ currentUrl: home, nextUrl: home })).toBe(true);
+    setSnapshotPushMode(false);
+  });
+});
