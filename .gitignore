@@ -51,6 +51,9 @@ docs/bugs/
 __pycache__/
 *.pyc
 
+# Brand assets stay local (logos, brand.html, make-brand.py)
+/brand/
+
 # Generated Archify viewers — CI compiles JSON → HTML for GitHub Pages
 docs/archify/*.html
 
