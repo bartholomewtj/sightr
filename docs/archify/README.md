@@ -1,13 +1,16 @@
 # System maps
 
 These are [Archify](https://github.com/tt-a1i/archify) artifacts. The `.json` files are the typed
-source; the `.html` files are the compiled, self-contained interactive viewers; the `.png` files are
-the visual-check renders the top-level README embeds.
+source; the `.html` files are compiled, self-contained interactive viewers (generated, not edited);
+the `.png` files are the visual-check renders the top-level README embeds.
 
-GitHub Pages serves this folder, so the live maps are:
+GitHub Pages (`.github/workflows/pages.yml`) compiles the JSON on every push to `main` and publishes
+this folder, so the live maps are:
 
 - https://bartholomewtj.github.io/sightr/archify/sightr-runtime.architecture.html
 - https://bartholomewtj.github.io/sightr/archify/sightr-reply.sequence.html
+
+Do not hand-edit the HTML. Change the JSON, then regenerate.
 
 ## Re-render after a change
 

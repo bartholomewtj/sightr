@@ -69,7 +69,7 @@ export function decodePathSegment(raw: string): string | null {
  *
  * The real error — which routinely carries absolute journal, state-dir and Herdr-socket paths, and
  * for a socket failure the whole raw reply line — goes to the log, where the operator reads it with
- * `journalctl --user -u sightr -f`. The client gets a fixed phrase naming only what was being
+ * `sightr-ctl.ps1 logs`. The client gets a fixed phrase naming only what was being
  * attempted. Never interpolate `err` into the return value.
  */
 export function failureText(context: string, err: unknown): string {

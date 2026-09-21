@@ -104,8 +104,8 @@ export function startServer(opts: {
     // Bun's `development` default is `NODE_ENV !== "production"`, and nothing in Sightr's launch paths
     // sets NODE_ENV — so without this the bridge served Bun's HTML error page, stack trace and absolute
     // source paths included, to anyone who could make a handler throw. Pinned in code rather than via a
-    // unit Environment= line because the three launch paths in sightr-ctl.ps1 plus the hand-maintained
-    // systemd/sightr.service copy would all have to agree, and nothing tests that they do.
+    // unit Environment= line because the launch paths in sightr-ctl.ps1 plus the Task Scheduler
+    // `herdr.sightr` job would all have to agree, and nothing tests that they do.
     development: false,
 
     // Folder zip planning walks up to 2000 files before the first response byte. Bun's default

@@ -96,7 +96,27 @@ let lastSnapshotAt: number | undefined;
 const lastPaneAt = new Map<string, number>();
 let pushedSnapshot = false;
 let snapshotPushMode = false;
-export function setSnapshotPushMode(enabled: boolean): void { snapshotPushMode = enabled; if (!enabled) pushedSnapshot = false; }
+const snapshotAppliedListeners = new Set<() => void>();
+
+/** SSE connected: the next revalidation may consume a pushed body. Disconnect drops that skip. */
+export function setSnapshotPushMode(enabled: boolean): void {
+  snapshotPushMode = enabled;
+  if (!enabled) pushedSnapshot = false;
+}
+
+/** Skip GET /api/snapshot on a same-URL revalidate while SSE is applying snapshots.
+ *  A pending pushed body still revalidates so the tree renders it. Navigations always load. */
+export function snapshotShouldRevalidate({ currentUrl, nextUrl }: { currentUrl: URL; nextUrl: URL }): boolean {
+  if (currentUrl.pathname !== nextUrl.pathname || currentUrl.search !== nextUrl.search) return true;
+  if (pushedSnapshot) return true;
+  return !snapshotPushMode;
+}
+
+/** Journal (and anything else) that should refresh when a snapshot lands, SSE or poll. */
+export function subscribeSnapshotApplied(listener: () => void): () => void {
+  snapshotAppliedListeners.add(listener);
+  return () => { snapshotAppliedListeners.delete(listener); };
+}
 
 // A latched navigation skips the network, so retain whether the last real outcome was an auth
 // rejection. Every other real outcome clears the marker.
@@ -198,6 +218,7 @@ export function applySnapshot(snap: SnapshotResponse, fromPush = true): void {
   rememberAuthError(false);
   if (fromPush) pushedSnapshot = true;
   if (snap.bridge !== "disconnected") markLive();
+  for (const listener of snapshotAppliedListeners) listener();
 }
 
 export async function rootLoader({ request }: { request?: Request } = {}): Promise<HomeData> {

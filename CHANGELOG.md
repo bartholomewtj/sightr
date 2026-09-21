@@ -7,6 +7,27 @@ adds an entry here and keeps the three version files in step; CI refuses a build
 
 ### Added
 - Marked draftr operator-decision cards submit `whistlr reply --payload` and do not type into the pane.
+- `push-list` and `push-forget` control-script verbs (metadata only; require an explicit match or `*`).
+- `docs/ARCHITECTURE.md` and `docs/HARNESS_CONTRIBUTING.md` stubs so older ADR links resolve.
+
+### Changed
+- Slash-command catalogs live under `shared/catalog/`; `shared/agents.ts` is the harness table.
+- Connection mark component is `sightr-mark` (`SightrLoader`), not dog-gallop.
+- With EventSource open, the phone skips periodic `GET /api/snapshot` (home and open pane). Pane dump
+  still polls; the journal newest page refreshes from SSE / status / visibility, not a 1.5s timer.
+  SSE keepalive is a ping, not a full snapshot re-serialize.
+- Archify HTML is generated in GitHub Pages CI from the JSON sources, not committed.
+- `docs/HERDR_API.md` documents the Windows named pipe and `SIGHTR_POLL_*`.
+- ADR index uses Sightr titles; 0007 is Superseded (idle-lock removed; reconnect lock is WebAuthn).
+
+### Fixed
+- Panes stay live: dump follows while Working, freeze only during Find, and the bridge keeps the
+  fast Herdr cadence while any agent is working or blocked.
+- Subscription-cap log names `push-forget`, the verb that exists.
+
+### Removed
+- Pre-refactor adapter-block golden (`golden.test.ts` / `golden.blocks.json`). Conformance plus
+  per-adapter tests against the pane captures remain the gate.
 
 ## [1.0.5] - 2026-09-19
 

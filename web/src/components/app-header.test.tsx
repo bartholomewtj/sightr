@@ -4,7 +4,7 @@ import { MemoryRouter, useLocation } from "react-router";
 import type { ReactElement } from "react";
 
 import { AppHeader, SettingsGear } from "./app-header";
-import { MARK_SRC } from "./dog-gallop";
+import { MARK_SRC } from "./sightr-mark";
 import { StatusBadge } from "./status-badge";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth } from "@/lib/connection-health";
@@ -35,7 +35,7 @@ describe("AppHeader — the one shared header shell", () => {
       </AppHeader>,
     );
     expect(screen.queryByRole("status")).toBeNull(); // no connection pill of any kind
-    expect(container.querySelector(".dog-gallop")).toBeNull(); // mark at rest (static icon)
+    expect(container.querySelector(".sightr-mark")).toBeNull(); // mark at rest (static icon)
     expect(screen.getByText("webapp › main")).toBeInTheDocument(); // the breadcrumb slot
     expect(screen.getByText("working")).toBeInTheDocument(); // the agent status badge
     expect(screen.queryByText("Sightr")).toBeNull(); // no wordmark in a pane
@@ -46,7 +46,7 @@ describe("AppHeader — the one shared header shell", () => {
       <AppHeader bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
     );
     expect(screen.getByText("Sightr")).toBeInTheDocument(); // wordmark
-    expect(container.querySelector(".dog-gallop")).toBeNull(); // mark at rest while live
+    expect(container.querySelector(".sightr-mark")).toBeNull(); // mark at rest while live
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
   });
 
@@ -108,7 +108,7 @@ describe("AppHeader — the dog keys on trouble/lost, not the first not-live fra
   it("stays a static icon during a brief not-live spell, gallops at 4s, rests muted at 15s", () => {
     const { container } = renderHeader(<AppHeader bridge="connected" error />);
     // A single not-live frame is NOT trouble yet: the mark stays the static, full-color icon.
-    expect(container.querySelector(".dog-gallop")).toBeNull();
+    expect(container.querySelector(".sightr-mark")).toBeNull();
     expect(container.querySelector(`img[src="${MARK_SRC}"]`)).not.toBeNull();
     expect(container.querySelector(`img[src="${MARK_SRC}"]`)?.closest("span")?.className ?? "").not.toMatch(
       /grayscale/,
@@ -116,11 +116,11 @@ describe("AppHeader — the dog keys on trouble/lost, not the first not-live fra
 
     // Sustained trouble (4s) → the dog gallops (agreeing with the amber bar).
     act(() => vi.advanceTimersByTime(TROUBLE_MS));
-    expect(container.querySelector(".dog-gallop")).toHaveClass("dog-gallop--running");
+    expect(container.querySelector(".sightr-mark")).toHaveClass("sightr-mark--running");
 
     // Escalated to lost (15s) → the gallop stops and the mark rests on the muted static icon.
     act(() => vi.advanceTimersByTime(CONNECTION_LOST_MS - TROUBLE_MS));
-    expect(container.querySelector(".dog-gallop")).toBeNull();
+    expect(container.querySelector(".sightr-mark")).toBeNull();
     expect(container.querySelector(`img[src="${MARK_SRC}"]`)?.closest("span")?.className ?? "").toMatch(
       /grayscale/,
     );

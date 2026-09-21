@@ -7,7 +7,7 @@ import { DetailRoute } from "@/routes/detail";
 import { SettingsRoute } from "@/routes/settings";
 import { FilesRoute } from "@/routes/files";
 import { rememberPath, restoreOnBoot } from "@/lib/last-path";
-import { filesLoader, filesShouldRevalidate, rootLoader, paneLoader, PANE_ROUTE_ID, ROOT_ROUTE_ID } from "@/lib/loaders";
+import { filesLoader, filesShouldRevalidate, rootLoader, paneLoader, snapshotShouldRevalidate, PANE_ROUTE_ID, ROOT_ROUTE_ID } from "@/lib/loaders";
 
 // We don't use view transitions. React Router persists an "applied view transitions" map to
 // sessionStorage ("remix-router-transitions") and replays a phantom same-location transition on every
@@ -31,6 +31,7 @@ export const router = createBrowserRouter([
     id: ROOT_ROUTE_ID,
     path: "/",
     loader: rootLoader,
+    shouldRevalidate: snapshotShouldRevalidate,
     element: <RootLayout />,
     // Catches render-phase errors and loader throws (e.g. a missing :paneId) so a component bug
     // shows a recoverable screen instead of React Router's blank default.

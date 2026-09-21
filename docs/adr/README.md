@@ -62,17 +62,17 @@ A superseded ADR is never deleted or edited into agreement with the present. Mar
 
 | # | Decision | Status |
 | --- | --- | --- |
-| [0001](./0001-one-managed-front-door.md) | Collie manages exactly one front door | Accepted |
+| [0001](./0001-one-managed-front-door.md) | Sightr manages exactly one front door | Accepted |
 | [0002](./0002-invert-the-light-terminal-mirror.md) | The light terminal mirror is inverted, not re-themed | Accepted |
-| [0003](./0003-one-shared-seen.md) | "Seen" is one shared fact, and only Collie's own reads count | Accepted |
+| [0003](./0003-one-shared-seen.md) | "Seen" is one shared fact, and only Sightr's own reads count | Accepted |
 | [0004](./0004-the-statusline-run-is-bounded.md) | The statusline run is bounded, but the bound guards less than it looks | Accepted |
 | [0005](./0005-a-composed-key-queue-never-outlives-its-dock.md) | A composed key queue never outlives its dock | Accepted |
 | [0006](./0006-update-advances-the-checkout-herdr-installed.md) | `update` advances the checkout Herdr installed, and never re-links it | Accepted |
-| [0007](./0007-the-idle-lock-is-a-pause-not-a-gate.md) | The idle lock is a pause, not a gate | Accepted |
-| [0008](./0008-collie-does-not-run-a-terminal-emulator.md) | Collie does not run a terminal emulator | Accepted |
+| [0007](./0007-the-idle-lock-is-a-pause-not-a-gate.md) | The idle lock is a pause, not a gate | Superseded |
+| [0008](./0008-collie-does-not-run-a-terminal-emulator.md) | Sightr does not run a terminal emulator | Accepted |
 | [0009](./0009-a-generic-menu-is-driven-by-the-keys-it-names.md) | A generic menu is driven by the keys it names, never by digits | Accepted |
 | [0010](./0010-long-sends-are-verified-via-the-paste-placeholder.md) | Long sends are verified via the paste placeholder, not by chunking them | Accepted |
-| [0017](./0017-recognising-a-password-prompt-changes-what-collie-says.md) | Recognising a password prompt changes what Collie says, never what it sends | Accepted |
+| [0017](./0017-recognising-a-password-prompt-changes-what-collie-says.md) | Recognising a password prompt changes what Sightr says, never what it sends | Accepted |
 | [0018](./0018-operator-command-rows-replace-the-catalog.md) | The operator's command rows replace the catalog, never merge into it | Accepted |
 | [0019](./0019-update-pins-to-the-newest-release-tag.md) | Update pins to the newest release tag | Accepted |
 | [0020](./0020-subscribe-stays-read-level.md) | Subscribe stays read-level | Superseded by 0021 |
@@ -83,9 +83,4 @@ A superseded ADR is never deleted or edited into agreement with the present. Mar
 | [0026](./0026-the-files-tab-is-the-second-filesystem-reader.md) | The Files tab is the second filesystem reader | Accepted |
 | [0027](./0027-html-open-is-a-unique-origin-sandbox.md) | HTML from the work root opens as a unique-origin sandbox | Accepted |
 
-**0011–0016 are not missing** — they are the pack/federation decisions, accepted on the `v1`
-integration branch and arriving here when it merges. Numbers are claimed across *both* branches, so
-the next ADR written on `main` continues from the highest number in use anywhere, not from the highest
-one in this table.
-
-**0019–0027 are this fork's** (bartholomewtj/collie) decisions. 0019–0023 were first numbered 0011–0014, then moved above upstream's reserved block so the `v1` merge cannot collide with them.
+0011–0016 and 0024 were never written on this product. The next ADR is 0028.

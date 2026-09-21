@@ -12,7 +12,7 @@ import {
 // Subscriptions are persisted to the state dir so they survive restarts, and there are exactly three
 // ways a row leaves that file: the push service disowns it mid-send (404/410, or EVICT_AFTER
 // same-origin-witnessed failures — see broadcast()), the device that owns it registers a successor
-// (SubscriptionMeta.replaces), or an operator drops it by hand (`sightr push forget`). The first
+// (SubscriptionMeta.replaces), or an operator drops it by hand (`push-forget`). The first
 // alone is not enough, which is collie#104: a subscription orphaned by a service-worker
 // re-registration was never `unsubscribe()`d, so the push service has no reason to reject it and it
 // accumulates forever, answering 201 to nobody. Hence the other two.
@@ -241,7 +241,7 @@ export class Push {
     }
     if (!this.subs.has(sub.endpoint) && this.subs.size >= MAX_SUBSCRIPTIONS) {
       console.warn(
-        `[push] subscription cap reached (${MAX_SUBSCRIPTIONS}) — dropping new subscription; run \`sightr push forget\` to prune stale devices`,
+        `[push] subscription cap reached (${MAX_SUBSCRIPTIONS}) — dropping new subscription; run \`push-forget\` to prune stale devices`,
       );
       return "full";
     }
@@ -260,7 +260,7 @@ export class Push {
   }
 
   /**
-   * The persisted rows, for the operator-facing `sightr push list`. Read-only and metadata-only:
+   * The persisted rows, for the operator-facing `push-list`. Read-only and metadata-only:
    * the keys are a sending credential and have no business on a terminal.
    */
   listSubscriptions(): ReadonlyArray<{ endpoint: string; createdAt?: string; userAgent?: string }> {
@@ -373,7 +373,7 @@ export class Push {
 
   /**
    * Read the persisted file into memory. `init()` calls this once push is known to be live; the CLI
-   * calls it DIRECTLY, without VAPID, because `sightr push list` / `push forget` are precisely what
+   * calls it DIRECTLY, without VAPID, because `push-list` / `push-forget` are precisely what
    * an operator runs when push is off or misconfigured — the store is a file, not a capability.
    *
    * This and {@link save} are the only reader and the only writer of `push-subscriptions.json`.

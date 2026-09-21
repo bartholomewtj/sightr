@@ -9,6 +9,9 @@ import type { HomeData } from "@/lib/loaders";
 // re-runs every active loader (snapshot + the open pane) — our equivalent of a refetch interval.
 //  - fast (1.5s) while any agent is active OR a pane is open (you're watching it live), slow (4s)
 //    when idle on the home screen with no active work;
+//  - SSE is the snapshot path while connected. The interval skips GET /api/snapshot whenever the
+//    EventSource is open (home and open pane). An open pane still ticks so the dump loader can
+//    refresh /api/pane/...; root.shouldRevalidate refuses the snapshot GET on those ticks.
 //  - skipped only while the tab is hidden (battery); it deliberately does NOT gate on
 //    navigator.onLine (that flag lies on some phones and would wedge polling forever — see the tick),
 //    and it's kicked immediately on focus/online/visibility as an accelerator.
@@ -52,7 +55,8 @@ export function usePolling(data: HomeData | undefined, paneId?: string | null): 
   const retry = useRef<number | undefined>(undefined);
 
   // SSE is opportunistic: an older bridge, a proxy that does not stream, or a dropped connection
-  // simply returns to the polling path. Pane text remains on the normal revalidation cadence.
+  // simply returns to the polling path. A snapshot event always revalidates (home and open pane)
+  // so the tree, header, and dump stay on the same poke.
   useEffect(() => {
     let source: EventSource | undefined;
     let stopped = false;
@@ -61,7 +65,7 @@ export function usePolling(data: HomeData | undefined, paneId?: string | null): 
       if (stopped || document.hidden || typeof EventSource !== "function") return;
       source = openSnapshotStream((snapshot) => {
         applySnapshot(snapshot);
-        if (!paneId && ref.current.state === "idle") ref.current.revalidate();
+        if (ref.current.state === "idle") ref.current.revalidate();
       }, () => {
         setSnapshotPushMode(false);
         setPushConnected(false);
@@ -101,8 +105,8 @@ export function usePolling(data: HomeData | undefined, paneId?: string | null): 
       if (document.hidden) return;
       // Deliberately NO navigator.onLine gate here. On some phones the flag lies — it stuck FALSE
       // after an airplane-mode toggle even though the network was back — and gating the tick on it
-      // wedged polling permanently: the app froze on "not connected" with a resting/bad-state dog and
-      // a stale mirror forever, because it never fetched again to discover the network had returned. A
+      // wedged polling permanently: the app froze on "not connected" with a resting mark
+      // and a stale mirror forever, because it never fetched again to discover the network had returned. A
       // failed fetch on a genuinely dead connection is cheap and self-heals the instant it's back; the
       // focus/online/visibility listeners below only accelerate that first beat. Never STOP fetching
       // because a possibly-lying flag says offline.

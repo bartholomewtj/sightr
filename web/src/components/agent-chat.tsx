@@ -207,6 +207,7 @@ export function AgentChat({
     prefs.showTerminal ||
     !hasJournal ||
     agent?.status === "blocked" ||
+    agent?.status === "working" ||
     armed ||
     findOpen ||
     needsDump;
@@ -242,10 +243,9 @@ export function AgentChat({
   const transcriptEntries = mergePendingUsers(inline.entries, pendingUsers);
   const inFlight = pendingUsers.filter((p) => !p.opening && !journalHasUser(inline.entries, p.text));
 
-  // Dump stays hidden while working. The pulse is the live tell: elapsed clock plus the last
-  // sentence (or last ~80 chars) of the chrome-stripped dump we still poll. Start on the send
-  // itself — Herdr's working status can lag a poll or two, and runningCommand is the previous
-  // journal tail, not this turn. Sit above the composer so a phone keyboard doesn't cover it.
+  // Dump is live while working. The pulse covers the gap after Send before Herdr flips to working
+  // (that status can lag a poll or two, and runningCommand is the previous journal tail). Sit above
+  // the composer so a phone keyboard doesn't cover it.
   const showPulse =
     !showDump && (agent?.status === "working" || inFlight.length > 0) && agent?.status !== "blocked";
   const [thinkAt, setThinkAt] = useState<number | null>(null);
@@ -367,11 +367,11 @@ export function AgentChat({
           <ChatMessageList ref={listRef} dep={display} onAtBottomChange={setFollowing} hasNew={hasNew} className="px-2 py-3">
             <>
               {/* Agent panes: last transcript turns sit above the live tail so a swipe up reads
-                  the conversation. The dump is off by default and controlled by the composer's Terminal
-                  toggle when the journal is usable; blocked, Type, Find, no-journal, and unlifted
-                  blocking widgets (Grok checkbox asks) still force it and show the Live seam. Lifted
-                  buttons still render when the dump is hidden. Shells (primary screen, real scrollback
-                  ring) still page the terminal buffer with Load older. */}
+                  the conversation. The dump is off while idle and controlled by the composer's
+                  Terminal toggle when the journal is usable; working, blocked, Type, Find,
+                  no-journal, and unlifted blocking widgets still force it and show the Live seam.
+                  Lifted buttons still render when the dump is hidden. Shells (primary screen, real
+                  scrollback ring) still page the terminal buffer with Load older. */}
               {transcriptEntries.length > 0 && (
                 <div className="mb-3">
                   {inline.loading && (

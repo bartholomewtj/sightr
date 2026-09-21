@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from "react";
 
 import { cn } from "@/lib/utils";
-import { SightrMark } from "@/components/dog-gallop";
+import { SightrMark } from "@/components/sightr-mark";
 import { usePushDevice } from "@/hooks/use-push";
 import {
   dismissPushOnboarding,

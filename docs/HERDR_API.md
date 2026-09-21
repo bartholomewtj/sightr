@@ -8,7 +8,10 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
 
 ## Transport
 
-- Unix domain socket at `$HERDR_SOCKET_PATH` (default `~/.config/herdr/herdr.sock`).
+- **Windows named pipe** via `node:net`. Herdr reports a `.sock` path; on Windows that file is a
+  pointer, and the transport is `\\.\pipe\<full-path>` — see [`bridge/dial.ts`](../bridge/dial.ts).
+  Default path: `%APPDATA%\herdr\herdr.sock`. Override with `HERDR_SOCKET_PATH`.
+  (AF_UNIX is exercised in `bridge/dial.test.ts` for non-Windows; this product runs on Windows only.)
 - **Newline-delimited JSON.** Request: `{"id": <string>, "method": <string>, "params": <object>}`.
   - `id` **must be a string** (integer → `invalid_request`).
 - Response: `{"id", "result": {"type": "...", ...}}` or `{"id": "", "error": {"code", "message"}}`.
@@ -20,11 +23,11 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
 - **Exception:** `events.subscribe` keeps the connection open and streams events.
 - **A request line is capped at 1 MiB.** Live-probed 2026-08-17 against herdr 0.7.5: a request of
   1 048 575 bytes (newline included) still gets a normal reply; 1 048 576 gets no reply at all —
-  the server drops the connection or simply never answers. Nothing Collie sends is near that, but
+  the server drops the connection or simply never answers. Nothing Sightr sends is near that, but
   it is the ceiling to design against, and a hang at that size is the server, not the client. (The
-  client-side hazard at large sizes was Collie's own: Bun's `socket.write()` accepts only what the
+  client-side hazard at large sizes was Sightr's own: Bun's `socket.write()` accepts only what the
   socket has room for, and the unwritten tail must be resumed on `drain` — see
-  [`bridge/write-drain.ts`](./bridge/write-drain.ts).)
+  [`bridge/write-drain.ts`](../bridge/write-drain.ts).)
 
 ## Methods the bridge uses (verified params)
 
@@ -126,7 +129,7 @@ Docs-blessed pattern: **bootstrap with `session.snapshot` → `events.subscribe`
 on reconnect or staleness.** CLI mirror: `herdr api snapshot` prints the raw reply — handy for
 diffing shapes without writing a client.
 
-Collie's bridge polls this method (one RPC per tick instead of the `workspace.list` + `pane.list`
+Sightr's bridge polls this method (one RPC per tick instead of the `workspace.list` + `pane.list`
 + `tab.list` trio) and falls back to the trio on older servers that don't know the method. Old-server
 detection: the error reply is
 ``{"id":"","error":{"code":"invalid_request","message":"invalid request: unknown variant `session.snapshot`, expected one of ..."}}``
@@ -322,14 +325,14 @@ out here too since they're easy to miss in the block above.
   carries `{pane_id, workspace_id, agent?}` and can fire in herd-wide bursts on re-detection —
   consumers should debounce it.
 
-Collie now polls `session.snapshot` (above) as the source of truth, and additionally holds a
+Sightr now polls `session.snapshot` (above) as the source of truth, and additionally holds a
 long-lived `events.subscribe` stream — global lifecycle events plus a per-agent-pane
 `pane.agent_status_changed` subscription, resubscribed whenever the agent-pane set changes —
 purely to **poke** the poller: an event triggers an immediate debounced re-poll, it never updates
-state by itself. While the stream is healthy, interval polling relaxes to `COLLIE_POLL_IDLE_MS`
+state by itself. While the stream is healthy, interval polling relaxes to `SIGHTR_POLL_IDLE_MS`
 (default 12000 ms, min 1000 ms); when the stream is down or reconnecting, it drops back to the
-fast `COLLIE_POLL_MS` cadence. Events accelerate; the snapshot stays authoritative — a missed
+fast `SIGHTR_POLL_MS` cadence (default 1500 ms). Events accelerate; the snapshot stays authoritative — a missed
 event costs one interval, never correctness.
 
-Also visible in the 0.7.2 schema but unused by Collie: `events.wait`, `pane.send_input`,
+Also visible in the 0.7.2 schema but unused by Sightr: `events.wait`, `pane.send_input`,
 `agent.list`, `pane.wait_for_output` — run `herdr api schema` for the full ~80-method catalog.

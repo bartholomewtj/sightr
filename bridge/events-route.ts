@@ -57,8 +57,10 @@ export function createSnapshotEvents(
     for (const client of [...clients]) {
       if (at - client.lastSent >= EVENT_KEEPALIVE_MS) {
         client.send(": keep-alive\n\n"); client.lastSent = at;
-        // A quiet herd still needs a live snapshot so the client stamps connection health.
-        void emit();
+        // Comment frames keep the TCP idle; JS never sees them. A quiet herd still needs a live
+        // stamp so connection-health does not escalate after CONNECTION_LOST_MS — `event: ping`
+        // is that stamp, not a full snapshot re-serialize.
+        client.send("event: ping\ndata: {}\n\n");
       }
     }
   }, EVENT_KEEPALIVE_MS);

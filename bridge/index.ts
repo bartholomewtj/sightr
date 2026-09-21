@@ -13,7 +13,7 @@ import { RuntimeSettingsStore } from "./runtime-settings.ts";
 import { Push } from "./push.ts";
 import { createLockStore } from "./lock.ts";
 import { startServer } from "./server.ts";
-import { StateEngine } from "./state-engine.ts";
+import { engineCadence, StateEngine } from "./state-engine.ts";
 import { beaconReader } from "./beacon-io.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
 
@@ -63,13 +63,23 @@ const herdr = new HerdrClient(cfg.socketPath, DEFAULT_TIMEOUT_MS);
 const engine = new StateEngine(herdr, cfg.pollMs, Date.now, cfg.beacons ? beaconReader(cfg.stateDir) : null);
 
 // Event-poked polling: a long-lived events.subscribe stream pokes an immediate re-poll on any herd
-// change, and while it's healthy the interval relaxes to the safety-net cadence. Events are ONLY a
-// poke — the snapshot poll stays the source of truth — so a missed event costs one interval, not
-// correctness. The fresh snapshot after any pane lifecycle change re-scopes the subscriptions.
+// change. While the stream is healthy AND every agent is resting, the interval relaxes to the
+// safety-net cadence; working or blocked panes stay on the fast poll because output does not emit a
+// poke. Events are ONLY a poke — the snapshot poll stays the source of truth — so a missed event
+// costs one interval, not correctness. The fresh snapshot after any pane lifecycle change
+// re-scopes the subscriptions.
 const poker = new EventPoker(herdr);
+let eventsHealthy = false;
+const applyCadence = () => {
+  engine.setCadence(engineCadence(eventsHealthy, engine.current().agents, cfg.pollMs, cfg.pollIdleMs));
+};
 poker.onPoke(() => engine.pokeNow());
-poker.onHealth((h) => engine.setCadence(h ? cfg.pollIdleMs : cfg.pollMs));
+poker.onHealth((h) => {
+  eventsHealthy = h;
+  applyCadence();
+});
 engine.onUpdate((s) => poker.setAgentPanes(s.agents.map((a) => a.paneId)));
+engine.onUpdate(applyCadence);
 engine.onUpdate(() => snapshotEvents?.notify());
 
 // Activity bookkeeping. A status change stamps `activeAt` (the only thing that can make a pane

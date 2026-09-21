@@ -14,6 +14,7 @@ import { hooks } from "./ctl/hooks.ts";
 import { logs } from "./ctl/logs.ts";
 import { qr } from "./ctl/qr.ts";
 import { pushTest } from "./ctl/push-test.ts";
+import { pushForget, pushList } from "./ctl/push-ops.ts";
 import { realRun } from "./ctl/types.ts";
 
 export async function main(argv = Bun.argv.slice(2)): Promise<number> {
@@ -37,6 +38,8 @@ export async function main(argv = Bun.argv.slice(2)): Promise<number> {
  if(verb==="qr") return qr();
  if(verb==="version") { const x=await effectiveEnv(process.env,realRun); console.log(await getVersion(x.paths)); return 0; }
  if(verb==="push-test") return pushTest(argv.slice(1));
- console.error("usage: bun scripts/ctl.ts {start|stop|restart|serve|unserve|uninstall|update|logs|hooks|url|qr|version|status|build|env-check|keys|push-keys|push-test}"); return 2;
+ if(verb==="push-list") return pushList();
+ if(verb==="push-forget") return pushForget(argv.slice(1));
+ console.error("usage: bun scripts/ctl.ts {start|stop|restart|serve|unserve|uninstall|update|logs|hooks|url|qr|version|status|build|env-check|keys|push-keys|push-test|push-list|push-forget}"); return 2;
 }
 if(import.meta.main) { try { process.exit(await main()); } catch(error) { if(error instanceof CtlError){console.error(error.message);process.exit(error.exitCode);} else {console.error(String(error));process.exit(1);} } }

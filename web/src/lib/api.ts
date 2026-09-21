@@ -253,6 +253,7 @@ export function openSnapshotStream(
   source.addEventListener("snapshot", (event) => {
     try { onSnapshot(JSON.parse((event as MessageEvent).data) as SnapshotResponse); } catch { onError(); }
   });
+  source.addEventListener("ping", () => { markLive(); });
   source.addEventListener("build", (event) => {
     try { observeServerBuild(JSON.parse((event as MessageEvent).data) as string); } catch { /* older bridge */ }
   });

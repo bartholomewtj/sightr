@@ -78,16 +78,16 @@ export function usePaneView(args: PaneViewArgs) {
   const composerRef = useRef<any>(null);
   const [armed, setArmed] = useState(false);
 
-  // Mirror freeze: at the bottom we follow live output; the moment you scroll up to read backscroll
-  // we hold the text steady (no reflow / no re-pin) until you jump back to latest — so a long
-  // message stays put long enough to read instead of sliding out of the rolling window.
+  // Mirror freeze is Find-only. Scrolling the journal used to pin `shown` to an old dump, which
+  // froze the thinking pulse and lifted buttons while the pane was still live. Auto-scroll already
+  // yields when you leave the tail, so the dump can keep updating below the fold.
   //
   // The frozen snapshot is a {text, revision} PAIR captured at the same instant: the prompt-select
-  // race guard must check a tap against the revision of what the user is LOOKING AT. The live
-  // `revision` prop keeps advancing with background polls while the mirror is frozen — comparing
-  // against it would blind the guard to drift that happened before the freeze (live-vs-live always
-  // matches). While following, the frozen pair IS the live pair by definition.
+  // race guard must check a tap against the revision of what the user is LOOKING AT. Find holds that
+  // pair so matches do not shift as polls land. While following (or while Find is closed), the pair
+  // IS the live pair by definition.
   const [following, setFollowing] = useState(true);
+  const [findOpen, setFindOpen] = useState(false);
   const [shown, setShown] = useState({ text, revision });
   const liveRef = useRef({ text, revision });
   liveRef.current = { text, revision };
@@ -102,7 +102,7 @@ export function usePaneView(args: PaneViewArgs) {
   }, []);
 
   useEffect(() => {
-    if (!following && !shellMirror) return;
+    if (findOpen && !shellMirror) return;
     if (
       adoptedOver.current &&
       text === adoptedOver.current.text &&
@@ -118,7 +118,7 @@ export function usePaneView(args: PaneViewArgs) {
         ? prev
         : { text, revision },
     );
-  }, [text, revision, following, shellMirror]);
+  }, [text, revision, findOpen, shellMirror]);
   const display = shown.text;
   const hasNew = !following && display !== text;
 
@@ -164,15 +164,15 @@ export function usePaneView(args: PaneViewArgs) {
   const currentDialog = [...blocks].reverse().find((b) => b.kind !== "raw");
   const dialogPresent = currentDialog !== undefined;
   // #372: tell the herd whether a parsed ask card is on this pane, so bucketOf can say Needs you even
-  // while Herdr reports working/done. Same `blocks` as the card itself, so the two can't disagree. Only
-  // while following: a frozen mirror (scrolled back / find open) is not the live screen.
+  // while Herdr reports working/done. Same `blocks` as the card itself, so the two can't disagree.
+  // Find holds a frozen buffer, so skip it then — that screen is not live.
   const askOnScreen = hasParsedDialog(blocks);
   const agentStatus = agent?.status;
   const agentActiveAt = agent?.lastActiveAt;
   const revalidateRef = useRef(revalidator);
   revalidateRef.current = revalidator;
   useEffect(() => {
-    if (!following) return;
+    if (findOpen) return;
     const changed = noteDialogPresence(
       paneId,
       askOnScreen,
@@ -180,7 +180,7 @@ export function usePaneView(args: PaneViewArgs) {
     );
     // Re-run the root loader once on an edge, so the inbox/dots pick it up now, not a poll later.
     if (changed && revalidateRef.current.state === "idle") revalidateRef.current.revalidate();
-  }, [paneId, askOnScreen, agentStatus, agentActiveAt, following]);
+  }, [paneId, askOnScreen, agentStatus, agentActiveAt, findOpen]);
   const promptBlock =
     currentDialog?.kind === "prompt-select" ? currentDialog : undefined;
 
@@ -195,7 +195,6 @@ export function usePaneView(args: PaneViewArgs) {
   // Find-in-output: search the already-fetched buffer. The bar takes over the header while open;
   // AnsiOutput highlights matches and reports the count back here; prev/next scrolls the focused
   // match into view. Opening freezes the tail so matches don't shift under you as polls land.
-  const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [matchCount, setMatchCount] = useState(0);
   const [currentMatch, setCurrentMatch] = useState(0);
