@@ -339,6 +339,7 @@ header and the device allowlist, the write is queued per pane, sent over the Her
 | `contrib/windows/` | PowerShell entry point, action launcher source, their tests |
 | `docs/archify/` | System maps, served by GitHub Pages |
 | `docs/adr/` | Architecture decision records. Code comments cite them by number (`ADR 0009`) |
+| `CONTEXT.md` | Agent map: where to go, standing rules |
 | `docs/ARCHITECTURE.md`, `docs/HARNESS_CONTRIBUTING.md` | Stubs pointing at this README |
 | `docs/HERDR_API.md` | The Herdr socket protocol facts the bridge relies on |
 | `docs/specs/` | Implementable slices. Catalog: [`docs/specs/README.md`](docs/specs/README.md) |
