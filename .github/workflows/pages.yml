@@ -35,12 +35,9 @@ jobs:
         run: npm ci
         working-directory: .archify-tool/archify
       - name: Compile Archify HTML
-        # Omit --repo-root here: the JSON pins an older revision, and a source-range check against
-        # HEAD would fail a Pages deploy that only needs the compiled viewer. Local regen in
-        # docs/archify/README.md still passes --repo-root to catch stale line refs.
         run: |
           ARCHIFY=.archify-tool/archify/bin/archify.mjs
-          node "$ARCHIFY" deliver architecture docs/archify/sightr-runtime.architecture.json docs/archify/sightr-runtime.architecture.html --quality showcase --json
+          node "$ARCHIFY" deliver architecture docs/archify/sightr-runtime.architecture.json docs/archify/sightr-runtime.architecture.html --quality showcase --repo-root . --json
           node "$ARCHIFY" deliver sequence docs/archify/sightr-reply.sequence.json docs/archify/sightr-reply.sequence.html --quality showcase --json
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b   # v5
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa   # v3
