@@ -54,6 +54,7 @@ import {
   ClaimStore,
   type ClaimStrength,
 } from "./claims.ts";
+import { grokPromptBody } from "../../shared/grok-prompt.ts";
 import { containedRealpath, exists, loadTail, rootList, statFile } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
@@ -160,21 +161,18 @@ const QUERY_PREFIX_CHARS = 80;
 /** OSC titles Herdr reports are often cut with `…` and suffixed ` - grok`. */
 const TITLE_ELLIPSIS = /…|\.{3}/;
 const GROK_TITLE_SUFFIX = /\s+-\s+grok\b/g;
-/** Live composer / last user line in a Grok dump (`>` from `pane.read` text, `❯` in the TUI). */
-const PROMPT_LINE = /^\s*[>❯]\s+(.+)$/;
-const TRAILING_CLOCK = /\s+\d{1,2}:\d{2}(?:\s*[AaPp][Mm])?\s*$/;
-
 /**
- * The live `> query` line from a raw (not folded) pane hint. Last matching line wins.
- * Trailing `3:31 PM` clocks from the dump are stripped. Null when no line is long enough
- * to fingerprint — an empty composer is not a query.
+ * The live prompt line from a raw (not folded) pane hint: the boxed `│ ❯ query │` composer row or
+ * a bare `> query` line, in the web adapter's grammar (shared/grok-prompt.ts). Last matching line
+ * wins; trailing `3:31 PM` clocks are stripped. Null when no line is long enough to fingerprint —
+ * an empty composer is not a query.
  */
 export function liveGrokPrompt(hint: string): string | null {
   let best: string | null = null;
   for (const line of hint.split(/\r?\n/)) {
-    const m = PROMPT_LINE.exec(line);
-    if (!m) continue;
-    const body = foldGrokHint((m[1] ?? "").replace(TRAILING_CLOCK, ""));
+    const raw = grokPromptBody(line);
+    if (raw === null) continue;
+    const body = foldGrokHint(raw);
     if (body.length >= MIN_QUERY_CHARS) best = body;
   }
   return best;
@@ -468,13 +466,19 @@ export class GrokTranscriptSource implements TranscriptSource {
       const held = this.claims.claimOf(AGENT, want, paneId);
       if (held !== undefined) return { kind: "id", value: held.sessionId };
 
-      const free = pool.find((s) => {
+      // The guess (spec 08). A lone Grok pane at this cwd takes the newest free log: it is almost
+      // certainly its own. With a Grok sibling here, the newest free log may be the sibling's
+      // quiet session, so guess only when exactly one is left; otherwise show nothing until the
+      // screen, the title or Herdr says which. A caller that names no peers counts as alone.
+      const free = pool.filter((s) => {
         const owner = this.claims.ownerOf(AGENT, want, s.id);
         return owner === undefined || owner.paneId === paneId;
       });
-      if (free !== undefined) {
-        this.claims.set(AGENT, want, paneId, free.id, CLAIM_WEAK);
-        return { kind: "id", value: free.id };
+      const alone =
+        opts.peerPaneIds === undefined || opts.peerPaneIds.every((id) => id === paneId);
+      if (free.length > 0 && (alone || free.length === 1)) {
+        this.claims.set(AGENT, want, paneId, free[0]!.id, CLAIM_WEAK);
+        return { kind: "id", value: free[0]!.id };
       }
       return null;
     }

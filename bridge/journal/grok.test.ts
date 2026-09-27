@@ -301,6 +301,21 @@ describe("scoreGrokHint / lastGrokUserQueries", () => {
     );
   });
 
+  // Spec 08: the TUI paints the prompt inside the composer box. The old bare-line grammar never
+  // matched that row, so a boxed dump fingerprinted nothing.
+  test("liveGrokPrompt reads the boxed composer row, clock stripped", () => {
+    const raw = [
+      "  ╭──────────────────────────────────────────────────╮",
+      "  │ ❯ merge, rebuild, restart, update docs  3:31 PM │   ",
+      "  ╰──────────────────────────────────────────────────╯",
+    ].join("\n");
+    expect(liveGrokPrompt(raw)).toBe("merge, rebuild, restart, update docs");
+    expect(liveGrokPrompt("  │ > merge, rebuild, restart, update docs │")).toBe(
+      "merge, rebuild, restart, update docs",
+    );
+    expect(liveGrokPrompt("  │ ❯                                   │")).toBeNull();
+  });
+
   test("a title match still outscores a query match — pickByHint is what prefers the query", () => {
     const hint = foldGrokHint(
       "Typed review findings and factory trace hygiene… - grok\n> software factory anything outstanding?  3:31 PM",
@@ -370,6 +385,39 @@ describe("GrokTranscriptSource — several panes, one cwd", () => {
     const second = await src.inferFromCwd({ cwd, paneId: "w1:p2" });
     expect(first).toEqual({ kind: "id", value: SID });
     expect(second).toEqual({ kind: "id", value: OLDER });
+    await rm(base, { recursive: true, force: true });
+  });
+
+  // Spec 08: a quiet pane with a Grok sibling at the same cwd must not be handed the sibling's log.
+  test("a lone quiet pane still gets the newest log", async () => {
+    const { base, root, cwd } = await twoPanes();
+    const src = new GrokTranscriptSource(root);
+    expect(await src.inferFromCwd({ cwd, paneId: "w1:p1", peerPaneIds: ["w1:p1"] })).toEqual({
+      kind: "id",
+      value: SID,
+    });
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("two quiet sibling panes get no guess while several logs are free", async () => {
+    const { base, root, cwd } = await twoPanes();
+    const src = new GrokTranscriptSource(root);
+    const peerPaneIds = ["w1:p1", "w1:p2"];
+    expect(await src.inferFromCwd({ cwd, paneId: "w1:p1", peerPaneIds })).toBeNull();
+    expect(await src.inferFromCwd({ cwd, paneId: "w1:p2", peerPaneIds })).toBeNull();
+    expect(src.claimRows()).toEqual([]);
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("once a sibling proves its log, the quiet pane takes the one left", async () => {
+    const { base, root, cwd } = await twoPanes();
+    const src = new GrokTranscriptSource(root);
+    const peerPaneIds = ["w1:p1", "w1:p2"];
+    await src.inferFromCwd({ cwd, paneId: "w1:p1", peerPaneIds, hint: `> ${NEWER_Q}` });
+    expect(await src.inferFromCwd({ cwd, paneId: "w1:p2", peerPaneIds })).toEqual({
+      kind: "id",
+      value: OLDER,
+    });
     await rm(base, { recursive: true, force: true });
   });
 

@@ -12,7 +12,7 @@ One spec = one run. Do not implement a sibling spec in the same run. Numbers mat
 | 05 | [05-agy-trust-keys.md](05-agy-trust-keys.md) | High | Done — #21 walks the pointer; conformance bans unprinted prompt-select digits | Agy trust Yes/No sends invented digits |
 | 06 | [06-prompt-binding-shared.md](06-prompt-binding-shared.md) | High | Open — see the #29 dialog-sniff import note | Two prompt-bind matchers; Claude-only regions |
 | 07 | [07-beacon-session.md](07-beacon-session.md) | High | Done — Herdr's session wins; mismatched harness applies nothing | Expired beacon overwrites Herdr session |
-| 08 | [08-grok-live-identity.md](08-grok-live-identity.md) | High | Open | Two Grok prompt grammars; WEAK sibling claims |
+| 08 | [08-grok-live-identity.md](08-grok-live-identity.md) | High | Done — shared prompt grammar; guess only when alone or one log free | Two Grok prompt grammars; WEAK sibling claims |
 | 09 | [09-history-paging.md](09-history-paging.md) | High | Partly — #17 dropped the 1.5 s poll; left: unknown cursor, dedupe, lock, ETag | Unknown cursor duplicates turns |
 | 10 | [10-pwa-build-swap.md](10-pwa-build-swap.md) | High | Done — build mismatch checks at once; wedged path once per build | `X-Sightr-Build` does not swap the worker |
 | 11 | [11-sighter-config-migrate.md](11-sighter-config-migrate.md) | High | Done — one-time `.env` copy with key rename; env-check warns | Pre-1.0 `.env` is not copied |

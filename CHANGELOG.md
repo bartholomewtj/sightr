@@ -34,6 +34,10 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   one compact row; a one-pane space shows that a tap opens it.
 
 ### Fixed
+- Two Grok tabs in one folder no longer show each other's history. A quiet Grok pane guesses its log
+  only when it is the only Grok pane there, or when exactly one log is unclaimed. Otherwise it waits
+  for the screen, title or Herdr to say which. The bridge now reads the boxed `│ ❯ … │` prompt row
+  with the same grammar as the phone (`shared/grok-prompt.ts`).
 - A pre-1.0 Sighter `.env` now carries over. On start or bridge launch, when `herdr.sightr` has no
   `.env` and `herdr.sighter` (or `~/.config/sighter`) does, it is copied once with `SIGHTER_*` keys
   renamed to `SIGHTR_*`. Nothing is deleted or merged. `env-check` warns on any `SIGHTER_*` key,

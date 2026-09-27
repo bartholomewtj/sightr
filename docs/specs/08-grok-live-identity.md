@@ -1,5 +1,7 @@
 # 08 — One Grok live-prompt contract
 
+> **Status 2026-09-27:** DONE, with one change by Bart. The prompt grammar is `shared/grok-prompt.ts`, used by `markers.ts` and `liveGrokPrompt`. The WEAK gate is not `pool.length === 1`: a guess binds when the pane is the only Grok pane at the cwd (so a lone pane keeps its history), or when exactly one log is unclaimed.
+
 Council row 8. Severity: high. Journal + form.
 
 ## Why

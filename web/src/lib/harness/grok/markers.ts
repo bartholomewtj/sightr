@@ -7,6 +7,7 @@ import { rstrip } from "../scan";
 // status inside it as separate styled segments — probed on `pane.read format:ansi`, 2026-08-21).
 // Pure functions, no I/O, no React.
 
+import { GROK_BOXED_PROMPT } from "@shared/grok-prompt";
 import { isBlank, lineText } from "../../blocks";
 
 // `lineText` / `isBlank` are properties of a StyledLine, not of any grammar, so they live in the
@@ -76,7 +77,8 @@ export function composerStatus(text: string): string | null {
 // Inner box row, prompt or continuation. Grok pads every inner row to the box width.
 const COMPOSER_INNER = /^\s*│ ([\s\S]*)│$/;
 // Prompt glyph: 2026-08-21 captures paint `❯`; live Grok 4.6 (2026-08-30, pane w56:p9) paints ASCII `>`.
-const COMPOSER_PROMPT = /^\s*│ (?:❯|>)([\s\S]*)│$/;
+// Shared with the bridge's session claims (spec 08), so the two sides read one grammar.
+const COMPOSER_PROMPT = GROK_BOXED_PROMPT;
 
 /** Inner-row body (UNTRIMMED), or null when the line is not a `│ … │` box row. */
 export function composerInnerText(text: string): string | null {
