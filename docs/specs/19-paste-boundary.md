@@ -1,5 +1,7 @@
 # 19 — Long-send verify on every adapter
 
+> **Status 2026-09-27 (`874b85b`):** OPEN. Pi takes the one-shot path explicitly (`replyOneShot: true`, `web/src/lib/harness/pi/index.ts`); name it here.
+
 Council row 19. Severity: medium. Parser.
 
 ## Why

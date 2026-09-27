@@ -1,5 +1,7 @@
 # 05 — Agy trust keys
 
+> **Status 2026-09-27 (`874b85b`):** PARTLY DONE. #21 made Antigravity's trust options walk the `>` pointer and press Enter (`web/src/lib/harness/agy/prompt-select.ts`); the digit is only a `keyLabel`. Left: extend the conformance digit ban (`web/src/lib/harness/conformance.ts`, today `menu` only) to `prompt-select`.
+
 Council row 5. Severity: high. Parser.
 
 ## Why

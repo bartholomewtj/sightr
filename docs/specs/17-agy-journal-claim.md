@@ -1,5 +1,7 @@
 # 17 — AGY is dump-only until it has a journal
 
+> **Status 2026-09-27 (`874b85b`):** DONE 2026-09-27. README no longer claims an Antigravity session log.
+
 Council row 17. Severity: medium. Journal.
 
 ## Why

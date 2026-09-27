@@ -1,5 +1,7 @@
 # 06 — One prompt-binding matcher
 
+> **Status 2026-09-27 (`874b85b`):** OPEN. Since #29 the bridge imports `web/src/lib/harness/dialog-sniff.ts` at runtime (leaf imports only, no `@shared`). This spec's plan (a pure `shared/` module) still fits; do not add a second bridge→web import for the matcher.
+
 Council row 6. Severity: high. Parser + form.
 
 ## Why

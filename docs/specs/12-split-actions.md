@@ -1,5 +1,7 @@
 # 12 — Split actions.ts along the jobs it already names
 
+> **Status 2026-09-27 (`874b85b`):** OPEN. Counts are now `actions.ts` 1338 lines and `actions.test.ts` 2415. Phantom `lib/reply-action.ts` / `lib/prompt-action.ts` / `lib/grammar/` are cited from ADR 0010, `docs/HERDR_API.md`, `harness/claude/chrome.ts`, `harness/claude/paste.ts`, `harness/claude/prompt-select.test.ts` and `harness/prompt-model.ts`. The reply sweep now lives in `web/src/lib/composer-send.ts`.
+
 Council row 12. Severity: high. Form.
 
 ## Why

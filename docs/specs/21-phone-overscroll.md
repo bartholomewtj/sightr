@@ -1,5 +1,7 @@
 # 21 — Phone shell lock and in-app pull-to-refresh
 
+> **Status 2026-09-27 (`874b85b`):** STALE REFERENCE. "GitHub #16" on `bartholomewtj/sightr` is the whistlr-31f PR, not an issue. Body already has `overscroll-behavior-y: none`; the lock is desktop-only and the pane scroller (`web/src/components/ui/chat/chat-message-list.tsx`) has no `overscroll-contain`. Whether pull-to-refresh is wanted is Bart's call; rewrite before building.
+
 Council row 21. Severity: medium. Phone. GitHub #16 (web half).
 
 ## Why
