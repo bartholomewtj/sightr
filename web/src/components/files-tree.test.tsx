@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "@/test/setup";
 import { __resetFilesTree, open, noteDeletedFile } from "@/lib/files-tree";
 import { __resetDesktop, setDesktop } from "@/lib/desktop";
-import { FilesTree, FileSearchResults } from "./files-tree";
+import { FilesTree, FileSearchResults, FileSearchStatus, useFileSearch } from "./files-tree";
 import type { FileEntry, FilesResponse } from "@/lib/types";
 
 const dir = (path: string, entries: FileEntry[]) => ({ kind: "dir" as const, path, entries, truncated: false });
@@ -35,6 +35,13 @@ describe("FilesTree", () => {
     fireEvent.click(await screen.findByRole("link", { name: /Download/ }));
     expect(assign).toHaveBeenCalledWith("/api/files/download?path=src");
     vi.unstubAllGlobals();
+  });
+  it("gives folders a visible ⋯ for their actions, so a phone without long-press can reach them", async () => {
+    renderTree(dir("", [{ name: "src", kind: "dir", mtimeMs: 1 }, { name: "README.md", kind: "file", size: 1, mtimeMs: 1 }]));
+    expect(screen.queryByRole("button", { name: "Folder actions for README.md" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Folder actions for src" }));
+    expect(await screen.findByRole("link", { name: /Download/ })).toHaveAttribute("href", "/api/files/download?path=src");
+    expect(screen.queryByText("nav.ts")).toBeNull();
   });
   it("keeps folder click as expand", async () => {
     server.use(http.get("/api/files", () => HttpResponse.json(dir("src", [{ name: "nav.ts", kind: "file", size: 1, mtimeMs: 1 }]))));
@@ -210,5 +217,34 @@ describe("repo indicator", () => {
     renderTree(dir("", [{ name: "sightr", kind: "dir", mtimeMs: 1, repo: true }, { name: "notes", kind: "dir", mtimeMs: 1 }, { name: "README.md", kind: "file", size: 1, mtimeMs: 1 }]));
     const marks = await screen.findAllByLabelText("git checkout"); expect(marks).toHaveLength(1);
     expect(marks[0]!.closest("[role=treeitem]")).toHaveTextContent("sightr");
+  });
+});
+
+describe("FileSearchStatus", () => {
+  function Harness({ q }: { q: string }) {
+    const search = useFileSearch();
+    return <><input aria-label="q" value={search.query} onChange={(e) => search.setQuery(e.target.value)} /><span data-testid="seed">{q}</span><FileSearchStatus search={search} /></>;
+  }
+  afterEach(() => cleanup());
+  it("says Searching while a query is in flight, then No matches", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    server.use(http.get("/api/files/search", async () => { await gate; return HttpResponse.json({ q: "zz", results: [], truncated: false }); }));
+    render(<Harness q="zz" />);
+    fireEvent.change(screen.getByLabelText("q"), { target: { value: "zz" } });
+    expect(await screen.findByRole("status")).toHaveTextContent("Searching…");
+    release();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("No matches"));
+  });
+  it("says the search failed instead of showing nothing", async () => {
+    server.use(http.get("/api/files/search", () => new HttpResponse("boom", { status: 500 })));
+    render(<Harness q="zz" />);
+    fireEvent.change(screen.getByLabelText("q"), { target: { value: "zz" } });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/Search (failed|took too long)/));
+  });
+  it("shows nothing under two characters", () => {
+    render(<Harness q="z" />);
+    fireEvent.change(screen.getByLabelText("q"), { target: { value: "z" } });
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

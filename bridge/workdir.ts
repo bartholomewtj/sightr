@@ -22,6 +22,9 @@ export const DOWNLOAD_CAP_BYTES = 100 * 1024 * 1024;
 export const SEARCH_MAX_DEPTH = 8;
 export const SEARCH_MAX_RESULTS = 200;
 export const SEARCH_MAX_DIRS = 5000;
+/** Stop walking after this long and return what was found (truncated), so a wide work root answers
+ *  well inside the client's 10 s GET timeout instead of being aborted with nothing to show. */
+export const SEARCH_BUDGET_MS = 6000;
 export const BINARY_SNIFF_BYTES = 8192;
 
 /**
@@ -263,11 +266,12 @@ function fileBytes(h: WorkdirHelpers, real: string, size: number, type: string, 
   return h.secure(new Response(Bun.file(real), { headers }));
 }
 
-async function search(root: string, q: string): Promise<{ q: string; results: WorkdirSearchResult[]; truncated: boolean }> {
+export async function search(root: string, q: string, budgetMs = SEARCH_BUDGET_MS, now: () => number = Date.now): Promise<{ q: string; results: WorkdirSearchResult[]; truncated: boolean }> {
   const results: WorkdirSearchResult[] = []; let truncated = false; let dirs = 0;
   const queue: { path: string[]; depth: number }[] = [{ path: [], depth: 0 }];
+  const deadline = now() + budgetMs;
   while (queue.length && !truncated) {
-    const current = queue.shift()!; dirs++; if (dirs > SEARCH_MAX_DIRS) { truncated = true; break; }
+    const current = queue.shift()!; dirs++; if (dirs > SEARCH_MAX_DIRS || now() > deadline) { truncated = true; break; }
     const real = await resolveInRoot(root, current.path); if (!real) continue;
     const entries = await readdir(real, { withFileTypes: true }).catch(() => []);
     for (const e of entries) {

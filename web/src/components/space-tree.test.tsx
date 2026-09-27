@@ -116,6 +116,18 @@ describe("SpaceTree — one-child shortcuts and tree expansion", () => {
     expect(router.state.location.pathname).toBe("/pane/w1%3Ap1");
   });
 
+  it("marks only the spaces whose tap opens a pane directly", () => {
+    const one = ws("w1", "solo", { paneCount: 1, tabCount: 1 });
+    const two = ws("w2", "pair", { paneCount: 2, tabCount: 1 });
+    renderTree({
+      workspaces: [one, two],
+      tabs: [tab("w1:t1", "w1", "a", 1), tab("w2:t1", "w2", "b", 2)],
+      agents: [agent("w1:p1", "w1", "w1:t1"), agent("w2:p1", "w2", "w2:t1"), agent("w2:p2", "w2", "w2:t1")],
+    });
+    expect(screen.getByText("solo").closest("button")!.querySelector('[data-testid="opens-pane"]')).not.toBeNull();
+    expect(screen.getByText("pair").closest("button")!.querySelector('[data-testid="opens-pane"]')).toBeNull();
+  });
+
   it("multi-pane tab expands rather than opens: tapping a 1-tab/2-pane space expands space and tab", async () => {
     const user = userEvent.setup();
     const w = ws("w1", "my-space", { paneCount: 2, tabCount: 1 });

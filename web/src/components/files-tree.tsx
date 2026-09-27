@@ -11,28 +11,47 @@ import type { FileEntry, FilesResponse, FileSearchResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useDesktop } from "@/lib/desktop";
 import { FILES_TREE_ID } from "@/components/desktop-sidebar-slot";
+import { RowMoreButton } from "@/components/agent-card";
 
 function FileRowButton({ onClick, onMenu, children, className, ...props }: { onClick: () => void; onMenu?: (at: MenuPoint) => void; children: ReactNode; className?: string } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick" | "children" | "className">) {
   return <button type="button" onClick={onClick} {...contextMenuProps(onMenu)} {...props} className={cn("select-none [-webkit-touch-callout:none]", className)}>{children}</button>;
 }
 
+// `pending` while a query is in flight and `error` when it failed (a timeout on a big work root
+// used to abort silently, leaving the tree on screen as if nothing had been typed).
 export function useFileSearch() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<FileSearchResponse | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   useEffect(() => {
-    if (query.trim().length < 2) { setResults(null); return; }
+    setError(null);
+    if (query.trim().length < 2) { setResults(null); setPending(false); return; }
     const controller = new AbortController(); abort.current?.abort(); abort.current = controller;
-    const timer = setTimeout(() => searchFiles(query, controller.signal).then(setResults).catch(() => {}), 200);
+    setResults(null); setPending(true);
+    const timer = setTimeout(() => searchFiles(query, controller.signal).then((r) => { setResults(r); setPending(false); }).catch((e: unknown) => {
+      if (controller.signal.aborted && abort.current !== controller) return; // superseded by a newer query
+      setPending(false);
+      setError(e instanceof Error && /time|abort/i.test(`${e.name} ${e.message}`) ? "Search took too long. Try a longer name." : "Search failed.");
+    }), 200);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [query]);
-  return { query, setQuery, results, clear: () => { setQuery(""); setResults(null); } };
+  return { query, setQuery, results, pending, error, clear: () => { setQuery(""); setResults(null); setPending(false); setError(null); } };
+}
+
+/** The line under the search box while a query has no results to show yet. */
+export function FileSearchStatus({ search }: { search: ReturnType<typeof useFileSearch> }) {
+  if (search.query.trim().length < 2) return null;
+  const text = search.error ?? (search.pending ? "Searching…" : search.results && search.results.results.length === 0 ? "No matches" : null);
+  if (!text) return null;
+  return <p role="status" className={cn("px-4 py-3 text-sm", search.error ? "text-status-blocked" : "text-muted-foreground")}>{text}</p>;
 }
 
 export function FileSearchResults({ results, onPick }: { results: FileSearchResponse; onPick?: () => void }) {
   const navigate = useNavigate(); const [folder, setFolder] = useState<string | null>(null); const [anchor, setAnchor] = useState<MenuPoint | null>(null); const [, setTick] = useState(0);
   useEffect(() => subscribeDeleted(() => setTick((n) => n + 1)), []);
-  return <><div className="flex-1 overflow-auto px-3">{results.truncated && <p className="p-2 text-xs text-muted-foreground">Showing first 200 matches</p>}{results.results.filter((r) => !isDeletedFile(r.path)).map((r) => <FileRowButton className="flex w-full items-center gap-3 border-b p-3 text-left" key={r.path} onMenu={r.kind === "dir" ? (at) => { setFolder(r.path); setAnchor(at); } : undefined} onClick={() => { onPick?.(); openAncestors(r.path); if (r.kind === "dir") open(r.path); navigate(filePath(r.path)); }}>{r.kind === "dir" ? <Folder /> : <File />}<span className="flex-1">{r.name}</span>{r.kind === "dir" && <ChevronRight className="size-4" />}</FileRowButton>)}</div><FileActionsSheet open={folder !== null} path={folder} anchor={anchor} onClose={() => setFolder(null)} /></>;
+  return <><div className="flex-1 overflow-auto px-3">{results.truncated && <p className="p-2 text-xs text-muted-foreground">The search stopped early — showing what it found. Try a longer name.</p>}{results.results.filter((r) => !isDeletedFile(r.path)).map((r) => <div key={r.path} className="flex items-center border-b"><FileRowButton className="flex min-w-0 flex-1 items-center gap-3 p-3 text-left" onMenu={r.kind === "dir" ? (at) => { setFolder(r.path); setAnchor(at); } : undefined} onClick={() => { onPick?.(); openAncestors(r.path); if (r.kind === "dir") open(r.path); navigate(filePath(r.path)); }}>{r.kind === "dir" ? <Folder /> : <File />}<span className="flex-1 truncate">{r.name}</span>{r.kind === "dir" && <ChevronRight className="size-4" />}</FileRowButton>{r.kind === "dir" && <RowMoreButton label={`Folder actions for ${r.name}`} onMore={(at) => { setFolder(r.path); setAnchor(at); }} />}</div>)}</div><FileActionsSheet open={folder !== null} path={folder} anchor={anchor} onClose={() => setFolder(null)} /></>;
 }
 
 interface FilesTreeProps { root?: Extract<FilesResponse, { kind: "dir" }>; selected?: string; onFolderSelect?: (path: string) => void; }
@@ -103,7 +122,7 @@ export function FilesTree({ root, selected = "", onFolderSelect }: FilesTreeProp
     if (event.key === "Enter") { event.preventDefault(); openRow(row); }
   };
   return <div id={FILES_TREE_ID} role="tree" tabIndex={desktop ? 0 : undefined} aria-activedescendant={desktop && active >= 0 ? `files-row-${active}` : undefined} onKeyDown={onKeyDown} className="overflow-auto">
-    {rows.map((row, index) => { const { entry, path, depth, open: isOpen } = row; if (!entry) return <div key={path} className="px-2 py-2 text-xs text-muted-foreground" style={{ paddingLeft: (depth + 1) * 16 + 8 }}>listing truncated</div>; const icon = entry.kind === "dir" ? <Folder className="size-4 shrink-0" /> : <File className="size-4 shrink-0" />; return desktop ? <div id={`files-row-${index}`} key={path} role="treeitem" aria-expanded={entry.kind === "dir" ? isOpen : undefined} aria-current={entry.kind === "file" && selected === path ? "page" : undefined} className={cn("flex items-center gap-1 border-b", selected === path && "bg-muted", activePath === path && "bg-accent")} style={{ paddingLeft: depth * 16 + 8, paddingRight: 8 }}>{entry.kind === "dir" ? <button type="button" aria-label={`${isOpen ? "Collapse" : "Expand"} ${entry.name}`} className="shrink-0 p-1" onClick={() => tree.toggle(path)}>{isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}</button> : <span className="size-6 shrink-0" />}<FileRowButton onMenu={entry.kind === "dir" ? (at) => { setFolder(path); setAnchor(at); } : undefined} className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left" onClick={() => { if (entry.kind === "dir") tree.open(path); navigate(filePath(path)); }}>{icon}<span className="truncate">{entry.name}</span>{entry.repo && <GitBranch aria-label="git checkout" className="size-3 shrink-0 text-muted-foreground" />}</FileRowButton></div> : <FileRowButton key={path} role="treeitem" onMenu={entry.kind === "dir" ? (at) => { setFolder(path); setAnchor(at); } : undefined} aria-expanded={entry.kind === "dir" ? isOpen : undefined} aria-current={entry.kind === "file" && selected === path ? "page" : undefined} className={cn("flex w-full items-center gap-2 border-b py-2 text-left", selected === path && "bg-muted")} style={{ paddingLeft: depth * 16 + 8, paddingRight: 8 }} onClick={() => { if (entry.kind !== "dir") { navigate(filePath(path)); return; } const opening = !tree.isOpen(path); tree.toggle(path); onFolderSelect?.(opening ? path : path.split("/").slice(0, -1).join("/")); }}>{entry.kind === "dir" ? (isOpen ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />) : <span className="size-4 shrink-0" />}{icon}<span className="min-w-0 truncate">{entry.name}</span>{entry.repo && <GitBranch aria-label="git checkout" className="size-3 shrink-0 text-muted-foreground" />}</FileRowButton>; })}
+    {rows.map((row, index) => { const { entry, path, depth, open: isOpen } = row; if (!entry) return <div key={path} className="px-2 py-2 text-xs text-muted-foreground" style={{ paddingLeft: (depth + 1) * 16 + 8 }}>listing truncated</div>; const icon = entry.kind === "dir" ? <Folder className="size-4 shrink-0" /> : <File className="size-4 shrink-0" />; return desktop ? <div id={`files-row-${index}`} key={path} role="treeitem" aria-expanded={entry.kind === "dir" ? isOpen : undefined} aria-current={entry.kind === "file" && selected === path ? "page" : undefined} className={cn("flex items-center gap-1 border-b", selected === path && "bg-muted", activePath === path && "bg-accent")} style={{ paddingLeft: depth * 16 + 8, paddingRight: 8 }}>{entry.kind === "dir" ? <button type="button" aria-label={`${isOpen ? "Collapse" : "Expand"} ${entry.name}`} className="shrink-0 p-1" onClick={() => tree.toggle(path)}>{isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}</button> : <span className="size-6 shrink-0" />}<FileRowButton onMenu={entry.kind === "dir" ? (at) => { setFolder(path); setAnchor(at); } : undefined} className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left" onClick={() => { if (entry.kind === "dir") tree.open(path); navigate(filePath(path)); }}>{icon}<span className="truncate">{entry.name}</span>{entry.repo && <GitBranch aria-label="git checkout" className="size-3 shrink-0 text-muted-foreground" />}</FileRowButton>{entry.kind === "dir" && <RowMoreButton label={`Folder actions for ${entry.name}`} onMore={(at) => { setFolder(path); setAnchor(at); }} />}</div> : <div key={path} className={cn("flex items-center border-b", selected === path && "bg-muted")}><FileRowButton role="treeitem" onMenu={entry.kind === "dir" ? (at) => { setFolder(path); setAnchor(at); } : undefined} aria-expanded={entry.kind === "dir" ? isOpen : undefined} aria-current={entry.kind === "file" && selected === path ? "page" : undefined} className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left" style={{ paddingLeft: depth * 16 + 8, paddingRight: 8 }} onClick={() => { if (entry.kind !== "dir") { navigate(filePath(path)); return; } const opening = !tree.isOpen(path); tree.toggle(path); onFolderSelect?.(opening ? path : path.split("/").slice(0, -1).join("/")); }}>{entry.kind === "dir" ? (isOpen ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />) : <span className="size-4 shrink-0" />}{icon}<span className="min-w-0 truncate">{entry.name}</span>{entry.repo && <GitBranch aria-label="git checkout" className="size-3 shrink-0 text-muted-foreground" />}</FileRowButton>{entry.kind === "dir" && <RowMoreButton label={`Folder actions for ${entry.name}`} onMore={(at) => { setFolder(path); setAnchor(at); }} />}</div>; })}
     {listings[""] && rows.length === 0 && <div className="p-3 text-sm text-muted-foreground">Nothing here</div>}
     <FileActionsSheet open={folder !== null} path={folder} anchor={anchor} onClose={() => setFolder(null)} />
   </div>;

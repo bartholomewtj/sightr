@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile, symlink, truncate, stat } from "node:fs/
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { readWorkRoot } from "./config.ts";
-import { browserEmbedKind, browserOpenCsp, browserOpenType, BROWSER_HTML_CSP, createWorkdir, isFilesOpenPath, isRefusedName, parseFilesOpenRel, parseRelPath, PREVIEW_CAP_BYTES, DOWNLOAD_CAP_BYTES } from "./workdir.ts";
+import { browserEmbedKind, browserOpenCsp, browserOpenType, BROWSER_HTML_CSP, createWorkdir, isFilesOpenPath, isRefusedName, parseFilesOpenRel, parseRelPath, PREVIEW_CAP_BYTES, DOWNLOAD_CAP_BYTES, search } from "./workdir.ts";
 import type { Config } from "./config.ts";
 import { CAN_SYMLINK } from "./platform-support.ts";
 import { SILENT_AUDIT } from "./audit.ts";
@@ -147,6 +147,21 @@ describe("workdir", () => {
       expect(zip.has("pair/keep/ok.bin")).toBe(true);
       expect(zip.has("pair/drop/fat.bin")).toBe(false);
       expect(zip.get("pair/SIGHTR-SKIPPED.txt")).toContain("drop/");
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  test("search stops at its time budget and returns what it found, truncated", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sightr-workdir-budget-"));
+    try {
+      await writeFile(join(root, "match-top.txt"), "x");
+      await mkdir(join(root, "deep")); await writeFile(join(root, "deep", "match-deep.txt"), "x");
+      // A clock that jumps past the budget after the first directory is read.
+      let t = 0; const clock = () => (t += 1000);
+      const partial = await search(root, "match", 1500, clock);
+      expect(partial.truncated).toBe(true);
+      expect(partial.results.map((r) => r.name)).toEqual(["match-top.txt"]);
+      const full = await search(root, "match");
+      expect(full.truncated).toBe(false); expect(full.results).toHaveLength(2);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
