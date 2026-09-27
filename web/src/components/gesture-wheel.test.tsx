@@ -29,6 +29,7 @@ describe("GestureWheel", () => {
     slices?: readonly WheelSlice[];
     typeActive?: boolean;
     disabled?: boolean;
+    busy?: boolean;
   }) {
     return render(
       <GestureWheel
@@ -38,6 +39,7 @@ describe("GestureWheel", () => {
         typeActive={props?.typeActive ?? false}
         onTap={onTap}
         disabled={props?.disabled ?? false}
+        busy={props?.busy ?? false}
       />,
     );
   }
@@ -180,6 +182,24 @@ describe("GestureWheel", () => {
 
     expect(screen.queryAllByRole("menuitem")).toHaveLength(0);
     expect(onTap).not.toHaveBeenCalled();
+  });
+
+  it("7b. busy (a send in flight) -> a tap still toggles Keys, but a hold opens no fan (#27)", () => {
+    renderWheel({ busy: true });
+    const handle = screen.getByRole("button", { name: "Shortcut wheel" });
+    expect(handle).not.toBeDisabled();
+
+    fireEvent.pointerDown(handle, { clientX: 358, clientY: 700, pointerId: 1, button: 0 });
+    act(() => { vi.advanceTimersByTime(100); });
+    fireEvent.pointerUp(handle, { clientX: 358, clientY: 700, pointerId: 1 });
+    expect(onTap).toHaveBeenCalledTimes(1);
+
+    fireEvent.pointerDown(handle, { clientX: 358, clientY: 700, pointerId: 2, button: 0 });
+    act(() => { vi.advanceTimersByTime(500); });
+    fireEvent.pointerUp(handle, { clientX: 300, clientY: 700, pointerId: 2 });
+    expect(screen.queryAllByRole("menuitem")).toHaveLength(0);
+    expect(onKeys).not.toHaveBeenCalled();
+    expect(onTap).toHaveBeenCalledTimes(1);
   });
 
   it("8. six operator slices all render; the shipped four render when the list is the shipped one", () => {

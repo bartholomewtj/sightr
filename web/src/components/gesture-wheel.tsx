@@ -17,8 +17,11 @@ export interface GestureWheelProps {
   typeActive: boolean;
   /** A plain tap (released before HOLD_MS): toggle the Keys dock. */
   onTap: () => void;
-  /** Pane gone / read-only / a send in flight — dimmed and inert. */
+  /** Pane gone / read-only — dimmed and inert. */
   disabled: boolean;
+  /** A send is in flight: a tap still toggles Keys, but the hold-to-fan is held back so no key
+   *  lands in the middle of the send. (Disabling the whole handle made the tap silently vanish.) */
+  busy?: boolean;
 }
 
 export function GestureWheel({
@@ -28,7 +31,10 @@ export function GestureWheel({
   typeActive,
   onTap,
   disabled,
+  busy = false,
 }: GestureWheelProps) {
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
   const [open, setOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -132,6 +138,11 @@ export function GestureWheel({
 
     holdTimer.current = setTimeout(() => {
       holdTimer.current = null;
+      // A long press during a send does nothing; a short one (released before this fires) is a tap.
+      if (busyRef.current) {
+        closeWheel();
+        return;
+      }
       fired.current = false;
       setOpen(true);
       setDragging(true);

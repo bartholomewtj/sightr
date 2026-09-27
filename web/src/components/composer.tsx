@@ -65,6 +65,9 @@ interface ComposerProps {
    * text tracks this live so host typing streams into it; it also drives the send()-time pre-clear (the
    * actual current "❯" line) and unmounts the preview when it goes null. Never written into the input. */
   rawTerminalDraft: string | null;
+  /** The agent's input line whatever the display mode (rawTerminalDraft is null with Raw terminal
+   *  on). Drives the send-time pre-clear; defaults to rawTerminalDraft. */
+  inputLine?: string | null;
   /** Snap the mirror to the live tail (follow + revalidate + scroll) after a successful send. */
   /** Called with the text that was sent, after a VERIFIED send. */
   onSent: (text: string) => void;
@@ -84,7 +87,7 @@ interface ComposerProps {
 // need to see the mirror while you use it. The wheel handle sits IN the row, not floating over the
 // field's corner, so it never covers a lifted card, the Yes/No strip or the typing strip above.
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, agent, isShell, gone, readOnly, dialogPresent, agentBlocked = false, promptBlock, onPromptAction, text, terminalDraft, rawTerminalDraft, onSent, onArmedChange },
+  { paneId, agent, isShell, gone, readOnly, dialogPresent, agentBlocked = false, promptBlock, onPromptAction, text, terminalDraft, rawTerminalDraft, inputLine, onSent, onArmedChange },
   ref,
 ) {
   const {
@@ -104,6 +107,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     locked,
     lockedRef,
     effectiveRaw,
+    effectiveLine,
     showPreview,
     takeOverDraft,
     commands,
@@ -147,6 +151,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     agentBlocked,
     terminalDraft,
     rawTerminalDraft,
+    inputLine,
     promptBlock,
     onPromptAction,
     onArmedChange,
@@ -163,7 +168,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         isDraft,
         confirmDialog: () => forceConfirm.confirm("dialog"),
         isLocked: () => lockedRef.current,
-        terminalLine: effectiveRaw,
+        terminalLine: effectiveLine,
         onStart: () => setSending(true),
         onKeysSent: scheduleKeyRevalidate,
       });
@@ -385,7 +390,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               typeActive={direct.active}
               // Tap toggles the Keys dock. Closing with staged chords still runs through requestDrawer's discard confirm.
               onTap={() => requestDrawer(drawer === "keys" ? null : "keys")}
-              disabled={sending}
+              disabled={false}
+              busy={sending}
             />
           )}
           {!showDesktopStrip &&
