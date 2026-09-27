@@ -49,6 +49,15 @@ describe("AppHeader — the one shared header shell", () => {
     expect(container.querySelector(".sightr-mark")).toBeNull(); // mark at rest while live
   });
 
+  // Spec 22: the header pads the notch through --chrome-top-inset, which is 0 while a connection
+  // banner above it owns the top edge. A raw env() here would pad it a second time.
+  it("pads the notch through --chrome-top-inset, never a second raw safe-area inset", () => {
+    const { container } = renderHeader(<AppHeader bridge="connected" error={false} />);
+    const header = container.querySelector("header")!;
+    expect(header.className).toContain("var(--chrome-top-inset)");
+    expect(header.className).not.toContain("env(safe-area-inset-top)");
+  });
+
   it("goes to Spaces when the Sightr mark is tapped, like the bottom-bar tab", async () => {
     render(
       <MemoryRouter initialEntries={["/settings"]}>

@@ -133,7 +133,7 @@ export function SettingsRoute() {
           <span className="truncate font-semibold">Settings</span>
         </AppHeader>
       ) : (
-        <header className="sticky top-0 z-20 flex items-center gap-2 border-b-2 border-border bg-muted px-4 py-2 [padding-top:calc(env(safe-area-inset-top)_+_0.5rem)]">
+        <header className="sticky top-0 z-20 flex items-center gap-2 border-b-2 border-border bg-muted px-4 py-2 [padding-top:calc(var(--chrome-top-inset)_+_0.5rem)]">
           <h1 className="text-lg font-semibold tracking-tight">Settings</h1>
         </header>
       )}

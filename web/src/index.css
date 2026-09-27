@@ -238,6 +238,16 @@ html.sightr-desktop #root {
   view-transition-name: none;
 }
 
+/* One notch (spec 22). Only the top edge pads env(safe-area-inset-top). Headers read this variable;
+   it drops to 0 while a connection banner above them is open, because the banner is then the top
+   edge and pads the inset itself (components/connection-banner.tsx sets the attribute). */
+:root {
+  --chrome-top-inset: env(safe-area-inset-top, 0px);
+}
+:root[data-banner-top] {
+  --chrome-top-inset: 0px;
+}
+
 /* ── Sightr mark loader ────────────────────────────────────────────────────────────────────────
    The app's activity indicator (components/sightr-mark.tsx). `--mark-size` is the square box; the
    SVG inside fills it. Motion lives in the SVG (ticks spin, bison gallops) and already stops under
