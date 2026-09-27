@@ -152,6 +152,7 @@ describe("detectWizard — false-positive gate", () => {
     "claude--fresh-idle.txt",
     "claude--done.txt",
     "claude--trust-prompt.txt",
+    "claude--trust-prompt-unnumbered.txt",
     "claude--select-menu.txt",
     "claude--permission-edit.txt",
     "claude--permission-bash.txt",

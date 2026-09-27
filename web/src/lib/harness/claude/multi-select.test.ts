@@ -171,6 +171,7 @@ describe("detectMultiSelect — false-positive gate", () => {
     "claude--wizard-submit.txt",
     "claude--permission-edit.txt",
     "claude--trust-prompt.txt",
+    "claude--trust-prompt-unnumbered.txt",
     "claude--working.txt",
     "claude--fresh-idle.txt",
   ]) {
