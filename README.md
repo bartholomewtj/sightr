@@ -385,7 +385,8 @@ bun run build                  # typecheck both, build web/dist
   Capture real screens into `web/src/fixtures/panes/<agent>--<state>.txt` and test against them.
   Keep Herdr method names inside `bridge/herdr-client.ts`.
 - **Versions.** `herdr-plugin.toml` is canonical. `bun scripts/bump.ts patch|minor|major --note "..."`
-  mirrors it into both `package.json` files and adds a `CHANGELOG.md` entry. `bun scripts/check-version.ts`
+  mirrors it into both `package.json` files and turns the `CHANGELOG.md` `## [Unreleased]` notes into the
+  new version's entry, with the note first. `bun scripts/check-version.ts`
   fails when they disagree, and runs in CI and in `build`.
 - **Marketplace.** Keep the GitHub topic `herdr-plugin` and a parseable `herdr-plugin.toml` on `main`.
   The index at [herdr.dev/plugins](https://herdr.dev/plugins) refreshes about every 30 minutes. There is

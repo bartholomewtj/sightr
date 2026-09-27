@@ -35,12 +35,42 @@ function dateString(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-export function changelogEntry(version: string, date: Date, note?: string, section: Section = "Changed"): string {
-  const heading = `## [${version}] - ${dateString(date)}`;
-  if (note === undefined) {
-    return `${heading}\n\n### Added\n\n### Changed\n\n### Fixed\n`;
+const SECTION_ORDER: Section[] = ["Added", "Changed", "Fixed"];
+
+// Put the note first under `### <section>`, adding that heading in Added/Changed/Fixed order when the
+// body lacks it.
+function withNote(body: string, note: string, section: Section): string {
+  const lines = body.length > 0 ? body.split("\n") : [];
+  const own = lines.findIndex((line) => line.trim() === `### ${section}`);
+  if (own !== -1) {
+    let at = own + 1;
+    while (at < lines.length && lines[at]?.trim() === "") at += 1;
+    lines.splice(at, 0, `- ${note}`);
+    return lines.join("\n");
   }
-  return `${heading}\n\n### ${section}\n- ${note}\n`;
+  const later = SECTION_ORDER.slice(SECTION_ORDER.indexOf(section) + 1);
+  const before = lines.findIndex((line) => later.some((name) => line.trim() === `### ${name}`));
+  const block = [`### ${section}`, `- ${note}`];
+  if (before === -1) return [...lines, ...(lines.length > 0 ? [""] : []), ...block].join("\n");
+  lines.splice(before, 0, ...block, "");
+  return lines.join("\n");
+}
+
+// `body` is what sat under `## [Unreleased]`; it moves under the new heading so pending notes survive.
+export function changelogEntry(
+  version: string,
+  date: Date,
+  note?: string,
+  section: Section = "Changed",
+  body = "",
+): string {
+  const heading = `## [${version}] - ${dateString(date)}`;
+  const pending = body.trim();
+  if (note === undefined) {
+    if (pending.length === 0) return `${heading}\n\n### Added\n\n### Changed\n\n### Fixed\n`;
+    return `${heading}\n\n${pending}\n`;
+  }
+  return `${heading}\n\n${withNote(pending, note, section)}\n`;
 }
 
 export function stagedVersionFiles(root: string): string[] {
@@ -88,15 +118,23 @@ export function bump(opts: {
     writeFileSync(path, contents.replace(PACKAGE_VERSION, `$1"version": "${to}"`));
   }
 
-  const changelog = readFileSync(changelogPath, "utf8");
-  const entry = changelogEntry(to, opts.today ?? new Date(), opts.note, section);
-  const unreleasedMatch = /^## \[Unreleased\][\s\S]*?(?=^## \[\d)/m.exec(changelog);
-  if (unreleasedMatch) {
-    writeFileSync(changelogPath, changelog.replace(unreleasedMatch[0], `${entry}\n`));
+  // Work in LF and write back in the file's own line ending (autocrlf checkouts are CRLF).
+  const raw = readFileSync(changelogPath, "utf8");
+  const eol = raw.includes("\r\n") ? "\r\n" : "\n";
+  const changelog = raw.replace(/\r\n/g, "\n");
+  const write = (text: string): void => writeFileSync(changelogPath, text.replace(/\n/g, eol));
+  const today = opts.today ?? new Date();
+  const unreleased = /^## \[Unreleased\][^\n]*\n([\s\S]*?)(?=^## \[\d|(?![\s\S]))/m.exec(changelog);
+  if (unreleased) {
+    const end = unreleased.index + unreleased[0].length;
+    const entry = changelogEntry(to, today, opts.note, section, unreleased[1] ?? "");
+    const gap = end < changelog.length ? "\n" : "";
+    write(`${changelog.slice(0, unreleased.index)}## [Unreleased]\n\n${entry}${gap}${changelog.slice(end)}`);
   } else {
     const heading = /^## \[/m.exec(changelog);
     if (heading?.index === undefined) throw new Error("could not find a CHANGELOG heading");
-    writeFileSync(changelogPath, `${changelog.slice(0, heading.index)}${entry}\n${changelog.slice(heading.index)}`);
+    const entry = changelogEntry(to, today, opts.note, section);
+    write(`${changelog.slice(0, heading.index)}## [Unreleased]\n\n${entry}\n${changelog.slice(heading.index)}`);
   }
   return { from, to };
 }
