@@ -6,7 +6,10 @@ a build where they disagree.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-28
+
 ### Fixed
+- The #52 cleanup: pending changelog notes survive a bump, error responses are no-store, and the control script and bridge agree on SIGHTR_SKIP_SERVE.
 - Herdr actions work on a freshly linked checkout (#51). They ran `build/sightr-action-v1.exe`, which
   only a first `start` from PowerShell could build, so every action failed with "The system cannot
   find the path specified". Actions now run `contrib/windows/sightr-ctl.ps1` through `powershell`;
