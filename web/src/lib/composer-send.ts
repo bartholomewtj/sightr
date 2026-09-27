@@ -200,13 +200,15 @@ export async function runComposerSend(
     });
     if (res.status === "sent")
       return result(true, { text: "Sent ✓", tone: "success" }, deps.isDraft, t);
+    // Only the reply box offers "Type anyway": a refused Yes/No word or palette command has no Send
+    // tap to confirm with, and arming for it let the NEXT tap anywhere force its text in (#26).
     if (res.status === "blocked")
       return result(
         false,
-        { text: `${res.error} Tap Send again to type anyway.`, tone: "error" },
+        { text: deps.isDraft ? `${res.error} Tap Send again to type anyway.` : res.error, tone: "error" },
         false,
         null,
-        true,
+        deps.isDraft,
         res.noEcho !== undefined ? { prompt: res.noEcho, typed: false } : null,
       );
     return result(

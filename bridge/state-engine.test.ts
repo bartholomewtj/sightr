@@ -1,7 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import type { BeaconSweepDeps } from "./beacon/reader.ts";
-import { overlayFromAgent, engineCadence, StateEngine, STATUS_HOLD_MS, type EngineSnapshot } from "./state-engine.ts";
+import {
+  overlayFromAgent,
+  engineCadence,
+  DIALOG_SNIFF_TTL_MS,
+  StateEngine,
+  STATUS_HOLD_MS,
+  type EngineSnapshot,
+} from "./state-engine.ts";
 import type { HerdrClient, WireAgent } from "./herdr-client.ts";
 import type { AgentStatus } from "../shared/wire.ts";
 
@@ -942,5 +951,252 @@ describe("StateEngine — snapshot agents[] overlay", () => {
     const a = engine.current().agents[0]!;
     expect(a.agentName).toBeUndefined();
     expect(a.summary).toBeUndefined();
+  });
+});
+
+// ── Dialog sniff ────────────────────────────────────────────────────────────────────────────
+//
+// Herdr calls a Cursor CLI / Antigravity pane `done` while a permission, trust, ask or select card
+// waits on its screen. The engine reads the visible viewport of those panes (only while resting,
+// only when the revision moved) and publishes `blocked` so the herd, the toast and the push say
+// "needs you". The detector itself is pinned against every fixture in
+// web/src/lib/harness/dialog-sniff.test.ts; this pins the join.
+
+describe("StateEngine — dialog sniff", () => {
+  const FIXTURES = join(import.meta.dir, "..", "web", "src", "fixtures", "panes");
+  // A `format: "text"` read carries no escapes.
+  const plain = (file: string) =>
+    readFileSync(join(FIXTURES, file), "utf8").replace(/\x1b\[[0-9;:<=>?]*[A-Za-z]/g, "");
+  const CURSOR_PERMISSION = plain("cursor--permission-command.txt");
+  const CURSOR_DONE = plain("cursor--done.txt");
+  const AGY_PERMISSION = plain("agy--permission-bash.txt");
+
+  class DialogHerdr {
+    panes: FakePane[] = [];
+    texts = new Map<string, string>();
+    reads: Array<[string, string, number, string]> = [];
+    fail = false;
+    sessionSnapshot() {
+      return Promise.resolve({ version: "0.7.2", protocol: 16, workspaces: [ws("w1", 1)], tabs: [], panes: this.panes });
+    }
+    readPane(paneId: string, source: string, lines: number, format: string) {
+      this.reads.push([paneId, source, lines, format]);
+      if (this.fail) return Promise.reject(new Error("read down"));
+      return Promise.resolve({ pane_id: paneId, text: this.texts.get(paneId) ?? "", truncated: false, revision: 0 });
+    }
+  }
+
+  function makeDialogEngine(beacons: BeaconSweepDeps | null = null) {
+    const herdr = new DialogHerdr();
+    let clock = 0;
+    const engine = new StateEngine(herdr as unknown as HerdrClient, 1500, () => clock, beacons);
+    const transitions: Array<{ pane: string; from: AgentStatus; to: AgentStatus }> = [];
+    engine.onTransition((a, from, to) => transitions.push({ pane: a.paneId, from, to }));
+    const poll = () => (engine as unknown as { poll(): Promise<void> }).poll();
+    const agent = (id: string) => engine.current().agents.find((a) => a.paneId === id)!;
+    const advance = (ms: number) => { clock += ms; };
+    const readsOf = (id: string) => herdr.reads.filter(([p]) => p === id).length;
+    return { herdr, engine, poll, agent, advance, transitions, readsOf };
+  }
+  const at = (id: string, status: AgentStatus, agent: string, revision: number): FakePane =>
+    ({ ...pane(id, "w1", status, agent), revision });
+
+  test("a done Cursor pane holding a permission card publishes blocked, and the transition fires", async () => {
+    const { herdr, poll, agent, transitions } = makeDialogEngine();
+    herdr.panes = [at("w1:p1", "done", "cursor", 1)];
+    herdr.texts.set("w1:p1", CURSOR_DONE);
+    await poll();
+    expect(agent("w1:p1").status).toBe("done");
+    expect("dialogDetected" in agent("w1:p1")).toBe(false);
+
+    herdr.panes = [at("w1:p1", "done", "cursor", 2)];
+    herdr.texts.set("w1:p1", CURSOR_PERMISSION);
+    await poll();
+    expect(agent("w1:p1").status).toBe("blocked");
+    expect(agent("w1:p1").dialogDetected).toBe(true);
+    expect(transitions).toEqual([{ pane: "w1:p1", from: "done", to: "blocked" }]);
+  });
+
+  test("working → done onto a dialog is blocked at once, never held as working", async () => {
+    const { herdr, poll, agent, transitions } = makeDialogEngine();
+    herdr.panes = [at("w1:p1", "working", "cursor", 1)];
+    await poll();
+    herdr.panes = [at("w1:p1", "done", "cursor", 2)];
+    herdr.texts.set("w1:p1", CURSOR_PERMISSION);
+    await poll(); // the clock has not moved: a plain `done` would still be held as working here
+    expect(agent("w1:p1").status).toBe("blocked");
+    expect(transitions).toEqual([{ pane: "w1:p1", from: "working", to: "blocked" }]);
+  });
+
+  test("reads the visible grid as text, never recent", async () => {
+    const { herdr, poll } = makeDialogEngine();
+    herdr.panes = [at("w1:p1", "idle", "cursor", 1)];
+    herdr.texts.set("w1:p1", CURSOR_PERMISSION);
+    await poll();
+    expect(herdr.reads).toEqual([["w1:p1", "visible", 40, "text"]]);
+  });
+
+  test("an unchanged revision reuses a clean verdict until the TTL, then re-checks", async () => {
+    const { herdr, poll, agent, advance } = makeDialogEngine();
+    herdr.panes = [at("w1:p1", "done", "cursor", 5)];
+    herdr.texts.set("w1:p1", CURSOR_DONE);
+    await poll();
+    await poll();
+    await poll();
+    expect(herdr.reads.length).toBe(1);
+    expect(agent("w1:p1").status).toBe("done");
+    // A dialog painted without the revision moving is still found on the TTL.
+    herdr.texts.set("w1:p1", CURSOR_PERMISSION);
+    advance(DIALOG_SNIFF_TTL_MS);
+    await poll();
+    expect(herdr.reads.length).toBe(2);
+    expect(agent("w1:p1").status).toBe("blocked");
+  });
+
+  test("a detected dialog is re-read every poll, so answering it clears blocked even when the revision is stuck", async () => {
+    // Live, 27 Sep 2026: an agy pane sat at revision 0 and `idle` before and after its trust card
+    // was answered from the phone; the cached `blocked` never cleared.
+    const { herdr, poll, agent } = makeDialogEngine();
+    herdr.panes = [at("w1:p1", "idle", "agy", 0)];
+    herdr.texts.set("w1:p1", AGY_PERMISSION);
+    await poll();
+    expect(agent("w1:p1").status).toBe("blocked");
+    herdr.texts.set("w1:p1", "");
+    await poll();
+    expect(herdr.reads.length).toBe(2);
+    expect(agent("w1:p1").status).toBe("idle");
+    expect("dialogDetected" in agent("w1:p1")).toBe(false);
+  });
+
+  test("a moved revision showing the idle composer goes back to done", async () => {
+    const { herdr, poll, agent, transitions } = makeDialogEngine();
+    herdr.panes = [at("w1:p1", "done", "cursor", 5)];
+    herdr.texts.set("w1:p1", CURSOR_PERMISSION);
+    await poll();
+    herdr.panes = [at("w1:p1", "done", "cursor", 6)];
+    herdr.texts.set("w1:p1", CURSOR_DONE);
+    await poll();
+    expect(herdr.reads.length).toBe(2);
+    expect(agent("w1:p1").status).toBe("done");
+    expect("dialogDetected" in agent("w1:p1")).toBe(false);
+    expect(transitions).toEqual([{ pane: "w1:p1", from: "blocked", to: "done" }]);
+  });
+
+  test("a raw status change re-reads even at the same revision", async () => {
+    const { herdr, poll } = makeDialogEngine();
+    herdr.panes = [at("w1:p1", "done", "cursor", 5)];
+    await poll();
+    herdr.panes = [at("w1:p1", "idle", "cursor", 5)];
+    await poll();
+    expect(herdr.reads.length).toBe(2);
+  });
+
+  test("working panes, and claude / grok / pi at rest, are never read for a dialog", async () => {
+    const { herdr, poll, agent, readsOf } = makeDialogEngine();
+    herdr.panes = [
+      at("w1:p1", "working", "cursor", 1),
+      at("w1:p2", "working", "agy", 1),
+      at("w1:p3", "done", "grok", 1),
+      at("w1:p4", "idle", "pi", 1),
+      at("w1:p5", "idle", "claude", 1),
+      at("w1:p6", "done", "cursor-agent", 1),
+    ];
+    for (const p of herdr.panes) herdr.texts.set(p.pane_id, CURSOR_PERMISSION);
+    await poll();
+    expect(readsOf("w1:p1")).toBe(0);
+    expect(readsOf("w1:p2")).toBe(0);
+    expect(readsOf("w1:p3")).toBe(0);
+    expect(readsOf("w1:p4")).toBe(0);
+    expect(readsOf("w1:p6")).toBe(0);
+    expect(readsOf("w1:p5")).toBe(1); // the `/rename` name read, not a dialog sniff
+    expect(agent("w1:p1").status).toBe("working");
+    expect(agent("w1:p3").status).toBe("done");
+    expect(agent("w1:p4").status).toBe("idle");
+    expect(agent("w1:p5").status).toBe("idle");
+    expect(agent("w1:p6").status).toBe("done");
+  });
+
+  test("Antigravity under both agent strings", async () => {
+    const { herdr, poll, agent } = makeDialogEngine();
+    herdr.panes = [at("w1:p1", "idle", "agy", 1), at("w1:p2", "done", "antigravity", 1)];
+    herdr.texts.set("w1:p1", AGY_PERMISSION);
+    herdr.texts.set("w1:p2", AGY_PERMISSION);
+    await poll();
+    expect(agent("w1:p1").status).toBe("blocked");
+    expect(agent("w1:p2").status).toBe("blocked");
+  });
+
+  test("a failed read keeps Herdr's status, never fails the poll, and retries next poll", async () => {
+    const { herdr, engine, poll, agent } = makeDialogEngine();
+    herdr.panes = [at("w1:p1", "done", "cursor", 1)];
+    herdr.texts.set("w1:p1", CURSOR_PERMISSION);
+    herdr.fail = true;
+    await poll();
+    expect(engine.current().bridge).toBe("connected");
+    expect(agent("w1:p1").status).toBe("done");
+    herdr.fail = false;
+    await poll(); // same revision, but the failure stamped nothing
+    expect(herdr.reads.length).toBe(2);
+    expect(agent("w1:p1").status).toBe("blocked");
+  });
+
+  test("a failed read keeps a prior dialog verdict", async () => {
+    const { herdr, poll, agent } = makeDialogEngine();
+    herdr.panes = [at("w1:p1", "done", "cursor", 1)];
+    herdr.texts.set("w1:p1", CURSOR_PERMISSION);
+    await poll();
+    herdr.panes = [at("w1:p1", "done", "cursor", 2)];
+    herdr.fail = true;
+    await poll();
+    expect(agent("w1:p1").status).toBe("blocked");
+  });
+
+  test("a live beacon status still wins, and that pane is not read", async () => {
+    const NOW = 1_700_000_000_000;
+    const record = {
+      schemaVersion: 1,
+      harness: "cursor",
+      paneId: "w1:p1",
+      session: { kind: "id", value: "sess-0001" },
+      status: "working",
+      heartbeatMs: NOW,
+    };
+    const { herdr, poll, agent } = makeDialogEngine({
+      directory: {
+        list: () => Promise.resolve(["w1~p1.json"]),
+        read: () => Promise.resolve(JSON.stringify(record)),
+      },
+      now: () => NOW,
+    });
+    herdr.panes = [at("w1:p1", "done", "cursor", 1)];
+    herdr.texts.set("w1:p1", CURSOR_PERMISSION);
+    await poll();
+    expect(agent("w1:p1").status).toBe("working");
+    expect("dialogDetected" in agent("w1:p1")).toBe(false);
+    expect(herdr.reads).toEqual([]);
+  });
+
+  test("a vanished pane drops its verdict, so a reused id is read afresh", async () => {
+    const { herdr, poll } = makeDialogEngine();
+    herdr.panes = [at("w1:p1", "done", "cursor", 3)];
+    herdr.texts.set("w1:p1", CURSOR_PERMISSION);
+    await poll();
+    herdr.panes = [];
+    await poll();
+    herdr.panes = [at("w1:p1", "done", "cursor", 3)];
+    await poll();
+    expect(herdr.reads.length).toBe(2);
+  });
+
+  test("a pane with no revision re-reads only after the TTL", async () => {
+    const { herdr, poll, advance } = makeDialogEngine();
+    const { revision: _drop, ...noRev } = pane("w1:p1", "w1", "done", "cursor");
+    herdr.panes = [noRev as FakePane];
+    await poll();
+    await poll();
+    expect(herdr.reads.length).toBe(1);
+    advance(DIALOG_SNIFF_TTL_MS);
+    await poll();
+    expect(herdr.reads.length).toBe(2);
   });
 });

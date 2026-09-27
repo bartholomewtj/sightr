@@ -70,6 +70,12 @@ describe("isStatusChipRow", () => {
     expect(isStatusChipRow("Grok Build 1.0.14 [stable]")).toBe(true);
   });
 
+  it("accepts Grok Build 1.0.41's untagged chip (#24)", () => {
+    expect(isStatusChipRow("                                                                    Grok Build  1.0.41")).toBe(true);
+    expect(isStatusChipRow("Grok Build 1.0.41 extra")).toBe(false);
+    expect(isStatusChipRow("started Grok Build  1.0.41")).toBe(false);
+  });
+
   it("rejects every other bracket run — uncaptured tags are torn transcript, not chrome", () => {
     expect(isStatusChipRow("  [↓][stop]")).toBe(false);
     expect(isStatusChipRow("[waiting]")).toBe(false);

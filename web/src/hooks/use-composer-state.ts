@@ -31,6 +31,8 @@ export interface ComposerStateArgs {
   agentBlocked: boolean;
   terminalDraft: string | null;
   rawTerminalDraft: string | null;
+  inputLine?: string | null;
+  composerOnScreen?: boolean;
   promptBlock?: PromptSelectBlock;
   onPromptAction?: (
     a: PromptBlockAction,
@@ -62,6 +64,8 @@ export function useComposerState(args: ComposerStateArgs) {
     promptBlock,
     onPromptAction,
     rawTerminalDraft,
+    inputLine,
+    composerOnScreen = true,
     onArmedChange,
   } = args;
   const revalidator = useRevalidator();
@@ -252,6 +256,8 @@ export function useComposerState(args: ComposerStateArgs) {
   // line (during the bridge's send_text→settle→Enter gap) and NOT treat it as a stranded draft. A
   // ref, not state: it feeds a render-time derivation but must not itself trigger re-renders.
   const lastSentRef = useRef<{ text: string; at: number } | null>(null);
+  /** Bumped on every key press that reached the pane; a send compares it across its verify window. */
+  const keyEpochRef = useRef(0);
   // Trailing-edge debounce for post-keypress revalidation: a burst of raw key sends (arrow-key
   // spam) coalesces into a single pane refetch instead of one per press.
   const keyRevalidateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -285,6 +291,8 @@ export function useComposerState(args: ComposerStateArgs) {
   // its text tracks and that the send()-time pre-clear sweeps.
   const effectiveStable = suppressEcho(terminalDraft);
   const effectiveRaw = suppressEcho(rawTerminalDraft);
+  // The live input line for the send-time pre-clear, present even with Raw terminal on (#25).
+  const effectiveLine = suppressEcho(inputLine === undefined ? rawTerminalDraft : inputLine);
   const stripReason = gone
     ? "pane is gone"
     : readOnly
@@ -298,8 +306,11 @@ export function useComposerState(args: ComposerStateArgs) {
     (direct.active ||
       (pathHold?.kind === "path" && stripReason === null) ||
       (typing === "direct" && stripReason !== null));
+  // Yes / No TYPE a word, so they only make sense when the agent's input box is there to take it;
+  // on a dialog Sightr doesn't lift they were refused, or typed into the menu (#22, #26).
   const showYesNo =
     agentBlocked &&
+    composerOnScreen &&
     !dialogPresent &&
     !isShell &&
     !locked &&
@@ -466,6 +477,7 @@ export function useComposerState(args: ComposerStateArgs) {
         setStatus(res.error ?? "Key send failed", "error");
         return false;
       }
+      keyEpochRef.current += 1;
       scheduleKeyRevalidate();
       clearErrorStatus();
       return true;
@@ -579,7 +591,8 @@ export function useComposerState(args: ComposerStateArgs) {
             setStatus("Use the buttons for this dialog", "warn");
             return;
           }
-          const option = promptBlock.prompt.options.find((o) => o.keys[0] === e.key);
+          // keyLabel first: a walked option (Down, Enter) is still "2" on the keyboard.
+          const option = promptBlock.prompt.options.find((o) => (o.keyLabel ?? o.keys[0]) === e.key);
           if (option) {
             void onPromptAction({ kind: "option", option }, promptBlock.prompt);
           } else {
@@ -622,6 +635,8 @@ export function useComposerState(args: ComposerStateArgs) {
     locked,
     lockedRef,
     effectiveRaw,
+    effectiveLine,
+    keyEpochRef,
     showPreview,
     takeOverDraft,
     commands,

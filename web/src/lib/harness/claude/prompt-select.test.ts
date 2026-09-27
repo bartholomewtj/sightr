@@ -38,6 +38,32 @@ describe("detectPromptSelect — the five blocked-state fixtures", () => {
     expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"]]);
   });
 
+  it("Claude 2.1.28x unnumbered trust prompt → trust family, the cursor walks to each option (#22)", () => {
+    const model = detectPromptSelect(fixtureLines("claude--trust-prompt-unnumbered.txt"));
+    expect(model).not.toBeNull();
+    expect(model!.family).toBe("trust");
+    expect(model!.options.map((o) => o.label)).toEqual(["No, exit", "Yes, I trust this folder"]);
+    expect(model!.options.map((o) => o.keys)).toEqual([["Enter"], ["Down", "Enter"]]);
+    expect(model!.options.map((o) => o.keyLabel)).toEqual(["1", "2"]);
+    const blocks = claudeBuildBlocks(fixtureLines("claude--trust-prompt-unnumbered.txt"));
+    expect(blocks.at(-1)?.kind).toBe("prompt-select");
+  });
+
+  it("unnumbered trust prompt with the cursor on the second row walks Up to the first", () => {
+    const text = fixtureText("claude--trust-prompt-unnumbered.txt")
+      .replace("❯ No, exit", "  No, exit")
+      .replace("  Yes, I trust this folder", "❯ Yes, I trust this folder");
+    const model = detectPromptSelect(splitLines(parseAnsi(text)));
+    expect(model!.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Enter"]]);
+  });
+
+  it("unnumbered rows are not lifted without exactly one ❯ cursor", () => {
+    const none = fixtureText("claude--trust-prompt-unnumbered.txt").replace("❯ No, exit", "  No, exit");
+    expect(detectPromptSelect(splitLines(parseAnsi(none)))).toBeNull();
+    const two = fixtureText("claude--trust-prompt-unnumbered.txt").replace("  Yes, I trust", "❯ Yes, I trust");
+    expect(detectPromptSelect(splitLines(parseAnsi(two)))).toBeNull();
+  });
+
   it("AskUserQuestion select → select family, digit-THEN-Enter keys, free-text row dropped", () => {
     const model = detectPromptSelect(fixtureLines("claude--select-menu.txt"));
     expect(model).not.toBeNull();

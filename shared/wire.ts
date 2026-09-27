@@ -26,6 +26,12 @@ export interface PaneCommon {
   runningCommand?: boolean;
   lastActiveAt?: number;
   lastSeenAt?: number;
+  /**
+   * The bridge read this pane's screen and found a dialog waiting on the operator, so it publishes
+   * `blocked` over Herdr's resting status (Cursor CLI and Antigravity only; see
+   * bridge/state-engine.ts, sniffDialogs). Absent otherwise.
+   */
+  dialogDetected?: boolean;
 }
 
 /** A pane sent to the browser. `hasSession` is only a capability flag, never a session ref. */

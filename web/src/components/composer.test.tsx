@@ -318,6 +318,34 @@ describe("Composer — send", () => {
     await awaitTerminalStall(); // see the helper: an unawaited stall lands in a later test
   }, 15000);
 
+  it("pre-clears leftover input with Raw terminal on, where no preview draft exists (#25)", async () => {
+    const user = userEvent.setup();
+    const callOrder: string[] = [];
+    let sentKeys: string[] | null = null;
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        sentKeys = ((await request.json()) as { keys: string[] }).keys;
+        callOrder.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async () => {
+        callOrder.push("reply");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    // Raw terminal on: the preview inputs are null, but the input line still carries "abc" (left by
+    // Type into terminal). The palette's /status used to be typed after it as "abc/status".
+    renderComposerWithStatus({ terminalDraft: null, rawTerminalDraft: null, inputLine: "abc" });
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "/status");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(callOrder).toEqual(["keys", "reply"]));
+    expect(sentKeys![0]).toBe("ctrl+k");
+    expect(sentKeys).toHaveLength([..."abc"].length + 33);
+    // No read-only preview with Raw terminal on: the raw dump already shows the line.
+    expect(screen.queryByRole("button", { name: /take over/i })).toBeNull();
+    await awaitTerminalStall();
+  }, 15000);
+
   // The burst is the only destructive keystroke path in the app not bound to the screen that
   // authorised it. Ordering ("the read happens first") is not a freshness bound: the read's answer
   // describes the pane at the moment the BRIDGE snapshotted it, and the keys go out when the answer
@@ -1984,6 +2012,35 @@ describe("Composer — one-tap Yes / No (#203)", () => {
 
     await waitFor(() => expect(wire).toEqual(["type:yes", "submit"]));
     expect(props.onSent).toHaveBeenCalledWith("yes");
+  });
+
+  it("does not show the strip when the agent's input box is not on screen (#22)", () => {
+    renderComposer({ agentBlocked: true, composerOnScreen: false });
+    expect(yes()).not.toBeInTheDocument();
+    expect(no()).not.toBeInTheDocument();
+  });
+
+  it("a refused Yes does not force the next word or the reply box (#26)", async () => {
+    const user = userEvent.setup();
+    const wire: string[] = [];
+    // Every pre-flight read shows a menu with no input box, so each send is refused.
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () =>
+        HttpResponse.json({ text: " ❯ No, exit\n   Yes, I trust this folder\n\n Enter to confirm · Esc to cancel", revision: 1 }),
+      ),
+      replyHandler((text) => wire.push(`type:${text}`), () => wire.push("submit")),
+    );
+    renderComposerWithStatus({ agentBlocked: true });
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent(/isn't on screen/));
+    expect(screen.getByTestId("status")).not.toHaveTextContent(/Tap Send again/);
+    await user.click(screen.getByRole("button", { name: "No" }));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(wire).toEqual([]);
+    // And the Send button was not armed either: a draft gets the normal Send, not "Type anyway?".
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "hello");
+    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Type anyway?" })).toBeNull();
   });
 
   it("does not show the strip when a parsed dialog owns the pane", () => {

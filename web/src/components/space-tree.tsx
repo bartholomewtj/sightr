@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import { ArrowRight, ChevronDown, ChevronRight, FolderPlus, GitBranch, LayoutGrid, Plug, Plus, Search, TerminalSquare, WifiOff, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useDesktop } from "@/lib/desktop";
 import { SectionHeader } from "@/components/section-header";
 import { AgentCard, RowMoreButton } from "@/components/agent-card";
 import { StatusDot } from "@/components/status-badge";
@@ -120,6 +121,9 @@ export function SpaceTree({
   lastSeenAt,
   currentPaneId,
 }: SpaceTreeProps) {
+  // The desktop sidebar is ~280px: with the pane count and "24m ago" on the name's row the name
+  // itself shrank to one letter. There they move to the second line and the chevron narrows.
+  const desktop = useDesktop().on;
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
@@ -354,12 +358,12 @@ export function SpaceTree({
                 <div
                   className={cn(
                     "flex flex-row gap-1 px-1.5 py-2",
-                    branchLine ? "items-start" : "items-center",
+                    branchLine || desktop ? "items-start" : "items-center",
                     blocked && "rounded-lg border border-status-blocked/40 bg-status-blocked/5",
                   )}
                 >
                   {connector ? (
-                    <WorktreeConnector glyph={connector} tallRow={!!branchLine} />
+                    <WorktreeConnector glyph={connector} tallRow={!!branchLine || desktop} />
                   ) : null}
                   <button
                     type="button"
@@ -368,7 +372,7 @@ export function SpaceTree({
                       setSpaceOpen(w.workspaceId, !isSpaceExpanded);
                     }}
                     aria-label={isSpaceExpanded ? `Collapse space ${rowLabel}` : `Expand space ${rowLabel}`}
-                    className="flex size-11 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95"
+                    className={cn("flex shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95", desktop ? "size-8" : "size-11")}
                   >
                     {isSpaceExpanded ? (
                       <ChevronDown className="size-4" />
@@ -393,18 +397,20 @@ export function SpaceTree({
                           <span className="size-2.5 shrink-0 rounded-full border border-muted-foreground/40" />
                         )}
                         <span className="min-w-0 flex-1 truncate font-medium">{rowLabel}</span>
-                        <span
-                          aria-label={`${w.paneCount} ${w.paneCount === 1 ? "pane" : "panes"}`}
-                          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium tabular-nums text-muted-foreground"
-                        >
-                          <LayoutGrid className="size-3.5" aria-hidden />
-                          {w.paneCount}
-                        </span>
-                        {seen > 0 && (
-                          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                            {timeAgo(seen)}
+                        {!desktop && <>
+                          <span
+                            aria-label={`${w.paneCount} ${w.paneCount === 1 ? "pane" : "panes"}`}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium tabular-nums text-muted-foreground"
+                          >
+                            <LayoutGrid className="size-3.5" aria-hidden />
+                            {w.paneCount}
                           </span>
-                        )}
+                          {seen > 0 && (
+                            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                              {timeAgo(seen)}
+                            </span>
+                          )}
+                        </>}
                         {/* A space holding exactly one pane opens it on a tap (fewest taps); every
                             other space expands. The arrow says which, before you tap. */}
                         {wsTabGroups.length === 1 && wsTabGroups[0]!.panes.length === 1 ? (
@@ -414,10 +420,28 @@ export function SpaceTree({
                           </span>
                         ) : null}
                       </div>
-                      {branchLine ? (
+                      {branchLine || desktop ? (
                         <div className="flex min-w-0 items-center gap-1.5 pl-5 text-xs text-muted-foreground">
-                          <GitBranch className="size-3 shrink-0 opacity-70" aria-hidden />
-                          <span className="truncate">{branchLine}</span>
+                          {desktop && <>
+                          <span
+                            aria-label={`${w.paneCount} ${w.paneCount === 1 ? "pane" : "panes"}`}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium tabular-nums text-muted-foreground"
+                          >
+                            <LayoutGrid className="size-3.5" aria-hidden />
+                            {w.paneCount}
+                          </span>
+                          {seen > 0 && (
+                            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                              {timeAgo(seen)}
+                            </span>
+                          )}
+                        </>}
+                          {branchLine ? (
+                            <>
+                              <GitBranch className="size-3 shrink-0 opacity-70" aria-hidden />
+                              <span className="truncate">{branchLine}</span>
+                            </>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
@@ -458,7 +482,7 @@ export function SpaceTree({
                                   setTabOpen(group.tabId, !isTabExpanded);
                                 }}
                                 aria-label={isTabExpanded ? `Collapse tab ${group.label}` : `Expand tab ${group.label}`}
-                                className="flex size-11 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95"
+                                className={cn("flex shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95", desktop ? "size-8" : "size-11")}
                               >
                                 {isTabExpanded ? (
                                   <ChevronDown className="size-3.5" />

@@ -144,12 +144,13 @@ export function isComposerHint(text: string): boolean {
 // session paints the key-hint bar. Two live shapes:
 //   `[stable]`                         grok--startup.txt          2026-08-22, Grok Build 1.0.5
 //   `Grok Build  <semver> [stable]`    grok--startup-build-chip.txt 2026-08-31, Grok Build 1.0.13
+//   `Grok Build  <semver>`             grok--startup-1-0-41.txt     2026-09-27, Grok Build 1.0.41 (no tag, #24)
 // Refusing that row kept composerReady false on every fresh pane, so the FIRST phone message
 // of a session was refused. Only captured chrome qualifies: a looser bracket-run would bless
 // torn transcript ending in a tag (`[waiting]`, `[ERROR]`) and reopen the hazard the refusal
 // guards. Uncaptured channels (`[preview]`) fail closed.
 const CHIP_ROW = /^\[stable\]$/;
-const BUILD_CHIP_ROW = /^Grok Build\s+\d+\.\d+\.\d+\s+\[stable\]$/;
+const BUILD_CHIP_ROW = /^Grok Build\s+\d+\.\d+\.\d+(?:\s+\[stable\])?$/;
 
 /** True when the row is the startup screen's channel chip (bare or Grok Build + version). */
 export function isStatusChipRow(text: string): boolean {
