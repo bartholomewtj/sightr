@@ -34,6 +34,10 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   one compact row; a one-pane space shows that a tap opens it.
 
 ### Fixed
+- Swiping up through a pane's history can no longer show the recent turns twice. An unknown history
+  cursor now returns nothing more, not the newest page, and the phone never prepends a turn it
+  already holds. A refresh in flight no longer blocks loading older turns. The newest page is
+  revalidated with an ETag, so an unchanged page costs a 304.
 - Two Grok tabs in one folder no longer show each other's history. A quiet Grok pane guesses its log
   only when it is the only Grok pane there, or when exactly one log is unclaimed. Otherwise it waits
   for the screen, title or Herdr to say which. The bridge now reads the boxed `│ ❯ … │` prompt row

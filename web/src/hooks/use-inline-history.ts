@@ -139,8 +139,15 @@ export function useInlineHistory({
         setHasMore(false);
         return;
       }
-      setEntries((prev) => [...res.entries, ...prev]);
-      setHasMore(res.hasMore);
+      // Never splice in a turn that is already on screen (spec 09): a rewritten log or a session
+      // switch can hand back rows that overlap what is held. Only the genuinely older ones go on
+      // top, and a page with nothing new ends the paging rather than looping on it.
+      setEntries((prev) => {
+        const held = new Set(prev.map((e) => e.uuid));
+        const older = res.entries.filter((e) => !held.has(e.uuid));
+        setHasMore(older.length > 0 && res.hasMore);
+        return older.length > 0 ? [...older, ...prev] : prev;
+      });
     } catch (e) {
       if (!isAbortError(e)) setUnavailable("error");
     } finally {
@@ -149,12 +156,15 @@ export function useInlineHistory({
     }
   }, [entries, getScrollElement, hasMore, paneId]);
 
+  // Its own lock, not the grow lock (spec 09): a refresh in flight must not make a swipe up a no-op.
+  // Both write through functional updates, so they compose in either order.
+  const refreshingRef = useRef(false);
   const refreshNewest = useCallback(async () => {
-    if (loadingRef.current || !primed.current) return;
-    loadingRef.current = true;
+    if (refreshingRef.current || !primed.current) return;
+    refreshingRef.current = true;
     try {
       const res = await fetchHistory(paneId, { limit: INLINE_HISTORY_PAGE });
-      if (!res.available) return;
+      if (!res.available || res.notModified) return;
       if (res.entries.some((e) => staleIds.current.has(e.uuid))) return;
       staleIds.current = new Set();
       setEntries((prev) => {
@@ -166,7 +176,7 @@ export function useInlineHistory({
     } catch {
       // A failed refresh keeps the last good page; the next trigger tries again.
     } finally {
-      loadingRef.current = false;
+      refreshingRef.current = false;
     }
   }, [paneId]);
 

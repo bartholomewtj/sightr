@@ -227,7 +227,14 @@ export async function paneHistory(
   try {
     const page = await transcripts.page(adapter, session, historyParams(url));
     if (page === null) return unavailable("no-log");
-    return json({ paneId, available: true, ...page } satisfies PaneHistoryResponse, accept);
+    // An open pane re-asks for its newest page on every snapshot (spec 09). The page is usually
+    // unchanged, so tag it like a pane read and answer a matching If-None-Match with an empty 304.
+    const data = { paneId, available: true, ...page } satisfies PaneHistoryResponse;
+    const etag = computeEtag(JSON.stringify(data));
+    if (notModified(req.headers.get("if-none-match"), etag)) {
+      return secure(new Response(null, { status: 304, headers: { etag, "cache-control": "no-store" } }));
+    }
+    return secure(gzipJsonResponse(data, accept, { etag }));
   } catch (err) {
     return text(failureText("transcript read", err), 502);
   }

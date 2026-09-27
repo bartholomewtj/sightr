@@ -44,15 +44,13 @@ export function pageEntries(
   opts: { limit: number; before?: string },
 ): { window: TranscriptEntry[]; hasMore: boolean } {
   // An unknown cursor (log rewritten under us, a stale client, or a synthesised cursor whose row
-  // fell out of the window) degrades to "newest", never to an empty page — the user asked for older
-  // history and must still see something.
-  const end =
-    opts.before === undefined
-      ? entries.length
-      : (() => {
-          const i = entries.findIndex((e) => e.uuid === opts.before);
-          return i === -1 ? entries.length : i;
-        })();
+  // fell out of the window) answers an empty page with nothing more (spec 09). Degrading it to the
+  // newest page spliced a second copy of the recent turns onto the top of the client's thread.
+  let end = entries.length;
+  if (opts.before !== undefined) {
+    end = entries.findIndex((e) => e.uuid === opts.before);
+    if (end === -1) return { window: [], hasMore: false };
+  }
   const start = Math.max(0, end - opts.limit);
   return { window: entries.slice(start, end), hasMore: start > 0 };
 }

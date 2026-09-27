@@ -294,6 +294,75 @@ describe("useInlineHistory refresh", () => {
     await waitFor(() => expect(result.current.entries.map((e) => e.uuid)).toEqual(["t1", "t2", "t3"]));
   });
 
+  // Spec 09: a rewritten log or a session switch can hand back rows already on screen.
+  it("never splices an older page's overlapping turns in twice", async () => {
+    // Every request, older ones included, answers the same turns: what the old bridge sent back
+    // for an unknown cursor.
+    server.use(http.get(/\/api\/pane\/[^/]+\/history/, () => page(fixtureTranscript, true)));
+    const { result } = renderHook(() =>
+      useInlineHistory({ paneId: "w1:p1", enabled: true, getScrollElement }),
+    );
+    await waitFor(() => expect(result.current.hasMore).toBe(true));
+    await act(async () => {
+      result.current.growUpward();
+    });
+    await waitFor(() => expect(result.current.hasMore).toBe(false));
+    expect(result.current.entries.map((e) => e.uuid)).toEqual(["t1", "t2"]);
+  });
+
+  it("a newest-page refresh in flight does not make a swipe up a no-op", async () => {
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    let newestHits = 0;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/history/, async ({ request }) => {
+        if (new URL(request.url).searchParams.get("before") === "t1") return page([olderTurn("t0")]);
+        newestHits += 1;
+        if (newestHits > 1) await held; // the refresh hangs until released
+        return page(fixtureTranscript, true);
+      }),
+    );
+    const { result } = renderHook(() =>
+      useInlineHistory({ paneId: "w1:p1", enabled: true, status: "idle", getScrollElement }),
+    );
+    await waitFor(() => expect(result.current.hasMore).toBe(true));
+    const { applySnapshot } = await import("@/lib/loaders");
+    act(() => {
+      applySnapshot({ bridge: "connected", agents: [], shellPanes: [], workspaces: [], tabs: [], ts: 2 });
+    });
+    await waitFor(() => expect(newestHits).toBe(2));
+    await act(async () => {
+      result.current.growUpward();
+    });
+    await waitFor(() => expect(result.current.entries.map((e) => e.uuid)).toEqual(["t0", "t1", "t2"]));
+    await act(async () => release());
+  });
+
+  it("revalidates the newest page with its ETag and skips an unchanged one", async () => {
+    const conditional: (string | null)[] = [];
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/history/, ({ request }) => {
+        conditional.push(request.headers.get("if-none-match"));
+        if (request.headers.get("if-none-match") === '"h1"') return new HttpResponse(null, { status: 304 });
+        return new HttpResponse(
+          JSON.stringify({ paneId: "w9:p9", available: true, entries: fixtureTranscript, hasMore: false, total: 2, fileTruncated: false }),
+          { headers: { "content-type": "application/json", etag: '"h1"' } },
+        );
+      }),
+    );
+    const { result } = renderHook(() =>
+      useInlineHistory({ paneId: "w9:p9", enabled: true, status: "idle", getScrollElement }),
+    );
+    await waitFor(() => expect(result.current.entries.map((e) => e.uuid)).toEqual(["t1", "t2"]));
+    const before = result.current.entries;
+    const { applySnapshot } = await import("@/lib/loaders");
+    act(() => {
+      applySnapshot({ bridge: "connected", agents: [], shellPanes: [], workspaces: [], tabs: [], ts: 3 });
+    });
+    await waitFor(() => expect(conditional).toEqual([null, '"h1"']));
+    expect(result.current.entries).toBe(before); // a 304 leaves the held turns untouched
+  });
+
   it("refetches the newest page when the tab becomes visible", async () => {
     let hits = 0;
     server.use(

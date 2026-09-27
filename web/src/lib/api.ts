@@ -349,31 +349,59 @@ export async function fetchPane(
   return data;
 }
 
+/** Newest history page per pane + limit, with its ETag (bounded like paneCache). */
+const historyCache = new Map<string, { etag: string; response: PaneHistoryResponse }>();
+
 /**
  * Fetch a page of the pane's conversation history — the scrollback its terminal can't hold (a Claude
  * pane runs on the alternate screen, which has no scrollback ring). Newest-anchored: no cursor gives
  * the most recent turns; `before` walks backwards from a turn already on screen.
  *
- * Deliberately NOT ETag-cached like fetchPane: history is fetched on navigation and on an explicit
- * "load older" tap, never on the poll loop, so there's no repeat-fetch to save.
+ * The NEWEST page is ETag-cached like fetchPane (spec 09): an open pane re-asks for it on every
+ * snapshot, and it is usually unchanged. On a 304 the cached body comes back marked `notModified`,
+ * so the caller can skip a merge. Older pages (`before`) are fetched once per swipe and not cached.
  */
-export function fetchHistory(
+export async function fetchHistory(
   paneId: string,
   opts: { limit?: number; before?: string } = {},
   signal?: AbortSignal,
-): Promise<PaneHistoryResponse> {
+): Promise<PaneHistoryResponse & { notModified?: true }> {
   const q = new URLSearchParams();
   if (opts.limit) q.set("limit", String(opts.limit));
   if (opts.before) q.set("before", opts.before);
   const qs = q.toString();
   const path = `/api/pane/${encodeURIComponent(paneId)}/history${qs ? `?${qs}` : ""}`;
+  const cacheKey = opts.before ? null : `${paneId}\0${opts.limit ?? ""}`;
+  const cached = cacheKey === null ? undefined : historyCache.get(cacheKey);
   // Reading the transcript is looking at the pane — and history is a READ, so like fetchPane it
   // carries the header that lets the bridge count it (bridge/server.ts → marksPaneSeen).
-  return req<PaneHistoryResponse>(path, {
-    signal,
-    headers: { [SEEN_HEADER]: "1" }
-  });
+  const headers: Record<string, string> = {
+    [SEEN_HEADER]: "1",
+    [XHR_HEADER]: XHR_HEADER_VALUE,
+  };
+  if (cached) headers["if-none-match"] = cached.etag;
+
+  const res = await fetch(path, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
+  captureBuild(res);
+  if (res.status === 304 && cached) return { ...cached.response, notModified: true };
+  if (!res.ok) {
+    const lockRequired = res.headers.get(LOCK_HEADER) === "required";
+    if (lockRequired) noteLockRequired();
+    throw new ApiError(`${path} → ${res.status} ${await errorDetail(res)}`, res.status, lockRequired);
+  }
+  // Same invariant as paneCache: the tag is recorded only with the body it belongs to.
+  const data = (await res.json()) as PaneHistoryResponse;
+  const etag = res.headers.get("etag");
+  if (cacheKey !== null && etag) {
+    historyCache.set(cacheKey, { etag, response: data });
+    if (historyCache.size > PANE_CACHE_MAX) {
+      const oldest = historyCache.keys().next().value;
+      if (oldest !== undefined) historyCache.delete(oldest);
+    }
+  }
+  return data;
 }
+
 
 export function sendReply(
   paneId: string,
