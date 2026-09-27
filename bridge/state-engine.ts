@@ -11,6 +11,7 @@ import {
 import type { AgentSessionRef } from "./journal/types.ts";
 import { beaconsByPane, decorateAgent, type BeaconIdentity } from "./beacon/decorate.ts";
 import { readBeacons, type BeaconSweepDeps } from "./beacon/reader.ts";
+import { hasBlockingDialog, sniffsDialogs } from "../web/src/lib/harness/dialog-sniff.ts";
 
 export interface AgentView extends PaneCommon { agentSession?: AgentSessionRef; }
 
@@ -66,6 +67,15 @@ export const SESSION_NAME_TTL_MS = 60_000;
 export const STATUS_HOLD_MS = 3_000;
 
 const RESTING_STATUS: ReadonlySet<AgentStatus> = new Set(["idle", "done", "unknown"]);
+
+/**
+ * How many lines to read when sniffing a resting Cursor / Antigravity pane for a dialog. `visible`
+ * for the same reason as {@link SESSION_NAME_READ_LINES}: it is the rendered viewport and can never
+ * make Herdr scroll the operator's pane. Every dialog these detectors lift sits at the buffer tail.
+ */
+const DIALOG_SNIFF_READ_LINES = 40;
+/** How stale a dialog verdict may get on a pane Herdr reports no `revision` for. */
+export const DIALOG_SNIFF_TTL_MS = 10_000;
 
 /** Fast poll unless the event stream is healthy and every agent is resting. */
 export function engineCadence(
@@ -148,6 +158,15 @@ export class StateEngine {
    * TTL rule, unchanged.
    */
   private readonly nameReadRevisions = new Map<string, number>();
+  /**
+   * Last dialog verdict per resting Cursor / Antigravity pane, keyed by the pane revision and the RAW
+   * Herdr status it was read at (see sniffDialogs). Dropped when the pane stops being a candidate
+   * (it went working, or a beacon speaks for it) and when the pane vanishes.
+   */
+  private readonly dialogSniffs = new Map<
+    string,
+    { revision: number | undefined; status: AgentStatus; at: number; dialog: boolean }
+  >();
   /** Pane id → when a working→resting hold began. Cleared on working/blocked, a real rest, or removal. */
   private readonly statusHold = new Map<string, number>();
   private readonly transitionListeners = new Set<TransitionListener>();
@@ -387,6 +406,13 @@ export class StateEngine {
 
       const polled: AgentView[] = panes.filter(hasAgent).map((p) => toView(p, p.agent, "agent"));
 
+      // Herdr's content revision per pane: moves only when the rendered text changed. Gates both
+      // screen reads below (dialog sniff, `/rename` name) so an idle herd costs no reads.
+      const revisions = new Map<string, number>();
+      for (const p of panes) {
+        if (typeof p.revision === "number") revisions.set(p.pane_id, p.revision);
+      }
+
       // BEACONS. An agent that named itself beats anything read off its screen (bridge/beacon/).
       // The sweep is best-effort in the strongest sense: a beacon directory must never be able to
       // fail a poll, so a rejection here reads as "no beacons" and the herd view is built exactly as
@@ -399,8 +425,15 @@ export class StateEngine {
       // ordered by it — a pane that says it is waiting on you belongs at the top of the list, not
       // wherever the poll's own reading had put it. The hold runs before the sort so a pane we are
       // still calling `working` does not jump into Ready · unseen for a beat.
+      //
+      // The dialog sniff runs first: Herdr calls a Cursor / Antigravity pane `done` while a card on
+      // its screen waits for the operator, and the sniff turns that into `blocked` BEFORE the hold
+      // (blocked is never held) and the transition pass, so the toast and push say "needs you".
+      // A beacon status still wins: decorateAgent runs after it, and a pane whose beacon carries a
+      // live status is not read at all.
+      const sniffed = await this.sniffDialogs(polled, revisions, identities);
       const agents: AgentView[] = this.applyStatusHold(
-        polled.map((a) => decorateAgent(a, identities.get(a.paneId))),
+        sniffed.map((a) => decorateAgent(a, identities.get(a.paneId))),
       ).sort(byTriage);
 
       // Bare shell panes (no agent), ordered by space then pane so a space's panes read top-down.
@@ -457,16 +490,13 @@ export class StateEngine {
         this.sessionNames.delete(id); // drop the cached name so a reused pane id starts clean
         this.nameReads.delete(id);
         this.nameReadRevisions.delete(id);
+        this.dialogSniffs.delete(id);
         this.statusHold.delete(id);
         for (const fn of this.removeListeners) fn(id);
       }
 
       // Enrich claude panes with their own `/rename` session name (read from pane text). Best-effort:
       // a failed read keeps the last-known name and never fails the poll.
-      const revisions = new Map<string, number>();
-      for (const p of panes) {
-        if (typeof p.revision === "number") revisions.set(p.pane_id, p.revision);
-      }
       // A pane whose beacon supplied a name is not grid-read for one — the agent already said it.
       const named = new Set(
         [...identities].filter(([, i]) => i.sessionName !== undefined).map(([paneId]) => paneId),
@@ -495,6 +525,72 @@ export class StateEngine {
         if (this.started) void this.poll();
       }
     }
+  }
+
+  /**
+   * Publish `blocked` for a resting Cursor / Antigravity pane whose screen holds a dialog (see
+   * web/src/lib/harness/dialog-sniff.ts). Herdr's detector calls those panes `done` / `idle` while a
+   * permission, trust, ask or prompt-select card waits, so without this the herd, the toast and the
+   * push all said "done" until the pane was opened.
+   *
+   * Candidates: an agent the sniffer knows, at a RESTING raw status, with no live beacon status. A
+   * candidate is read only when its Herdr revision or raw status moved since the last verdict (a pane
+   * with no revision falls back to {@link DIALOG_SNIFF_TTL_MS}); otherwise the cached verdict
+   * stands. A failed read keeps the prior verdict and stamps nothing, so the next poll retries; it
+   * never fails the poll. A client without `readPane` (most unit-test fakes) is a no-op.
+   */
+  private async sniffDialogs(
+    agents: AgentView[],
+    revisions: Map<string, number>,
+    identities: ReadonlyMap<string, BeaconIdentity>,
+  ): Promise<AgentView[]> {
+    if (typeof this.herdr.readPane !== "function") return agents;
+    const candidates = new Set<string>();
+    for (const a of agents) {
+      if (
+        sniffsDialogs(a.agent) &&
+        RESTING_STATUS.has(a.status) &&
+        identities.get(a.paneId)?.status === undefined
+      ) {
+        candidates.add(a.paneId);
+      }
+    }
+    for (const id of [...this.dialogSniffs.keys()]) {
+      if (!candidates.has(id)) this.dialogSniffs.delete(id);
+    }
+    if (candidates.size === 0) return agents;
+
+    const now = this.now();
+    await Promise.all(
+      agents
+        .filter((a) => {
+          if (!candidates.has(a.paneId)) return false;
+          const entry = this.dialogSniffs.get(a.paneId);
+          if (!entry || entry.status !== a.status) return true;
+          const rev = revisions.get(a.paneId);
+          if (rev === undefined) return now - entry.at >= DIALOG_SNIFF_TTL_MS;
+          return entry.revision !== rev;
+        })
+        .map(async (a) => {
+          try {
+            // `visible`, never `recent`: see SESSION_NAME_READ_LINES.
+            const read = await this.herdr.readPane(a.paneId, "visible", DIALOG_SNIFF_READ_LINES, "text");
+            this.dialogSniffs.set(a.paneId, {
+              revision: revisions.get(a.paneId),
+              status: a.status,
+              at: now,
+              dialog: hasBlockingDialog(a.agent, read.text),
+            });
+          } catch {
+            // Keep the prior verdict (if any) and stamp nothing: the next poll reads again.
+          }
+        }),
+    );
+    return agents.map((a) =>
+      candidates.has(a.paneId) && this.dialogSniffs.get(a.paneId)?.dialog === true
+        ? { ...a, status: "blocked", dialogDetected: true }
+        : a,
+    );
   }
 
   /**

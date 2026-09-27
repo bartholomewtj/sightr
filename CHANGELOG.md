@@ -34,6 +34,7 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   one compact row; a one-pane space shows that a tap opens it.
 
 ### Fixed
+- Cursor and Antigravity panes waiting on a dialog showed done until opened; the bridge now reads their screen and reports needs you.
 - Panes stay live: dump follows while Working, freeze only during Find, and the bridge keeps the
   fast Herdr cadence while any agent is working or blocked.
 - Subscription-cap log names `push-forget`, the verb that exists.

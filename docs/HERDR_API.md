@@ -75,6 +75,12 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
     background poll that reads panes on a timer must therefore use `visible`
     (`bridge/state-engine.ts`); anything asking for scrollback is asking to move the operator's
     screen, and should be a deliberate, user-initiated read.
+  - **The bridge reads resting Cursor / Antigravity panes to surface dialogs.** Herdr reports
+    `cursor`, `agy` and `antigravity` panes as `done` / `idle` while a permission, trust, ask or
+    select card waits on screen, so the poll reads their viewport (`visible`, 40 lines, `text`)
+    whenever the pane's `revision` or raw status moved since the last read, and publishes
+    `blocked` (with `dialogDetected: true`) when one is found. An unchanged pane costs no read
+    (`bridge/state-engine.ts` → `sniffDialogs`).
   **`format: "text"` returns clean plain text (no ANSI escapes)** → safe to render, no XSS surface.
 - `agent.send` writes literal text only; to submit a reply, follow with an Enter keypress
   (`pane.send_keys {keys: ["Enter"]}`) — submit-key name needs live confirmation per agent.

@@ -4,9 +4,22 @@
 // React text node (never innerHTML), so this adds no XSS surface — we only derive colors/weights.
 // Any non-SGR escape sequence is defensively skipped.
 
-import type { CSSProperties } from "react";
-
 import { BOX_DRAWING_RULE_GLYPH_CLASS, UNICODE_DASH_RULE_GLYPH_CLASS } from "./rule-glyphs";
+
+/**
+ * The inline style a segment carries: exactly the properties {@link buildStyle} sets. Declared
+ * structurally rather than as React's `CSSProperties` so this module (and the harness detectors that
+ * parse through it) import nothing from `react`: the bridge imports those detectors, and the root
+ * typecheck runs before `web/` has installed its packages. It is assignable to `CSSProperties`.
+ */
+export interface SegmentStyle {
+  color?: string;
+  backgroundColor?: string;
+  fontWeight?: number;
+  fontStyle?: "italic";
+  opacity?: number;
+  textDecoration?: string;
+}
 
 export interface AnsiSegment {
   text: string;
@@ -19,7 +32,7 @@ export interface AnsiSegment {
   underline?: boolean;
   strike?: boolean;
   // Pre-computed presentation — consumed by AnsiOutput to avoid per-render allocation.
-  style: CSSProperties;
+  style: SegmentStyle;
   /** True when the segment contains only box-drawing/rule glyphs; the renderer mutes it. */
   muted: boolean;
 }
@@ -118,9 +131,9 @@ function checkMuted(text: string): boolean {
   return compact.length >= 2 && RULE_GLYPHS.test(compact);
 }
 
-/** Build a CSSProperties object from SGR state and the effective (inverse-resolved) fg/bg. */
-function buildStyle(state: State, fg: string | undefined, bg: string | undefined): CSSProperties {
-  const st: CSSProperties = {};
+/** Build a segment style from SGR state and the effective (inverse-resolved) fg/bg. */
+function buildStyle(state: State, fg: string | undefined, bg: string | undefined): SegmentStyle {
+  const st: SegmentStyle = {};
   if (fg) st.color = fg;
   if (bg) st.backgroundColor = bg;
   if (state.bold) st.fontWeight = 600;
