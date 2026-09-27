@@ -78,8 +78,9 @@ const DIALOG = [
 ];
 
 // Slash-autocomplete captures: composerReady must stay true (that's the send-stall bug), but a tall
-// popup sits more than PROMPT_TAIL_LINES below the prompt so composerPrompt correctly returns null
-// (unbound write). Kept out of the conformance neutral cohort — that suite requires the two to agree.
+// popup sits more than PROMPT_TAIL_LINES below the prompt so composerPrompt is null. They are in the
+// neutral cohort: unbindableComposer names the popup, which is what the agreement leg accepts and
+// what makes the reply guard refuse instead of sweeping unbound (spec 18).
 const AUTOCOMPLETE = [
   "cursor--autocomplete-model-c.txt",
   "cursor--autocomplete-model-composer.txt",
@@ -88,9 +89,29 @@ const AUTOCOMPLETE = [
 ];
 
 const ownFixtures = DIALOG;
-const neutralFixtures = allCursorFixtures.filter(
-  (f) => !DIALOG.includes(f) && !AUTOCOMPLETE.includes(f),
-);
+const neutralFixtures = allCursorFixtures.filter((f) => !DIALOG.includes(f));
+
+// Spec 18: an open popup either leaves the prompt row bindable (a short list inside the bridge's
+// tail window) or is named unbindable, so the reply guard refuses instead of sweeping unbound.
+describe("cursor autocomplete is bindable or named unbindable", () => {
+  for (const name of AUTOCOMPLETE) {
+    it(name, () => {
+      const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
+      expect(cursorAdapter.composerReady!(lines)).toBe(true);
+      const region = cursorAdapter.composerPrompt!(lines);
+      const reason = cursorAdapter.unbindableComposer!(lines);
+      expect(region === null).toBe(reason !== null);
+      if (reason !== null) expect(reason).toMatch(/autocomplete/);
+    });
+  }
+  it("at least one capture is the tall, unbindable kind", () => {
+    const tall = AUTOCOMPLETE.filter(
+      (name) =>
+        cursorAdapter.unbindableComposer!(splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")))) !== null,
+    );
+    expect(tall.length).toBeGreaterThan(0);
+  });
+});
 
 describeAdapterConformance(cursorAdapter, {
   ownFixtures,

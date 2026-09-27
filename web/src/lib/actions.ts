@@ -1209,6 +1209,14 @@ async function preflight(adapter: HarnessAdapter, args: GuardedReplyArgs): Promi
     return blind({ status: "blocked", error: NO_BOX });
   }
 
+  // Ready, but the prompt row cannot be bound on this screen (Cursor's autocomplete list): the
+  // pre-clear sweep would go out unbound into the popup, and typing past it would append to the `/`
+  // draft. Refuse with nothing sent, forced or not (spec 18).
+  const unbindable = adapter.unbindableComposer?.(seen) ?? null;
+  if (unbindable !== null) {
+    return blind({ status: "error", error: `${unbindable} — close it and send again. Nothing was typed.` });
+  }
+
   // The region the read's `true` was true OF. Computed here, from the same parse `composerReady` just
   // answered about, so the caller cannot bind its keys to anything but the screen that authorised
   // them — and cannot forget to, since it arrives as the argument.

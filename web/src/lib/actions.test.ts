@@ -1812,6 +1812,34 @@ describe("sendGuardedReply", () => {
     expect(calls).toEqual([]);
   });
 
+  // Spec 18: Cursor's tall autocomplete list pushes the prompt row out of the bridge's bind window.
+  // The pre-clear sweep would go out unbound into the popup, so the send is refused, nothing sent.
+  it("refuses a Cursor send while the autocomplete list makes the input box unbindable", async () => {
+    const tall = [
+      "cursor--autocomplete-model-c.txt",
+      "cursor--autocomplete-model-composer.txt",
+      "cursor--autocomplete-slash-clear.txt",
+      "cursor--autocomplete-slash.txt",
+    ]
+      .map((name) => readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", name), "utf8"))
+      .find((raw) => cursorAdapter.unbindableComposer!(splitLines(parseAnsi(raw))) !== null)!;
+    const calls = harness(() => tall);
+    const sweep = vi.fn(async () => ({ ok: true as const, keysSent: true }));
+    for (const force of [false, true]) {
+      const out = await sendGuardedReply({
+        paneId: "w1:p1",
+        text: "hello from phone",
+        agent: "cursor",
+        force,
+        onComposerSeen: sweep,
+        ...instant,
+      });
+      expect(out).toMatchObject({ status: "error", error: expect.stringMatching(/autocomplete.*Nothing was typed/) });
+    }
+    expect(sweep).not.toHaveBeenCalled();
+    expect(calls).toEqual([]);
+  });
+
   // collie#103. The refusal is the same refusal — what changes is that the caller is told WHICH screen it
   // refused at, because at a password prompt "a menu or dialog is probably up" sends the operator
   // looking for a dialog to answer and waiting for an echo that is never coming.

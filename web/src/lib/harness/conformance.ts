@@ -446,11 +446,15 @@ export function describeAdapterConformance(
       } else {
         const prompt = adapter.composerPrompt.bind(adapter);
         const ready = adapter.composerReady.bind(adapter);
+        const unbindable = (lines: StyledLine[]) => adapter.unbindableComposer?.(lines) ?? null;
         for (const name of all) {
-          it(`${name}: a region exists exactly when the composer is ready`, () => {
+          // A ready composer the adapter names as unbindable (spec 18) has no region, and the reply
+          // guard refuses the send outright; every other ready screen must name one.
+          it(`${name}: a region exists exactly when the composer is ready and bindable`, () => {
             const lines = loadLines(name);
             const region = prompt(lines);
-            expect(region === null).toBe(!ready(lines));
+            expect(region === null).toBe(!ready(lines) || unbindable(lines) !== null);
+            if (!ready(lines)) expect(unbindable(lines)).toBeNull();
             // A region the bridge cannot find on screen binds nothing at all.
             if (region !== null) expect(region.trim().length).toBeGreaterThan(0);
           });
