@@ -6,7 +6,7 @@ import { constants } from "node:fs";
 import { basename, extname, join } from "node:path";
 import type { Config } from "./config.ts";
 import type { AuditLog } from "./audit.ts";
-import { containedRealpath } from "./journal/files.ts";
+import { containedRealpath } from "./containment.ts";
 import type * as Wire from "../shared/wire.ts";
 // The bridge's file naming predates the shared contract; retain those import paths for callers.
 type WorkdirEntry = Wire.FileEntry;

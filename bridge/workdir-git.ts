@@ -4,7 +4,7 @@
 import { devNull, tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { access, realpath } from "node:fs/promises";
-import { containedRealpath } from "./journal/files.ts";
+import { containedRealpath } from "./containment.ts";
 import { isRefusedName } from "./workdir.ts";
 import type { FolderGitEntry, FolderGitResponse } from "../shared/wire.ts";
 

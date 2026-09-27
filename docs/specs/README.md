@@ -17,7 +17,7 @@ One spec = one run. Do not implement a sibling spec in the same run. Numbers mat
 | 10 | [10-pwa-build-swap.md](10-pwa-build-swap.md) | High | Done — build mismatch checks at once; wedged path once per build | `X-Sightr-Build` does not swap the worker |
 | 11 | [11-sighter-config-migrate.md](11-sighter-config-migrate.md) | High | Done — one-time `.env` copy with key rename; env-check warns | Pre-1.0 `.env` is not copied |
 | 12 | [12-split-actions.md](12-split-actions.md) | High | Open — counts and citations refreshed in the spec note | `actions.ts` is a collapsed god file |
-| 13 | [13-files-containment.md](13-files-containment.md) | Med | Open — add `bridge/operator-file.ts` | Files tab borrows journal FS; ADR 0026 stale |
+| 13 | [13-files-containment.md](13-files-containment.md) | Med | Done — `bridge/containment.ts`; ADR 0026 amended | Files tab borrows journal FS; ADR 0026 stale |
 | 14 | [14-find-follow.md](14-find-follow.md) | Med | Done — shells freeze in Find; close re-follows | Find close / shell Find freeze |
 | 15 | [15-thinking-duration.md](15-thinking-duration.md) | Med | Done — same-row thinking is done; idle gaps omitted | Thought-for uses the next turn's gap |
 | 16 | [16-cursor-tool-complete.md](16-cursor-tool-complete.md) | Med | Done — #21 `SettledRow`; Cursor tools arrive `unrecorded` | Cursor tools look stuck running |

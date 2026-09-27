@@ -29,7 +29,7 @@ export const diskIo: OperatorFileIo = {
  * posture as `web/dist` and the build id, so editing the file is live and needs no restart.
  *
  * The path is fixed at startup from the operator's own config dir and is NEVER client-supplied, so
- * the journal's `containedRealpath` rule (which exists for paths derived from a request) has
+ * the containment rule (bridge/containment.ts, which exists for paths derived from a request) has
  * nothing to contain here.
  *
  * Failure is always a HOLD, never a 500: a file that stops parsing keeps serving the last good rows
