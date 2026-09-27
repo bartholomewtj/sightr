@@ -45,6 +45,18 @@ adds an entry here and keeps the three version files in step; CI refuses a build
 - Error toasts raised on Settings were never shown; "Tap Send again to type anyway" outlived its
   10 s arm; a stale error stays up until a later key press succeeds.
 - The off state of a switch was invisible in dark mode.
+- Claude 2.1.28x's unnumbered folder-trust dialog was not lifted, and the Yes/No strip offered in
+  its place could not answer it; it now has option buttons, and Yes/No only shows when the agent's
+  input box is on screen (#22).
+- Claude `/context` output showed as a You bubble and left a Thinking timer counting on an idle
+  pane; local commands are read from their system rows and `isMeta` rows are dropped (#23).
+- A fresh Grok Build 1.0.41 pane refused the first message (untagged startup chip) (#24).
+- With Raw terminal on, leftover input was not cleared before a send, so a palette command was
+  appended to it (#25).
+- A refused Yes/No word armed "Type anyway" for the next tap anywhere, and a stale send failure
+  landing after a key press showed as a lasting error (#26).
+- The wheel handle ignored a tap while a send was in flight (#27).
+- The desktop sidebar cut space names to one or two letters.
 
 ### Removed
 - The composer Display dock and the + menu Terminal row (moved, see Changed), the unmounted
