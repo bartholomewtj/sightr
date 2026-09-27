@@ -218,9 +218,11 @@ export function GestureWheel({
         onPointerUp={onHandlePointerUp}
         onPointerCancel={onHandlePointerCancel}
         className={cn(
-          "absolute right-0 -top-10 size-10 rounded-full flex items-center justify-center",
-          "bg-muted/80 border border-border/70 backdrop-blur-sm text-muted-foreground select-none",
-          open ? "z-50" : "z-30",
+          // A row item beside Send, the same height as the field's single line, so it never
+          // floats over whatever sits above the composer (lifted cards, strips, docks).
+          "relative size-11 shrink-0 rounded-full flex items-center justify-center",
+          "bg-background border border-border text-muted-foreground select-none",
+          open ? "z-50" : "z-10",
           disabled && "opacity-50 cursor-not-allowed",
         )}
         style={{

@@ -114,8 +114,7 @@ export function AgentChat({
   // last snapshot's status as current while we're reconnecting/lost, and restores instantly on recovery.
   const connecting = isConnecting({ bridge, error, stalled });
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
-  const { prefs, stepFontSize, setRawTerminal, setTapToFocus, setShowTerminal, setShowThinking } =
-    useDisplayPrefs();
+  const { prefs, setShowTerminal } = useDisplayPrefs();
   // Raw-terminal controls chrome stripping only. Dialog grammars still run so detected prompts remain
   // tappable below the verbatim dump, which remains available as the keys-pad escape hatch.
   const stripChrome = !prefs.rawTerminal;
@@ -488,12 +487,6 @@ export function AgentChat({
             text={text}
             terminalDraft={terminalDraft}
             rawTerminalDraft={rawTerminalDraft}
-            prefs={prefs}
-            stepFontSize={stepFontSize}
-            setRawTerminal={setRawTerminal}
-            setTapToFocus={setTapToFocus}
-            setShowTerminal={setShowTerminal}
-            setShowThinking={setShowThinking}
             onSent={handleSent}
             onArmedChange={setArmed}
           />

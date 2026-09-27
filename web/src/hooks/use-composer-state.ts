@@ -18,7 +18,7 @@ import { clearDraft, loadDraft, saveDraft } from "@/lib/drafts";
 import { onArmToggleRequest } from "@/lib/direct-arm";
 import type { PromptSelectBlock } from "@/lib/blocks";
 import type { PromptBlockAction } from "@/components/prompt-select-block";
-type ComposerDrawer = "cmd" | "keys" | "display" | null;
+type ComposerDrawer = "cmd" | "keys" | null;
 export interface ComposerStateArgs {
   paneId: string;
   agent: string | undefined | null;
@@ -185,7 +185,6 @@ export function useComposerState(args: ComposerStateArgs) {
     discardConfirm.reset();
     setDrawer(next);
   }
-  const closeDrawer = () => requestDrawer(null);
   // Two-tap guard for destructive commands (rm -rf, force-push, …): the first tap arms a "Really
   // send?" state on the Send button (auto-disarms after 3 s), the second actually sends. Same shared
   // confirm the command palette uses for /clear.
@@ -416,13 +415,6 @@ export function useComposerState(args: ComposerStateArgs) {
   }
   const confirmingSend = sendConfirm.pending === "send";
   const forcingSend = forceConfirm.pending === "force";
-  // Type is the NEXT action when a password / no-echo prompt just refused a send, when the "type
-  // anyway" override is armed (the composer isn't on screen, so keys are the only way in), or when
-  // it is already armed. Kept for callers that want to surface Type early; the + menu offers it
-  // whenever the phone is not already armed (#205, then the composer redesign).
-  const showTypeControl =
-    !desktop && (noEcho !== null || forcingSend || direct.active);
-
   // Coalesce revalidations from a burst of key presses, LEADING edge first: the first press in a
   // burst refetches immediately, and only presses that arrive inside the window collapse into one
   // trailing refetch. It used to be trailing-only, which meant a lone press — the common case — sat
@@ -621,7 +613,6 @@ export function useComposerState(args: ComposerStateArgs) {
     setPreviewLatched,
     drawer,
     requestDrawer,
-    closeDrawer,
     queuedKeys,
     setQueuedKeys,
     locked,
@@ -649,7 +640,6 @@ export function useComposerState(args: ComposerStateArgs) {
     showYesNo,
     stripReason,
     adapter,
-    showTypeControl,
     confirmingSend,
     forcingSend,
     insertCommand,
