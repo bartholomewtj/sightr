@@ -1,5 +1,7 @@
 # 01 — Blocked-pane competing chrome
 
+> **Status 2026-09-27:** DONE. The tap-to-focus bail (phone, blocked or dialog, `[role=group]`) and `min-h-11` option rows (with `py-2.5` so one-line rows stay centred) shipped on branch `spec01-tap-bail-option-size`. The earlier note follows.
+>
 > **Status 2026-09-27 (`874b85b`):** PARTLY DONE. #28 moved the wheel handle into the composer row and #29 shows Yes/No only when the agent's input box is on screen (`composerOnScreen`, not the "adapter exists" rule below). Left: `focusFromMirror` (`web/src/hooks/use-pane-view.ts`) must also bail on phone while a dialog is present or the pane is blocked, and on `[role=group]`; `optionSurface` (`web/src/components/option-button.tsx`) needs `min-h-11`. Build only those two.
 
 Council row 1. Severity: high. Phone + parser.

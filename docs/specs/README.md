@@ -6,7 +6,7 @@ One spec = one run. Do not implement a sibling spec in the same run. Numbers mat
 
 | # | File | Sev | Status | One line |
 |---|------|-----|--------|----------|
-| 01 | [01-blocked-pane-chrome.md](01-blocked-pane-chrome.md) | High | Partly — #28 wheel in row, #29 Yes/No gated; left: tap-to-focus bail, `min-h-11` options | Competing chrome on a blocked pane |
+| 01 | [01-blocked-pane-chrome.md](01-blocked-pane-chrome.md) | High | Done — #28 wheel in row, #29 Yes/No gated, tap-to-focus bail + `min-h-11` options | Competing chrome on a blocked pane |
 | 02 | [02-ios-composer-keyboard.md](02-ios-composer-keyboard.md) | High | Open | Composer sits under the iOS keyboard |
 | 03 | [03-fetch-no-store.md](03-fetch-no-store.md) | High | Open — confirm the Safari 304 on a device first (bridge already sends no-store) | Safari 304 after key / cache |
 | 05 | [05-agy-trust-keys.md](05-agy-trust-keys.md) | High | Partly — #21 walks the pointer; left: conformance digit ban for prompt-select | Agy trust Yes/No sends invented digits |
