@@ -1,5 +1,7 @@
 # 14 — Find close re-follows; shells freeze too
 
+> **Status 2026-09-27:** DONE. The adopt effect freezes on `findOpen` for every pane; `closeFind` sets following and scrolls to the bottom. `openFind` still stops following, so history refreshes don't pull the view off a match.
+
 Council row 14. Severity: medium. Cadence.
 
 ## Why

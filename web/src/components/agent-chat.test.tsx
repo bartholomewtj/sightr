@@ -377,8 +377,10 @@ const WIZARD_TEXT = [
 
 // Renders AgentChat inside a data router with EXTERNALLY-UPDATABLE pane props, standing in for the
 // route loader delivering fresh polls. Returns a setter that advances {text, revision} in place.
-function renderWithLivePane(initial: { text: string; revision: number }) {
-  const agent = fixtureAgents[0]!; // a claude agent — the block grammars are gated on the agent
+function renderWithLivePane(
+  initial: { text: string; revision: number },
+  agent = fixtureAgents[0]!, // a claude agent — the block grammars are gated on the agent
+) {
   let advance: (pane: { text: string; revision: number }) => void = () => {
     throw new Error("harness not mounted");
   };
@@ -493,6 +495,30 @@ describe("AgentChat — prompt-select race guard wiring (frozen {text, revision}
     await waitFor(() => expect(mockWizard).toHaveBeenCalledTimes(1));
     expect(mockWizard).toHaveBeenCalledWith(expect.objectContaining({ detectedRevision: 1 }));
   });
+});
+
+// Spec 14: Find is a temporary pin. It freezes shell/TUI mirrors too (a replacing dump used to jump
+// the match), and closing it returns to the live tail.
+describe("AgentChat — Find freezes and closing it goes live", () => {
+  for (const [kind, agent] of [
+    ["agent", fixtureAgents[0]!],
+    ["shell", fixtureAgents[2]!],
+  ] as const) {
+    it(`${kind} pane: the buffer holds while Find is open, then catches up on close`, async () => {
+      const advance = renderWithLivePane({ text: "first frame of output", revision: 1 }, agent);
+      await screen.findByText(/first frame of output/);
+      pickPaneDetails("Find in output");
+      act(() => advance({ text: "second frame of output", revision: 2 }));
+      expect(screen.queryByText(/second frame of output/)).toBeNull();
+      expect(screen.getByText(/first frame of output/)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Close find" }));
+      await screen.findByText(/second frame of output/);
+      // Back on the live tail: a later frame lands without another tap.
+      act(() => advance({ text: "third frame of output", revision: 3 }));
+      await screen.findByText(/third frame of output/);
+    });
+  }
 });
 
 describe("AgentChat — dialog tap unlocks on a fresh snapshot (#368)", () => {

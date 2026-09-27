@@ -34,6 +34,8 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   one compact row; a one-pane space shows that a tap opens it.
 
 ### Fixed
+- Closing Find returns to the live tail instead of leaving you parked at the last match. Find now
+  freezes shell and TUI panes (draftr, browser) too, so a replacing screen no longer jumps the match.
 - "Thought for" is think time, not idle time. Thinking beside a reply or a tool shows a collapsed
   "Thought", and a finished last turn no longer pulses "Thinking". A gap to a user turn, or over 10
   minutes, is never labelled as thought.
