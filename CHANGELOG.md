@@ -57,6 +57,8 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   landing after a key press showed as a lasting error (#26).
 - The wheel handle ignored a tap while a send was in flight (#27).
 - The desktop sidebar cut space names to one or two letters.
+- Antigravity's trust prompt sent invented digit keys; its options now walk the `>` pointer and
+  press Enter (#21).
 
 ### Removed
 - The composer Display dock and the + menu Terminal row (moved, see Changed), the unmounted

@@ -1,5 +1,7 @@
 # 09 — History paging must not duplicate the tail
 
+> **Status 2026-09-27 (`874b85b`):** PARTLY DONE. #17 removed the 1.5 s newest-page timer (refresh now comes from SSE snapshots, status flips and visibility), so the idle-cadence bullet is stale. Left: unknown cursor returns the newest page (`bridge/journal/store.ts`), `loadOlder` prepends without dedupe, `refreshNewest` holds `loadingRef` for the whole GET, no history ETag.
+
 Council row 9. Severity: high. Journal + cadence.
 
 ## Why

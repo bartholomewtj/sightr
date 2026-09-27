@@ -5,9 +5,10 @@ the Windows host next to Herdr, and your phone opens it over Tailscale. You see 
 you, read its chat, and answer with buttons or an ordinary text box, so phone dictation works.
 
 - **One operator, one tailnet.** Sightr is not a multi-tenant service.
-- **Harnesses:** Claude Code, pi, Grok Build, Antigravity CLI, Cursor CLI. The bridge reads each
-  harness's own session log for chat history, and lifts detected prompts, permission cards and
-  ask-cards into phone buttons.
+- **Harnesses:** Claude Code, pi, Grok Build, Antigravity CLI, Cursor CLI. The bridge reads the
+  session log of Claude Code, pi, Grok and Cursor for chat history (Antigravity shows its live
+  terminal), and every harness gets its detected prompts, permission cards and ask-cards as phone
+  buttons.
 - **Windows only.** The supervisor is Task Scheduler, the launcher is PowerShell, and Herdr's control
   socket is a named pipe.
 
@@ -40,10 +41,10 @@ you, read its chat, and answer with buttons or an ordinary text box, so phone di
   <img src="docs/features/git-diff.png" alt="Files Git panel: status list and a redacted diff" width="360">
 
 - **Keys and commands.** Esc, Ctrl+C, arrows, a gesture wheel, and the harness's slash commands
-  plus your `commands.toml`. Hold the circle on the reply box to fan the wheel; Settings picks the
+  plus your `commands.toml`. Hold the circle beside Send to fan the wheel; Settings picks the
   slices, up to six.
 
-  <img src="docs/features/gesture-wheel.jpg" alt="Gesture wheel fanned out from the reply box" width="360">
+  <img src="docs/features/gesture-wheel.jpg" alt="Gesture wheel fanned out from the circle beside Send" width="360">
 
   <img src="docs/features/gesture-wheel-settings.jpg" alt="Settings: choose up to six keys for the wheel" width="360">
 
@@ -317,7 +318,9 @@ journal newest page refreshes from those snapshot events, a status flip, or the 
 — not a 1.5s 160-turn timer. The bridge keeps its own `events.subscribe` stream open to Herdr and
 pokes the SSE clients when Herdr reports a change. On the host, the snapshot poll stays the source of
 truth: the bridge only relaxes to `SIGHTR_POLL_IDLE_MS` while that stream is healthy and every agent
-is resting. A missed poke costs one host poll interval. A reply is
+is resting. A missed poke costs one host poll interval. For Cursor and Antigravity, whose panes Herdr
+calls done while a dialog waits, each poll also reads the visible screen of resting panes and
+publishes `blocked` when a dialog is there. A reply is
 `POST /api/pane/...`: the access layer checks peer address, Host, Origin, the Tailscale identity
 header and the device allowlist, the write is queued per pane, sent over the Herdr socket as
 `pane.send_text` plus the submit keys, and appended to the audit log.
@@ -330,7 +333,7 @@ header and the device allowlist, the write is queued per pane, sent over the Her
 | `bridge/config.ts` | Every environment variable, loopback enforcement |
 | `bridge/access.ts` | Host, Origin, identity and device checks, startup warnings |
 | `bridge/herdr-client.ts` | The only file that knows Herdr's JSON-RPC method names |
-| `bridge/state-engine.ts`, `bridge/event-poker.ts` | Snapshot polling and the Herdr event stream |
+| `bridge/state-engine.ts`, `bridge/event-poker.ts` | Snapshot polling and the Herdr event stream; the dialog sniff that reads resting Cursor / Antigravity panes (detectors in `web/src/lib/harness/dialog-sniff.ts`, the bridge's one runtime import from `web/`) |
 | `bridge/journal/` | One session-log reader per harness (`claude`, `pi`, `grok`, `cursor`) |
 | `bridge/beacon/`, `bridge/beacon-io.ts` | Claude hook identity files |
 | `bridge/webauthn.ts`, `bridge/lock.ts` | Reconnect lock, WebAuthn verification from scratch |

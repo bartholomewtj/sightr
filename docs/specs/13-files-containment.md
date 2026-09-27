@@ -1,5 +1,7 @@
 # 13 — Files-tab containment module
 
+> **Status 2026-09-27 (`874b85b`):** OPEN. Also covers `bridge/operator-file.ts`, which imports `containedRealpath`.
+
 Council row 13. Severity: medium. Form + fork.
 
 ## Why

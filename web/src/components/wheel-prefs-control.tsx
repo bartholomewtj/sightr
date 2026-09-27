@@ -40,7 +40,7 @@ export function WheelPrefsControl() {
         <div>
           <div className="font-medium">Gesture wheel</div>
           <p className="text-sm text-muted-foreground">
-            Hold the circle on the reply box to fan these out. A plain tap toggles Keys.
+            Hold the circle beside Send to fan these out. A plain tap toggles Keys.
           </p>
         </div>
       </div>
