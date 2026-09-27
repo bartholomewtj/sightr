@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { ChevronDown, ChevronRight, FolderPlus, GitBranch, LayoutGrid, Plug, Plus, Search, TerminalSquare, WifiOff, X } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronRight, FolderPlus, GitBranch, LayoutGrid, Plug, Plus, Search, TerminalSquare, WifiOff, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { SectionHeader } from "@/components/section-header";
@@ -405,6 +405,14 @@ export function SpaceTree({
                             {timeAgo(seen)}
                           </span>
                         )}
+                        {/* A space holding exactly one pane opens it on a tap (fewest taps); every
+                            other space expands. The arrow says which, before you tap. */}
+                        {wsTabGroups.length === 1 && wsTabGroups[0]!.panes.length === 1 ? (
+                          <span className="shrink-0 text-muted-foreground" data-testid="opens-pane">
+                            <ArrowRight className="size-3.5" aria-hidden />
+                            <span className="sr-only">opens its pane</span>
+                          </span>
+                        ) : null}
                       </div>
                       {branchLine ? (
                         <div className="flex min-w-0 items-center gap-1.5 pl-5 text-xs text-muted-foreground">
@@ -594,7 +602,11 @@ export function SpaceTree({
                       {connector ? <WorktreeConnector glyph={connector} /> : null}
                       <span className="size-11 shrink-0" />
                       <TreeRowButton
-                        onClick={() => { if (!readOnly) void openClosed(sourceId, closed); }}
+                        onClick={() => {
+                          // Say why nothing happens, rather than swallowing the tap.
+                          if (readOnly) setStatus("Read-only — this device can't open a checkout.", "info");
+                          else void openClosed(sourceId, closed);
+                        }}
                       >
                         <GitBranch className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
                         <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">

@@ -2,16 +2,12 @@ import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { flushSync } from "react-dom";
 import {
-  Check,
   Paperclip,
   Keyboard,
   Loader2,
   Plus,
-  Settings2,
   Slash,
-  SquareTerminal,
   Terminal,
-  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,17 +22,15 @@ import type { ComposerDrawer } from "@/components/composer-drawers";
 // Desktop: a popover anchored above the button. Every item is a full-width row with an icon and a
 // label, and every item closes the menu when chosen.
 //
-// While direct typing is armed the + is the Stop control instead, mirroring the Send button on the
-// other side of the field: the two things you can do in that mode are type and stop, and either
-// thumb should find Stop.
+// The menu is input only: Attach, Keys, Agent commands, Type into terminal. How the pane LOOKS
+// (Show terminal, text size, raw dump, thinking) lives in the pane menu and Settings. While direct
+// typing is armed the + is inert: the typing strip's one Stop ends the mode.
 
 export interface ComposerMenuProps {
-  /** Pane gone or device read-only: every write item is disabled, Display stays reachable. */
+  /** Pane gone or device read-only: every item is disabled. */
   locked: boolean;
   uploading: boolean;
-  direct: { active: boolean; disabled: boolean; onStart: () => void; onStop: () => void };
-  showTerminal: boolean;
-  onToggleTerminal: () => void;
+  direct: { active: boolean; disabled: boolean; onStart: () => void };
   /** The pane's agent has slash commands, so "Agent commands" earns a row. */
   hasCommands: boolean;
   onAttach: () => void;
@@ -87,8 +81,6 @@ export function ComposerMenu({
   locked,
   uploading,
   direct,
-  showTerminal,
-  onToggleTerminal,
   hasCommands,
   onAttach,
   onDrawer,
@@ -100,10 +92,10 @@ export function ComposerMenu({
   const vp = useVisibleViewport(open && !desktop);
 
   // Keys and Type are phone-only: desktop has a physical keyboard and arms direct typing with
-  // Ctrl+` or a mirror click. Type also goes while armed, because the + itself is Stop then.
+  // Ctrl+` or a mirror click.
   const showKeys = !desktop;
-  const showType = !desktop && !direct.active;
-  const rows = 3 + (showKeys ? 1 : 0) + (hasCommands ? 1 : 0) + (showType ? 1 : 0);
+  const showType = !desktop;
+  const rows = 1 + (showKeys ? 1 : 0) + (hasCommands ? 1 : 0) + (showType ? 1 : 0);
 
   function openMenu() {
     const el = buttonRef.current;
@@ -121,21 +113,6 @@ export function ComposerMenu({
   function pick(action: () => void) {
     flushSync(() => setOpen(false));
     action();
-  }
-
-  if (direct.active) {
-    return (
-      <Button
-        type="button"
-        size="icon"
-        className="absolute bottom-1 left-1 size-9 rounded-full border-2 border-you bg-you text-you-foreground hover:bg-you/90"
-        onClick={direct.onStop}
-        aria-label="Stop typing into terminal"
-        aria-pressed
-      >
-        <X className="size-4" />
-      </Button>
-    );
   }
 
   const items = (
@@ -177,23 +154,6 @@ export function ComposerMenu({
           }
         />
       )}
-      {/* Terminal is a toggle, not an action: it flips the live dump on and off and stays on until
-          flipped back, so it carries a check mark and aria-checked rather than firing and forgetting.
-          Not gated on `locked` — the dump is local view state a read-only device can still open. */}
-      <MenuRow
-        icon={<SquareTerminal className="size-4 shrink-0" />}
-        label="Terminal"
-        role="menuitemcheckbox"
-        checked={showTerminal}
-        onClick={() => pick(onToggleTerminal)}
-      />
-      {/* Display prefs are local view state too: a read-only device or a gone pane can still make
-          its mirror readable. */}
-      <MenuRow
-        icon={<Settings2 className="size-4 shrink-0" />}
-        label="Display"
-        onClick={() => pick(() => onDrawer("display"))}
-      />
     </div>
   );
 
@@ -208,6 +168,8 @@ export function ComposerMenu({
         // drift up with it, away from the thumb. Pinned to the bottom it stays put at any height.
         className="absolute bottom-1 left-1 size-9 rounded-full text-muted-foreground"
         onClick={openMenu}
+        // Inert while typing into the terminal: the strip's Stop is the one way out of that mode.
+        disabled={direct.active}
         aria-label="More"
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -239,35 +201,28 @@ export function ComposerMenu({
   );
 }
 
-// One menu row: icon, label, and for the toggle a trailing check. Same shape as the action sheets'
-// ActionRow, plus `disabled` and the checkbox role, so the menu reads like every other sheet.
+// One menu row: icon and label. Same shape as the action sheets' ActionRow, plus `disabled`, so the
+// menu reads like every other sheet.
 function MenuRow({
   icon,
   label,
   disabled = false,
-  role,
-  checked,
   onClick,
 }: {
   icon: ReactNode;
   label: string;
   disabled?: boolean;
-  role?: "menuitemcheckbox";
-  checked?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
-      role={role}
-      aria-checked={role === "menuitemcheckbox" ? checked : undefined}
       disabled={disabled}
       onClick={onClick}
       className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-accent active:bg-muted disabled:pointer-events-none disabled:opacity-50"
     >
       <span className="text-muted-foreground">{icon}</span>
       <span className="flex-1">{label}</span>
-      {checked && <Check className="size-4 shrink-0" aria-hidden="true" />}
     </button>
   );
 }

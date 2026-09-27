@@ -6,6 +6,7 @@ export type {
   TranscriptPart, TranscriptEntry, ActionResponse, UploadResponse, CreateResponse,
   DecisionOption, DecisionReplyRequest,
   OperatorCommand, OperatorKeyRow, OperatorWheelRow, BridgeConfig, LockStatus, NotifyPrefs, BridgeSettings,
+  BridgeSettingsView, BridgeSettingKey,
   SaveFileResponse,
 } from "@shared/wire";
 export { STATUS_RANK } from "@shared/wire";

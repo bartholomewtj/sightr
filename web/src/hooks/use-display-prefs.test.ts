@@ -93,18 +93,6 @@ describe("useDisplayPrefs", () => {
     expect(result.current.prefs).toEqual({ fontSize: 15, rawTerminal: true, tapToFocus: false, showTerminal: false, showThinking: true });
   });
 
-  it("setFontSize clamps below minimum to 9", () => {
-    const { result } = renderHook(() => useDisplayPrefs());
-    act(() => result.current.setFontSize(3));
-    expect(result.current.prefs.fontSize).toBe(9);
-  });
-
-  it("setFontSize clamps above maximum to 16", () => {
-    const { result } = renderHook(() => useDisplayPrefs());
-    act(() => result.current.setFontSize(99));
-    expect(result.current.prefs.fontSize).toBe(16);
-  });
-
   it("stepFontSize increments within range", () => {
     const { result } = renderHook(() => useDisplayPrefs());
     act(() => result.current.stepFontSize(2)); // 12 + 2 = 14

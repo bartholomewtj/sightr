@@ -89,7 +89,6 @@ describe("useDashPrefs", () => {
     act(() => first.result.current.setTabOpen("t1", true));
     act(() => first.result.current.setShellsOpen(true));
     act(() => first.result.current.setRecentOpen(false));
-    act(() => first.result.current.setRecentDir("oldest"));
 
     const second = renderHook(() => useDashPrefs());
     expect(second.result.current.prefs).toEqual({
@@ -97,11 +96,11 @@ describe("useDashPrefs", () => {
       expandedTabs: ["t1"],
       shellsOpen: true,
       recentOpen: false,
-      recentDir: "oldest",
+      recentDir: "newest",
     });
 
-    // Toggle tab and expand space
-    act(() => second.result.current.toggleTab("t1"));
+    // Close the tab and expand a space
+    act(() => second.result.current.setTabOpen("t1", false));
     act(() => second.result.current.expandSpace("w2"));
     expect(second.result.current.prefs.expandedTabs).toEqual([]);
     expect(second.result.current.prefs.spaceOpen).toEqual({ w1: true, w2: true });

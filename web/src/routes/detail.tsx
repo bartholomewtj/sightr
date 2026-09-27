@@ -85,8 +85,9 @@ export function DetailRoute() {
       error={root.error}
       stalled={stalled}
       onBack={up}
-      // A pane→pane switch keeps `from`, so "‹" still returns to the screen you started from.
-      onSelect={(id) => navigate(panePath(id), { state: { from } })}
+      // A pane→pane switch REPLACES the entry and keeps `from`, so "‹" returns to the screen you
+      // started from in one tap instead of walking back through every pane you flipped past.
+      onSelect={(id) => navigate(panePath(id), { replace: true, state: { from } })}
     />
   );
 }

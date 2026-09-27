@@ -13,12 +13,12 @@ import { commandsFor } from "@/lib/agent-commands";
 import { useOperatorCommands, useOperatorKeys, useOperatorWheel } from "@/lib/operator-commands";
 import { ctrlPresetsFor } from "@/lib/operator-keys";
 import { wheelSlicesFor } from "@/lib/wheel";
-import { setStatus } from "@/lib/status";
+import { clearErrorStatus, setStatus } from "@/lib/status";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/drafts";
 import { onArmToggleRequest } from "@/lib/direct-arm";
 import type { PromptSelectBlock } from "@/lib/blocks";
 import type { PromptBlockAction } from "@/components/prompt-select-block";
-type ComposerDrawer = "cmd" | "keys" | "display" | null;
+type ComposerDrawer = "cmd" | "keys" | null;
 export interface ComposerStateArgs {
   paneId: string;
   agent: string | undefined | null;
@@ -38,6 +38,9 @@ export interface ComposerStateArgs {
   ) => Promise<boolean>;
   onArmedChange?: (armed: boolean) => void;
 }
+/** How long "Type anyway?" stays armed after the pre-flight refused a send. Its toast lives as long. */
+export const FORCE_ARM_MS = 10_000;
+
 export const PASS_THROUGH_KEYS: Readonly<Record<string, string>> = {
   Escape: "Escape",
   Tab: "Tab",
@@ -185,7 +188,6 @@ export function useComposerState(args: ComposerStateArgs) {
     discardConfirm.reset();
     setDrawer(next);
   }
-  const closeDrawer = () => requestDrawer(null);
   // Two-tap guard for destructive commands (rm -rf, force-push, …): the first tap arms a "Really
   // send?" state on the Send button (auto-disarms after 3 s), the second actually sends. Same shared
   // confirm the command palette uses for /clear.
@@ -194,7 +196,7 @@ export function useComposerState(args: ComposerStateArgs) {
   // sendConfirm so a destructive-command confirm and an override can't clobber each other, and given
   // a longer window than the 3s default: unlike "Really send?", this one asks you to read a sentence
   // explaining WHY nothing was typed before deciding to overrule it.
-  const forceConfirm = usePendingConfirm(10_000);
+  const forceConfirm = usePendingConfirm(FORCE_ARM_MS);
 
   // The password prompt the last refused send was looking at, if it was one (collie#103). Set from the
   // guard's own live read — never re-derived from `display`, which is a snapshot — and cleared by the
@@ -416,13 +418,6 @@ export function useComposerState(args: ComposerStateArgs) {
   }
   const confirmingSend = sendConfirm.pending === "send";
   const forcingSend = forceConfirm.pending === "force";
-  // Type is the NEXT action when a password / no-echo prompt just refused a send, when the "type
-  // anyway" override is armed (the composer isn't on screen, so keys are the only way in), or when
-  // it is already armed. Kept for callers that want to surface Type early; the + menu offers it
-  // whenever the phone is not already armed (#205, then the composer redesign).
-  const showTypeControl =
-    !desktop && (noEcho !== null || forcingSend || direct.active);
-
   // Coalesce revalidations from a burst of key presses, LEADING edge first: the first press in a
   // burst refetches immediately, and only presses that arrive inside the window collapse into one
   // trailing refetch. It used to be trailing-only, which meant a lone press — the common case — sat
@@ -472,6 +467,7 @@ export function useComposerState(args: ComposerStateArgs) {
         return false;
       }
       scheduleKeyRevalidate();
+      clearErrorStatus();
       return true;
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e), "error");
@@ -621,7 +617,6 @@ export function useComposerState(args: ComposerStateArgs) {
     setPreviewLatched,
     drawer,
     requestDrawer,
-    closeDrawer,
     queuedKeys,
     setQueuedKeys,
     locked,
@@ -649,7 +644,6 @@ export function useComposerState(args: ComposerStateArgs) {
     showYesNo,
     stripReason,
     adapter,
-    showTypeControl,
     confirmingSend,
     forcingSend,
     insertCommand,

@@ -37,7 +37,16 @@ function show(overrides: Partial<ComponentProps<typeof PaneHeader>> = {}) {
     agent: working,
     onBack: vi.fn(),
     onOpenSpace: vi.fn(),
-    details: { statusLines: [], panes: [working], onSelectPane: vi.fn(), onSwitchPane: vi.fn() },
+    details: {
+      statusLines: [],
+      panes: [working],
+      onSelectPane: vi.fn(),
+      onSwitchPane: vi.fn(),
+      onRenamed: vi.fn(),
+      onClosed: vi.fn(),
+      terminal: { checked: false, onToggle: vi.fn() },
+      onSettings: vi.fn(),
+    },
     ...overrides,
   };
   const router = createMemoryRouter(
@@ -99,48 +108,48 @@ describe("PaneHeader — one line", () => {
   it("says (agent gone) with no title button when the pane has vanished", () => {
     show({ agent: undefined });
     expect(screen.getByText("(agent gone)")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Pane details" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pane menu" })).toBeNull();
   });
 });
 
-describe("PaneHeader — title opens the details sheet", () => {
+describe("PaneHeader — title opens the pane menu", () => {
   it("opens on tap, with the cwd and the space overview row, and closes", () => {
     const { props } = show();
-    const title = screen.getByRole("button", { name: "Pane details" });
+    const title = screen.getByRole("button", { name: "Pane menu" });
     expect(title).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(title);
-    const sheet = screen.getByRole("dialog", { name: "Pane details" });
-    expect(screen.getByRole("button", { name: "Pane details" })).toHaveAttribute("aria-expanded", "true");
+    const sheet = screen.getByRole("dialog");
+    expect(screen.getByRole("button", { name: "Pane menu" })).toHaveAttribute("aria-expanded", "true");
     expect(within(sheet).getByText("/home/you/webapp")).toBeInTheDocument();
-    fireEvent.click(within(sheet).getByRole("button", { name: "Open space overview" }));
+    fireEvent.click(within(sheet).getByRole("button", { name: "Space overview" }));
     expect(props.onOpenSpace).toHaveBeenCalledExactlyOnceWith("w1");
-    expect(screen.queryByRole("dialog", { name: "Pane details" })).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("opens on a swipe up across the title too", () => {
     show();
-    const title = screen.getByRole("button", { name: "Pane details" });
+    const title = screen.getByRole("button", { name: "Pane menu" });
     fireEvent.touchStart(title, { touches: [{ clientX: 100, clientY: 40 }] });
     fireEvent.touchEnd(title, { changedTouches: [{ clientX: 102, clientY: 0 }] });
-    expect(screen.getByRole("dialog", { name: "Pane details" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("ignores a sideways drag on the title", () => {
     show();
-    const title = screen.getByRole("button", { name: "Pane details" });
+    const title = screen.getByRole("button", { name: "Pane menu" });
     fireEvent.touchStart(title, { touches: [{ clientX: 0, clientY: 40 }] });
     fireEvent.touchEnd(title, { changedTouches: [{ clientX: 120, clientY: 30 }] });
-    expect(screen.queryByRole("dialog", { name: "Pane details" })).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("Find in output in the sheet opens the find bar, which takes over the header row", () => {
     const { props } = show();
-    fireEvent.click(screen.getByRole("button", { name: "Pane details" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pane menu" }));
     fireEvent.click(screen.getByRole("button", { name: "Find in output" }));
     expect(props.find.onOpen).toHaveBeenCalledOnce();
     cleanup();
     show({ find: { ...props.find, open: true } });
     expect(screen.getByRole("textbox")).toBeInTheDocument(); // the find bar's input
-    expect(screen.queryByRole("button", { name: "Pane details" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pane menu" })).toBeNull();
   });
 });

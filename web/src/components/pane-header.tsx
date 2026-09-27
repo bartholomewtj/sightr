@@ -49,10 +49,13 @@ type PaneHeaderProps = {
     | "onClosed"
     | "onSwitchPane"
     | "onContext"
+    | "terminal"
+    | "onSettings"
   >;
 };
-// One line: back, agent logo, title, status dot. Everything else the header used to carry — the
-// cwd subline, Find, the status pill — sits behind the title in PaneDetailsSheet. The find
+// One line: back, agent logo, title, status dot. Everything else about the pane — cwd, statusline,
+// Find, Context, Show terminal, Rename / Close, Settings — sits behind the title in the pane menu
+// (PaneDetailsSheet). The find
 // bar still takes over this row while it's open (`override`).
 export function PaneHeader({
   connection,
@@ -130,7 +133,7 @@ export function PaneHeader({
             type="button"
             onClick={openDetails}
             {...swipe}
-            aria-label="Pane details"
+            aria-label="Pane menu"
             aria-haspopup="dialog"
             aria-expanded={detailsOpen}
             className="-mx-1 flex min-h-11 min-w-0 flex-1 select-none [-webkit-touch-callout:none] items-center gap-2.5 rounded-lg px-1 text-left transition-colors active:bg-muted/60"

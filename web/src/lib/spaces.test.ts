@@ -220,6 +220,18 @@ describe("clusterSpaces", () => {
     expect(clusters[0]!.repoName).toBe("sighter");
   });
 
+  it("keeps a second space on the same checkout as its own row, before or after the head", () => {
+    const first = wt("w1", "sighter", false);
+    const child = wt("w2", "foo", true);
+    const second = wt("w4", "sighter-sub", false);
+    const clusters = clusterSpaces([first, child, second]);
+    expect(clusters.map((c) => c.parent?.workspaceId)).toEqual(["w1", "w4"]);
+    expect(clusters[0]!.children.map((c) => c.workspaceId)).toEqual(["w2"]);
+    expect(clusters[1]!.children).toEqual([]);
+    const before = clusterSpaces([second, first]);
+    expect(before.map((c) => c.parent?.workspaceId)).toEqual(["w4", "w1"]);
+  });
+
   it("dedupes closed checkouts onto the family", () => {
     const closed = [{ path: "/wt/x", label: "x", branch: "x", isDetached: false }];
     const parent = wt("w1", "sighter", false, { closedWorktrees: closed });

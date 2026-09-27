@@ -4,16 +4,34 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useWheelPrefs } from "@/hooks/use-wheel-prefs";
-import { useOperatorKeys } from "@/lib/operator-commands";
+import { useOperatorKeys, useOperatorWheel } from "@/lib/operator-commands";
 import { ctrlPresetsFor } from "@/lib/operator-keys";
-import { wheelChoices } from "@/lib/wheel";
+import { MAX_SLICES, sliceId, wheelChoices, wheelSlicesFor } from "@/lib/wheel";
 
+// The switches show the wheel you actually get. With nothing chosen that is the default wheel
+// (keys.toml [[wheel]] rows, else Esc / Tab / Enter / Type), so those rows read ON; flipping any
+// switch then starts a custom wheel FROM the defaults instead of replacing all four with one key.
 export function WheelPrefsControl() {
   // Passing null as the agent means Settings has no pane to scope to, so unscoped rows appear.
   const operatorKeys = useOperatorKeys();
   const presets = ctrlPresetsFor(null, operatorKeys);
   const choices = wheelChoices(presets);
-  const { picks, toggle, clear, full } = useWheelPrefs();
+  const { picks, toggle, replace, clear } = useWheelPrefs();
+  const known = new Set(choices.map((c) => c.id));
+  const defaults = wheelSlicesFor(useOperatorWheel(), [], presets)
+    .map(sliceId)
+    .filter((id) => known.has(id));
+  const custom = picks.length > 0;
+  const shown = custom ? picks : defaults;
+  const full = shown.length >= MAX_SLICES;
+
+  function flip(id: string) {
+    if (custom) {
+      toggle(id);
+      return;
+    }
+    replace(shown.includes(id) ? shown.filter((p) => p !== id) : [...shown, id]);
+  }
 
   return (
     <Card className="gap-0 py-0">
@@ -29,7 +47,7 @@ export function WheelPrefsControl() {
 
       <div className="divide-y divide-border/60 border-t border-border/60 bg-muted/30 px-3 py-1">
         {choices.map((choice) => {
-          const isPicked = picks.includes(choice.id);
+          const isPicked = shown.includes(choice.id);
           const hint =
             choice.slice.kind === "type"
               ? "Arms typing straight into the terminal"
@@ -53,7 +71,7 @@ export function WheelPrefsControl() {
                 <Switch
                   checked={isPicked}
                   disabled={full && !isPicked}
-                  onCheckedChange={() => toggle(choice.id)}
+                  onCheckedChange={() => flip(choice.id)}
                   aria-label={choice.label}
                 />
               </div>
@@ -65,12 +83,12 @@ export function WheelPrefsControl() {
       <div className="border-t border-border/60 bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
         {full
           ? "Six slices is the maximum — turn one off to add another."
-          : picks.length === 0
-            ? "Nothing chosen, so the wheel uses [[wheel]] rows in keys.toml, or the shipped Esc / Tab / Enter / Type. Turn keys on to choose up to six."
-            : `${picks.length} of 6 chosen. The wheel follows this order, left to right.`}
+          : custom
+            ? `${picks.length} of 6 chosen. The wheel shows them in this list's order.`
+            : "This is the default wheel. Flip any switch to make your own, up to six."}
       </div>
 
-      {picks.length > 0 && (
+      {custom && (
         <div className="border-t border-border/60 bg-muted/30 px-4 py-3">
           <Button
             type="button"

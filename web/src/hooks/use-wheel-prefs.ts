@@ -57,6 +57,8 @@ function savePrefs(prefs: WheelPrefs): void {
 export interface UseWheelPrefsReturn {
   picks: readonly string[];
   toggle: (id: string) => void;
+  /** Replace the picks wholesale (capped at MAX_SLICES) — seeds a custom wheel from the defaults. */
+  replace: (ids: readonly string[]) => void;
   clear: () => void;
   full: boolean;
 }
@@ -82,6 +84,12 @@ export function useWheelPrefs(): UseWheelPrefsReturn {
     });
   }, []);
 
+  const replace = useCallback((ids: readonly string[]) => {
+    const next = coerceWheelPrefs({ picks: [...ids] });
+    savePrefs(next);
+    setPrefs(next);
+  }, []);
+
   const clear = useCallback(() => {
     const next: WheelPrefs = { picks: [] };
     savePrefs(next);
@@ -91,6 +99,7 @@ export function useWheelPrefs(): UseWheelPrefsReturn {
   return {
     picks: prefs.picks,
     toggle,
+    replace,
     clear,
     full: prefs.picks.length >= MAX_SLICES,
   };

@@ -1,7 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
-import { Check, Keyboard, Loader2, Send } from "lucide-react";
+import { Check, Loader2, Send } from "lucide-react";
 
-import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { setStatus } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -10,7 +9,7 @@ import { isDestructiveInput } from "@/lib/destructive";
 import { fitsDraftStore } from "@/lib/drafts";
 import { textToKeySequence } from "@/lib/key-queue";
 import { normalizeDraft } from "@/hooks/use-terminal-draft";
-import { useComposerState } from "@/hooks/use-composer-state";
+import { FORCE_ARM_MS, useComposerState } from "@/hooks/use-composer-state";
 import { planSendTap, runComposerSend } from "@/lib/composer-send";
 import { ComposerDrawers, ComposerStrips } from "@/components/composer-drawers";
 import { ComposerMenu } from "@/components/composer-menu";
@@ -66,15 +65,6 @@ interface ComposerProps {
    * text tracks this live so host typing streams into it; it also drives the send()-time pre-clear (the
    * actual current "❯" line) and unmounts the preview when it goes null. Never written into the input. */
   rawTerminalDraft: string | null;
-  /** Mirror display prefs — the Display dock and the Terminal toggle live here, but the mirror (in
-   * AgentChat) reads the same single instance, so they're threaded through rather than each calling
-   * useDisplayPrefs. */
-  prefs: DisplayPrefs;
-  stepFontSize: (delta: number) => void;
-  setRawTerminal: (raw: boolean) => void;
-  setTapToFocus: (tapToFocus: boolean) => void;
-  setShowTerminal: (showTerminal: boolean) => void;
-  setShowThinking: (showThinking: boolean) => void;
   /** Snap the mirror to the live tail (follow + revalidate + scroll) after a successful send. */
   /** Called with the text that was sent, after a VERIFIED send. */
   onSent: (text: string) => void;
@@ -84,18 +74,17 @@ interface ComposerProps {
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
 // own: an agent-aware slash-command palette, an inline key tray (via
-// `pane.send_keys`), image upload, display prefs, the Terminal toggle, and the reply Send (with a
-// destructive-command two-tap guard). Its state (draft, sending, upload, its own Keys/Agent/Display
-// drawers) is entirely local; it reaches AgentChat only through `onSent` (to re-follow the tail) and
+// `pane.send_keys`), image upload, the gesture wheel, and the reply Send (with a destructive-command
+// two-tap guard). Its state (draft, sending, upload, its own Keys/Agent drawers) is entirely local; it reaches AgentChat only through `onSent` (to re-follow the tail) and
 // exposes `focusInput` so the mirror tap can bring up the keyboard.
 //
-// One rounded field, a + on its left, Send on its right. Everything else is a row in the + menu
-// (composer-menu.tsx): the permanent control row it replaced cost a whole row of a phone viewport
-// for things you reach for a few times a session. Keys and Display still open as in-flow docks
-// above the field rather than covering sheets, because you need to see the mirror while you use
-// them. Find lives in the header, where its find bar already takes over the row.
+// One rounded field with a + inside its left edge, then (phone) the wheel handle, then Send. The +
+// menu holds the input tools (composer-menu.tsx); how the pane looks is in the pane menu and
+// Settings. Keys opens as an in-flow dock above the field rather than a covering sheet, because you
+// need to see the mirror while you use it. The wheel handle sits IN the row, not floating over the
+// field's corner, so it never covers a lifted card, the Yes/No strip or the typing strip above.
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, agent, isShell, gone, readOnly, dialogPresent, agentBlocked = false, promptBlock, onPromptAction, text, terminalDraft, rawTerminalDraft, prefs, stepFontSize, setRawTerminal, setTapToFocus, setShowTerminal, setShowThinking, onSent, onArmedChange },
+  { paneId, agent, isShell, gone, readOnly, dialogPresent, agentBlocked = false, promptBlock, onPromptAction, text, terminalDraft, rawTerminalDraft, onSent, onArmedChange },
   ref,
 ) {
   const {
@@ -178,7 +167,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         onStart: () => setSending(true),
         onKeysSent: scheduleKeyRevalidate,
       });
-      if (r.status) setStatus(r.status.text, r.status.tone);
+      // The "Tap Send again to type anyway" offer expires with the arm, so its toast does too.
+      if (r.status) setStatus(r.status.text, r.status.tone, r.armForce ? FORCE_ARM_MS : undefined);
       if (r.clearDraft) updateInput("");
       if (r.armForce) forceConfirm.confirm("force");
       if (r.resetForce) forceConfirm.reset();
@@ -274,19 +264,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onSend: pressKeys,
             onQueueChange: setQueuedKeys,
           }}
-          display={{
-            prefs,
-            stepFontSize,
-            setRawTerminal,
-            setTapToFocus,
-            setShowTerminal,
-            setShowThinking,
-          }}
-          type={{
-            active: direct.active,
-            disabled: locked || sending,
-            onStart: () => direct.activate(),
-          }}
           palette={{
             agent,
             mine: operatorCommands,
@@ -341,27 +318,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         <div className="flex items-end gap-3">
           {/* The input and the + share one box: the button is positioned INSIDE the field,
               messenger-style, rather than sitting beside it as a third control in the row. `pl-11`
-              on the textarea reserves that strip so a long line can never run underneath it.
-              The wheel handle is a child of this box so it sits on the field's top-right, not over Send. */}
+              on the textarea reserves that strip so a long line can never run underneath it. */}
           <div className="relative min-w-0 flex-1">
-            {!desktop && !locked && (
-              <GestureWheel
-                slices={wheelSlices}
-                onKeys={pressKeys}
-                onType={() => {
-                  if (direct.active) {
-                    direct.deactivate();
-                    return;
-                  }
-                  requestDrawer(null); // a dock holds half the viewport and this mode needs the keyboard
-                  direct.activate();
-                }}
-                typeActive={direct.active}
-                // Tap toggles the Keys dock. Closing with staged chords still runs through requestDrawer's discard confirm.
-                onTap={() => requestDrawer(drawer === "keys" ? null : "keys")}
-                disabled={sending}
-              />
-            )}
             <ChatInput
               ref={inputRef}
               value={direct.active ? direct.value : input}
@@ -392,10 +350,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 active: direct.active,
                 disabled: locked || sending,
                 onStart: () => direct.activate(),
-                onStop: () => direct.deactivate(),
               }}
-              showTerminal={prefs.showTerminal}
-              onToggleTerminal={() => setShowTerminal(!prefs.showTerminal)}
               hasCommands={commands.length > 0}
               onAttach={() => fileRef.current?.click()}
               onDrawer={requestDrawer}
@@ -413,6 +368,26 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               </div>
             )}
           </div>
+          {/* The wheel handle: its own slot in the row (phone only). Tap toggles the Keys dock; hold
+              and drag fans the slices. */}
+          {!desktop && !locked && (
+            <GestureWheel
+              slices={wheelSlices}
+              onKeys={pressKeys}
+              onType={() => {
+                if (direct.active) {
+                  direct.deactivate();
+                  return;
+                }
+                requestDrawer(null); // a dock holds half the viewport and this mode needs the keyboard
+                direct.activate();
+              }}
+              typeActive={direct.active}
+              // Tap toggles the Keys dock. Closing with staged chords still runs through requestDrawer's discard confirm.
+              onTap={() => requestDrawer(drawer === "keys" ? null : "keys")}
+              disabled={sending}
+            />
+          )}
           {!showDesktopStrip &&
             (!direct.active && forcingSend ? (
               // The pre-flight refused and the user is being offered the override. Labelled for what it
@@ -438,17 +413,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 Really send?
               </Button>
             ) : (
+              // Inert while typing into the terminal: keys already go straight through, and the strip's
+              // one Stop ends the mode.
               <Button
                 size="icon"
                 className="size-11 shrink-0 rounded-lg border-2 border-you bg-you text-you-foreground hover:bg-you/90"
-                onClick={direct.active ? () => direct.deactivate() : onSendClick}
-                disabled={locked || sending}
-                aria-label={direct.active ? "Stop typing into terminal" : "Send"}
-                aria-pressed={direct.active}
+                onClick={onSendClick}
+                disabled={locked || sending || direct.active}
+                aria-label="Send"
               >
-                {direct.active ? (
-                  <Keyboard className="size-4" />
-                ) : sending ? (
+                {sending ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : justSent ? (
                   <Check className="size-4" />

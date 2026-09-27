@@ -7,8 +7,9 @@ import { __resetDesktop, setDesktop } from "@/lib/desktop";
 
 // The + at the left edge of the reply field and the menu behind it. These pin the menu's shape
 // (which rows, in which order, on which layout) and the two things that make it safe to put the
-// controls behind a tap: every choice closes the menu, and the + turns into Stop while direct
-// typing is armed so the mode is always one tap from off.
+// controls behind a tap: every choice closes the menu, and the + goes inert while direct typing is
+// armed (the typing strip's Stop is the one way out of that mode). The menu is input only: display
+// prefs live in Settings and the pane menu.
 
 beforeEach(() => __resetDesktop());
 afterEach(() => {
@@ -20,9 +21,7 @@ function mount(overrides: Partial<ComposerMenuProps> = {}) {
   const props: ComposerMenuProps = {
     locked: false,
     uploading: false,
-    direct: { active: false, disabled: false, onStart: vi.fn(), onStop: vi.fn() },
-    showTerminal: false,
-    onToggleTerminal: vi.fn(),
+    direct: { active: false, disabled: false, onStart: vi.fn() },
     hasCommands: true,
     onAttach: vi.fn(),
     onDrawer: vi.fn(),
@@ -49,7 +48,7 @@ function rowLabels(dialog: HTMLElement): string[] {
 }
 
 describe("ComposerMenu — rows", () => {
-  it("lists the six rows in order on a phone", () => {
+  it("lists the four input rows in order on a phone", () => {
     mount();
     expect(screen.queryByRole("dialog")).toBeNull();
     const dialog = open();
@@ -58,8 +57,6 @@ describe("ComposerMenu — rows", () => {
       "Keys",
       "Agent commands",
       "Type into terminal",
-      "Terminal",
-      "Display",
     ]);
     // A bottom sheet on the phone, not a popover.
     expect(screen.queryByTestId("action-popover")).toBeNull();
@@ -69,25 +66,25 @@ describe("ComposerMenu — rows", () => {
   it("drops Agent commands when the agent has none", () => {
     mount({ hasCommands: false });
     const dialog = open();
-    expect(rowLabels(dialog)).toEqual(["Attach file", "Keys", "Type into terminal", "Terminal", "Display"]);
+    expect(rowLabels(dialog)).toEqual(["Attach file", "Keys", "Type into terminal"]);
   });
 
   it("drops Keys and Type on desktop and opens as a popover", () => {
     setDesktop(true);
     mount();
     const dialog = open();
-    expect(rowLabels(dialog)).toEqual(["Attach file", "Agent commands", "Terminal", "Display"]);
+    expect(rowLabels(dialog)).toEqual(["Attach file", "Agent commands"]);
     expect(screen.getByTestId("action-popover")).toBe(dialog);
   });
 
-  it("disables the write rows when locked but leaves Terminal and Display live", () => {
+  it("disables every row when locked", () => {
     mount({ locked: true });
     open();
     expect(screen.getByRole("button", { name: "Attach file" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Keys" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Agent commands" })).toBeDisabled();
-    expect(screen.getByRole("menuitemcheckbox", { name: "Terminal" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Display" })).toBeEnabled();
+    expect(screen.queryByRole("menuitemcheckbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Display" })).toBeNull();
   });
 });
 
@@ -96,7 +93,6 @@ describe("ComposerMenu — choices", () => {
     ["Attach file", (p: ComposerMenuProps) => expect(p.onAttach).toHaveBeenCalledTimes(1)],
     ["Keys", (p: ComposerMenuProps) => expect(p.onDrawer).toHaveBeenCalledWith("keys")],
     ["Agent commands", (p: ComposerMenuProps) => expect(p.onDrawer).toHaveBeenCalledWith("cmd")],
-    ["Display", (p: ComposerMenuProps) => expect(p.onDrawer).toHaveBeenCalledWith("display")],
   ])("%s fires its action and closes the menu", (label, check) => {
     const props = mount();
     open();
@@ -107,52 +103,32 @@ describe("ComposerMenu — choices", () => {
 
   it("Type closes any dock first, then arms, then closes the menu", () => {
     const calls: string[] = [];
-    const props = mount({
-      direct: { active: false, disabled: false, onStart: () => calls.push("start"), onStop: vi.fn() },
+    mount({
+      direct: { active: false, disabled: false, onStart: () => calls.push("start") },
       onDrawer: (next) => calls.push(`drawer:${String(next)}`),
     });
     open();
     fireEvent.click(screen.getByRole("button", { name: "Type into terminal" }));
     expect(calls).toEqual(["drawer:null", "start"]);
-    expect(props.direct.onStop).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("Type is disabled while the composer is busy", () => {
-    mount({ direct: { active: false, disabled: true, onStart: vi.fn(), onStop: vi.fn() } });
+    mount({ direct: { active: false, disabled: true, onStart: vi.fn() } });
     open();
     expect(screen.getByRole("button", { name: "Type into terminal" })).toBeDisabled();
   });
 });
 
-describe("ComposerMenu — Terminal toggle", () => {
-  it("reflects showTerminal as aria-checked with a check mark, and flips it", () => {
-    const props = mount({ showTerminal: false });
-    open();
-    const off = screen.getByRole("menuitemcheckbox", { name: "Terminal" });
-    expect(off).toHaveAttribute("aria-checked", "false");
-    expect(off.querySelector("svg.lucide-check")).toBeNull();
-    fireEvent.click(off);
-    expect(props.onToggleTerminal).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("dialog")).toBeNull();
-    cleanup();
-
-    mount({ showTerminal: true });
-    open();
-    const on = screen.getByRole("menuitemcheckbox", { name: "Terminal" });
-    expect(on).toHaveAttribute("aria-checked", "true");
-    expect(on.querySelector("svg.lucide-check")).not.toBeNull();
-  });
-});
-
 describe("ComposerMenu — while direct typing is armed", () => {
-  it("the + becomes Stop and there is no menu to open", () => {
-    const props = mount({ direct: { active: true, disabled: false, onStart: vi.fn(), onStop: vi.fn() } });
-    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
-    const stop = screen.getByRole("button", { name: "Stop typing into terminal" });
-    expect(stop).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(stop);
-    expect(props.direct.onStop).toHaveBeenCalledTimes(1);
+  it("the + stays More but is disabled, so there is no menu to open and no second Stop", () => {
+    const props = mount({ direct: { active: true, disabled: false, onStart: vi.fn() } });
+    const more = screen.getByRole("button", { name: "More" });
+    expect(more).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Stop typing into terminal" })).toBeNull();
+    fireEvent.click(more);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(props.direct.onStart).not.toHaveBeenCalled();
   });
 });
 
@@ -167,7 +143,6 @@ describe("ComposerMenu — dismiss", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(props.onAttach).not.toHaveBeenCalled();
     expect(props.onDrawer).not.toHaveBeenCalled();
-    expect(props.onToggleTerminal).not.toHaveBeenCalled();
   });
 });
 
@@ -204,13 +179,13 @@ describe("ComposerMenu — phone sheet fits 390×844 (#367)", () => {
 
     const attach = screen.getByRole("button", { name: "Attach file" });
     const keys = screen.getByRole("button", { name: "Keys" });
-    const terminal = screen.getByRole("menuitemcheckbox", { name: "Terminal" });
-    const display = screen.getByRole("button", { name: "Display" });
+    const commands = screen.getByRole("button", { name: "Agent commands" });
+    const type = screen.getByRole("button", { name: "Type into terminal" });
 
     expect(panel.contains(attach)).toBe(true);
     expect(panel.contains(keys)).toBe(true);
-    expect(panel.contains(terminal)).toBe(true);
-    expect(panel.contains(display)).toBe(true);
+    expect(panel.contains(commands)).toBe(true);
+    expect(panel.contains(type)).toBe(true);
   });
 
   it("keyboard up: the sheet sits on the visible viewport and adjusts on resize", () => {
@@ -256,17 +231,16 @@ describe("ComposerMenu — phone sheet fits 390×844 (#367)", () => {
     expect(removeEventListener).toHaveBeenCalled();
   });
 
-  it("terminal still toggles the dump from the capped sheet", () => {
+  it("the last row still fires from the capped sheet", () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 390, writable: true });
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 844, writable: true });
     Object.defineProperty(window, "visualViewport", { configurable: true, value: undefined, writable: true });
 
     const props = mount();
     open();
-    const terminal = screen.getByRole("menuitemcheckbox", { name: "Terminal" });
-    fireEvent.click(terminal);
+    fireEvent.click(screen.getByRole("button", { name: "Type into terminal" }));
 
-    expect(props.onToggleTerminal).toHaveBeenCalledTimes(1);
+    expect(props.direct.onStart).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
@@ -293,7 +267,8 @@ describe("ComposerMenu — phone sheet fits 390×844 (#367)", () => {
     const popover = screen.getByTestId("action-popover");
     const top = parseFloat(popover.style.top);
     expect(top).toBeLessThan(800);
-    expect(top).toBe(592);
+    // Two rows on desktop (Attach file, Agent commands): 800 - (2 x 40 + 48).
+    expect(top).toBe(672);
     expect(popover.style.maxHeight).toBe("");
     expect(document.querySelector(".fade-in")).toBeNull();
     expect(document.querySelector(".slide-in-from-bottom")).toBeNull();

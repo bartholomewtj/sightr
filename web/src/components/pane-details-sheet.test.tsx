@@ -37,6 +37,10 @@ function show(overrides: Partial<Parameters<typeof PaneDetailsSheet>[0]> = {}) {
     onOpenSpace: vi.fn(),
     find: { available: true, onOpen: vi.fn() },
     onSwitchPane: vi.fn(),
+    onRenamed: vi.fn(),
+    onClosed: vi.fn(),
+    terminal: { checked: false, onToggle: vi.fn() },
+    onSettings: vi.fn(),
     ...overrides,
   };
   render(<PaneDetailsSheet {...props} />);
@@ -51,7 +55,7 @@ describe("PaneDetailsSheet", () => {
 
   it("shows the full working directory in mono, wrapping allowed", () => {
     show();
-    const cwd = within(screen.getByRole("dialog", { name: "Pane details" })).getByText("/home/you/webapp");
+    const cwd = within(screen.getByRole("dialog")).getByText("/home/you/webapp");
     expect(cwd).toHaveClass("font-mono", "break-all");
   });
 
@@ -89,11 +93,46 @@ describe("PaneDetailsSheet", () => {
     expect(screen.queryByText("Panes")).toBeNull();
   });
 
-  it("opens the pane actions (rename / close) from a row's context menu when wired", () => {
-    show({ onRenamed: vi.fn(), onClosed: vi.fn() });
-    fireEvent.contextMenu(screen.getByRole("button", { name: /grok/ }));
+  it("offers Rename and Close pane for the open pane even when it is alone in its tab", () => {
+    show({ panes: [agent] });
     expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close pane" })).toBeInTheDocument();
+  });
+
+  it("Rename swaps the menu for the rename field in place", () => {
+    show();
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    expect(screen.getByPlaceholderText("name this pane")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Find in output" })).toBeNull();
+  });
+
+  it("drops Rename and Close pane on a read-only device", () => {
+    show({ readOnly: true });
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close pane" })).toBeNull();
+  });
+
+  it("tapping the open pane in the list is a no-op", () => {
+    const { onSelectPane, onClose } = show();
+    fireEvent.click(screen.getByRole("button", { name: /claude/ }));
+    expect(onSelectPane).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("Show terminal is a switch that flips without closing the menu", () => {
+    const { terminal, onClose } = show();
+    const sw = screen.getByRole("switch", { name: "Show terminal" });
+    expect(sw).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(sw);
+    expect(terminal.onToggle).toHaveBeenCalledOnce();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("Settings closes the menu and leaves for Settings", () => {
+    const { onSettings, onClose } = show();
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(onSettings).toHaveBeenCalledOnce();
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("shows Context with the fill level when the statusline painted ctx:N%", () => {
@@ -157,9 +196,9 @@ describe("PaneDetailsSheet", () => {
     expect(screen.getByRole("button", { name: /Context/ })).toHaveTextContent("4.1%/200k");
   });
 
-  it("Open space overview fires the action and closes", () => {
+  it("Space overview fires the action and closes", () => {
     const { onOpenSpace, onClose } = show();
-    fireEvent.click(screen.getByRole("button", { name: "Open space overview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Space overview" }));
     expect(onOpenSpace).toHaveBeenCalledOnce();
     expect(onClose).toHaveBeenCalled();
   });
@@ -174,10 +213,15 @@ describe("PaneDetailsSheet", () => {
     expect(screen.queryByRole("button", { name: "Find in output" })).toBeNull();
   });
 
-  it("puts Switch pane… last and drops it when no switcher is wired", () => {
+  it("orders the menu view → navigate → writes → Settings, and drops Switch pane when unwired", () => {
     const { onSwitchPane } = show();
     const buttons = screen.getAllByRole("button").map((b) => b.textContent);
-    expect(buttons[buttons.length - 1]).toBe("Switch pane…");
+    const at = (label: string) => buttons.indexOf(label);
+    expect(at("Find in output")).toBeLessThan(at("Switch pane…"));
+    expect(at("Switch pane…")).toBeLessThan(at("Space overview"));
+    expect(at("Space overview")).toBeLessThan(at("Rename"));
+    expect(at("Rename")).toBeLessThan(at("Close pane"));
+    expect(buttons[buttons.length - 1]).toBe("Settings");
     fireEvent.click(screen.getByRole("button", { name: "Switch pane…" }));
     expect(onSwitchPane).toHaveBeenCalledOnce();
     cleanup();
@@ -196,10 +240,10 @@ describe("PaneDetailsSheet", () => {
   it("is a popover on desktop with the same rows", () => {
     setDesktop(true);
     show();
-    const popover = screen.getByRole("dialog", { name: "Pane details" });
+    const popover = screen.getByRole("dialog");
     expect(popover).toHaveAttribute("data-testid", "action-popover");
     expect(within(popover).getByText("/home/you/webapp")).toBeInTheDocument();
-    expect(within(popover).getByRole("button", { name: "Open space overview" })).toBeInTheDocument();
+    expect(within(popover).getByRole("button", { name: "Space overview" })).toBeInTheDocument();
     expect(within(popover).getByRole("button", { name: "Find in output" })).toBeInTheDocument();
   });
 });

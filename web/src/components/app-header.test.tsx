@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import type { ReactElement } from "react";
 
-import { AppHeader, SettingsGear } from "./app-header";
+import { AppHeader } from "./app-header";
 import { MARK_SRC } from "./sightr-mark";
 import { StatusBadge } from "./status-badge";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
@@ -41,13 +41,12 @@ describe("AppHeader — the one shared header shell", () => {
     expect(screen.queryByText("Sightr")).toBeNull(); // no wordmark in a pane
   });
 
-  it("is calm in the DASHBOARD variant while live — wordmark + settings gear, resting mark", () => {
+  it("is calm in the DASHBOARD variant while live — wordmark, resting mark", () => {
     const { container } = renderHeader(
-      <AppHeader bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
+      <AppHeader bridge="connected" error={false} wordmark />,
     );
     expect(screen.getByText("Sightr")).toBeInTheDocument(); // wordmark
     expect(container.querySelector(".sightr-mark")).toBeNull(); // mark at rest while live
-    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
   });
 
   it("goes to Spaces when the Sightr mark is tapped, like the bottom-bar tab", async () => {
@@ -59,21 +58,6 @@ describe("AppHeader — the one shared header shell", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Sightr home" }));
     expect(screen.getByTestId("loc").textContent).toBe("/");
-  });
-
-  it("navigates to /settings via the shared gear", async () => {
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <AppHeader
-          bridge="connected"
-          error={false}
-          rightTrail={<SettingsGear />}
-        />
-        <LocationProbe />
-      </MemoryRouter>,
-    );
-    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
-    expect(screen.getByTestId("loc").textContent).toBe("/settings");
   });
 
   it("the find-bar override takes over the whole row (mark and breadcrumb yield)", () => {

@@ -8,9 +8,9 @@ const props = { prefs: { fontSize: 12, rawTerminal: true, tapToFocus: true, show
 describe("display preferences in desktop mode", () => {
   it("keeps Tap to type on phones", () => { render(<DisplayPrefsContent {...props} />); expect(screen.getByText("Tap to type")).toBeInTheDocument(); });
   it("hides Tap to type on desktop but keeps Raw terminal", () => { setDesktop(true); render(<DisplayPrefsContent {...props} />); expect(screen.queryByText("Tap to type")).toBeNull(); expect(screen.getByText("Raw terminal")).toBeInTheDocument(); });
-  it("Show terminal switch moved to the composer's Terminal toggle", () => {
+  it("lists Show terminal with the other display prefs, on phone and desktop", () => {
     render(<DisplayPrefsContent {...props} />);
-    expect(screen.queryByRole("switch", { name: "Show terminal" })).toBeNull();
+    expect(screen.getByRole("switch", { name: "Show terminal" })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Raw terminal" })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Show thinking" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Decrease font size" })).toBeInTheDocument();
@@ -18,7 +18,7 @@ describe("display preferences in desktop mode", () => {
     cleanup();
     setDesktop(true);
     render(<DisplayPrefsContent {...props} />);
-    expect(screen.queryByRole("switch", { name: "Show terminal" })).toBeNull();
+    expect(screen.getByRole("switch", { name: "Show terminal" })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Raw terminal" })).toBeInTheDocument();
   });
 });

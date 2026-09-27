@@ -109,8 +109,6 @@ function savePrefs(prefs: DisplayPrefs): void {
 
 export interface UseDisplayPrefsReturn {
   prefs: DisplayPrefs;
-  /** Set font size, clamped to 9–16. */
-  setFontSize: (size: number) => void;
   /** Step font size by delta (positive = larger), clamped to 9–16. */
   stepFontSize: (delta: number) => void;
   /** Toggle or explicitly set raw-terminal mode. */
@@ -126,13 +124,6 @@ export interface UseDisplayPrefsReturn {
 export function useDisplayPrefs(): UseDisplayPrefsReturn {
   const [prefs, setPrefs] = useState<DisplayPrefs>(loadPrefs);
 
-  const setFontSize = useCallback((size: number) => {
-    setPrefs((p) => {
-      const next: DisplayPrefs = { ...p, fontSize: clampFont(size) };
-      savePrefs(next);
-      return next;
-    });
-  }, []);
 
   const stepFontSize = useCallback((delta: number) => {
     setPrefs((p) => {
@@ -176,7 +167,6 @@ export function useDisplayPrefs(): UseDisplayPrefsReturn {
 
   return {
     prefs,
-    setFontSize,
     stepFontSize,
     setRawTerminal,
     setTapToFocus,

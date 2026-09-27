@@ -47,13 +47,7 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     text: "pane output",
     terminalDraft: null,
     rawTerminalDraft: null,
-    prefs: { fontSize: 11, rawTerminal: false, tapToFocus: true, showTerminal: true, showThinking: true },
     
-    stepFontSize: vi.fn(),
-    setRawTerminal: vi.fn(),
-    setTapToFocus: vi.fn(),
-    setShowTerminal: vi.fn(),
-    setShowThinking: vi.fn(),
     onSent: vi.fn(),
     ...overrides,
   };
@@ -96,13 +90,7 @@ function renderComposerWithStatus(overrides: Partial<ComponentProps<typeof Compo
     text: "pane output",
     terminalDraft: null,
     rawTerminalDraft: null,
-    prefs: { fontSize: 11, rawTerminal: false, tapToFocus: true, showTerminal: true, showThinking: true },
     
-    stepFontSize: vi.fn(),
-    setRawTerminal: vi.fn(),
-    setTapToFocus: vi.fn(),
-    setShowTerminal: vi.fn(),
-    setShowThinking: vi.fn(),
     onSent: vi.fn(),
     ...overrides,
   };
@@ -487,13 +475,7 @@ describe("Composer — send", () => {
               text="pane output"
               terminalDraft={null}
               rawTerminalDraft="leftover"
-              prefs={{ fontSize: 11, rawTerminal: false, tapToFocus: true, showTerminal: true, showThinking: true }}
               
-              stepFontSize={vi.fn()}
-              setRawTerminal={vi.fn()}
-              setTapToFocus={vi.fn()}
-              setShowTerminal={vi.fn()}
-              setShowThinking={vi.fn()}
               onSent={vi.fn()}
             />
           </>
@@ -582,13 +564,7 @@ describe("Composer — send", () => {
       text: "pane output",
       terminalDraft: null,
       rawTerminalDraft: null,
-      prefs: { fontSize: 11, rawTerminal: false, tapToFocus: true, showTerminal: true, showThinking: true },
       
-      stepFontSize: vi.fn(),
-      setRawTerminal: vi.fn(),
-      setTapToFocus: vi.fn(),
-      setShowTerminal: vi.fn(),
-      setShowThinking: vi.fn(),
       onSent: vi.fn(),
     };
     const router = createMemoryRouter([
@@ -615,11 +591,15 @@ describe("Composer — send", () => {
 });
 
 describe("Composer — typing into the terminal", () => {
-  /** The always-reachable entry point: Type in the Display dock. */
+  /** The phone entry point: the + menu's Type into terminal row. */
   function startDirectTyping() {
-    pickMore("Display");
-    fireEvent.click(screen.getByRole("button", { name: "Start typing into terminal" }));
+    pickMore("Type into terminal");
     return screen.getByPlaceholderText(/type into the terminal/i);
+  }
+
+  /** The ONE stop control on a phone: the typing strip's Stop. */
+  function stripStop() {
+    return screen.getByRole("button", { name: /^stop$/i });
   }
 
   it("focuses the textarea synchronously so the activation gesture opens the phone keyboard", () => {
@@ -630,21 +610,23 @@ describe("Composer — typing into the terminal", () => {
 
   // The entry point must be a deliberate press and nothing else: it must not send, and it must not
   // leave a half-open dock covering the keyboard it needs.
-  it("arms from the Display dock without sending, and closes an open dock", async () => {
+  it("arms from the + menu without sending, and closes an open dock", async () => {
     let replyCalls = 0;
     server.use(replyHandler(() => replyCalls++));
     renderComposer();
     pickMore("Keys");
     expect(screen.getByRole("button", { name: /close keys/i })).toBeInTheDocument();
 
-    pickMore("Display");
-    fireEvent.click(screen.getByRole("button", { name: "Start typing into terminal" }));
+    pickMore("Type into terminal");
 
     expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /close keys/i })).toBeNull();
     expect(replyCalls).toBe(0);
-    // Both ends of the field are Stop while armed: the + and the Send square.
-    expect(screen.getAllByRole("button", { name: "Stop typing into terminal" })).toHaveLength(2);
+    // One Stop while armed, on the strip. The + and Send stay what they are, but inert.
+    expect(screen.queryByRole("button", { name: "Stop typing into terminal" })).toBeNull();
+    expect(stripStop()).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "More" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
   });
 
   it("shows the armed strip and stops from it", async () => {
@@ -653,11 +635,14 @@ describe("Composer — typing into the terminal", () => {
 
     const strip = screen.getByText(/typing into terminal/i);
     expect(strip).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /^stop$/i }));
+    fireEvent.click(stripStop());
 
     await waitFor(() =>
       expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull(),
     );
+    // Back to a normal composer: the + opens again and Send is live.
+    expect(screen.getByRole("button", { name: "More" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
   });
 
   // The other half of the same rule: the composer locking (pane gone, device demoted to read-only,
@@ -680,13 +665,7 @@ describe("Composer — typing into the terminal", () => {
             text="pane output"
             terminalDraft={null}
             rawTerminalDraft={null}
-            prefs={{ fontSize: 11, rawTerminal: false, tapToFocus: true, showTerminal: true, showThinking: true }}
             
-            stepFontSize={vi.fn()}
-            setRawTerminal={vi.fn()}
-            setTapToFocus={vi.fn()}
-              setShowTerminal={vi.fn()}
-              setShowThinking={vi.fn()}
             onSent={vi.fn()}
           />
         </>
@@ -695,8 +674,7 @@ describe("Composer — typing into the terminal", () => {
     const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
     render(<RouterProvider router={router} />);
 
-    pickMore("Display");
-    fireEvent.click(screen.getByRole("button", { name: "Start typing into terminal" }));
+    pickMore("Type into terminal");
     expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "lock it" }));
@@ -783,8 +761,7 @@ describe("Composer — typing into the terminal", () => {
       fireEvent(document, new Event("visibilitychange")); // schedules the blur
       Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
       fireEvent(document, new Event("visibilitychange"));
-      pickMore("Display");
-      fireEvent.click(screen.getByRole("button", { name: "Start typing into terminal" })); // re-arm
+      pickMore("Type into terminal"); // re-arm
       act(() => vi.runOnlyPendingTimers());
     } finally {
       vi.useRealTimers();
@@ -816,13 +793,7 @@ describe("Composer — typing into the terminal", () => {
             text="pane output"
             terminalDraft={null}
             rawTerminalDraft={null}
-            prefs={{ fontSize: 11, rawTerminal: false, tapToFocus: true, showTerminal: true, showThinking: true }}
             
-            stepFontSize={vi.fn()}
-            setRawTerminal={vi.fn()}
-            setTapToFocus={vi.fn()}
-              setShowTerminal={vi.fn()}
-              setShowThinking={vi.fn()}
             onSent={vi.fn()}
           />
         </>
@@ -855,8 +826,8 @@ describe("Composer — typing into the terminal", () => {
     renderComposerWithStatus({ dialogPresent: true });
 
     const box = startDirectTyping();
-    // Both ends of the field read Stop while armed: the + and the Send square.
-    expect(screen.getAllByRole("button", { name: "Stop typing into terminal" })).toHaveLength(2);
+    // Send is inert while armed: keys already go straight through, so there is nothing to send.
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
     fireEvent.change(box, { target: { value: "b a" } });
 
     await waitFor(() => expect(keyCalls).toEqual([["b", "Space", "a"]]));
@@ -943,21 +914,21 @@ describe("Composer — typing into the terminal", () => {
     );
   });
 
-  it("exits on a tap of the highlighted keyboard button", async () => {
+  it("survives a keyboard dismiss and exits only from the strip's Stop", async () => {
     const user = userEvent.setup();
     renderComposer();
     const box = startDirectTyping();
 
     fireEvent.blur(box); // dismissing the Android keyboard does not silently disarm the mode
     expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
-    // The Send square is the highlighted keyboard button; the + is its twin on the left.
-    await user.click(screen.getAllByRole("button", { name: /stop typing into terminal/i }).at(-1)!);
+    // Neither end of the field is a Stop: both are disabled while armed.
+    expect(screen.getByRole("button", { name: "More" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    await user.click(stripStop());
 
     expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Send" })).not.toHaveAttribute("aria-pressed");
   });
 
   it("stops direct typing when a key batch is refused", async () => {
@@ -983,8 +954,7 @@ describe("Composer — typing into the terminal", () => {
     await user.type(box, "keep this draft");
 
     // The refusal belongs on the named choice, where there is somewhere to explain it.
-    pickMore("Display");
-    fireEvent.click(screen.getByRole("button", { name: "Start typing into terminal" }));
+    pickMore("Type into terminal");
 
     expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("keep this draft");
     expect(screen.queryByPlaceholderText(/type into the terminal/i)).not.toBeInTheDocument();
@@ -1009,13 +979,7 @@ describe("Composer — typing into the terminal", () => {
             text="pane output"
             terminalDraft={null}
             rawTerminalDraft={null}
-            prefs={{ fontSize: 11, rawTerminal: false, tapToFocus: true, showTerminal: true, showThinking: true }}
             
-            stepFontSize={vi.fn()}
-            setRawTerminal={vi.fn()}
-            setTapToFocus={vi.fn()}
-              setShowTerminal={vi.fn()}
-              setShowThinking={vi.fn()}
             onSent={vi.fn()}
           />
         </>
@@ -1036,28 +1000,20 @@ describe("Composer — typing into the terminal", () => {
 // before typing anything. The composer's job is to keep the draft, say why, and offer one deliberate
 // override — which still runs the type-then-verify guard behind it.
 describe("Composer — Type lives in the + menu (#205, then the composer redesign)", () => {
-  it("offers Type as a menu row on a fresh phone pane, with Keys, Agent commands and Display", () => {
+  it("offers Type as a menu row on a fresh phone pane, after Attach file, Keys and Agent commands", () => {
     renderComposer();
     // Nothing sits on a permanent row under the field any more.
     expect(screen.queryByRole("button", { name: "Type into terminal" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Keys" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Display settings" })).toBeNull();
-    openMore();
-    expect(screen.getByRole("button", { name: "Type into terminal" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Keys" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Agent commands" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Display" })).toBeInTheDocument();
-  });
-
-  it("still offers Type, explained, from the Display dock", async () => {
-    const user = userEvent.setup();
-    renderComposer();
-    pickMore("Display");
-    expect(screen.getByRole("button", { name: "Start typing into terminal" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Start typing into terminal" }));
-    expect(screen.queryByRole("button", { name: "Close Display" })).toBeNull();
-    expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Stop typing into terminal" })).toHaveLength(2);
+    const dialog = openMore();
+    const labels = Array.from(dialog.querySelectorAll('button[type="button"]'))
+      .map((b) => b.textContent?.trim() ?? "")
+      .filter((t) => t !== "");
+    expect(labels).toEqual(["Attach file", "Keys", "Agent commands", "Type into terminal"]);
+    // The menu is input only: how the pane looks lives in Settings and the pane menu.
+    expect(screen.queryByRole("button", { name: "Display" })).toBeNull();
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Terminal" })).toBeNull();
   });
 
   it("arms from the menu after a no-echo refusal, once the draft is cleared", async () => {
@@ -1103,17 +1059,17 @@ describe("Composer — Type lives in the + menu (#205, then the composer redesig
     expect(screen.getByRole("button", { name: "Type into terminal" })).toBeInTheDocument();
   }, 10000);
 
-  it("turns the + into Stop while armed, and stops from it", async () => {
+  it("disables the + and Send while armed; the strip's Stop is the one way out", async () => {
     const user = userEvent.setup();
     renderComposer();
     pickMore("Type into terminal");
     expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
-    const stops = screen.getAllByRole("button", { name: "Stop typing into terminal" });
-    expect(stops).toHaveLength(2);
-    await user.click(stops[0]!);
+    expect(screen.getByRole("button", { name: "More" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Stop typing into terminal" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: /^stop$/i }));
     expect(screen.queryByPlaceholderText(/type into the terminal/i)).toBeNull();
-    expect(screen.getByRole("button", { name: "More" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "More" })).toBeEnabled();
   });
 });
 
@@ -1355,13 +1311,7 @@ function renderDraftHarness(overrides: Partial<ComponentProps<typeof Composer>> 
       readOnly: false,
       dialogPresent: false,
       text: "pane output",
-      prefs: { fontSize: 11, rawTerminal: false, tapToFocus: true, showTerminal: true, showThinking: true },
       
-      stepFontSize: vi.fn(),
-      setRawTerminal: vi.fn(),
-      setTapToFocus: vi.fn(),
-      setShowTerminal: vi.fn(),
-      setShowThinking: vi.fn(),
       onSent: vi.fn(),
       ...rest,
       terminalDraft: stable,
@@ -1628,13 +1578,7 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
       text: "pane output",
       terminalDraft: draft,
       rawTerminalDraft: draft,
-      prefs: { fontSize: 11, rawTerminal: false, tapToFocus: true, showTerminal: true, showThinking: true },
       
-      stepFontSize: vi.fn(),
-      setRawTerminal: vi.fn(),
-      setTapToFocus: vi.fn(),
-      setShowTerminal: vi.fn(),
-      setShowThinking: vi.fn(),
       onSent: vi.fn(),
     };
     return (
@@ -1840,104 +1784,6 @@ describe("Composer — 44 px touch targets (#233)", () => {
   });
 });
 
-describe("Composer — display prefs behind the Display row", () => {
-  it("keeps Type reachable, explained, in the Display dock", async () => {
-    const user = userEvent.setup();
-    renderComposer();
-
-    expect(screen.queryByRole("button", { name: "Type into terminal" })).not.toBeInTheDocument();
-    pickMore("Display");
-    expect(screen.getByRole("button", { name: "Start typing into terminal" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Start typing into terminal" }));
-    expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Close Display" })).not.toBeInTheDocument();
-  });
-
-  it("the View row is gone; raw/font live behind the Display row as labelled controls", () => {
-    renderComposer();
-
-    // Nothing display-related is on the permanent rows any more.
-    expect(screen.queryByRole("button", { name: "Decrease font size" })).not.toBeInTheDocument();
-
-    pickMore("Display");
-
-    // Named controls, not bare glyphs — the whole point of the move.
-    expect(screen.queryByRole("switch", { name: "Show terminal" })).toBeNull();
-    expect(screen.queryByRole("switch", { name: "Wrap lines" })).not.toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "Raw terminal" })).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "Show thinking" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Decrease font size" })).toBeInTheDocument();
-  });
-
-  it("renders the Terminal toggle immediately before Display in the menu", () => {
-    renderComposer();
-    openMore();
-    const terminal = screen.getByRole("menuitemcheckbox", { name: "Terminal" });
-    const display = screen.getByRole("button", { name: "Display" });
-    expect(terminal.nextElementSibling).toBe(display);
-  });
-
-  it("toggles Show thinking from the Display dock", async () => {
-    const user = userEvent.setup();
-    const setShowThinking = vi.fn();
-    renderComposer({ setShowThinking });
-    pickMore("Display");
-    const sw = screen.getByRole("switch", { name: "Show thinking" });
-    expect(sw).toHaveAttribute("aria-checked", "true");
-    await user.click(sw);
-    expect(setShowThinking).toHaveBeenCalledWith(false);
-  });
-
-  it("toggles showTerminal on and off reflecting aria-checked", () => {
-    const setShowTerminal = vi.fn();
-    const basePrefs = { fontSize: 11, rawTerminal: false, tapToFocus: true, showTerminal: false, showThinking: true };
-
-    // With showTerminal: false
-    renderComposer({ prefs: basePrefs, setShowTerminal });
-    openMore();
-    expect(screen.getByRole("menuitemcheckbox", { name: "Terminal" })).toHaveAttribute("aria-checked", "false");
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Terminal" }));
-    expect(setShowTerminal).toHaveBeenCalledWith(true);
-    expect(screen.queryByRole("dialog", { name: "More" })).toBeNull();
-    cleanup();
-
-    // With showTerminal: true
-    renderComposer({ prefs: { ...basePrefs, showTerminal: true }, setShowTerminal });
-    openMore();
-    expect(screen.getByRole("menuitemcheckbox", { name: "Terminal" })).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Terminal" }));
-    expect(setShowTerminal).toHaveBeenCalledWith(false);
-  });
-
-  it("keeps the Terminal toggle and Display enabled when readOnly is true", () => {
-    renderComposer({ readOnly: true });
-    openMore();
-    expect(screen.getByRole("menuitemcheckbox", { name: "Terminal" })).not.toBeDisabled();
-    expect(screen.getByRole("button", { name: "Display" })).not.toBeDisabled();
-  });
-
-  it("the Display dock shares the single drawer slot with Keys", () => {
-    renderComposer();
-
-    pickMore("Display");
-    expect(screen.getByRole("switch", { name: "Raw terminal" })).toBeInTheDocument();
-
-    pickMore("Keys");
-    expect(screen.queryByRole("switch", { name: "Raw terminal" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Esc" })).toBeInTheDocument();
-  });
-
-  it("display prefs stay reachable on a read-only device", () => {
-    renderComposer({ readOnly: true });
-
-    // Keys is a write affordance and locks; Display is local view state and must not.
-    openMore();
-    expect(screen.getByRole("button", { name: "Keys" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Display" }));
-    expect(screen.getByRole("switch", { name: "Raw terminal" })).toBeInTheDocument();
-  });
-});
-
 describe("Composer — a composed key queue is guarded on the way out", () => {
   /** Open Keys and stage one chord, so the queue is genuinely dirty. */
   async function stageAKey(user: ReturnType<typeof userEvent.setup>) {
@@ -1963,18 +1809,18 @@ describe("Composer — a composed key queue is guarded on the way out", () => {
 
   // The ✕ is not the only exit — choosing another drawer from the + menu unmounts the tray just as
   // effectively, which is why the guard lives on the drawer transition rather than the button.
-  it("choosing Display from the + menu also needs a second tap while keys are staged", async () => {
+  it("choosing Agent commands from the + menu also needs a second tap while keys are staged", async () => {
     const user = userEvent.setup();
     renderComposerWithStatus();
     await stageAKey(user);
 
-    pickMore("Display");
+    pickMore("Agent commands");
     expect(screen.getByRole("button", { name: "Remove Ctrl Tab" })).toBeInTheDocument();
     expect(screen.getByTestId("status")).toHaveTextContent(/discard 1 queued key/i);
 
-    pickMore("Display");
+    pickMore("Agent commands");
     expect(screen.queryByRole("button", { name: "Remove Ctrl Tab" })).not.toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "Raw terminal" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Agent commands" })).toBeInTheDocument();
   });
 
   // Over-guarding trains you to double-tap through the confirm reflexively, which kills its value
@@ -2034,13 +1880,7 @@ describe("Composer — draft persistence", () => {
       text: "pane output",
       terminalDraft: null,
       rawTerminalDraft: null,
-      prefs: { fontSize: 11, rawTerminal: false, tapToFocus: true, showTerminal: true, showThinking: true },
       
-      stepFontSize: vi.fn(),
-      setRawTerminal: vi.fn(),
-      setTapToFocus: vi.fn(),
-      setShowTerminal: vi.fn(),
-      setShowThinking: vi.fn(),
       onSent: vi.fn(),
       ...overrides,
     };
@@ -2176,12 +2016,11 @@ describe("Composer — one-tap Yes / No (#203)", () => {
     expect(no()).not.toBeInTheDocument();
   });
 
-  it("does not show the strip while Type is armed", async () => {
-    const user = userEvent.setup();
+  it("does not show the strip while Type is armed", () => {
     renderComposer({ agentBlocked: true });
     expect(yes()).toBeInTheDocument();
-    pickMore("Display");
-    await user.click(screen.getByRole("button", { name: "Start typing into terminal" }));
+    pickMore("Type into terminal");
+    expect(screen.getByPlaceholderText(/type into the terminal/i)).toBeInTheDocument();
     expect(yes()).not.toBeInTheDocument();
     expect(no()).not.toBeInTheDocument();
   });
@@ -2212,9 +2051,19 @@ describe("gesture wheel handle on composer", () => {
     renderComposer();
     expect(screen.getByRole("button", { name: "Shortcut wheel" })).toBeInTheDocument();
 
+    // An inline item in the composer row, between the field and Send — not floated over the
+    // field's top-right corner.
     const handle = screen.getByRole("button", { name: "Shortcut wheel" });
     const box = screen.getByPlaceholderText(/type a reply/i);
-    expect(handle.parentElement).toBe(box.parentElement);
+    const send = screen.getByRole("button", { name: "Send" });
+    const field = box.parentElement!;
+    expect(handle.parentElement).not.toBe(field);
+    expect(handle.parentElement).toBe(field.parentElement);
+    expect(handle.previousElementSibling).toBe(field);
+    expect(handle.nextElementSibling).toBe(send);
+    expect(handle).toHaveClass("relative", "size-11", "shrink-0");
+    expect(handle).not.toHaveClass("absolute");
+    expect(handle).not.toHaveClass("-top-10");
 
     cleanup();
     renderComposer({ gone: true });

@@ -108,6 +108,10 @@ export interface LockCredential { id: string; name: string; addedAt: number; }
 export interface LockStatus { enabled: boolean; corrupt?: boolean; unlocked: boolean; webauthn?: boolean; credentials?: LockCredential[]; allowCredentials?: string[]; }
 export interface NotifyPrefs { blocked: boolean; done: boolean; }
 export interface BridgeSettings { deviceAllowlist: string[]; notifyDelayMs: number; submitKeys: string[]; readLines: number; }
+export type BridgeSettingKey = keyof BridgeSettings;
+/** GET/POST /api/settings: effective values, which ones Settings overrides, and the `.env` values
+ *  beneath. `overridden`/`defaults` are optional so an older bridge still parses. */
+export interface BridgeSettingsView extends BridgeSettings { overridden?: BridgeSettingKey[]; defaults?: BridgeSettings; }
 export type SaveFileResponse = { ok: true; mtimeMs: number; size: number } | { ok: false; error: string };
 
 export const STATUS_RANK: Record<AgentStatus, number> = { blocked: 0, working: 1, unknown: 2, idle: 3, done: 4 };

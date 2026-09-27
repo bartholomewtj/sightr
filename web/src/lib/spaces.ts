@@ -142,7 +142,9 @@ function uniqueClosed(family: readonly WorkspaceView[]): ClosedWorktree[] {
 /**
  * Pack workspaces the way Herdr's Spaces sidebar does: linked worktrees nest under the primary
  * checkout of the same repo. Unrelated spaces stay top-level, in snapshot order. A family with no
- * open primary (only linked children) still groups, with `parent` null.
+ * open primary (only linked children) still groups, with `parent` null. A SECOND space on the same
+ * checkout (two spaces opened in one repo, or one in a subfolder of it) is its own top-level row:
+ * it is not a linked worktree, so it has nothing to nest under, and dropping it hid it entirely.
  */
 export function clusterSpaces(workspaces: readonly WorkspaceView[]): SpaceCluster[] {
   const used = new Set<string>();
@@ -173,8 +175,15 @@ export function clusterSpaces(workspaces: readonly WorkspaceView[]): SpaceCluste
     const parent = family.find((x) => !x.worktree?.isLinkedWorktree) ?? null;
     const children = family.filter((x) => x.worktree?.isLinkedWorktree);
     const head = parent ?? family[0]!;
-    if (w.workspaceId !== head.workspaceId) continue;
-    for (const x of family) used.add(x.workspaceId);
+    if (w.workspaceId !== head.workspaceId) {
+      // Another primary checkout of a repo that already has its head: stand alone, in place.
+      if (!w.worktree?.isLinkedWorktree) {
+        used.add(w.workspaceId);
+        clusters.push({ key: w.workspaceId, parent: w, children: [], closed: [] });
+      }
+      continue;
+    }
+    for (const x of [head, ...children]) used.add(x.workspaceId);
     clusters.push({
       key: repoKey,
       repoName: (parent ?? children[0])?.worktree?.repoName,

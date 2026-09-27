@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useRevalidator } from "react-router";
+import { useNavigate, useRevalidator } from "react-router";
 import { ArrowUpToLine, Loader2 } from "lucide-react";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useDisplayPrefs } from "@/hooks/use-display-prefs";
@@ -114,8 +114,7 @@ export function AgentChat({
   // last snapshot's status as current while we're reconnecting/lost, and restores instantly on recovery.
   const connecting = isConnecting({ bridge, error, stalled });
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
-  const { prefs, stepFontSize, setRawTerminal, setTapToFocus, setShowTerminal, setShowThinking } =
-    useDisplayPrefs();
+  const { prefs, setShowTerminal } = useDisplayPrefs();
   // Raw-terminal controls chrome stripping only. Dialog grammars still run so detected prompts remain
   // tappable below the verbatim dump, which remains available as the keys-pad escape hatch.
   const stripChrome = !prefs.rawTerminal;
@@ -128,6 +127,11 @@ export function AgentChat({
   // Drawers/sheets are mutually exclusive — at most one open. A single value makes that invariant
   // unrepresentable to violate.
   const [drawer, setDrawer] = useState<Drawer>(null);
+  const navigate = useNavigate();
+  // Context shows the live terminal for THIS visit only, so its card is readable without flipping
+  // the device-wide Show terminal pref. Cleared when the pane changes.
+  const [terminalVisit, setTerminalVisit] = useState(false);
+  useEffect(() => setTerminalVisit(false), [paneId]);
   const closeDrawer = () => setDrawer(null);
 
   const gone = !agent;
@@ -205,6 +209,7 @@ export function AgentChat({
   const hasJournal = historyAvailable && inline.unavailable === undefined && inline.entries.length > 0;
   const showDump =
     prefs.showTerminal ||
+    terminalVisit ||
     !hasJournal ||
     agent?.status === "blocked" ||
     agent?.status === "working" ||
@@ -329,14 +334,28 @@ export function AgentChat({
           // The cross-space switcher is phone-only; desktop lists every pane in the sidebar.
           onSwitchPane: desktop ? undefined : () => setDrawer("switcher"),
           // Claude and Grok have `/context`; Pi has `/session` (tokens + cost). Show the terminal
-          // so the TUI card isn't hidden behind Show-terminal-off, then send the slash. Shells
-          // and a locked composer omit it.
+          // for this visit so the TUI card isn't hidden behind Show-terminal-off, then send the
+          // slash. Shells and a locked composer omit it.
           onContext: contextSlash
             ? () => {
-                setShowTerminal(true);
+                setTerminalVisit(true);
                 composerRef.current?.sendSlash(contextSlash);
               }
             : undefined,
+          // Off clears both the device pref and this visit's Context override, so the switch
+          // always does what it shows.
+          terminal: {
+            checked: prefs.showTerminal || terminalVisit,
+            onToggle: () => {
+              if (prefs.showTerminal || terminalVisit) {
+                setShowTerminal(false);
+                setTerminalVisit(false);
+              } else {
+                setShowTerminal(true);
+              }
+            },
+          },
+          onSettings: () => navigate("/settings"),
         }}
       />
 
@@ -468,12 +487,6 @@ export function AgentChat({
             text={text}
             terminalDraft={terminalDraft}
             rawTerminalDraft={rawTerminalDraft}
-            prefs={prefs}
-            stepFontSize={stepFontSize}
-            setRawTerminal={setRawTerminal}
-            setTapToFocus={setTapToFocus}
-            setShowTerminal={setShowTerminal}
-            setShowThinking={setShowThinking}
             onSent={handleSent}
             onArmedChange={setArmed}
           />

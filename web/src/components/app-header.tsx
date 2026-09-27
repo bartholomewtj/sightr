@@ -1,10 +1,8 @@
 import type { ReactNode } from "react";
-import { ChevronLeft, Settings } from "lucide-react";
-import { useNavigate } from "react-router";
+import { ChevronLeft } from "lucide-react";
 
 import { isConnecting } from "@/lib/connection";
 import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-lost";
-import { settingsPath } from "@/lib/nav";
 import { SightrHome } from "@/components/sightr-home";
 import type { BridgeStatus } from "@/lib/types";
 
@@ -32,8 +30,6 @@ interface AppHeaderProps {
   children?: ReactNode;
   /** Right-cluster lead items (the dashboard's SessionSwitcher; the pane's StatusBadge). */
   rightLead?: ReactNode;
-  /** Right-cluster trailing items (the Settings gear). */
-  rightTrail?: ReactNode;
 
   /** Full-width takeover of the header row (the pane's find bar). When set it replaces the normal
    *  content while it's up — the find bar owns the row one-handed, exactly as before — but it still
@@ -55,7 +51,6 @@ export function AppHeader({
   wordmark,
   children,
   rightLead,
-  rightTrail,
   override,
 }: AppHeaderProps) {
   // The same two shared-clock signals the ConnectionBanner reads, so the dog and the bar agree by
@@ -87,31 +82,9 @@ export function AppHeader({
               icons close to what it was. */}
           <div className="flex items-center gap-1">
             {rightLead}
-            {rightTrail}
           </div>
         </>
       )}
     </header>
-  );
-}
-
-// The Settings gear, shared so the dashboard and space headers don't each hand-roll it. Session-scoped
-// so the navigation stays on the session you're viewing.
-export function SettingsGear() {
-  const navigate = useNavigate();
-  return (
-    <button
-      type="button"
-      onClick={() => navigate(settingsPath())}
-      aria-label="Settings"
-      // A real 44px box, NOT padding pulled back by a negative margin. The negative-margin trick
-      // keeps icons visually tight but lets adjacent boxes overlap (two -m-3 buttons pull 24px
-      // against a 12px gap, so a neighbour steals 12px of this one's hit area) and drags the last
-      // one past the header's padding into document overflow. Costs horizontal room, which the
-      // breadcrumb absorbs — it already truncates by design.
-      className="grid size-11 place-items-center text-muted-foreground transition-colors hover:text-foreground"
-    >
-      <Settings className="size-5" />
-    </button>
   );
 }

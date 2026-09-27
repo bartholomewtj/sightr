@@ -22,7 +22,7 @@ describe("BridgeSettings", () => {
     const lines = await screen.findByRole("spinbutton", { name: "Read lines" });
     expect(lines).toHaveValue(200);
     expect(screen.getByRole("textbox", { name: "Device allowlist" })).toHaveValue("phone, laptop");
-    expect(screen.getByRole("spinbutton", { name: "Notify delay" })).toHaveValue(30000);
+    expect(screen.getByRole("spinbutton", { name: "Notify delay (seconds)" })).toHaveValue(30);
     expect(screen.getByRole("textbox", { name: "Submit keys" })).toHaveValue("Enter");
     await user.clear(lines); await user.type(lines, "500"); await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(patch).toEqual({ readLines: 500 }));
@@ -38,7 +38,7 @@ describe("BridgeSettings", () => {
   test("readOnly disables all controls", async () => {
     render(<BridgeSettings readOnly />); await screen.findByRole("textbox", { name: "Device allowlist" });
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
-    for (const name of ["Device allowlist", "Notify delay", "Submit keys", "Read lines"]) expect(screen.getByRole(name === "Notify delay" || name === "Read lines" ? "spinbutton" : "textbox", { name })).toBeDisabled();
+    for (const name of ["Device allowlist", "Notify delay (seconds)", "Submit keys", "Read lines"]) expect(screen.getByRole(name === "Notify delay (seconds)" || name === "Read lines" ? "spinbutton" : "textbox", { name })).toBeDisabled();
   });
   test("confirms removing this device before posting", async () => {
     const user = userEvent.setup(); render(<BridgeSettings device={{ enforced: true, device: "phone", authorized: true }} />);
@@ -52,5 +52,25 @@ describe("BridgeSettings", () => {
     const allow = await screen.findByRole("textbox", { name: "Device allowlist" }); await user.clear(allow); await user.type(allow, "phone");
     await user.click(screen.getByRole("button", { name: "Save" })); await waitFor(() => expect(patch).toEqual({ deviceAllowlist: ["phone"] }));
     expect(screen.queryByText("This removes this phone's access.")).not.toBeInTheDocument();
+  });
+  test("edits Notify delay in seconds and posts milliseconds", async () => {
+    const user = userEvent.setup(); render(<BridgeSettings />);
+    const delay = await screen.findByRole("spinbutton", { name: "Notify delay (seconds)" });
+    await user.clear(delay); await user.type(delay, "45"); await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patch).toEqual({ notifyDelayMs: 45000 }));
+  });
+  test("says where each value comes from, and Use .env drops an override", async () => {
+    const defaults = { ...current };
+    server.use(
+      http.get("/api/settings", () => HttpResponse.json({ ...current, readLines: 300, overridden: ["readLines"], defaults })),
+      http.post("/api/settings", async ({ request }) => { patch = await request.json() as Record<string, unknown>; return HttpResponse.json({ ...defaults, overridden: [], defaults }); }),
+    );
+    const user = userEvent.setup(); render(<BridgeSettings />);
+    expect(await screen.findByTestId("source-readLines")).toHaveTextContent("Set here · .env is 200");
+    expect(screen.getByTestId("source-notifyDelayMs")).toHaveTextContent("From .env");
+    await user.click(screen.getByRole("button", { name: "Use .env" }));
+    await waitFor(() => expect(patch).toEqual({ reset: ["readLines"] }));
+    await waitFor(() => expect(screen.getByTestId("source-readLines")).toHaveTextContent("From .env"));
+    expect(screen.getByRole("spinbutton", { name: "Read lines" })).toHaveValue(200);
   });
 });

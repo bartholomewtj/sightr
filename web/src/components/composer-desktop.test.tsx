@@ -26,8 +26,7 @@ function mount(overrides: Partial<React.ComponentProps<typeof Composer>> = {}, w
   const props: React.ComponentProps<typeof Composer> = {
     paneId: "w1:p1", agent: "claude", isShell: false, gone: false, readOnly: false,
     dialogPresent: false, text: "output", terminalDraft: null, rawTerminalDraft: null,
-    prefs: { fontSize: 11, rawTerminal: false, tapToFocus: true, showTerminal: true, showThinking: true }, stepFontSize: () => {},
-    setRawTerminal: () => {}, setTapToFocus: () => {}, setShowTerminal: () => {}, setShowThinking: () => {}, onSent: () => {}, ...overrides,
+    onSent: () => {}, ...overrides,
   };
   const router = createMemoryRouter([{ path: "/", element: withStatus ? <><StatusSentinel /><Composer {...props} /></> : <Composer {...props} /> }]);
   render(<RouterProvider router={router} />);

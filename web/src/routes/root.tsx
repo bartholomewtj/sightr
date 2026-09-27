@@ -44,11 +44,11 @@ export function RootLayout() {
   useAgentTransitions(data.agents, paneId ?? null);
   usePushSetup(data.device);
 
-  // The bottom bar shows on the top-level destinations (Spaces tree, Files, Settings).
-  // A pane, a file preview, and history are leaf screens that own the bottom
-  // edge (composer, frame) and get a header back button instead.
+  // The bottom bar shows on the top-level destinations (Spaces tree, Files, Settings) and
+  // everywhere inside Files, so a subfolder or a file is never a dead end. A pane owns the bottom
+  // edge (composer) and gets a header back button instead.
   const { pathname } = useLocation();
-  const showNav = pathname === "/" || pathname === "/files" || pathname === "/settings";
+  const showNav = pathname === "/" || pathname === "/files" || pathname.startsWith("/files/") || pathname === "/settings";
   const desktop = useDesktop().on;
   useEffect(() => {
     if (!desktop) return;

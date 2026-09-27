@@ -58,4 +58,16 @@ describe("desktop preferences", () => {
       expect(desktopPrefs().on).toBe(false);
     } finally { window.matchMedia = original; }
   });
+
+  it("ignores a forced On on a screen too narrow for the sidebar", () => {
+    const width = window.innerWidth;
+    try {
+      setLayout("on");
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: 412 });
+      expect(desktopPrefs().on).toBe(false);
+      expect(desktopPrefs().layout).toBe("on");
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
+      expect(desktopPrefs().on).toBe(true);
+    } finally { Object.defineProperty(window, "innerWidth", { configurable: true, value: width }); }
+  });
 });

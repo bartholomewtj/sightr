@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   layoutSlices,
   pickSlice,
-  shortLabel,
   sliceId,
   wheelChoices,
   wheelSlicesFor,
@@ -139,15 +138,6 @@ describe("wheelSlicesFor", () => {
     expect(wheelSlicesFor(rows)).toEqual([
       { kind: "keys", label: "Good", keys: ["Enter"] },
     ]);
-  });
-});
-
-describe("shortLabel", () => {
-  it("maps Escape, Enter, Tab to short symbols and preserves others", () => {
-    expect(shortLabel("Escape")).toBe("Esc");
-    expect(shortLabel("Enter")).toBe("⏎");
-    expect(shortLabel("Tab")).toBe("⇥");
-    expect(shortLabel("ctrl+c")).toBe("ctrl+c");
   });
 });
 
