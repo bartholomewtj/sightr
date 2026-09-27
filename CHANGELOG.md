@@ -34,6 +34,8 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   one compact row; a one-pane space shows that a tap opens it.
 
 ### Fixed
+- A Cursor tool on the last row of a finished pane no longer pulses "running" forever. Cursor never
+  records tool output, so its tools now arrive marked complete (`unrecorded`) and show as a closed line.
 - Swiping up through a pane's history can no longer show the recent turns twice. An unknown history
   cursor now returns nothing more, not the newest page, and the phone never prepends a turn it
   already holds. A refresh in flight no longer blocks loading older turns. The newest page is

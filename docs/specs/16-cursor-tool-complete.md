@@ -1,5 +1,7 @@
 # 16 — Cursor journal tools are complete
 
+> **Status 2026-09-27:** DONE. `bridge/journal/cursor.ts` emits every tool with `unrecorded: true` (`shared/wire.ts`); `ToolPart` / `ToolFold` never call an unrecorded tool running, and it stays not expandable.
+>
 > **Status 2026-09-27 (`874b85b`):** PARTLY DONE. #21 added `SettledRow` (`web/src/components/transcript-view.tsx`): a tool with no result stops pulsing once any row follows it. Left: a Cursor tool on the LAST row of a done/idle pane still pulses; the bridge-side "mark complete" in `bridge/journal/cursor.ts` was not done.
 
 Council row 16. Severity: medium. Journal.
