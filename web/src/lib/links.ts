@@ -1,7 +1,7 @@
 // URL autolinking for the pane mirror. Terminal output has no markup — a URL is just characters —
 // so "clickable links" means *finding* them in the visible text and wrapping those ranges in
 // anchors. This module only computes offsets and hrefs; no HTML is built here and the renderer
-// still puts every character into a React text node (CLAUDE.md → "Security posture").
+// still puts every character into a React text node (README → "Security, read this first").
 //
 // Offsets index the same visible string `find.ts` searches (segments' text concatenated, "\n"
 // between lines), so the renderer can thread ONE running offset through blocks → lines → segments

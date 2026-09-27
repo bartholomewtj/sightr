@@ -5,7 +5,7 @@ import { splitHighlight } from "@/lib/transcript-search";
 
 // Renders the Markdown AST as React elements. Every string from the log reaches the DOM as a TEXT
 // NODE — there is no `dangerouslySetInnerHTML` here and there must never be one. That is the repo's
-// XSS boundary (CLAUDE.md §"Security posture"): the parser decides *structure*, never markup, so a
+// XSS boundary (README "Security, read this first"): the parser decides *structure*, never markup, so a
 // transcript containing `<script>` renders those characters and nothing executes.
 //
 // Sizing/colour deliberately track the surrounding transcript styles rather than introducing a

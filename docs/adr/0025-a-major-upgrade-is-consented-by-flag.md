@@ -17,7 +17,7 @@ major. Tag `v1.0.0` on this repo, and every 0.x install's next routine update cr
 without being asked. `CLAUDE.md` defines MAJOR as *"the operator must change something"*. A silent
 major is a contradiction: the release says "you must act", and the mechanism gives no moment to act.
 
-The in-app banner already reads this fork's tags (`bartholomewtj/collie`) over anonymous HTTPS. The
+The in-app banner already reads this fork's tags (`bartholomewtj/sightr`) over anonymous HTTPS. The
 verb that acts on that banner has to apply the same split, or the operator taps update, it
 succeeds, and the banner is still there.
 
@@ -30,16 +30,16 @@ would make the crossing unreachable from the surface that announces it.
 flagged act.**
 
 1. **The installed major is read from `herdr-plugin.toml`.** Same file Herdr reads and
-   `scripts/check-version.sh` gates on.
+   `scripts/check-version.ts` gates on.
 2. **A managed checkout resolves the newest strict `vX.Y.Z` tag inside that major** (ADR 0019's
    grammar, narrowed). `--major` resolves the newest tag of the **next** major, one crossing at a
-   time. `COLLIE_UPDATE_REF` still overrides both — it is the existing incident-pin hatch and is
+   time. `SIGHTR_UPDATE_REF` still overrides both — it is the existing incident-pin hatch and is
    itself the consent.
 3. **A linked clone keeps its branch and `git pull --ff-only`.** Its gate is a pre-flight: fetch,
    read the manifest at `@{u}` (the commit the pull will actually take, not the remote's default
    branch), refuse before pulling if that commit's major is higher.
 4. **The flag is the consent. There is no prompt.** Wired as
-   `herdr plugin action invoke update-major --plugin herdr.collie` (`collie-ctl.sh update --major`).
+   `herdr plugin action invoke update-major --plugin herdr.sightr` (`sightr-ctl.ps1 update --major`).
 5. **Never origin HEAD.** An install that cannot name its major falls back to the newest release
    tag (ADR 0019), loudly, not to the default-branch tip.
 

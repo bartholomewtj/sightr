@@ -15,8 +15,8 @@ before it is a convenience one.
 
 **The bridge is already tunnel-agnostic.** Its entire Tailscale coupling is *one* line —
 `req.headers.get("tailscale-user-login")` in `bridge/server.ts`. Everything else is a convenience in
-`scripts/collie-ctl.sh` and the README's voice. The bridge binds loopback, speaks plain HTTP, and
-gates on `Host`, `Origin`, and two optional headers, one of which (`COLLIE_DEVICE_HEADER`) is
+`contrib/windows/sightr-ctl.ps1` and the README's voice. The bridge binds loopback, speaks plain HTTP, and
+gates on `Host`, `Origin`, and two optional headers, one of which (`SIGHTR_DEVICE_HEADER`) is
 deliberately vendor-neutral.
 
 PR #26 proposed a **second managed front door**: `COLLIE_FRONT_DOOR=tailscale|netbird|proxy`, a
@@ -26,7 +26,7 @@ question — is Collie too tied to Tailscale, and are non-Tailscale users being 
 
 Three things settled it, each checked rather than assumed:
 
-1. **Nobody was blocked.** `COLLIE_SKIP_SERVE=1` plus `netbird expose 8787` *is* the whole
+1. **Nobody was blocked.** `SIGHTR_SKIP_SERVE=1` plus `netbird expose 8787` *is* the whole
    integration. What the PR added on top was supervision and teardown of that one command — the same
    thing Variant C already, deliberately, declines to do for anyone's Caddy.
 2. **We would have been shipping blind.** NetBird isn't installed on the deployment host and there's
@@ -45,11 +45,11 @@ plugin-shaped problem being solved in the wrong shape.
 
 **Collie manages exactly one front door: `tailscale serve`.**
 
-We own its lifecycle end to end — `collie-ctl.sh` publishes it, records the mapping in
+We own its lifecycle end to end — `sightr-ctl.ps1` publishes it, records the mapping in
 `<config-dir>/tailscale-managed-handler`, and only ever tears down a mapping still matching that
 record.
 
-**Every other tunnel is `COLLIE_SKIP_SERVE=1` plus [DEPLOYMENT.md Variant
+**Every other tunnel is `SIGHTR_SKIP_SERVE=1` plus [DEPLOYMENT.md Variant
 E](../DEPLOYMENT.md#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel).** The
 operator owns the ingress; Collie publishes nothing, supervises nothing, and tears down nothing.
 
