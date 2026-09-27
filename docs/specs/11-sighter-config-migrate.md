@@ -1,5 +1,7 @@
 # 11 — Migrate pre-1.0 Sighter config
 
+> **Status 2026-09-27:** DONE. `scripts/ctl/config-migrate.ts`, called from ctl `setup` and `prepareBridgeEnv`; `env-check` warns on `SIGHTER_*`.
+
 Council row 11. Severity: high. Fork.
 
 ## Why

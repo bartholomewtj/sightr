@@ -34,6 +34,10 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   one compact row; a one-pane space shows that a tap opens it.
 
 ### Fixed
+- A pre-1.0 Sighter `.env` now carries over. On start or bridge launch, when `herdr.sightr` has no
+  `.env` and `herdr.sighter` (or `~/.config/sighter`) does, it is copied once with `SIGHTER_*` keys
+  renamed to `SIGHTR_*`. Nothing is deleted or merged. `env-check` warns on any `SIGHTER_*` key,
+  which is ignored.
 - An open or installed Sightr picks up a rebuild within seconds. When the bridge names a build other
   than the page's, the app checks for a new service worker at once instead of waiting up to a minute.
   A stuck cache is cleared and reloaded at most once per build per tab.

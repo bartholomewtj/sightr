@@ -4,6 +4,7 @@ import { appendFile, mkdir, rename, writeFile } from "node:fs/promises";
 import { openSync } from "node:fs";
 import { resolvePaths } from "./paths.ts";
 import { loadEnv } from "./env.ts";
+import { migrateLegacyConfig } from "./config-migrate.ts";
 import { resolveBun } from "./bun.ts";
 import { realRun, type Run } from "./types.ts";
 import { selfHosts } from "./tailscale.ts";
@@ -52,9 +53,11 @@ export async function prepareBridgeEnv(argv: string[], env: Record<string, strin
     else if (argv[i] === "--socket") socket = argv[++i];
   }
   const base = await resolvePaths({ ...env, HERDR_PLUGIN_CONFIG_DIR: cfg }, run);
+  const home = env.USERPROFILE ?? env.HOME ?? os.homedir();
+  // A pre-1.0 Sighter `.env` is copied (keys renamed) before the first read, never aliased.
+  await migrateLegacyConfig(base.configDir, home);
   let vals: Record<string, string> = {};
   try { vals = Object.fromEntries((await loadEnv(base.envFile)).values); } catch { /* absent */ }
-  const home = env.USERPROFILE ?? env.HOME ?? os.homedir();
   const roaming = env.APPDATA ?? path.join(home, "AppData", "Roaming");
   const local = env.LOCALAPPDATA ?? path.join(home, "AppData", "Local");
   const effective: Record<string, string> = {
