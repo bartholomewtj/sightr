@@ -277,11 +277,17 @@ describe("pageEntries", () => {
   });
 
   // An unknown cursor is expected in normal operation — a rewritten log, a stale client, or a
-  // synthesised cursor whose row fell out of the window. Degrading to "newest" re-renders;
-  // degrading to empty would look like the history had been lost.
-  test("an unknown cursor degrades to the newest page, never to empty", () => {
-    const { window } = pageEntries(entries, { limit: 2, before: "gone" });
-    expect(window.map((e) => e.uuid)).toEqual(["e4", "e5"]);
+  // synthesised cursor whose row fell out of the window. It is asking for turns OLDER than one the
+  // log no longer has, so the answer is nothing more (spec 09). The newest page it used to return
+  // was spliced onto the top of the thread as a second copy of the recent turns.
+  test("an unknown cursor answers an empty page with nothing more", () => {
+    expect(pageEntries(entries, { limit: 2, before: "gone" })).toEqual({ window: [], hasMore: false });
+  });
+
+  test("a known cursor still pages backwards", () => {
+    const { window, hasMore } = pageEntries(entries, { limit: 2, before: "e4" });
+    expect(window.map((e) => e.uuid)).toEqual(["e2", "e3"]);
+    expect(hasMore).toBe(true);
   });
 
   test("an empty journal pages to nothing without erroring", () => {
