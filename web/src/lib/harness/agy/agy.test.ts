@@ -7,7 +7,7 @@ import { splitLines } from "../../blocks";
 import { agyAdapter, antigravityAdapter } from "./index";
 import { detectPromptSelect } from "./prompt-select";
 import { locateInputBox } from "./chrome";
-import { describeAdapterConformance } from "../conformance";
+import { describeAdapterConformance, inventedPromptDigits } from "../conformance";
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
 
@@ -230,5 +230,22 @@ describe("agy trust card keys", () => {
     const bare = fixture.replace("> Yes, I trust", "  Yes, I trust");
     expect(bare).not.toBe(fixture);
     expect(detectPromptSelect(load(bare))).toBeNull();
+  });
+
+  // Spec 05: the conformance leg must catch the old bug. The same card with its badge digits sent
+  // as keys (what the adapter did before #21) is flagged; the shipped pointer walk is not.
+  it("conformance flags the unnumbered card's digits as invented", () => {
+    const lines = load(fixture);
+    const blocks = agyAdapter.buildBlocks(lines);
+    expect(inventedPromptDigits(lines, blocks)).toEqual([]);
+    const digits = blocks.map((b) =>
+      b.kind === "prompt-select"
+        ? { ...b, prompt: { ...b.prompt, options: b.prompt.options.map((o) => ({ ...o, keys: [o.keyLabel!] })) } }
+        : b,
+    );
+    expect(inventedPromptDigits(lines, digits)).toEqual([
+      "1 for Yes, I trust this folder",
+      "2 for No, exit",
+    ]);
   });
 });

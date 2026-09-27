@@ -9,7 +9,7 @@ One spec = one run. Do not implement a sibling spec in the same run. Numbers mat
 | 01 | [01-blocked-pane-chrome.md](01-blocked-pane-chrome.md) | High | Done — #28 wheel in row, #29 Yes/No gated, tap-to-focus bail + `min-h-11` options | Competing chrome on a blocked pane |
 | 02 | [02-ios-composer-keyboard.md](02-ios-composer-keyboard.md) | High | Open | Composer sits under the iOS keyboard |
 | 03 | [03-fetch-no-store.md](03-fetch-no-store.md) | High | Open — confirm the Safari 304 on a device first (bridge already sends no-store) | Safari 304 after key / cache |
-| 05 | [05-agy-trust-keys.md](05-agy-trust-keys.md) | High | Partly — #21 walks the pointer; left: conformance digit ban for prompt-select | Agy trust Yes/No sends invented digits |
+| 05 | [05-agy-trust-keys.md](05-agy-trust-keys.md) | High | Done — #21 walks the pointer; conformance bans unprinted prompt-select digits | Agy trust Yes/No sends invented digits |
 | 06 | [06-prompt-binding-shared.md](06-prompt-binding-shared.md) | High | Open — see the #29 dialog-sniff import note | Two prompt-bind matchers; Claude-only regions |
 | 07 | [07-beacon-session.md](07-beacon-session.md) | High | Open | Expired beacon overwrites Herdr session |
 | 08 | [08-grok-live-identity.md](08-grok-live-identity.md) | High | Open | Two Grok prompt grammars; WEAK sibling claims |

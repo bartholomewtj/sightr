@@ -34,6 +34,9 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   one compact row; a one-pane space shows that a tap opens it.
 
 ### Fixed
+- The harness conformance suite now fails any prompt-select that sends a digit its option row does
+  not print (.adr/0009), not only generic menus. Antigravity's unnumbered trust card is the case it
+  guards: it walks the pointer and presses Enter.
 - On phone, tapping a blocked pane's output or the dialog panel's caption or padding no longer
   focuses the reply box, so the keyboard cannot cover the options. Dialog option rows are at least
   44px tall.

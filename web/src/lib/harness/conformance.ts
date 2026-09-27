@@ -277,6 +277,32 @@ function isValidSubmitKeys(keys: string[]): boolean {
 const KEYLESS_FUTURE_KINDS = new Set<string>(["autocomplete"]);
 
 /**
+ * The digit keys a prompt-select sends that its own option row does not print (.adr/0009, spec 05),
+ * as `"<digit> for <label>"`. The digit must stand alone before the label on some row: `1. Yes`,
+ * `(1) Yes`, `[1] Yes`, or Grok's `1 Red`. An unnumbered list walks the pointer instead.
+ */
+export function inventedPromptDigits(lines: StyledLine[], blocks: Block[]): string[] {
+  const texts = lines.map(lineText);
+  const invented: string[] = [];
+  for (const block of blocks) {
+    if (block.kind !== "prompt-select") continue;
+    for (const option of block.prompt.options) {
+      const head = option.label.slice(0, 12);
+      for (const key of option.keys) {
+        if (!/^\d+$/.test(key)) continue;
+        const marker = new RegExp(`(?:^|[^\\d])${key}(?:[.):\\]]|\\s)`);
+        const printed = texts.some((t) => {
+          const at = t.indexOf(head);
+          return at >= 0 && marker.test(t.slice(0, at));
+        });
+        if (!printed) invented.push(`${key} for ${option.label}`);
+      }
+    }
+  }
+  return invented;
+}
+
+/**
  * Every keystroke an interactive block can emit, walked off its model + the family's control
  * constants. `null` = a keyless kind (`raw`, or a future entry in KEYLESS_FUTURE_KINDS) whose keys
  * needn't be validated. An interactive kind with no case here THROWS rather than returning null, so
@@ -466,6 +492,24 @@ export function describeAdapterConformance(
         it(`${name}: does NOT lift once ordinary output scrolls below it`, () => {
           const scrolled = [...loadLines(name), ...trailingOutput()];
           expect(interactiveBlocks(adapter.buildBlocks(scrolled))).toEqual([]);
+        });
+      }
+    });
+
+    // .adr/0009 for prompt-select: a digit is a valid Herdr key, so the key-grammar leg would pass an
+    // invented one. A prompt-select may only send a digit its own option row prints. An unnumbered
+    // list (agy's trust card) walks the pointer instead. Spec 05.
+    describe("prompt-select blocks send only digits the screen prints", () => {
+      const promptFixtures = ownFixtures.filter((name) =>
+        adapter.buildBlocks(loadLines(name)).some((b) => b.kind === "prompt-select"),
+      );
+      if (promptFixtures.length === 0)
+        it.todo("adapter lifts no prompt-select blocks from its own fixtures");
+
+      for (const name of promptFixtures) {
+        it(`${name}: every digit key is printed on its option's row`, () => {
+          const lines = loadLines(name);
+          expect(inventedPromptDigits(lines, adapter.buildBlocks(lines)), `${name} (.adr/0009)`).toEqual([]);
         });
       }
     });
