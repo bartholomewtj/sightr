@@ -53,6 +53,14 @@ describe("composer send pipeline", () => {
     });
   });
 
+  it("a refused word or command (not the reply box) neither arms Type anyway nor offers it (#26)", async () => {
+    const result = await runComposerSend(
+      "yes",
+      deps(async () => ({ status: "blocked", error: "blocked" }), { isDraft: false }),
+    );
+    expect(result).toMatchObject({ ok: false, armForce: false, status: { text: "blocked", tone: "error" } });
+  });
+
   it("carries a blocked password prompt as an untyped notice", async () => {
     const result = await runComposerSend(
       "x",

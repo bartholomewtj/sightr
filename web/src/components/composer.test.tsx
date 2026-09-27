@@ -2014,6 +2014,35 @@ describe("Composer — one-tap Yes / No (#203)", () => {
     expect(props.onSent).toHaveBeenCalledWith("yes");
   });
 
+  it("does not show the strip when the agent's input box is not on screen (#22)", () => {
+    renderComposer({ agentBlocked: true, composerOnScreen: false });
+    expect(yes()).not.toBeInTheDocument();
+    expect(no()).not.toBeInTheDocument();
+  });
+
+  it("a refused Yes does not force the next word or the reply box (#26)", async () => {
+    const user = userEvent.setup();
+    const wire: string[] = [];
+    // Every pre-flight read shows a menu with no input box, so each send is refused.
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () =>
+        HttpResponse.json({ text: " ❯ No, exit\n   Yes, I trust this folder\n\n Enter to confirm · Esc to cancel", revision: 1 }),
+      ),
+      replyHandler((text) => wire.push(`type:${text}`), () => wire.push("submit")),
+    );
+    renderComposerWithStatus({ agentBlocked: true });
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent(/isn't on screen/));
+    expect(screen.getByTestId("status")).not.toHaveTextContent(/Tap Send again/);
+    await user.click(screen.getByRole("button", { name: "No" }));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(wire).toEqual([]);
+    // And the Send button was not armed either: a draft gets the normal Send, not "Type anyway?".
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "hello");
+    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Type anyway?" })).toBeNull();
+  });
+
   it("does not show the strip when a parsed dialog owns the pane", () => {
     renderComposer({ agentBlocked: true, dialogPresent: true });
     expect(yes()).not.toBeInTheDocument();

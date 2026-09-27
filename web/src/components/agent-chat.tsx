@@ -165,6 +165,7 @@ export function AgentChat({
     statusLines,
     rawTerminalDraft,
     inputLine,
+    composerOnScreen,
     dialogPresent,
     needsDump,
     promptBlock,
@@ -493,6 +494,7 @@ export function AgentChat({
             terminalDraft={terminalDraft}
             rawTerminalDraft={rawTerminalDraft}
             inputLine={inputLine}
+            composerOnScreen={composerOnScreen}
             onSent={handleSent}
             onArmedChange={setArmed}
           />

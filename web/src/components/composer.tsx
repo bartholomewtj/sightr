@@ -68,6 +68,8 @@ interface ComposerProps {
   /** The agent's input line whatever the display mode (rawTerminalDraft is null with Raw terminal
    *  on). Drives the send-time pre-clear; defaults to rawTerminalDraft. */
   inputLine?: string | null;
+  /** The agent's input box is on screen (adapter composerReady). False hides the Yes/No strip. */
+  composerOnScreen?: boolean;
   /** Snap the mirror to the live tail (follow + revalidate + scroll) after a successful send. */
   /** Called with the text that was sent, after a VERIFIED send. */
   onSent: (text: string) => void;
@@ -87,7 +89,7 @@ interface ComposerProps {
 // need to see the mirror while you use it. The wheel handle sits IN the row, not floating over the
 // field's corner, so it never covers a lifted card, the Yes/No strip or the typing strip above.
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, agent, isShell, gone, readOnly, dialogPresent, agentBlocked = false, promptBlock, onPromptAction, text, terminalDraft, rawTerminalDraft, inputLine, onSent, onArmedChange },
+  { paneId, agent, isShell, gone, readOnly, dialogPresent, agentBlocked = false, promptBlock, onPromptAction, text, terminalDraft, rawTerminalDraft, inputLine, composerOnScreen = true, onSent, onArmedChange },
   ref,
 ) {
   const {
@@ -108,6 +110,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     lockedRef,
     effectiveRaw,
     effectiveLine,
+    keyEpochRef,
     showPreview,
     takeOverDraft,
     commands,
@@ -152,6 +155,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     terminalDraft,
     rawTerminalDraft,
     inputLine,
+    composerOnScreen,
     promptBlock,
     onPromptAction,
     onArmedChange,
@@ -159,6 +163,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   async function send(value: string, isDraft: boolean, force = false): Promise<boolean> {
     const t = value.trim();
     if (!t || locked || sending) return false;
+    // Keys pressed while this send verifies (the Keys dock, the wheel) mean you've taken over by
+    // hand; a failure that lands after that is stale, so it's a passing warning, not a sticky error.
+    const keyEpoch = keyEpochRef.current;
     try {
       const r = await runComposerSend(t, {
         paneId,
@@ -172,10 +179,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         onStart: () => setSending(true),
         onKeysSent: scheduleKeyRevalidate,
       });
+      const overtaken = !r.ok && keyEpochRef.current !== keyEpoch;
       // The "Tap Send again to type anyway" offer expires with the arm, so its toast does too.
-      if (r.status) setStatus(r.status.text, r.status.tone, r.armForce ? FORCE_ARM_MS : undefined);
+      if (r.status)
+        setStatus(
+          r.status.text,
+          overtaken ? "warn" : r.status.tone,
+          overtaken ? undefined : r.armForce ? FORCE_ARM_MS : undefined,
+        );
       if (r.clearDraft) updateInput("");
-      if (r.armForce) forceConfirm.confirm("force");
+      if (r.armForce && !overtaken) forceConfirm.confirm("force");
       if (r.resetForce) forceConfirm.reset();
       noticeNoEcho(r.noEcho);
       if (r.ok && r.sent) {
@@ -219,12 +232,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     sendConfirm.reset();
     void send(input, true, tap.force);
   }
+  // A strip word never forces: it isn't the reply the "Type anyway?" arm was offered for (#26).
   function sendWord(word: string) {
-    if (forceConfirm.pending === "force") {
-      forceConfirm.reset();
-      void send(word, false, true);
-      return;
-    }
     void send(word, false);
   }
 
