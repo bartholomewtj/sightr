@@ -5,13 +5,14 @@ min_herdr_version = "0.7.0"
 description = "Mobile web UI to monitor and reply to your agent herd, served over Tailscale"
 platforms = ["windows"]
 
-# Windows only. Every verb has one implementation in scripts/ctl.ts, run by Bun. Herdr actions call
-# build/sightr-action-v1.exe (a tiny launcher `build` compiles from contrib/windows/sightr-action.cs),
-# which runs contrib/windows/sightr-ctl.ps1, which locates Bun and forwards the verb to scripts/ctl.ts.
+# Windows only. Every verb has one implementation in scripts/ctl.ts, run by Bun. Herdr actions run
+# contrib/windows/sightr-ctl.ps1 through PowerShell (the path resolves from the plugin root), which
+# locates Bun and forwards the verb to scripts/ctl.ts. Nothing needs building first, so the actions
+# work on a fresh `herdr plugin link` checkout too (#51).
 # The bridge is supervised by Task Scheduler (scripts/ctl/supervisor/taskscheduler.ts).
 
 # Build the web UI at install time. Herdr runs [[build]] steps ONLY on `herdr plugin install`
-# (GitHub) — NOT on `herdr plugin link` (local dev), which instead builds lazily on first `start`.
+# (GitHub) — NOT on `herdr plugin link` (local dev), where the first `start` builds it.
 [[build]]
 command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "contrib/windows/sightr-ctl.ps1", "build"]
 platforms = ["windows"]
@@ -21,21 +22,21 @@ id = "start"
 title = "Start web bridge"
 contexts = ["workspace"]
 platforms = ["windows"]
-command = ["build/sightr-action-v1.exe", "start"]
+command = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "contrib/windows/sightr-ctl.ps1", "start"]
 
 [[actions]]
 id = "stop"
 title = "Stop web bridge"
 contexts = ["workspace"]
 platforms = ["windows"]
-command = ["build/sightr-action-v1.exe", "stop"]
+command = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "contrib/windows/sightr-ctl.ps1", "stop"]
 
 [[actions]]
 id = "restart"
 title = "Restart web bridge"
 contexts = ["workspace"]
 platforms = ["windows"]
-command = ["build/sightr-action-v1.exe", "restart"]
+command = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "contrib/windows/sightr-ctl.ps1", "restart"]
 
 # Full teardown: stops + disables the scheduled task, unregisters it, and removes Sightr's own
 # tailscale serve mapping. Leaves the .env and the checkout (so `start` can bring it right back).
@@ -45,7 +46,7 @@ id = "uninstall"
 title = "Uninstall web bridge (remove service)"
 contexts = ["workspace"]
 platforms = ["windows"]
-command = ["build/sightr-action-v1.exe", "uninstall"]
+command = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "contrib/windows/sightr-ctl.ps1", "uninstall"]
 
 # Link-mode plugins ARE their on-disk git checkout (Herdr has no native `plugin update`), so this
 # action pulls + rebuilds + restarts in one step. See scripts/ctl/update.ts.
@@ -54,7 +55,7 @@ id = "update"
 title = "Update plugin"
 contexts = ["workspace"]
 platforms = ["windows"]
-command = ["build/sightr-action-v1.exe", "update"]
+command = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "contrib/windows/sightr-ctl.ps1", "update"]
 
 # The consent for a MAJOR upgrade (ADR 0025). `update` stays inside the major this install is on, so
 # crossing one is a separate, deliberate invocation — and it has to be invokable from HERE, because a
@@ -66,35 +67,35 @@ id = "update-major"
 title = "Update across a major version"
 contexts = ["workspace"]
 platforms = ["windows"]
-command = ["build/sightr-action-v1.exe", "update", "--major"]
+command = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "contrib/windows/sightr-ctl.ps1", "update", "--major"]
 
 [[actions]]
 id = "url"
 title = "Show bridge URL"
 contexts = ["workspace"]
 platforms = ["windows"]
-command = ["build/sightr-action-v1.exe", "url"]
+command = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "contrib/windows/sightr-ctl.ps1", "url"]
 
 [[actions]]
 id = "status"
 title = "Bridge status"
 contexts = ["workspace"]
 platforms = ["windows"]
-command = ["build/sightr-action-v1.exe", "status"]
+command = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "contrib/windows/sightr-ctl.ps1", "status"]
 
 [[actions]]
 id = "version"
 title = "Show version"
 contexts = ["workspace"]
 platforms = ["windows"]
-command = ["build/sightr-action-v1.exe", "version"]
+command = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "contrib/windows/sightr-ctl.ps1", "version"]
 
 [[actions]]
 id = "env-check"
 title = "Check Sightr environment"
 contexts = ["workspace"]
 platforms = ["windows"]
-command = ["build/sightr-action-v1.exe", "env-check"]
+command = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "contrib/windows/sightr-ctl.ps1", "env-check"]
 
 # Turning push on is two steps that both used to happen OUTSIDE Herdr: generate a VAPID keypair with
 # a tool you had to know about, then hand-edit a .env in a directory you had to go looking for. Both
@@ -110,11 +111,11 @@ id = "push-keys"
 title = "Generate push keys"
 contexts = ["workspace"]
 platforms = ["windows"]
-command = ["build/sightr-action-v1.exe", "keys"]
+command = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "contrib/windows/sightr-ctl.ps1", "keys"]
 
 [[actions]]
 id = "push-test"
 title = "Send a test notification"
 contexts = ["workspace"]
 platforms = ["windows"]
-command = ["build/sightr-action-v1.exe", "push-test"]
+command = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "contrib/windows/sightr-ctl.ps1", "push-test"]

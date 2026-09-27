@@ -98,16 +98,14 @@ herdr plugin install bartholomewtj/sightr
 herdr plugin action invoke start --plugin herdr.sightr
 ```
 
-Or link a local checkout. Herdr does not run the install-time build for a linked checkout, and
-every Herdr action runs `build\sightr-action-v1.exe`, which a fresh clone does not have. Run the
-first `start` through the control script; it builds the web app and the action launcher. After
-that, the Herdr actions work.
+Or link a local checkout. Herdr does not run the install-time build for a linked checkout; the first
+`start` builds the web app instead.
 
 ```powershell
 git clone https://github.com/bartholomewtj/sightr.git
 Set-Location sightr
 herdr plugin link "$(Get-Location)"
-powershell -NoProfile -ExecutionPolicy Bypass -File contrib\windows\sightr-ctl.ps1 start
+herdr plugin action invoke start --plugin herdr.sightr
 ```
 
 `start` builds the web app if `web/dist` is missing, registers and enables the `herdr.sightr` Task
@@ -298,9 +296,8 @@ a 60-second grace period it probes `/api/snapshot` every 15 seconds and, after f
 failures, kills the bridge, restarts it, and writes a `[supervisor]` line to `sightr-error.log`.
 
 `stop` stops every bridge from this checkout and waits for the port to clear. `start` refuses to
-stack a second listener on a busy port. Herdr actions run through `build\sightr-action-v1.exe`, a
-tiny launcher that `build` compiles from `contrib/windows/sightr-action.cs`, because a Herdr action
-needs a native executable rather than a script.
+stack a second listener on a busy port. Herdr actions run `contrib\windows\sightr-ctl.ps1` through
+`powershell.exe`, so a fresh checkout needs nothing built before its first action.
 
 ## Architecture
 
@@ -358,7 +355,7 @@ header and the device allowlist, the write is queued per pane, sent over the Her
 | `web/src/fixtures/panes/` | Captured terminal screens the harness parsers are tested against |
 | `scripts/ctl.ts`, `scripts/ctl/` | Every control verb, supervisor, `tailscale serve`, update |
 | `scripts/bump.ts`, `scripts/check-version.ts` | Version bump and the version consistency gate |
-| `contrib/windows/` | PowerShell entry point and its test, action launcher source |
+| `contrib/windows/` | PowerShell entry point and its test |
 | `docs/archify/` | System maps, served by GitHub Pages |
 | `docs/adr/` | Architecture decision records. Code comments cite them by number (`ADR 0009`) |
 | `CONTEXT.md` | Agent map: where to go, standing rules |
