@@ -386,3 +386,23 @@ describe("dialogs on a named session", () => {
     expect(block).toBeUndefined();
   });
 });
+
+// Live 2026-09-27: Claude blinks the `●` of the tool row it is blocked on, right above the dialog.
+// The signature reached that row, so every other read was a "different" dialog and the phone's
+// Yes was refused as "Menu changed" until the blink phase happened to match.
+describe("the signature starts at the dialog's own top rule", () => {
+  const RULE = "─".repeat(40);
+  const screen = (bullet: string) =>
+    ["", `${bullet} Printing 40+2 with Python`, "", RULE, " PowerShell command", "", "   python -c \"print(40+2)\"",
+      "", " Do you want to proceed?", " ❯ 1. Yes", "   2. No", "", " Esc to cancel · Tab to amend"].join("\n");
+  const model = (text: string) => detectPromptSelect(splitLines(parseAnsi(text)))!;
+
+  it("ignores the blinking tool bullet above the rule", () => {
+    const on = model(screen("●"));
+    const off = model(screen(" "));
+    expect(on.signature).toBe(off.signature);
+    expect(promptsEqual(on, off)).toBe(true);
+    expect(on.signature.startsWith(RULE)).toBe(true);
+    expect(on.signature).toContain("print(40+2)");
+  });
+});
