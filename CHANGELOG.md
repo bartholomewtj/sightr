@@ -34,6 +34,8 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   one compact row; a one-pane space shows that a tap opens it.
 
 ### Fixed
+- A reconnect or refused banner no longer stacks a second notch gap on top of the header. While a
+  banner is open it pads the status bar and the headers below it don't.
 - Closing Find returns to the live tail instead of leaving you parked at the last match. Find now
   freezes shell and TUI panes (draftr, browser) too, so a replacing screen no longer jumps the match.
 - "Thought for" is think time, not idle time. Thinking beside a reply or a tool shows a collapsed

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
-import { ConnectionBanner, EXIT_MS, GREEN_MS } from "./connection-banner";
+import { BANNER_TOP_ATTR, ConnectionBanner, EXIT_MS, GREEN_MS } from "./connection-banner";
 
 // Drive the two shared-clock thresholds directly so the amber→red→green STATE MACHINE can be tested
 // without burning real seconds; the 4s/15s wall-clock lockstep itself is proven in
@@ -199,6 +199,29 @@ describe("ConnectionBanner — the single connection surface", () => {
     act(() => vi.advanceTimersByTime(EXIT_MS));
     expect(screen.queryByText("Connected")).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  // Spec 22: one notch. While the banner is open it is the top edge and pads the safe-area inset;
+  // the attribute zeroes the headers' --chrome-top-inset (index.css) so they do not pad it again.
+  it("owns the top edge only while open, so the header below does not pad the notch twice", () => {
+    const owns = () => document.documentElement.hasAttribute(BANNER_TOP_ATTR);
+    h.trouble = true;
+    renderBanner();
+    act(() => vi.advanceTimersByTime(0)); // `open` flips one tick after mount
+    expect(owns()).toBe(true);
+    expect(screen.getByRole("status").className).toContain("env(safe-area-inset-top)");
+
+    h.trouble = false;
+    act(() => rerenderBanner());
+    act(() => vi.advanceTimersByTime(GREEN_MS)); // green flash ends; the row starts collapsing
+    expect(owns()).toBe(false);
+  });
+
+  it("the auth refusal owns the top edge while mounted", () => {
+    const { unmount } = renderBanner({ authError: true });
+    expect(document.documentElement.hasAttribute(BANNER_TOP_ATTR)).toBe(true);
+    unmount();
+    expect(document.documentElement.hasAttribute(BANNER_TOP_ATTR)).toBe(false);
   });
 
   it("shows nothing on a blip that never reached trouble — green needs a visible bar first", () => {

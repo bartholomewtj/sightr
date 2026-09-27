@@ -1,5 +1,7 @@
 # 22 — One notch padding on the current top edge
 
+> **Status 2026-09-27:** DONE. `--chrome-top-inset` (`index.css`) is the safe-area inset, or 0 while a banner sets `data-banner-top` on `<html>` (`useOwnsTopEdge`). App and Settings headers pad with it. Retry keeps `h-11`: the row is already one truncating line, and 44px is the tap target. The full-screen sheet keeps its own inset.
+
 Council row 22. Severity: medium. Phone.
 
 ## Why

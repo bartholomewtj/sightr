@@ -26,7 +26,7 @@ One spec = one run. Do not implement a sibling spec in the same run. Numbers mat
 | 19 | [19-paste-boundary.md](19-paste-boundary.md) | Med | Open — name Pi's one-shot path | Long-send verify is Claude/Codex only |
 | 20 | [20-collie-identifiers.md](20-collie-identifiers.md) | Med | Partly — #17; left: `COLLIE_*` in ADR bodies, CLAUDE.md citations | ADRs and logs still name Collie |
 | 21 | [21-phone-overscroll.md](21-phone-overscroll.md) | Med | Stale reference — Bart's call on pull-to-refresh | Pull reloads the PWA (GitHub #16) |
-| 22 | [22-safe-area-top.md](22-safe-area-top.md) | Med | Open | Banner + header both pad the notch |
+| 22 | [22-safe-area-top.md](22-safe-area-top.md) | Med | Done — banner owns the notch while open; headers use `--chrome-top-inset` | Banner + header both pad the notch |
 
 ## Rules for every slice
 

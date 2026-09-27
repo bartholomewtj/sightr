@@ -74,7 +74,21 @@ export function ConnectionBanner({ bridge, error, authError, lastSeenAt }: Conne
 // (lib/sw-routes). An <a>, not a button, so it is an ordinary navigation the SW sees as such — and
 // so it still works if React is wedged. Reload stays alongside it, since a merely stale session on
 // an already-signed-in device recovers without leaving the app.
+/** The `<html>` attribute that tells the headers a banner owns the top edge (index.css). */
+export const BANNER_TOP_ATTR = "data-banner-top";
+
+/** While `open`, this banner is the top edge: it pads the notch, so headers below it must not (spec 22). */
+function useOwnsTopEdge(open: boolean) {
+  useEffect(() => {
+    if (!open) return;
+    const root = document.documentElement;
+    root.setAttribute(BANNER_TOP_ATTR, "");
+    return () => root.removeAttribute(BANNER_TOP_ATTR);
+  }, [open]);
+}
+
 function AuthErrorBanner() {
+  useOwnsTopEdge(true);
   return (
     <div className="grid shrink-0 grid-rows-[1fr] overflow-hidden opacity-100">
       <div className="min-h-0 overflow-hidden">
@@ -160,6 +174,7 @@ function ConnectionStateBanner({
   const present = tone !== null;
   const [rendered, setRendered] = useState(present);
   const [open, setOpen] = useState(false);
+  useOwnsTopEdge(open);
   useEffect(() => {
     if (present) {
       setRendered(true);
