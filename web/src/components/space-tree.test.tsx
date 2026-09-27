@@ -116,6 +116,23 @@ describe("SpaceTree — one-child shortcuts and tree expansion", () => {
     expect(router.state.location.pathname).toBe("/pane/w1%3Ap1");
   });
 
+  it("on desktop, puts the pane count on the second line so the narrow sidebar keeps the name", async () => {
+    const { setDesktop, __resetDesktop } = await import("@/lib/desktop");
+    setDesktop(true);
+    try {
+      renderTree({
+        workspaces: [ws("w1", "claudeOS", { paneCount: 5, tabCount: 2 })],
+        tabs: [tab("w1:t1", "w1", "a", 1)],
+        agents: [agent("w1:p1", "w1", "w1:t1")],
+      });
+      const name = screen.getByText("claudeOS");
+      const count = screen.getByLabelText("5 panes");
+      expect(name.parentElement).not.toContainElement(count);
+    } finally {
+      __resetDesktop();
+    }
+  });
+
   it("marks only the spaces whose tap opens a pane directly", () => {
     const one = ws("w1", "solo", { paneCount: 1, tabCount: 1 });
     const two = ws("w2", "pair", { paneCount: 2, tabCount: 1 });
