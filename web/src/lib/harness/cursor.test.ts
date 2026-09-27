@@ -49,6 +49,7 @@ const PINNED = [
   "cursor--autocomplete-slash.txt",
   "cursor--debug-idle.txt",
   "cursor--done.txt",
+  "cursor--draft-paste-placeholder.txt",
   "cursor--draft-single.txt",
   "cursor--draft-wrapped.txt",
   "cursor--fresh-idle.txt",

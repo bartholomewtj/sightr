@@ -1,5 +1,11 @@
 # 19 — Long-send verify on every adapter
 
+> **Status 2026-09-27:** PARTLY DONE.
+> - **Cursor:** `draftCarriesSend` / `draftIsOpaque` through the shared `harness/paste-token.ts`. Cursor's `+M lines` counts lines; live-probed and pinned in `cursor--draft-paste-placeholder.txt`.
+> - **Agy:** has no token (long text inserts literally), so it needs no verifier. The live probe found a worse problem: raw newlines in a long send submit part of it. That is a separate fix, not this spec.
+> - **Pi:** stays on the named one-shot path (`replyOneShot: true`).
+> - **Left:** the no-adapter (Codex) long send still one-shots. There is no evidence for what a hold would buy there; README troubleshooting now says so.
+>
 > **Status 2026-09-27 (`874b85b`):** OPEN. Pi takes the one-shot path explicitly (`replyOneShot: true`, `web/src/lib/harness/pi/index.ts`); name it here.
 
 Council row 19. Severity: medium. Parser.

@@ -34,6 +34,9 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   one compact row; a one-pane space shows that a tap opens it.
 
 ### Fixed
+- A long reply to Cursor no longer stalls with "didn't reach the input box". Cursor collapses a long
+  paste into `[Pasted text #N +M lines]` like Claude, and Sightr now accepts that token when it
+  matches the send, so Enter goes out.
 - A send while Cursor's autocomplete list is open is refused, with nothing typed. It used to clear the
   `/` draft with an unbound `ctrl+k` sweep into the popup. Close the list and send again.
 - A reconnect or refused banner no longer stacks a second notch gap on top of the header. While a

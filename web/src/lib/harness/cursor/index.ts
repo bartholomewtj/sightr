@@ -28,6 +28,7 @@ import {
 import { detectAskRegion, detectMultiAskRegion } from "./ask";
 import { detectPermissionRegion } from "./permission";
 import { detectTrustRegion } from "./trust";
+import { isPastePlaceholderOnly, pasteCarriesSend } from "./paste";
 
 export function cursorBuildBlocks(lines: StyledLine[]): Block[] {
   const permission = detectPermissionRegion(lines);
@@ -79,6 +80,9 @@ export const cursorAdapter: HarnessAdapter = {
   composerReady,
   composerPrompt,
   unbindableComposer,
+  // A long send collapses to `[Pasted text #N +M lines]`, which the literal match cannot see (spec 19).
+  draftCarriesSend: pasteCarriesSend,
+  draftIsOpaque: isPastePlaceholderOnly,
   // Windows ConPTY: Cursor CLI treats a paste burst as still open and either rewrites the next
   // Enter into a newline or buffers it until a later input event (forum 166674). A Right arrow
   // after the typed text flushes that burst without submitting; Enter then submits on its own
