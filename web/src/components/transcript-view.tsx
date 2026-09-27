@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Brain, ChevronRight, Info, TriangleAlert, Wrench } from "lucide-react";
 
 import { MarkdownText } from "@/components/markdown-text";
-import { foldEntries, foldLabel, thinkingDuration, type FoldTool } from "@/lib/transcript-fold";
+import { foldEntries, foldLabel, thinkingDuration, type FoldTool, type ThinkingTime } from "@/lib/transcript-fold";
 import { splitHighlight } from "@/lib/transcript-search";
 import type { TranscriptEntry, TranscriptPart } from "@/lib/types";
 
@@ -176,8 +176,9 @@ function ToolFold({ tools, query }: { tools: FoldTool[]; query: string }) {
 }
 
 /** "12s" under a minute, "1m 05s" past it — zero-padded seconds so the width doesn't jump. */
-function thoughtLabel(seconds: number | null): string {
-  if (seconds === null) return "Thinking";
+function thoughtLabel(seconds: ThinkingTime): string {
+  if (seconds === "live") return "Thinking";
+  if (seconds === "done") return "Thought";
   if (seconds < 60) return `Thought for ${seconds}s`;
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -198,18 +199,18 @@ function thinkingMatchesQuery(text: string, query: string): boolean {
 
 /** Thinking is not speech and is rarely re-read, so it collapses to how long it took. ChatGPT, Claude,
  *  and Grok all do the same: a duration header, a chevron, and the body behind a tap. Live (duration
- *  still null) stays open on the last few lines so a phone has something to watch; it folds when the
- *  next entry lands. The duration is the gap to the next entry (thinkingDuration). */
+ *  `"live"`) stays open on the last few lines so a phone has something to watch; it folds when the
+ *  next entry lands. thinkingDuration decides: seconds, "live", or "done" (a plain "Thought"). */
 function ThinkingPart({
   part,
   seconds,
   query,
 }: {
   part: Extract<TranscriptPart, { kind: "thinking" }>;
-  seconds: number | null;
+  seconds: ThinkingTime;
   query: string;
 }) {
-  const live = seconds === null;
+  const live = seconds === "live";
   const match = thinkingMatchesQuery(part.text, query);
   const [open, setOpen] = useState(live || match);
   useEffect(() => {
@@ -252,7 +253,7 @@ function Part({
 }: {
   part: TranscriptPart;
   query: string;
-  seconds: number | null;
+  seconds: ThinkingTime;
 }) {
   // Tool output is COMMAND output, not prose — it stays verbatim in a monospace block (see ToolPart).
   if (part.kind === "tool") return <ToolPart part={part} query={query} />;
@@ -274,7 +275,7 @@ function Parts({
 }: {
   parts: TranscriptPart[];
   query: string;
-  seconds: number | null;
+  seconds: ThinkingTime;
 }) {
   return parts.map((part, i) => (
     <Part key={i} part={part} query={query} seconds={seconds} />
@@ -288,7 +289,7 @@ function Turn({
 }: {
   entry: TranscriptEntry;
   query: string;
-  seconds: number | null;
+  seconds: ThinkingTime;
 }) {
   // Neither of these is speech, so both render dashed-and-muted — visibly set apart from the
   // conversation rather than attributed to the user or the agent.

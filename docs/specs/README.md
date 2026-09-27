@@ -19,7 +19,7 @@ One spec = one run. Do not implement a sibling spec in the same run. Numbers mat
 | 12 | [12-split-actions.md](12-split-actions.md) | High | Open — counts and citations refreshed in the spec note | `actions.ts` is a collapsed god file |
 | 13 | [13-files-containment.md](13-files-containment.md) | Med | Open — add `bridge/operator-file.ts` | Files tab borrows journal FS; ADR 0026 stale |
 | 14 | [14-find-follow.md](14-find-follow.md) | Med | Open | Find close / shell Find freeze |
-| 15 | [15-thinking-duration.md](15-thinking-duration.md) | Med | Open | Thought-for uses the next turn's gap |
+| 15 | [15-thinking-duration.md](15-thinking-duration.md) | Med | Done — same-row thinking is done; idle gaps omitted | Thought-for uses the next turn's gap |
 | 16 | [16-cursor-tool-complete.md](16-cursor-tool-complete.md) | Med | Done — #21 `SettledRow`; Cursor tools arrive `unrecorded` | Cursor tools look stuck running |
 | 17 | [17-agy-journal-claim.md](17-agy-journal-claim.md) | Med | Done — README line fixed 27 Sep | README claims an AGY session log |
 | 18 | [18-cursor-autocomplete-bind.md](18-cursor-autocomplete-bind.md) | Med | Open — the sweep is in `composer-send.ts` | Autocomplete send is unbound |
