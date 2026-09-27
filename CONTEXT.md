@@ -10,7 +10,7 @@ Phone/desktop PWA for one operator’s [Herdr](https://herdr.dev) herd. Bun brid
 | Now / what’s next | `STATE.md` (local, gitignored; if missing, GitHub issues) |
 | Implement a council slice | `docs/specs/README.md`, then one `docs/specs/NN-*.md` |
 | Marked draftr prompt-select → whistlr | `docs/whistlr-31f-sightr.md` (row 4 wizard/multi-select is out) |
-| Why not the other road | `docs/adr/` |
+| Why not the other road | `DECISIONS.md` (short chose-X-not-Y rows), then `docs/adr/` |
 | Herdr socket facts | `docs/HERDR_API.md` |
 | Runtime map | `docs/archify/` (hosted copies linked from README) |
 | Change it | `web/src/`, `bridge/`, `shared/`, `scripts/`; tests beside source |
@@ -18,7 +18,7 @@ Phone/desktop PWA for one operator’s [Herdr](https://herdr.dev) herd. Bun brid
 ## Standing rules
 
 - Windows only. Bun is the runtime. Herdr method names stay in `bridge/herdr-client.ts`.
-- The bridge imports `web/src/lib/harness/dialog-sniff.ts` at runtime. Keep that file's import closure free of `react` and `@shared` (the root typecheck runs before the web install in CI).
+- The bridge imports `web/src/lib/harness/dialog-sniff.ts` at runtime. Keep that file's import closure free of `react` and `@shared` (the root typecheck runs before the web install in CI). Why: `DECISIONS.md`.
 - Live phone tests run in a scratch herdr workspace you create; never close or type into panes you did not create (other sessions run draftr work in `claudeOS`).
 - Keep GitHub topic `herdr-plugin` and a parseable `herdr-plugin.toml` on `main`. That is the marketplace listing; do not drop the topic.
 - One spec per run. Do not implement a sibling spec in the same run. Do not implement row 4 from `docs/specs/`.
