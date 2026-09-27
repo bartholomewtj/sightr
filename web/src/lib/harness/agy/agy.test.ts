@@ -205,3 +205,30 @@ describe("agyAdapter unit & footer safety", () => {
   });
 });
 
+
+// Live 2026-09-27 (agy, Gemini 3.8): the trust card is an unnumbered list and agy ignores digits
+// there — a phone tap sent `1`, reported "Sent", and nothing happened. Down/Up move `>`, Enter confirms.
+describe("agy trust card keys", () => {
+  const load = (raw: string) => splitLines(parseAnsi(raw));
+  const fixture = readFileSync(join(PANES_DIR, "agy--trust-prompt.txt"), "utf8");
+
+  it("walks the pointer and confirms — never a digit", () => {
+    const model = detectPromptSelect(load(fixture));
+    expect(model?.family).toBe("trust");
+    expect(model!.options.map((o) => o.keys)).toEqual([["Enter"], ["Down", "Enter"]]);
+    expect(model!.options.map((o) => o.keyLabel)).toEqual(["1", "2"]);
+  });
+
+  it("walks up when the pointer sits on No", () => {
+    const moved = fixture.replace("> Yes, I trust", "  Yes, I trust").replace("[38;5;8mNo, exit", "[38;5;8m> No, exit");
+    expect(moved).not.toBe(fixture);
+    const model = detectPromptSelect(load(moved));
+    expect(model!.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Enter"]]);
+  });
+
+  it("fails closed with no pointer on screen", () => {
+    const bare = fixture.replace("> Yes, I trust", "  Yes, I trust");
+    expect(bare).not.toBe(fixture);
+    expect(detectPromptSelect(load(bare))).toBeNull();
+  });
+});

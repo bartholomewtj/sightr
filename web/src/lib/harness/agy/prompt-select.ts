@@ -27,20 +27,28 @@ interface OptionRow {
   index: number;
   n: number;
   label: string;
+  /** The row carries the `>`/`❯`/`›` selection pointer. */
+  pointer: boolean;
 }
 
-export function parseOptionRow(text: string, isTrust?: boolean): { n: number; label: string } | null {
+const POINTER = /^[❯›>]/;
+
+export function parseOptionRow(
+  text: string,
+  isTrust?: boolean,
+): { n: number; label: string; pointer: boolean } | null {
   const trimmed = text.trim();
+  const pointer = POINTER.test(trimmed);
   const m = OPTION_ROW.exec(trimmed);
   if (m) {
     const numStr = m[1] ?? m[2] ?? m[3];
-    if (numStr) return { n: Number(numStr), label: m[4]!.trim() };
+    if (numStr) return { n: Number(numStr), label: m[4]!.trim(), pointer };
   }
   if (isTrust) {
     const tm = /^(?:[❯›>•*○●]\s*)?((?:Yes|No)[^.]*)$/i.exec(trimmed);
     if (tm) {
       const isYes = /^yes/i.test(tm[1]!);
-      return { n: isYes ? 1 : 2, label: tm[1]!.trim() };
+      return { n: isYes ? 1 : 2, label: tm[1]!.trim(), pointer };
     }
   }
   return null;
@@ -107,7 +115,7 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
   const rows: OptionRow[] = [];
   for (let i = from; i < fi; i++) {
     const parsed = parseOptionRow(texts[i]!, family === "trust");
-    if (parsed) rows.push({ index: i, n: parsed.n, label: parsed.label });
+    if (parsed) rows.push({ index: i, n: parsed.n, label: parsed.label, pointer: parsed.pointer });
   }
 
   if (rows.length < 2) return null;
@@ -157,6 +165,17 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
   }
   if (!question) return null;
 
+  // The trust card is an unnumbered list (`> Yes, I trust this folder` / `No, exit`, footer
+  // `↑/↓ Navigate · enter Confirm`): agy ignores a digit there, so its keys walk the pointer and
+  // confirm. Live 2026-09-27 (agy with Gemini 3.8): `1` did nothing; Down/Up moved `>`, Enter
+  // trusted. No pointer on screen → no safe walk → fail closed.
+  const pointerAt = menu.findIndex((row) => row.pointer);
+  if (family === "trust" && pointerAt < 0) return null;
+  const walk = (r: number): string[] => [
+    ...Array<string>(Math.abs(r - pointerAt)).fill(r > pointerAt ? "Down" : "Up"),
+    "Enter",
+  ];
+
   const options: PromptOption[] = [];
   for (let r = 0; r < menu.length; r++) {
     const row = menu[r]!;
@@ -172,9 +191,12 @@ export function detectPromptSelectRegion(lines: StyledLine[]): PromptRegion | nu
       label: row.label,
       description: desc.length ? desc.join(" ") : undefined,
       keys:
-        family === "select" || family === "plan"
-          ? [String(row.n), "Enter"]
-          : [String(row.n)],
+        family === "trust"
+          ? walk(r)
+          : family === "select" || family === "plan"
+            ? [String(row.n), "Enter"]
+            : [String(row.n)],
+      ...(family === "trust" ? { keyLabel: String(row.n) } : {}),
     });
   }
   if (options.length === 0) return null;
