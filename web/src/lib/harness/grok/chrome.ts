@@ -35,14 +35,19 @@ import {
   } from "./markers";
 import { detectAskRegion, detectCheckboxAskRegion } from "./ask";
 import { detectPermissionRegion } from "./permission";
-import { detectPlanMenuRegion } from "./plan-menu";
+import { detectPlanMenuRegion, planComposerFocused } from "./plan-menu";
 
-/** True when Grok's plan-approval status is in the composer border, even if the footer changed. */
+/** True when Grok's plan-approval status is in the composer border and the review — not the
+ *  composer — owns the keyboard. Tab/`s` hand the keyboard to the composer (planComposerFocused):
+ *  then it is an ordinary composer whose Enter sends the change request. */
 function planApprovalComposer(lines: StyledLine[]): boolean {
   const box = locateComposer(lines);
   if (box === null) return false;
   const status = composerStatus(rstrip(lineText(lines[box.bottom]!)));
-  return status !== null && /plan approval/i.test(status);
+  if (status === null || !/plan approval/i.test(status)) return false;
+  const texts = lines.map((l) => rstrip(lineText(l)));
+  const fi = lastNonBlankIndex(texts);
+  return fi < 0 || !planComposerFocused(texts[fi]!);
 }
 
 // Rows Grok may paint BELOW the composer: a blank separator and the key-hint row. Bounded so a torn

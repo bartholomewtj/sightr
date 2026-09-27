@@ -17,8 +17,15 @@ Live-probed: `q` dismissed the review. `Tab` and `s` both focus the composer (pl
 cleared); the footer becomes `a:approve │ Tab:plan │ Esc:back` — no `q:quit plan`. Esc
 returns to the idle review footer. `s` is "type a change request", not a one-shot.
 
-`composerReady` is false whenever the composer status contains `plan approval`, including
-the Tab-prompt footer. The menu lift accepts both footers so Approve remains tappable.
+`composerReady` is false while the review owns the keyboard (`q:quit plan` footer). Once Tab/`s`
+focus the composer (`… │ Tab:plan │ Esc:back`), the keyboard is the draft's: the menu is NOT
+lifted there and the adapter reads the composer like any other, so a phone reply types, verifies
+and sends the change request with Enter. Live 2026-09-27 (fixture `grok--plan-focused-draft.txt`):
+with the menu still lifted in that state, a phone reply was refused as "a dialog is waiting" and a
+forced one typed but stalled unverified. Approve is one Esc away (keys tray / wheel).
+
+On the phone the review's `Tab:prompt` is labelled "Request changes", and `v:select` (a terminal
+text-selection mode) is not offered.
 
 The race-guard **signature** is the whole preview (plan.md box + composer + footer) so a
 swapped plan is refused. The **bound region** (`expected_prompt`) is only the composer box

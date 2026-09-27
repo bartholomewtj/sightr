@@ -19,6 +19,27 @@ const FOOTER_QUIT = /q:quit plan/i;
 const HINT_SPLIT = /\s+│\s+/;
 const HINT = /^(.+?):(.+)$/;
 const PLAN_PREVIEW_TOP = /^\s*╭─+\s+\S/;
+/** The focused-composer footer (`… │ Tab:plan │ Esc:back`): Tab or `s` moved the keyboard into the
+ *  composer, so what the phone types is the change request and Enter sends it. */
+const FOOTER_BACK = /Esc:back/i;
+
+/**
+ * Tab/`s` moved the keyboard into the composer inside plan approval. Keys now go to the draft, so
+ * this screen is a composer, not a menu: the phone's own guarded send types, verifies and submits
+ * the change request. Live 2026-09-27: while the menu stayed lifted here, a phone reply was refused
+ * as "a dialog is waiting", and a forced one typed but stalled unverified.
+ */
+export function planComposerFocused(footer: string): boolean {
+  return FOOTER_BACK.test(footer) && !FOOTER_QUIT.test(footer);
+}
+
+/** Footer verbs the phone relabels or drops. `Tab:prompt` is how the review says "request
+ *  changes"; `v:select` is a terminal text-selection mode with nothing to select on a phone. */
+function phoneLabel(key: string, verb: string): string | null {
+  if (key === "v" && /^select$/i.test(verb)) return null;
+  if (key === "Tab" && /^prompt$/i.test(verb)) return "Request changes";
+  return capitaliseMenuLabel(verb);
+}
 
 function parseGrokKeyFooter(line: string): MenuAction[] {
   const actions: MenuAction[] = [];
@@ -29,8 +50,10 @@ function parseGrokKeyFooter(line: string): MenuAction[] {
     if (key === null) continue;
     const verb = m[2]!.trim();
     if (/always-approve/i.test(verb)) continue;
+    const label = phoneLabel(key, verb);
+    if (label === null) continue;
     actions.push({
-      label: capitaliseMenuLabel(verb),
+      label,
       keys: [key],
       cancel: key === "q" || key === "Escape" || key === "ctrl+c",
     });
@@ -45,11 +68,9 @@ export function detectPlanMenuRegion(lines: StyledLine[]): PlanMenuRegion | null
   if (fi < 0) return null;
   const footer = texts[fi]!;
   // Idle review names `q:quit plan`. Tab/`s` into the composer drops that and paints
-  // `Tab:plan` / `Esc:back` instead — still plan approval (status + preview required below).
-  if (!FOOTER_APPROVE.test(footer)) return null;
-  if (!FOOTER_QUIT.test(footer) && !/Tab:plan/i.test(footer) && !/Esc:back/i.test(footer)) {
-    return null;
-  }
+  // `Tab:plan` / `Esc:back` instead: the composer owns the keyboard then (planComposerFocused),
+  // so that footer is not a menu.
+  if (!FOOTER_APPROVE.test(footer) || !FOOTER_QUIT.test(footer)) return null;
 
   const actions = parseGrokKeyFooter(footer);
   if (actions.length === 0) return null;
