@@ -281,7 +281,8 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
 
   let typed;
   try {
-    typed = await sendReply(args.paneId, args.text, false);
+    const paste = adapter.bracketedPaste === true && args.text.includes("\n");
+    typed = await sendReply(args.paneId, args.text, false, undefined, undefined, paste);
   } catch (e) {
     return { status: "error", error: message(e) };
   }

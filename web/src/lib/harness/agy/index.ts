@@ -2,7 +2,14 @@ import { type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
 import { liftRegion } from "../scan";
 import { detectPromptSelectRegion } from "./prompt-select";
-import { extractInputDraft, extractStatusLines, hasInputBox, stripChrome } from "./chrome";
+import {
+  extractInputDraft,
+  extractStatusLines,
+  hasInputBox,
+  isScrolledDraft,
+  scrolledDraftCarriesSend,
+  stripChrome,
+} from "./chrome";
 
 export function agyBuildBlocks(lines: StyledLine[]): Block[] {
   const region = detectPromptSelectRegion(lines);
@@ -21,6 +28,11 @@ export const agyAdapter: HarnessAdapter = {
   extractStatusLines,
   extractInputDraft,
   composerReady: hasInputBox,
+  // A long draft scrolls to `↑ N more lines` + its tail, which the literal match cannot see.
+  draftCarriesSend: scrolledDraftCarriesSend,
+  draftIsOpaque: isScrolledDraft,
+  // A bare newline in a long raw send can submit the first line and queue the rest (#47).
+  bracketedPaste: true,
 };
 
 export const antigravityAdapter: HarnessAdapter = {
@@ -29,4 +41,9 @@ export const antigravityAdapter: HarnessAdapter = {
   extractStatusLines,
   extractInputDraft,
   composerReady: hasInputBox,
+  // A long draft scrolls to `↑ N more lines` + its tail, which the literal match cannot see.
+  draftCarriesSend: scrolledDraftCarriesSend,
+  draftIsOpaque: isScrolledDraft,
+  // A bare newline in a long raw send can submit the first line and queue the rest (#47).
+  bracketedPaste: true,
 };

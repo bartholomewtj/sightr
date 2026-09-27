@@ -78,6 +78,34 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   return parts.join(" ").trim() || null;
 }
 
+/**
+ * A draft taller than the box scrolls: Agy swaps its head for `↑ N more lines` and shows only the
+ * tail (live 2026-09-28, Agy 1.2.12, 40 wrapped rows → `> ↑ 56 more lines`). N counts wrapped screen
+ * rows, which the phone cannot map back to text, so the marker proves nothing on its own.
+ */
+const SCROLLED_HEAD = /^↑\s*\d+\s+more\s+lines?(?=\s|$)/;
+
+/** Fewest non-space characters of visible tail worth matching against the send's end. */
+const MIN_TAIL_CHARS = 8;
+
+/** True when the draft is a scrolled box: the marker, then only the tail of the real text. */
+export function isScrolledDraft(draft: string): boolean {
+  return SCROLLED_HEAD.test(draft);
+}
+
+/**
+ * The guard's second look for a scrolled box. The cursor sits at the end of a fresh paste, so the
+ * visible rows are the END of what was sent: accept only when the tail, whitespace-stripped (the box
+ * re-wraps rows), is how the sent text ends.
+ */
+export function scrolledDraftCarriesSend(sent: string, draft: string): boolean {
+  const head = SCROLLED_HEAD.exec(draft);
+  if (head === null) return false;
+  const tail = draft.slice(head[0].length).replace(/\s+/g, "");
+  if (tail.length < MIN_TAIL_CHARS) return false;
+  return sent.replace(/\s+/g, "").endsWith(tail);
+}
+
 export function hasInputBox(lines: StyledLine[]): boolean {
   const texts = lines.map(lineText);
   let end = lines.length;

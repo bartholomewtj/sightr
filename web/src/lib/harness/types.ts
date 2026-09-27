@@ -103,6 +103,13 @@ export interface HarnessAdapter {
    * the draft is still there.
    */
   submitKeys?: string[];
+  /**
+   * Type a multi-line reply as one bracketed paste rather than raw text. A TUI that can read a bare
+   * newline in a long raw send as Enter (Antigravity, #47) otherwise submits the first line and queues
+   * the rest, before the guard's verify-then-submit step can stop it. Single-line replies are typed as
+   * before. OPTIONAL; absence keeps raw typing.
+   */
+  bracketedPaste?: boolean;
   /** The adapter lifts dialogs but cannot read its composer (no captured input box). Replies keep the
    *  legacy one-shot send instead of type-then-verify, which would stall forever on a null draft. */
   replyOneShot?: boolean;

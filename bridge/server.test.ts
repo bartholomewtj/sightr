@@ -15,7 +15,7 @@ import {
   SHELL_MIRROR_LINES_CAP,
 } from "./pane-read-routes.ts";
 import type { AgentView } from "./state-engine.ts";
-import { sendReplySteps, replyPane, keysPane, type ReplySender } from "./pane-write-routes.ts";
+import { bracketedPasteChunks, sendReplySteps, replyPane, keysPane, type ReplySender } from "./pane-write-routes.ts";
 import { normalizeLabel } from "./tree-routes.ts";
 import { createPaneQueue } from "./pane-queue.ts";
 import type { Config } from "./config.ts";
@@ -760,6 +760,64 @@ describe("pane write prompt binding", () => {
       expect(fresh.texts).toEqual([]);
       expect(fresh.keys).toEqual([]);
     }
+  });
+
+  test("paste wraps the typed text in bracketed-paste markers and leaves the submit keys alone (#47)", async () => {
+    const client = new FakePaneClient();
+    const res = await replyPane(client as unknown as HerdrClient, cfg(), "w1:p1",
+      request({ text: "one\ntwo", paste: true }), createPaneQueue());
+    expect(res.status).toBe(200);
+    expect(client.texts).toEqual([["w1:p1", "\x1b[200~one\ntwo\x1b[201~"]]);
+    expect(client.keys).toEqual([["w1:p1", ["Enter"]]]);
+    const plain = new FakePaneClient();
+    await replyPane(plain as unknown as HerdrClient, cfg(), "w1:p1",
+      request({ text: "one\ntwo", paste: false }), createPaneQueue());
+    expect(plain.texts).toEqual([["w1:p1", "one\ntwo"]]);
+  });
+
+  test("rejects a non-boolean paste before writing", async () => {
+    for (const paste of ["yes", 1, null]) {
+      const fresh = new FakePaneClient();
+      const result = await replyPane(fresh as unknown as HerdrClient, cfg(), "w1:p1",
+        request({ text: "hi", paste }), createPaneQueue());
+      expect(result.status).toBe(400);
+      expect(await result.text()).toBe("bad paste");
+      expect(fresh.texts).toEqual([]);
+      expect(fresh.keys).toEqual([]);
+    }
+  });
+});
+
+describe("bracketedPasteChunks", () => {
+  const unwrap = (piece: string) => piece.slice("\x1b[200~".length, -"\x1b[201~".length);
+
+  test("strips markers inside the text, including one that forms once another is cut", () => {
+    expect(bracketedPasteChunks("a\x1b[201~b")).toEqual(["\x1b[200~ab\x1b[201~"]);
+    expect(bracketedPasteChunks("\x1b[2\x1b[200~01~tail")).toEqual(["\x1b[200~tail\x1b[201~"]);
+    expect(bracketedPasteChunks("")).toEqual([]);
+  });
+
+  test("cuts long text between two non-space characters, and the pieces rejoin to the text", () => {
+    const lorem = "lorem ipsum dolor sit amet consectetur adipiscing elit";
+    const text = Array.from({ length: 40 }, (_, i) => `row ${i + 1}: ${lorem} ${lorem}`).join("\n");
+    const pieces = bracketedPasteChunks(text).map(unwrap);
+    expect(pieces.length).toBe(5);
+    expect(pieces.join("")).toBe(text);
+    for (const piece of pieces) {
+      expect(piece.length).toBeLessThanOrEqual(1000);
+      expect(piece).toMatch(/^\S[\s\S]*\S$/);
+    }
+  });
+
+  test("never splits a surrogate pair, even on a hard cut through a run of spaces", () => {
+    const emoji = "😀".repeat(30);
+    for (const piece of bracketedPasteChunks(emoji, 7).map(unwrap)) {
+      expect(piece.length % 2).toBe(0);
+    }
+    const spaced = `a${" ".repeat(30)}😀b`;
+    const pieces = bracketedPasteChunks(spaced, 32).map(unwrap);
+    expect(pieces.join("")).toBe(spaced);
+    expect(pieces[0]!.endsWith("\ud83d")).toBe(false);
   });
 });
 
