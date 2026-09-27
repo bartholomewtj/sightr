@@ -2,7 +2,8 @@
 // and notes: command-approval (`prompt-select` — only Run once / Skip; never allowlist or
 // Run Everything), workspace trust (`prompt-select` with letter keys a/q), and single-select
 // ask-question cards (`prompt-select` with pointer arrow-walk + Enter, source-verified with live
-// probe pending; `Other:` locks the buttons; multi-select stays raw). Plan mode asks clarifying
+// probe pending; `Other:` locks the buttons), and multi-select ask cards (`multi-select`, recipe
+// `pointer-space-s`, live-probed 2026-09-27). Plan mode asks clarifying
 // questions as ordinary transcript. Write-file approval was not seen on the live probe (Auto
 // allowed edits); do not synthesise it.
 //
@@ -23,7 +24,7 @@ import {
   extractStatusLines,
   stripChrome,
 } from "./chrome";
-import { detectAskRegion } from "./ask";
+import { detectAskRegion, detectMultiAskRegion } from "./ask";
 import { detectPermissionRegion } from "./permission";
 import { detectTrustRegion } from "./trust";
 
@@ -43,6 +44,15 @@ export function cursorBuildBlocks(lines: StyledLine[]): Block[] {
       kind: "prompt-select",
       prompt: trust.model,
       lines: lines.slice(trust.startLine),
+    });
+  }
+
+  const multi = detectMultiAskRegion(lines);
+  if (multi) {
+    return liftRegion(lines, multi, {
+      kind: "multi-select",
+      multi: multi.model,
+      lines: lines.slice(multi.startLine),
     });
   }
 

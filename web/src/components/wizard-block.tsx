@@ -190,8 +190,8 @@ function ReviewStep({
       <div className="flex flex-col gap-1.5">
         <button
           type="button"
-          disabled={locked}
-          onClick={() => onPress("submit", WIZARD_SUBMIT_KEYS)}
+          disabled={locked || wizard.submitKeys === null}
+          onClick={() => onPress("submit", wizard.submitKeys ?? WIZARD_SUBMIT_KEYS)}
           className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-you bg-you-soft px-3 py-2 text-sm font-medium text-control-on-foreground transition-colors active:bg-you/20 disabled:opacity-60"
         >
           {sendingId === "submit" ? (
@@ -202,7 +202,7 @@ function ReviewStep({
         <button
           type="button"
           disabled={locked}
-          onClick={() => onPress("cancel", WIZARD_CANCEL_KEYS)}
+          onClick={() => onPress("cancel", wizard.cancelKeys ?? WIZARD_CANCEL_KEYS)}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-border/70 px-3 py-1.5 text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
         >
           {sendingId === "cancel" ? (

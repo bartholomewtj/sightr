@@ -63,6 +63,7 @@ const PINNED = [
   "grok--permission-rm-moved.txt",
   "grok--permission-rm.txt",
   "grok--plan-approval.txt",
+  "grok--plan-focused-draft.txt",
   "grok--plan-request-changes.txt",
   "grok--plan-tab-prompt.txt",
   "grok--prompt-ascii-draft.txt",
@@ -96,8 +97,6 @@ const DIALOG = [
   "grok--permission-rm-moved.txt",
   "grok--permission-rm.txt",
   "grok--plan-approval.txt",
-  "grok--plan-request-changes.txt",
-  "grok--plan-tab-prompt.txt",
 ];
 
 const ownFixtures = DIALOG;
@@ -218,15 +217,29 @@ describe("grokBuildBlocks", () => {
   });
 
   it("lifts plan approval to a menu of footer-named keys, no digits", () => {
-    for (const name of ["grok--plan-approval.txt", "grok--plan-tab-prompt.txt", "grok--plan-request-changes.txt"]) {
+    const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "grok--plan-approval.txt"), "utf8")));
+    const menu = grokAdapter.buildBlocks(lines).find((b) => b.kind === "menu");
+    expect(menu?.kind).toBe("menu");
+    if (menu?.kind !== "menu") return;
+    expect(menu.menu.actions.some((a) => a.keys.includes("a"))).toBe(true);
+    expect(menu.menu.actions.every((a) => !/^\d+$/.test(a.keys.join("")))).toBe(true);
+    // `Tab:prompt` is the review's "request changes"; `v:select` is a text-selection mode.
+    expect(menu.menu.actions.find((a) => a.keys[0] === "Tab")?.label).toBe("Request changes");
+    expect(menu.menu.actions.some((a) => a.keys[0] === "v")).toBe(false);
+  });
+
+  // Live 2026-09-27: once Tab/`s` focus the composer, the keyboard is the draft's. Lifting the menu
+  // there refused every phone reply ("a dialog is waiting") and a forced one stalled unverified.
+  it("treats the focused plan-approval composer as a composer, draft and all", () => {
+    for (const name of ["grok--plan-tab-prompt.txt", "grok--plan-request-changes.txt"]) {
       const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
-      const blocks = grokAdapter.buildBlocks(lines);
-      const menu = blocks.find((b) => b.kind === "menu");
-      expect(menu?.kind, name).toBe("menu");
-      if (menu?.kind !== "menu") return;
-      expect(menu.menu.actions.some((a) => a.keys.includes("a")), name).toBe(true);
-      expect(menu.menu.actions.every((a) => !/^\d+$/.test(a.keys.join(""))), name).toBe(true);
+      expect(grokAdapter.buildBlocks(lines).every((b) => b.kind === "raw"), name).toBe(true);
+      expect(grokAdapter.composerReady!(lines), name).toBe(true);
     }
+    const draft = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "grok--plan-focused-draft.txt"), "utf8")));
+    expect(grokAdapter.buildBlocks(draft).every((b) => b.kind === "raw")).toBe(true);
+    expect(grokAdapter.composerReady!(draft)).toBe(true);
+    expect(grokAdapter.extractInputDraft(draft)).toBe("Also add a docstring to multiply.");
   });
 
   it("binds plan-approval keystrokes to the composer+footer, not the plan.md body", () => {

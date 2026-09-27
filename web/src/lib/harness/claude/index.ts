@@ -18,6 +18,7 @@ import { detectPromptSelectRegion } from "./prompt-select";
 import { detectMenuRegion } from "./menu";
 import { detectAutocompleteRegion } from "./autocomplete";
 import { stripChrome, extractStatusLines, extractInputDraft, hasInputBox } from "./chrome";
+import { isBlank, isHorizontalRule, isInputBoxTopBorder, lineText } from "./markers";
 import { isPastePlaceholderOnly, pasteCarriesSend } from "./paste";
 
 /**
@@ -26,16 +27,35 @@ import { isPastePlaceholderOnly, pasteCarriesSend } from "./paste";
  * miss falls back to a single raw block — the universal T1 behaviour. The registry only ever hands
  * this function a Claude pane, so there is no per-agent gate here.
  */
-export function claudeBuildBlocks(lines: StyledLine[]): Block[] {
+/**
+ * The rows the dialog grammars read. Once a session has a name (plan mode names one; so does
+ * `/rename`), Claude Code 2.1.283 paints its input box's labelled top border — `──── <name> ─` —
+ * under every dialog, as the last row, with nothing below it. Every grammar anchors on the footer
+ * being the last non-blank row, so that one row hid every dialog from the phone (live 2026-09-27).
+ * A real composer's top border always has its `❯` row below it, so a LABELLED border that is the
+ * last row is this dangling one; a bare rule is left alone (it can be a composer's bottom border).
+ */
+function withoutSessionBorder(lines: StyledLine[]): StyledLine[] {
+  let i = lines.length - 1;
+  while (i >= 0 && isBlank(lineText(lines[i]!))) i--;
+  if (i < 0) return lines;
+  const last = lineText(lines[i]!);
+  if (!isInputBoxTopBorder(last) || isHorizontalRule(last)) return lines;
+  return lines.slice(0, i);
+}
+
+export function claudeBuildBlocks(all: StyledLine[]): Block[] {
+  // Dialog grammars read `lines` (tail border dropped); the chrome path below reads `all`.
+  const lines = withoutSessionBorder(all);
   // The preview variant runs FIRST: its footer is the most specific anchor ("n to add notes"),
   // and although the wizard/prompt-select detectors can't match its layout (their footer-gap
   // guards fail on the tall preview pane), ordering by specificity keeps the arbitration obvious.
   const previewRegion = detectPreviewSelectRegion(lines);
   if (previewRegion) {
-    return liftRegion(lines, previewRegion, {
+    return liftRegion(all, previewRegion, {
       kind: "preview-select",
       preview: previewRegion.model,
-      lines: lines.slice(previewRegion.startLine),
+      lines: all.slice(previewRegion.startLine),
     });
   }
 
@@ -44,7 +64,7 @@ export function claudeBuildBlocks(lines: StyledLine[]): Block[] {
   // header — that bail stays as a safety net for a wizard this detector misses).
   const wizardRegion = detectWizardRegion(lines);
   if (wizardRegion) {
-    return liftRegion(lines, wizardRegion, { kind: "wizard", wizard: wizardRegion.model, lines: lines.slice(wizardRegion.startLine) });
+    return liftRegion(all, wizardRegion, { kind: "wizard", wizard: wizardRegion.model, lines: all.slice(wizardRegion.startLine) });
   }
 
   // Multi-select runs after the wizard, before prompt-select: its checkbox screen also carries a
@@ -52,12 +72,12 @@ export function claudeBuildBlocks(lines: StyledLine[]): Block[] {
   // bails on the multi-step glyph, wizard on the 2-chip stepper), so ordering keeps arbitration clear.
   const multiRegion = detectMultiSelectRegion(lines);
   if (multiRegion) {
-    return liftRegion(lines, multiRegion, { kind: "multi-select", multi: multiRegion.model, lines: lines.slice(multiRegion.startLine) });
+    return liftRegion(all, multiRegion, { kind: "multi-select", multi: multiRegion.model, lines: all.slice(multiRegion.startLine) });
   }
 
   const region = detectPromptSelectRegion(lines);
   if (region) {
-    return liftRegion(lines, region, { kind: "prompt-select", prompt: region.model, lines: lines.slice(region.startLine) });
+    return liftRegion(all, region, { kind: "prompt-select", prompt: region.model, lines: all.slice(region.startLine) });
   }
 
   // LAST RESORT: a modal screen none of the specific grammars claimed, driven by the keys its own
@@ -67,7 +87,7 @@ export function claudeBuildBlocks(lines: StyledLine[]): Block[] {
   // where the alternative is no buttons at all and a composer send typed into the picker.
   const menuRegion = detectMenuRegion(lines);
   if (menuRegion) {
-    return liftRegion(lines, menuRegion, { kind: "menu", menu: menuRegion.model, lines: lines.slice(menuRegion.startLine) });
+    return liftRegion(all, menuRegion, { kind: "menu", menu: menuRegion.model, lines: all.slice(menuRegion.startLine) });
   }
 
   // The COMPLETION POPUP (autocomplete.ts) — the one non-raw block that is not a dialog. It runs last
@@ -78,22 +98,22 @@ export function claudeBuildBlocks(lines: StyledLine[]): Block[] {
   // Note it does NOT use `liftRegion`: `liftRegion` slices the prefix at `startLine`, which would
   // leave the input box sitting in the raw block; the popup's prefix has to come from `stripChrome`,
   // so the box and the popup both leave the mirror.
-  if (hasInputBox(lines)) {
-    const autoRegion = detectAutocompleteRegion(lines);
+  if (hasInputBox(all)) {
+    const autoRegion = detectAutocompleteRegion(all);
     if (autoRegion) {
-      const before = trimTrailingBlank(stripChrome(lines));
+      const before = trimTrailingBlank(stripChrome(all));
       const blocks: Block[] = [];
       if (before.length > 0) blocks.push({ kind: "raw", lines: before });
       blocks.push({
         kind: "autocomplete",
         autocomplete: autoRegion.model,
-        lines: lines.slice(autoRegion.startLine),
+        lines: all.slice(autoRegion.startLine),
       });
       return blocks;
     }
   }
 
-  return [{ kind: "raw", lines: stripChrome(lines) }];
+  return [{ kind: "raw", lines: stripChrome(all) }];
 }
 
 export { extractStatusLines, extractInputDraft };

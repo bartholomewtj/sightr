@@ -1380,6 +1380,19 @@ describe("failureText", () => {
     expect(client.calls).toEqual(["text:hi", "keys:Enter", "keys:2"]);
   });
 
+  test("a multi-key recipe goes out one key per write", async () => {
+    const client = new OrderedPaneClient();
+    const gaps: number[] = [];
+    const res = await keysPane(
+      client as unknown as HerdrClient, cfg(), "w1:p1",
+      orderedRequest({ keys: ["Down", "Down", "Enter"] }), createPaneQueue(), undefined,
+      async (ms) => { gaps.push(ms); },
+    );
+    expect(res.status).toBe(200);
+    expect(client.calls).toEqual(["keys:Down", "keys:Down", "keys:Enter"]);
+    expect(gaps).toHaveLength(2);
+  });
+
   test("a stalled pane returns 503 to the next write", async () => {
     const client = new OrderedPaneClient();
     let rejectGate!: (reason?: unknown) => void;

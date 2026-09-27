@@ -289,12 +289,14 @@ function emittableKeys(block: Block): string[] | null {
     case "prompt-select":
       return block.prompt.options.flatMap((o) => o.keys);
     case "wizard": {
-      // Both phases can navigate steps; the review phase's controls ARE submit(1)/cancel(2).
+      // Both phases can navigate steps; the review phase's controls ARE submit(1)/cancel(2), or
+      // the harness's own keys when the model carries them (Pi: Enter/Escape).
+      const review = block.wizard.phase === "review" ? block.wizard : null;
       const controls = [
         ...WIZARD_BACK_KEYS,
         ...WIZARD_NEXT_KEYS,
-        ...WIZARD_SUBMIT_KEYS,
-        ...WIZARD_CANCEL_KEYS,
+        ...(review?.submitKeys ?? WIZARD_SUBMIT_KEYS),
+        ...(review?.cancelKeys ?? WIZARD_CANCEL_KEYS),
       ];
       return block.wizard.phase === "question"
         ? [...block.wizard.options.flatMap((o) => o.keys), ...controls]
@@ -321,6 +323,10 @@ function emittableKeys(block: Block): string[] | null {
       // submits — digits submit on that widget and must not appear here. review: `1` / `2`.
       if (block.multi.phase === "checkbox" && block.multi.recipe === "tab-space-enter") {
         return ["Tab", "Space", "Enter"];
+      }
+      // Cursor `pointer-space-s`: arrows walk, Space toggles, `s` submits, Left/Right change question.
+      if (block.multi.phase === "checkbox" && block.multi.recipe === "pointer-space-s") {
+        return ["Up", "Down", "Space", "s", ...WIZARD_BACK_KEYS, ...WIZARD_NEXT_KEYS];
       }
       return block.multi.phase === "checkbox"
         ? [

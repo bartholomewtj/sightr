@@ -13,6 +13,7 @@ import { detectTrustRegion } from "./trust";
 import {
   WORKING_HINT,
   isBlank,
+  isCwdWrapRow,
   isDraftContinuationRow,
   isPlaceholderDraft,
   isStatusRow,
@@ -21,6 +22,7 @@ import {
 } from "./markers";
 
 const MAX_STATUS_ROWS = 4;
+const MAX_CWD_WRAP_ROWS = 2;
 const MAX_BLANK_ABOVE_STATUS = 4;
 const MAX_DRAFT_CONTINUATION_ROWS = 100;
 
@@ -66,9 +68,22 @@ export function locateComposer(lines: StyledLine[]): ComposerLoc | null {
   let statusEnd = end + 1;
   let i = end;
   let statusCount = 0;
-  while (i >= 0 && statusCount < MAX_STATUS_ROWS && isStatusRow(texts[i]!)) {
+  let cwdWraps = 0;
+  while (i >= 0 && statusCount < MAX_STATUS_ROWS) {
+    // A long cwd wraps onto bare path-fragment rows under it; they are status, and do not use up
+    // the status budget (a narrow pane can wrap one path twice).
+    if (cwdWraps < MAX_CWD_WRAP_ROWS && isCwdWrapRow(texts[i]!, texts[i - 1])) {
+      cwdWraps++;
+      i--;
+      continue;
+    }
+    if (!isStatusRow(texts[i]!)) break;
     statusCount++;
     i--;
+  }
+  if (statusCount === 0 && cwdWraps > 0) {
+    i += cwdWraps; // wrap rows only count under a cwd row the walk actually took
+    cwdWraps = 0;
   }
   const statusStart = statusCount > 0 ? i + 1 : -1;
 

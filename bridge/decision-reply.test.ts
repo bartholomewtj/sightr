@@ -273,8 +273,8 @@ describe("Operator-decision answer bridge (whistlr-31f)", () => {
     const json = (await res.json()) as { ok: boolean };
     expect(json.ok).toBe(true);
 
-    // Keys were sent to the pane
-    expect(fakeHerdr.keys).toEqual([["ws1:p1", ["1", "Enter"]]]);
+    // Keys were sent to the pane, one write per key
+    expect(fakeHerdr.keys).toEqual([["ws1:p1", ["1"]], ["ws1:p1", ["Enter"]]]);
 
     // Also verify decision-reply route refuses to spawn on unmarked card
     const decRes = await decisionReplyPane(

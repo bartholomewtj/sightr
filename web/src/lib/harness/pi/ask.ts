@@ -69,12 +69,14 @@ interface RawOption {
   lineIndex: number;
 }
 
-export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
-  const texts = lines.map((l) => rstrip(lineText(l)));
+/**
+ * The frame's closing rule: the last RULE within four rows of the tail, followed by 0, 2 or 3
+ * footer rows (PWD, stats, optional extension status), or -1.
+ */
+function closingRule(texts: string[]): number {
   const fi = lastNonBlankIndex(texts);
-  if (fi < 0) return null;
+  if (fi < 0) return -1;
 
-  // 1. Footer anchor: find closing rule c (last RULE with c >= fi - 4)
   let c = -1;
   const minC = Math.max(0, fi - 4);
   for (let i = fi; i >= minC; i--) {
@@ -83,21 +85,30 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
       break;
     }
   }
-  if (c < 0) return null;
+  if (c < 0) return -1;
 
   // The non-blank rows after c must number 0, 2 or 3
   const afterRows = texts.slice(c + 1, fi + 1);
   const nonBlankAfter = afterRows.filter((t) => !isBlank(t));
   const count = nonBlankAfter.length;
-  if (count !== 0 && count !== 2 && count !== 3) return null;
+  if (count !== 0 && count !== 2 && count !== 3) return -1;
 
   if (count > 0) {
     // at most one blank row between c and the first of them
     const firstNonBlankIndex = afterRows.findIndex((t) => !isBlank(t));
-    if (firstNonBlankIndex > 1) return null;
+    if (firstNonBlankIndex > 1) return -1;
     // second non-blank row must match STATS
-    if (!STATS.test(nonBlankAfter[1]!)) return null;
+    if (!STATS.test(nonBlankAfter[1]!)) return -1;
   }
+  return c;
+}
+
+export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
+  const texts = lines.map((l) => rstrip(lineText(l)));
+
+  // 1. Footer anchor: the closing rule c
+  const c = closingRule(texts);
+  if (c < 0) return null;
 
   // 2. Help row
   if (c < 2) return null;
@@ -378,6 +389,90 @@ export function detectPiWizardRegion(lines: StyledLine[]): PiWizardRegion | null
   return {
     model,
     startLine: parsed.topRule,
+  };
+}
+
+const REVIEW_TITLE = /^\s*Ready to submit$/;
+const REVIEW_READY = /^\s*Press Enter to submit$/;
+const REVIEW_MISSING = /^\s*Unanswered: (.+)$/;
+const MAX_REVIEW_ROWS = 40;
+
+/**
+ * The multi-question frame's Submit tab (`Ready to submit`), as a wizard `review`. Pi's submit keys
+ * differ from Claude's: Enter submits — and only once every question is answered — and Esc cancels
+ * the whole ask (`~/.pi/agent/extensions/ask.ts` handleInput, Submit tab branch). Pi echoes each
+ * answer as `<chip label>: <answer>`, so the question side of the review is the chip label.
+ * Live 2026-09-27 (pane wGK:p2): before this the tab stayed raw and a phone had no way to submit.
+ */
+export function detectPiReviewRegion(lines: StyledLine[]): PiWizardRegion | null {
+  const texts = lines.map((l) => rstrip(lineText(l)));
+  const c = closingRule(texts);
+  if (c < 4) return null;
+  if (!HELP_MULTI.test(texts[c - 1]!) || !isBlank(texts[c - 2]!)) return null;
+
+  const status = texts[c - 3]!;
+  const ready = REVIEW_READY.test(status);
+  if (!ready && !REVIEW_MISSING.test(status)) return null;
+  if (!isBlank(texts[c - 4]!)) return null;
+
+  // Walk up over the echoed answers to the title.
+  let title = -1;
+  for (let i = c - 5; i >= Math.max(0, c - MAX_REVIEW_ROWS); i--) {
+    if (REVIEW_TITLE.test(texts[i]!)) {
+      title = i;
+      break;
+    }
+  }
+  if (title < 2 || !isBlank(texts[title - 1]!)) return null;
+
+  // Tab bar (it may wrap) between the top rule and the blank above the title.
+  let topRule = -1;
+  for (let i = title - 2; i >= Math.max(0, title - 6); i--) {
+    if (RULE.test(texts[i]!)) {
+      topRule = i;
+      break;
+    }
+  }
+  if (topRule < 0) return null;
+  const tabBar = TAB_BAR.exec(texts.slice(topRule + 1, title - 1).join(""));
+  if (!tabBar) return null;
+  const steps: WizardStepChip[] = [];
+  const chipRegex = /([□■]) (.+?)(?=\s{3}[□■] |\s*$)/g;
+  let cm;
+  while ((cm = chipRegex.exec(tabBar[1]!)) !== null) {
+    steps.push({ label: cm[2]!.trim(), answered: cm[1] === "■", current: false });
+  }
+  if (steps.length < 2) return null;
+
+  // `<label>: <answer>` rows; a row that starts no known label continues the answer above it.
+  const answers: { question: string; answer: string }[] = [];
+  for (let i = title + 2; i < c - 4; i++) {
+    const t = texts[i]!;
+    if (isBlank(t)) continue;
+    const step = steps.find((st) => t.trimStart().startsWith(`${st.label}: `));
+    if (step) {
+      answers.push({ question: step.label, answer: t.trimStart().slice(step.label.length + 2).trim() });
+    } else if (answers.length > 0) {
+      const last = answers[answers.length - 1]!;
+      last.answer = `${last.answer} ${t.trim()}`;
+    } else {
+      return null;
+    }
+  }
+
+  const signature = regionSignature(texts, topRule, c + 1);
+  if (signature === "") return null;
+  return {
+    startLine: topRule,
+    model: {
+      phase: "review",
+      steps,
+      answers,
+      incomplete: !ready,
+      signature,
+      submitKeys: ready ? ["Enter"] : null,
+      cancelKeys: ["Escape"],
+    },
   };
 }
 

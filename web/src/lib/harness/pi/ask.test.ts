@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
 import { piBuildBlocks } from "./index";
-import { detectPiAsk, detectPiPromptRegion, detectPiWizardRegion } from "./ask";
+import { detectPiAsk, detectPiPromptRegion, detectPiReviewRegion, detectPiWizardRegion } from "./ask";
 import { promptsEqual } from "../prompt-model";
 import { submitPromptOption } from "../../actions";
 
@@ -138,10 +138,42 @@ describe("pi ask detector", () => {
     expect(prompt.prompt.feedback?.focused).toBe(true);
   });
 
-  it("7. pi--ask-wizard-submit.txt stays raw only", () => {
-    const lines = load("pi--ask-wizard-submit.txt");
-    const blocks = piBuildBlocks(lines);
-    expect(blocks.every((b) => b.kind === "raw")).toBe(true);
+  // The Submit tab used to stay raw, which left a phone no way to finish a multi-question ask
+  // (live 2026-09-27, pane wGK:p2). Enter submits, Escape cancels — never the Claude 1/2 digits.
+  it("7. the Submit tab lifts as a wizard review with Enter/Escape", () => {
+    for (const [file, answers] of [
+      ["pi--ask-wizard-submit.txt", [["Color", "Red"], ["Size", "Small"]]],
+      ["pi--ask-multi-review.txt", [["Q1", "Large"], ["Q2", "Coffee"]]],
+    ] as const) {
+      const block = piBuildBlocks(load(file)).find((b) => b.kind === "wizard");
+      if (block?.kind !== "wizard" || block.wizard.phase !== "review") throw new Error(file);
+      const w = block.wizard;
+      expect(w.answers.map((a) => [a.question, a.answer])).toEqual(answers);
+      expect(w.incomplete).toBe(false);
+      expect(w.submitKeys).toEqual(["Enter"]);
+      expect(w.cancelKeys).toEqual(["Escape"]);
+      expect(w.steps.every((s) => s.answered && !s.current)).toBe(true);
+    }
+  });
+
+  it("7b. an unanswered Submit tab disables submit (Pi ignores Enter there)", () => {
+    const raw = readFileSync(join(PANES_DIR, "pi--ask-multi-review.txt"), "utf8");
+    const lines = splitLines(parseAnsi(raw)).map((l) => {
+      const t = l.segments.map((s) => s.text).join("");
+      if (/Press Enter to submit/.test(t)) return textLine(" Unanswered: Q2");
+      if (/^\s*Q2: /.test(t)) return textLine("");
+      return l;
+    });
+    // drop the blanked answer row so the answer list stays contiguous
+    const idx = lines.findIndex((l, i) => i > 0 && l.segments.map((s) => s.text).join("") === "" &&
+      /Q1: /.test(lines[i - 1]!.segments.map((s) => s.text).join("")));
+    if (idx > 0) lines.splice(idx, 1);
+    const region = detectPiReviewRegion(lines);
+    expect(region?.model.phase).toBe("review");
+    if (region?.model.phase !== "review") return;
+    expect(region.model.incomplete).toBe(true);
+    expect(region.model.submitKeys).toBeNull();
+    expect(region.model.cancelKeys).toEqual(["Escape"]);
   });
 
   it("8. across every lifted fixture, no key matches /^\\d+$/", () => {

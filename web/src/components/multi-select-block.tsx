@@ -116,7 +116,7 @@ function CheckboxPhase({
               >
                 {option.checked ? <Check className="size-3" /> : null}
               </span>
-              {multi.recipe === "tab-space-enter" ? null : <KeyBadge tone={tone}>{option.n}</KeyBadge>}
+              {multi.recipe === undefined ? <KeyBadge tone={tone}>{option.n}</KeyBadge> : null}
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium leading-snug text-foreground">
                   {option.label}

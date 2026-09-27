@@ -22,7 +22,7 @@ const foreignFixtures = allFixtures.filter(
     f.startsWith("cursor--"),
 );
 
-const neutralFixtures = ["pi--ask-wizard-submit.txt"];
+const neutralFixtures: string[] = [];
 const ownFixtures = allPiFixtures.filter((f) => !neutralFixtures.includes(f));
 
 describeAdapterConformance(piAdapter, {

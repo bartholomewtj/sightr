@@ -75,8 +75,11 @@ export type MultiSelectModel =
        * How toggle and submit are keyed. Absent = Claude: a digit toggles, Submit is the
        * Down/Up/Enter walk. `tab-space-enter` = Grok: Tab walks to the row, Space toggles,
        * Enter submits from anywhere. Digits submit on that widget — never emit them.
+       * `pointer-space-s` = Cursor: Up/Down walk the `›` pointer to the row, Space toggles, `s`
+       * submits every question (never Enter — it adds the pointed row first; never `s` with the
+       * pointer on `Other:` — it types there). Digits do nothing on that widget.
        */
-      recipe?: "tab-space-enter";
+      recipe?: "tab-space-enter" | "pointer-space-s";
       /**
        * Esc parked the card in scrollback (`Tab/Space:question` footer). A bare Space/Enter is a
        * no-op there; Tab re-enters, then the live recipe runs. Transient — the walk's first Tab
@@ -84,8 +87,9 @@ export type MultiSelectModel =
        */
       parked?: boolean;
       /**
-       * Which option is highlighted (colour, not a glyph). Grok only. Null when the highlight
-       * sits on `z` or cannot be read. Absent on Claude (`pointer` is the ❯ row kind instead).
+       * Which option is highlighted — Grok by colour, Cursor by its `›` glyph. Null when the
+       * highlight sits on the free-text row (`z` / `Other:`) or cannot be read. Absent on Claude
+       * (`pointer` is the ❯ row kind instead).
        */
       focusedN?: number | null;
       signature: string;

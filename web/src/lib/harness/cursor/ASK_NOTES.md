@@ -42,9 +42,26 @@ Digits on an option row do nothing.
 - On a 1-of-1 card, Enter selects and submits. On a `k` of `n` (`n > 1`) card, Enter selects and advances to question `k + 1`. On the last question, Enter submits only when all questions are answered.
 - `Other:` is modelled as `free-text` feedback (`feedback.purpose = "free-text"`). When Cursor's pointer is on `Other:`, `feedback.focused` is true and the UI buttons lock. Nothing is typed from the phone.
 
+## Multi-select (live 2026-09-27, v2026.09.26-dd393fe)
+
+Cards whose question ends ` (multi-select)` lift as `multi-select`, recipe `pointer-space-s`.
+Probed on pane `wGK:p5` (fixtures `cursor--ask-multi-*.txt`):
+
+- Keys must go one per write. `[Down, Down, Space]` in one `send_keys` moved the pointer once and
+  dropped the rest; single-key writes 300ms apart all landed. The bridge now paces every `/keys`
+  recipe (`sendKeysPaced`), which also fixes the single-select arrow walk.
+- Space toggles the `›` row. Enter on a checked pointed row submitted the set unchanged; Enter on an
+  unchecked row ADDED it (and advanced to the next question). Enter is never the submit key.
+- `s` submitted every question's checked set without touching the pointed row
+  (`Question fruits: … banana, apple` / `Question veg: … pea`, pointer on unchecked Leek).
+- Left/Right change question on a k-of-n card; the pointer resets to row 0.
+- On this build the composer does not paint under the card, and Herdr reports `done`.
+
+Toggle walks Up/Down one key per fresh read until `›` is on the row, then Space. Submit steps off
+`Other:` first (`s` would type there), then sends `s`.
+
 ## Not lifted
 
-- Cards with `(multi-select)` suffix stay raw in the terminal mirror this pass: Enter adds the pointed row before submitting, so a Submit button needs its own pointer walk; `actions.ts` has no such recipe, and nothing is probed.
 - Cards with any other footer or layout format fail closed.
 
 ## Composer refusal
@@ -63,8 +80,7 @@ They are not byte-faithful dumps and should be replaced by a live `wDX:p9`-shape
 ## Pending live probe
 
 Live capture was waived for this pass. The keystroke recipe and component behavior are verified against installed source, but the following remain pending a live probe:
-- A multi-arrow + Enter batch in one `send_keys`;
+- ~~A multi-arrow + Enter batch in one `send_keys`~~ — probed 2026-09-27: it drops keys; the bridge paces them;
 - The blank-row / composer layout under the card;
 - Live Herdr status while an ask is up;
-- That Enter on a 1-of-1 card submits;
-- The multi-select recipe.
+- That Enter on a 1-of-1 card submits (live 2026-09-27: picking row 3 from the phone submitted `large`).

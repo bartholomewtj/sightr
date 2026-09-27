@@ -158,6 +158,24 @@ describe("WizardBlock — review (Submit) step presentation", () => {
     expect(onAction).not.toHaveBeenCalledWith(["Right"]);
   });
 
+  it("sends the harness's own review keys, and disables Submit when it has none", async () => {
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    const base = fixtureModel("claude--wizard-submit.txt");
+    if (base.phase !== "review") throw new Error("expected review");
+    const pi = { ...base, submitKeys: ["Enter"], cancelKeys: ["Escape"] };
+    const { unmount } = render(<WizardBlock wizard={pi} onAction={onAction} />);
+    await user.click(screen.getByRole("button", { name: /Submit answers/ }));
+    expect(onAction).toHaveBeenLastCalledWith(["Enter"]);
+    await user.click(screen.getByRole("button", { name: /^Cancel$/ }));
+    expect(onAction).toHaveBeenLastCalledWith(["Escape"]);
+    unmount();
+
+    render(<WizardBlock wizard={{ ...pi, incomplete: true, submitKeys: null }} onAction={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /Submit answers/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Cancel$/ })).not.toBeDisabled();
+  });
+
   it("surfaces the not-all-answered warning on an incomplete review", () => {
     const model = fixtureModel("claude--wizard-submit-unanswered.txt");
     render(<WizardBlock wizard={model} onAction={vi.fn()} />);
