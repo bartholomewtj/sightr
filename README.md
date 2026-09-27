@@ -401,6 +401,10 @@ bun run build                  # typecheck both, build web/dist
   about a minute; `restart` does it now.
 - **Stale UI after an update**: the bridge sends the build in an `X-Sightr-Build` header and the app
   compares it with its own; hard-refresh once if the PWA still shows the old version.
+- **A long reply to Pi or Codex is not verified**: Sightr checks that a reply reached the input box
+  before pressing Enter, and recognises the `[Pasted text …]` token Claude and Cursor collapse long
+  pastes into. Pi (its box is not readable) and Codex (no adapter) get the text and Enter in one
+  call, unverified.
 - **Logs**: `logs 200` tails the config-directory logs. Bridge startup prints every security warning
   it has, so read the first lines first.
 

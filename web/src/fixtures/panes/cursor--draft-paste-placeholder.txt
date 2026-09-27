@@ -1,0 +1,12 @@
+  Cursor Agent
+  [0m[2mv2026.09.26-dd393fe[0m
+  [0m[2mTip: Hit shift+tab to enable Plan Mode for large or complex changes.[0m
+
+
+
+ [0m[48;2;21;21;21m                                                                                      [0m
+ [0m[48;2;21;21;21m → [0m[2m[38;5;6m[48;2;21;21;21m[Pasted text #3 +15 lines][0m[7m[48;2;21;21;21m [0m[48;2;21;21;21m                                                        [0m
+ [0m[48;2;21;21;21m                                                                                      [0m
+
+  [0m[2mGrok 4.7 500K Extra High · MAX[0m                                        [0m[38;5;5mRun Everything[0m
+  ~\Projects\demo
