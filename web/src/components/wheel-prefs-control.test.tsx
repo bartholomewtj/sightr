@@ -23,7 +23,7 @@ describe("WheelPrefsControl", () => {
     expect(screen.getByRole("switch", { name: "Ctrl L" })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Ctrl Z" })).toBeInTheDocument();
 
-    expect(screen.getByText("0 of 6 chosen. The wheel follows this order, left to right.")).toBeInTheDocument();
+    expect(screen.getByText(/^Nothing chosen, so the wheel uses/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Use the default wheel" })).toBeNull();
   });
 
@@ -69,7 +69,7 @@ describe("WheelPrefsControl", () => {
     const clearButton = screen.getByRole("button", { name: "Use the default wheel" });
     fireEvent.click(clearButton);
 
-    expect(screen.getByText("0 of 6 chosen. The wheel follows this order, left to right.")).toBeInTheDocument();
+    expect(screen.getByText(/^Nothing chosen, so the wheel uses/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Use the default wheel" })).toBeNull();
     expect(screen.getByRole("switch", { name: "Esc" })).toHaveAttribute("aria-checked", "false");
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual({ picks: [] });

@@ -65,7 +65,9 @@ export function WheelPrefsControl() {
       <div className="border-t border-border/60 bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
         {full
           ? "Six slices is the maximum — turn one off to add another."
-          : `${picks.length} of 6 chosen. The wheel follows this order, left to right.`}
+          : picks.length === 0
+            ? "Nothing chosen, so the wheel uses [[wheel]] rows in keys.toml, or the shipped Esc / Tab / Enter / Type. Turn keys on to choose up to six."
+            : `${picks.length} of 6 chosen. The wheel follows this order, left to right.`}
       </div>
 
       {picks.length > 0 && (
