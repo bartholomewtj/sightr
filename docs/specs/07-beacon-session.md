@@ -1,5 +1,7 @@
 # 07 — Beacon session must not clobber Herdr
 
+> **Status 2026-09-27:** DONE. `decorateAgent` applies nothing for another harness and never replaces Herdr's session; the state engine's dialog-sniff skip and beacon-name set use the same rules (`matchingBeacon`, `beaconSessionApplies`).
+
 Council row 7. Severity: high. Journal.
 
 ## Why

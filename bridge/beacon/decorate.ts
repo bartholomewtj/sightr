@@ -56,6 +56,23 @@ export function beaconsByPane(readings: readonly BeaconReading[]): Map<string, B
   return byPane;
 }
 
+/** The pane's beacon when it describes the harness now in the pane; undefined otherwise. */
+export function matchingBeacon(
+  view: AgentView,
+  identity: BeaconIdentity | undefined,
+): BeaconIdentity | undefined {
+  return identity !== undefined && identity.agent === view.agent ? identity : undefined;
+}
+
+/** Whether a (matching) beacon's session and name apply: Herdr named none, or named the same one. */
+export function beaconSessionApplies(view: AgentView, identity: BeaconIdentity): boolean {
+  const herdr = view.agentSession;
+  return (
+    herdr === undefined ||
+    (herdr.kind === identity.session.kind && herdr.value === identity.session.value)
+  );
+}
+
 /**
  * A view with what the beacon knows written onto it, or the SAME view when there is no beacon.
  *
@@ -66,11 +83,24 @@ export function beaconsByPane(readings: readonly BeaconReading[]): Map<string, B
  * `agent`, `kind` or `paneId`. That is a decision, not an omission: Herdr already reports the
  * harness in the pane it owns, and promoting a shell on the strength of a file in a directory is a
  * far bigger behaviour change than reading an identity the agent volunteered.
+ *
+ * The session is the part a stale file can get wrong (spec 07). After `/clear`, `/resume` or a
+ * harness swap, the hook file still names yesterday's chat, so:
+ *  - a beacon for another harness describes whatever ran here before, and none of it applies;
+ *  - Herdr's own session id wins over the beacon's when the two differ;
+ *  - otherwise (Herdr named none) the beacon's session opens history, live or expired, because
+ *    history is history. Status stays live-only (`identityOf`).
  */
 export function decorateAgent(view: AgentView, identity: BeaconIdentity | undefined): AgentView {
-  if (identity === undefined) return view;
-  const decorated: AgentView = { ...view, agentSession: identity.session };
-  if (identity.sessionName !== undefined) decorated.sessionName = identity.sessionName;
-  if (identity.status !== undefined) decorated.status = identity.status;
+  const beacon = matchingBeacon(view, identity);
+  if (beacon === undefined) return view;
+  const sessionApplies = beaconSessionApplies(view, beacon);
+  if (!sessionApplies && beacon.status === undefined) return view;
+  const decorated: AgentView = { ...view };
+  if (sessionApplies) {
+    decorated.agentSession = beacon.session;
+    if (beacon.sessionName !== undefined) decorated.sessionName = beacon.sessionName;
+  }
+  if (beacon.status !== undefined) decorated.status = beacon.status;
   return decorated;
 }

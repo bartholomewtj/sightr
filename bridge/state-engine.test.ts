@@ -695,6 +695,33 @@ describe("beacons", () => {
     expect(herdr.reads).toEqual([]);
   });
 
+  // Spec 07: after /clear or /resume the hook file names yesterday's chat. Herdr's id wins, the
+  // stale name is not applied, and the pane is grid-read for its real one.
+  test("a beacon naming another session than Herdr's is not used, and the pane is grid-read", async () => {
+    const { herdr, poll, agent } = makeNameEngine(
+      beaconsOf({ "w1~p1.json": record({ sessionName: "old-chat" }) }),
+    );
+    herdr.panes = [
+      { ...pane("w1:p1", "w1", "idle", "claude"), agent_session: { kind: "id", value: "sess-herdr" } },
+    ];
+    herdr.texts.set("w1:p1", ["──────── scraped-name ──", "❯ "].join("\n"));
+    await poll();
+    expect(agent("w1:p1").agentSession).toEqual({ kind: "id", value: "sess-herdr" });
+    expect(agent("w1:p1").sessionName).toBe("scraped-name");
+    expect(herdr.reads.length).toBe(1);
+  });
+
+  test("a beacon for another harness leaves a relaunched pane alone", async () => {
+    const { herdr, poll, agent } = makeNameEngine(
+      beaconsOf({ "w1~p1.json": record({ status: "waiting", sessionName: "old-chat" }) }),
+    );
+    herdr.panes = [pane("w1:p1", "w1", "working", "grok")];
+    await poll();
+    expect(agent("w1:p1").agentSession).toBeUndefined();
+    expect(agent("w1:p1").status).toBe("working");
+    expect("sessionName" in agent("w1:p1")).toBe(false);
+  });
+
   test("a beacon with no name leaves the grid read exactly as it was", async () => {
     const { herdr, poll, agent } = makeNameEngine(beaconsOf({ "w1~p1.json": record() }));
     herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
