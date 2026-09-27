@@ -1,6 +1,6 @@
 # 0007 — The idle lock is a pause, not a gate
 
-Status: **Superseded** (idle-lock removed; reconnect lock is WebAuthn — [README.md → Reconnect lock](../../README.md#reconnect-lock))
+Status: **Superseded** (idle-lock removed; reconnect lock is WebAuthn — [README.md → On the phone, Reconnect lock](../../README.md#on-the-phone))
 
 The idle-lock module (`web/src/hooks/use-idle-lock.ts`) was removed. Citations of `ARCHITECTURE.md` below referred to a file that no longer existed as a live map; the stub [`ARCHITECTURE.md`](../ARCHITECTURE.md) points at [README.md → Architecture](../../README.md#architecture). Historical Context is unchanged.
 

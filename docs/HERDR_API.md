@@ -25,9 +25,9 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
   1 048 575 bytes (newline included) still gets a normal reply; 1 048 576 gets no reply at all —
   the server drops the connection or simply never answers. Nothing Sightr sends is near that, but
   it is the ceiling to design against, and a hang at that size is the server, not the client. (The
-  client-side hazard at large sizes was Sightr's own: Bun's `socket.write()` accepts only what the
-  socket has room for, and the unwritten tail must be resumed on `drain` — see
-  [`bridge/write-drain.ts`](../bridge/write-drain.ts).)
+  client-side hazard at large sizes was Sightr's own: Bun's `socket.write()` accepted only what the
+  socket had room for. The bridge now dials through `node:net`, whose `write` queues the rest until it
+  is delivered — see [`bridge/dial.ts`](../bridge/dial.ts).)
 
 ## Methods the bridge uses (verified params)
 
@@ -39,7 +39,14 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
 | `pane.read` | `{pane_id, source, lines, format}` | `pane_read` → `read{text, truncated, revision}` |
 | `pane.send_text` | `{pane_id, text}` | (ack) |
 | `pane.send_keys` | `{pane_id, keys}` | (ack) |
-| `agent.send` | `{target, text}` | (ack) — writes **literal** text, no Enter |
+| `pane.rename`, `pane.close` | `{pane_id, …}` | (ack) |
+| `tab.list`, `tab.create`, `tab.rename`, `tab.close` | see `bridge/herdr-client.ts` | |
+| `workspace.create`, `workspace.rename`, `workspace.close` | see `bridge/herdr-client.ts` | |
+| `worktree.list`, `worktree.open`, `worktree.remove` | see `bridge/herdr-client.ts` | |
+| `events.subscribe` | see below | streams events |
+
+The bridge does not call `agent.send`; a reply is `pane.send_text` then `pane.send_keys`.
+`bridge/herdr-client.ts` is the only file that names a method.
 
 - `pane.read` `source` ∈ `visible | recent | recent_unwrapped | detection` — **snake_case on the
   wire**: `recent-unwrapped` gets `invalid_request: unknown variant` (live-probed 2026-08-03,
@@ -83,14 +90,14 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
     10 s — `revision` alone can't be trusted to follow the screen (see the stub note below)
     (`bridge/state-engine.ts` → `sniffDialogs`).
   **`format: "text"` returns clean plain text (no ANSI escapes)** → safe to render, no XSS surface.
-- `agent.send` writes literal text only; to submit a reply, follow with an Enter keypress
+- `pane.send_text` writes literal text only; to submit a reply, follow with an Enter keypress
   (`pane.send_keys {keys: ["Enter"]}`) — submit-key name needs live confirmation per agent.
 - **`pane.send_text` writes RAW bytes — no bracketed paste.** Live-probed 2026-07-27 (herdr 0.7.4) by
   sending into a pane running `/usr/bin/cat -v`, which renders control bytes visibly: the text came
   back bare, with no `^[[200~` / `^[[201~` framing. Two consequences worth keeping:
   - A PTY is an ordered byte stream, so a following `send_keys` **cannot** overtake the text. Any
     "the Enter arrived before the text" theory is dead on arrival — including blaming the settle
-    delay between the two calls (`sendReplySteps`, `bridge/server.ts`). See #34, where that was the
+    delay between the two calls (`sendReplySteps`, `bridge/pane-write-routes.ts`). See #34, where that was the
     first and wrong hypothesis.
   - A `\n` inside `text` is delivered as a real newline keypress, not as pasted content. What the TUI
     does with it (submit vs. insert) is the harness's choice, not something the paste framing hides.
@@ -113,7 +120,7 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
 >   program wrote — `\x1b[38;5;1m` stays a palette index, never a resolved RGB. So herdr's
 >   `[theme]` setting governs how *herdr's own UI* paints a pane, not what a client receives, and the
 >   same palette-index colour can legitimately differ between the desktop TUI and Sightr (which
->   applies its own 16-slot table). See [`0002`](./0002-invert-the-light-terminal-mirror.md).
+>   applies its own 16-slot table). See [`0002`](./adr/0002-invert-the-light-terminal-mirror.md).
 
 ## `session.snapshot` — one RPC, the whole herd (new in 0.7.2)
 
@@ -195,7 +202,7 @@ Three sibling RPCs set a display label on a workspace, tab, or pane. Live-verifi
   confirming tabs/workspaces have **no "clear"** (only `pane.rename` clears, via `null`). Sightr makes
   its own opposite choices per object: a blank pane "Save" clears (blank → `null`), while a blank tab
   "Save" is refused client- and bridge-side, since a literal-empty tab chip is useless. See
-  `bridge/server.ts` (`normalizeLabel`).
+  `bridge/tree-routes.ts` (`normalizeLabel`).
 - **Undocumented field:** once set, a pane's label rides along as **`label?: string`** in `pane.list`,
   `pane.get`, `pane.current`, and `session.snapshot` panes (omitted when unset — so it's absent from
   the base pane shape below). Workspaces already expose `label`; tabs likewise.
@@ -336,9 +343,9 @@ Sightr now polls `session.snapshot` (above) as the source of truth, and addition
 long-lived `events.subscribe` stream — global lifecycle events plus a per-agent-pane
 `pane.agent_status_changed` subscription, resubscribed whenever the agent-pane set changes —
 purely to **poke** the poller: an event triggers an immediate debounced re-poll, it never updates
-state by itself. While the stream is healthy, interval polling relaxes to `SIGHTR_POLL_IDLE_MS`
-(default 12000 ms, min 1000 ms); when the stream is down or reconnecting, it drops back to the
-fast `SIGHTR_POLL_MS` cadence (default 1500 ms). Events accelerate; the snapshot stays authoritative — a missed
+state by itself. While the stream is healthy and no agent is working or blocked, interval polling relaxes to
+`SIGHTR_POLL_IDLE_MS` (default 12000 ms, min 1000 ms); otherwise, or when the stream is down or
+reconnecting, it uses the fast `SIGHTR_POLL_MS` cadence (default 1500 ms, min 250 ms). Events accelerate; the snapshot stays authoritative — a missed
 event costs one interval, never correctness.
 
 Also visible in the 0.7.2 schema but unused by Sightr: `events.wait`, `pane.send_input`,

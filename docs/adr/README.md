@@ -91,4 +91,5 @@ written. Where one names a live identifier, read it as today's:
 - `herdr.collie` is `herdr.sightr`;
 - `scripts/collie-ctl.sh` is `contrib/windows/sightr-ctl.ps1`, which runs the Bun ctl `scripts/ctl.ts`.
 
-The fork records (0017 on) use the current names.
+The fork records (0017 on) use the current names in their bodies. 0017 keeps its original
+`collie` file name and heading so existing links resolve.

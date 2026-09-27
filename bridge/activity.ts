@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { Config } from "./config.ts";
 
 // When did each pane last DO something, and when did you last LOOK at it? Herdr answers neither —
-// its pane records carry no timestamps at all (HERDR_API.md) — so Sighter derives and owns both.
+// its pane records carry no timestamps at all (HERDR_API.md) — so Sightr derives and owns both.
 //
 // Two numbers per pane are enough for the whole dashboard:
 //   • activeAt — the last agent status transition this bridge observed
@@ -19,11 +19,11 @@ import type { Config } from "./config.ts";
 // desk in Herdr itself — see .adr/0003-one-shared-seen.md. Persisted to the state dir like
 // NotifyPrefsStore, so it survives the `systemctl restart` every backend change needs.
 
-/** The two timestamps Sighter keeps for a pane. Epoch ms. */
+/** The two timestamps Sightr keeps for a pane. Epoch ms. */
 export interface PaneActivity {
   /** Last agent status transition observed by the state engine. */
   activeAt: number;
-  /** Last time you opened or drove this pane through Sighter. */
+  /** Last time you opened or drove this pane through Sightr. */
   seenAt: number;
 }
 
@@ -92,7 +92,7 @@ const SHELL_LOCATOR = /^[^\s@:]+@[^\s@:]+(:.*)?$/;
  * directly: it removes the settled `✳` but leaves Claude's rotating spinner frames (live-observed
  * 2026-08-15 in one snapshot — `✳ Read Notes From Underground` stripped, `◐ Custom UI for Sighter…`
  * not). Since those frames advance on every poll, binding a row's label to it makes every working
- * agent's name flicker. So Sighter strips the glyph itself, on whichever of the two strings is
+ * agent's name flicker. So Sightr strips the glyph itself, on whichever of the two strings is
  * already the shorter — Herdr having done the job is a fine head start, it just can't be trusted to
  * have finished it.
  *
@@ -220,7 +220,7 @@ export class ActivityLedger {
     this.markDirty();
   }
 
-  /** You opened or drove the pane through Sighter. Clears its unread state by construction. */
+  /** You opened or drove the pane through Sightr. Clears its unread state by construction. */
   noteSeen(session: string, paneId: string): void {
     const panes = this.panesFor(session);
     const t = this.now();
