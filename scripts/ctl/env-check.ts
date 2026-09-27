@@ -8,5 +8,8 @@ export async function envCheck(env: Record<string,string|undefined>=process.env,
  const warnings=await hardenConfig(p.configDir,p.envFile,run,env); warnings.forEach(x=>console.error(x));
  let exists=false; try { await access(p.envFile); exists=true; } catch { }
  console.log(`config dir: ${p.configDir}\n.env: ${p.envFile}\nexists: ${exists ? "yes":"no"}\npermission/ACL: ACL checked`);
- if(exists) { const parsed=await loadEnv(p.envFile); parsed.warnings.forEach(x=>console.error(x)); console.log(`keys: ${[...parsed.values.keys()].join(", ")}`); } else console.log("keys: (none)"); return 0;
+ if(exists) { const parsed=await loadEnv(p.envFile); parsed.warnings.forEach(x=>console.error(x)); console.log(`keys: ${[...parsed.values.keys()].join(", ")}`);
+  // Pre-1.0 names are never read: say so, and name the rewrite (spec 11).
+  const legacy=[...parsed.values.keys()].filter(k=>k.startsWith("SIGHTER_"));
+  if(legacy.length) console.error(`warn: ${legacy.join(", ")} ${legacy.length===1?"is a":"are"} pre-1.0 name${legacy.length===1?"":"s"} and ${legacy.length===1?"is":"are"} ignored; rename SIGHTER_ to SIGHTR_`); } else console.log("keys: (none)"); return 0;
 }

@@ -15,7 +15,7 @@ One spec = one run. Do not implement a sibling spec in the same run. Numbers mat
 | 08 | [08-grok-live-identity.md](08-grok-live-identity.md) | High | Open | Two Grok prompt grammars; WEAK sibling claims |
 | 09 | [09-history-paging.md](09-history-paging.md) | High | Partly — #17 dropped the 1.5 s poll; left: unknown cursor, dedupe, lock, ETag | Unknown cursor duplicates turns |
 | 10 | [10-pwa-build-swap.md](10-pwa-build-swap.md) | High | Done — build mismatch checks at once; wedged path once per build | `X-Sightr-Build` does not swap the worker |
-| 11 | [11-sighter-config-migrate.md](11-sighter-config-migrate.md) | High | Open | Pre-1.0 `.env` is not copied |
+| 11 | [11-sighter-config-migrate.md](11-sighter-config-migrate.md) | High | Done — one-time `.env` copy with key rename; env-check warns | Pre-1.0 `.env` is not copied |
 | 12 | [12-split-actions.md](12-split-actions.md) | High | Open — counts and citations refreshed in the spec note | `actions.ts` is a collapsed god file |
 | 13 | [13-files-containment.md](13-files-containment.md) | Med | Open — add `bridge/operator-file.ts` | Files tab borrows journal FS; ADR 0026 stale |
 | 14 | [14-find-follow.md](14-find-follow.md) | Med | Open | Find close / shell Find freeze |
