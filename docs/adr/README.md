@@ -84,3 +84,11 @@ A superseded ADR is never deleted or edited into agreement with the present. Mar
 | [0027](./0027-html-open-is-a-unique-origin-sandbox.md) | HTML from the work root opens as a unique-origin sandbox | Accepted |
 
 0011–0016 and 0024 were never written on this product. The next ADR is 0028.
+
+The inherited records 0001–0010 were written when the product was Collie, and their Context stays as
+written. Where one names a live identifier, read it as today's:
+- `COLLIE_*` is `SIGHTR_*`;
+- `herdr.collie` is `herdr.sightr`;
+- `scripts/collie-ctl.sh` is `contrib/windows/sightr-ctl.ps1`, which runs the Bun ctl `scripts/ctl.ts`.
+
+The fork records (0017 on) use the current names.

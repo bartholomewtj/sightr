@@ -1,5 +1,12 @@
 # 20 — Live identifiers in ADRs and logs
 
+> **Status 2026-09-27:** DONE.
+> - `SIGHTR_*` / `herdr.sightr` / `sightr-ctl.ps1` / `bartholomewtj/sightr` / `check-version.ts` in ADRs 0019, 0021, 0023 and 0025, and in 0001's decision. 0001's PR #26 proposal stays as history.
+> - ADR 0026 was amended by spec 13.
+> - The ADR index has one mapping note for the inherited 0001–0010.
+> - `HERDR_API.md` says Sightr.
+> - The three web XSS comments cite README "Security, read this first".
+>
 > **Status 2026-09-27 (`874b85b`):** PARTLY DONE. #17 fixed the ADR index, `HERDR_API.md` `SIGHTR_POLL_*`, the `ARCHITECTURE.md` stub and the journalctl/systemd strings. Left: `COLLIE_*` in ADR bodies 0001, 0019, 0020, 0021, 0023, 0025, 0026, and the "CLAUDE.md §Security posture" citations in `web/src/lib/markdown.ts`, `web/src/lib/links.ts`, `web/src/components/markdown-text.tsx`.
 
 Council row 20. Severity: medium. Fork + form.

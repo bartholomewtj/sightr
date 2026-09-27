@@ -8,7 +8,7 @@ Status: **Accepted** (2026-08-17)
 (`SEMVER_TAG = /^v(\d+)\.(\d+)\.(\d+)$/`). When a release is found, the in-app banner advertises that
 version and directs the operator to update.
 
-Previously, `scripts/collie-ctl.sh update` (and its PowerShell mirror `contrib/windows/collie-ctl.ps1`)
+Previously, `contrib/windows/sightr-ctl.ps1 update` (and its PowerShell mirror `contrib/windows/sightr-ctl.ps1`)
 handled Herdr-managed checkouts by fetching `origin HEAD` and checking out `FETCH_HEAD`. This created
 three serious defects:
 
@@ -34,9 +34,9 @@ three serious defects:
   portable numeric `sort -t. -k1,1n -k2,2n -k3,3n` fallback for older git versions), ensuring `v0.100.1`
   correctly outranks `v0.9.0`.
 - **Refusal on absent tags**: If origin contains zero matching release tags, `update` **refuses** with a
-  non-zero exit status, prints an actionable diagnostic naming `COLLIE_UPDATE_REF`, and leaves `HEAD`
+  non-zero exit status, prints an actionable diagnostic naming `SIGHTR_UPDATE_REF`, and leaves `HEAD`
   completely unmoved. It never falls back to `origin HEAD`.
-- **`COLLIE_UPDATE_REF` escape hatch**: An explicit ref or tag override can be supplied via environment
+- **`SIGHTR_UPDATE_REF` escape hatch**: An explicit ref or tag override can be supplied via environment
   variable for rollbacks, incident pinning, or untagged fork environments.
 - **Verification on landing**: After checkout, the script asserts `git describe --tags --exact-match`
   equals the target tag before proceeding to build.
@@ -63,8 +63,8 @@ Signature verification should be revisited when upstream begins publishing signe
 ### Other operational consequences
 
 - **`update` no longer delivers unreleased `main`.** Maintainers testing unreleased tip must use a linked
-  clone or pass `COLLIE_UPDATE_REF=main`.
-- **Untagged repositories cannot self-update without `COLLIE_UPDATE_REF`.** Consistent with the banner, which
+  clone or pass `SIGHTR_UPDATE_REF=main`.
+- **Untagged repositories cannot self-update without `SIGHTR_UPDATE_REF`.** Consistent with the banner, which
   never advertises updates when no release tags exist.
 - **ADR 0006's `--force` rationale is weakened but preserved.** With `--frozen-lockfile`, `bun install`
   cannot dirty `bun.lock`. `--force` is retained as defence in depth against other untracked workspace dirt.

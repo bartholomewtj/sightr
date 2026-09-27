@@ -2,7 +2,7 @@
 //
 // WHY HAND-ROLLED. Agent output is Markdown, and reading it raw on a phone (`## Heading`, `**bold**`)
 // is worse than reading it formatted. But the repo's hard rule is that pane/agent text renders as
-// React TEXT NODES, never `innerHTML` — that's the XSS boundary (CLAUDE.md §"Security posture",
+// React TEXT NODES, never `innerHTML` — that's the XSS boundary (README "Security, read this first",
 // README.md → Architecture). So this produces an AST, and the renderer turns it into React elements. No
 // HTML string is ever constructed, which keeps the boundary provable rather than trusted, and adds
 // no dependency to a phone bundle that currently has seven.
