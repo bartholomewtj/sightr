@@ -65,6 +65,14 @@ export interface HarnessAdapter {
    */
   composerPrompt?(lines: StyledLine[]): string | null;
   /**
+   * Why a READY composer cannot take a bound write right now, or null when it can (spec 18). Cursor's
+   * slash / `/model` autocomplete paints a list under the box, pushing the prompt row out of the
+   * bridge's bind window, so `composerPrompt` is null while `composerReady` stays true. The reply
+   * guard refuses such a send with this reason and sends nothing, rather than sweeping unbound into
+   * the popup. Conformance holds `composerPrompt` to: a region exactly when ready and this is null.
+   */
+  unbindableComposer?(lines: StyledLine[]): string | null;
+  /**
    * SUPPLEMENTAL evidence that `sent` reached the input box, for the case the reply guard's own
    * literal-substring match structurally cannot see: a harness that swallows what was typed and paints
    * a TOKEN of its own instead (Claude's `[Pasted text #N +M lines]`), so the box never holds our

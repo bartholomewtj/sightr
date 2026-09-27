@@ -1,5 +1,7 @@
 # 18 — Cursor autocomplete must not unbound-sweep
 
+> **Status 2026-09-27:** DONE (option B). New adapter hook `unbindableComposer`; Cursor names the tall autocomplete list; the reply guard (`actions.ts`) refuses such a send, forced or not, before any key. The AUTOCOMPLETE fixtures are back in the conformance neutral cohort; the agreement leg is "a region exactly when ready and bindable".
+>
 > **Status 2026-09-27 (`874b85b`):** OPEN. The unbound `ctrl+k` + Backspace sweep is in `web/src/lib/composer-send.ts` (last touched by #29), not `actions.ts` / `reply-action.ts`.
 
 Council row 18. Severity: medium. Parser.

@@ -179,6 +179,13 @@ export function composerReady(lines: StyledLine[]): boolean {
 
 const BRIDGE_PROMPT_TAIL_LINES = PROMPT_TAIL_LINES;
 
+/** Ready but not bindable: only the tall autocomplete list does this (see composerPrompt below). */
+export function unbindableComposer(lines: StyledLine[]): string | null {
+  return composerReady(lines) && composerPrompt(lines) === null
+    ? "Cursor's autocomplete list is open under the input box"
+    : null;
+}
+
 export function composerPrompt(lines: StyledLine[]): string | null {
   if (!composerReady(lines)) return null;
   const box = locateComposer(lines);

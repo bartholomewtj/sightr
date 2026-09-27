@@ -34,6 +34,8 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   one compact row; a one-pane space shows that a tap opens it.
 
 ### Fixed
+- A send while Cursor's autocomplete list is open is refused, with nothing typed. It used to clear the
+  `/` draft with an unbound `ctrl+k` sweep into the popup. Close the list and send again.
 - A reconnect or refused banner no longer stacks a second notch gap on top of the header. While a
   banner is open it pads the status bar and the headers below it don't.
 - Closing Find returns to the live tail instead of leaving you parked at the last match. Find now

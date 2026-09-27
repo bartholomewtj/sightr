@@ -22,7 +22,7 @@ One spec = one run. Do not implement a sibling spec in the same run. Numbers mat
 | 15 | [15-thinking-duration.md](15-thinking-duration.md) | Med | Done — same-row thinking is done; idle gaps omitted | Thought-for uses the next turn's gap |
 | 16 | [16-cursor-tool-complete.md](16-cursor-tool-complete.md) | Med | Done — #21 `SettledRow`; Cursor tools arrive `unrecorded` | Cursor tools look stuck running |
 | 17 | [17-agy-journal-claim.md](17-agy-journal-claim.md) | Med | Done — README line fixed 27 Sep | README claims an AGY session log |
-| 18 | [18-cursor-autocomplete-bind.md](18-cursor-autocomplete-bind.md) | Med | Open — the sweep is in `composer-send.ts` | Autocomplete send is unbound |
+| 18 | [18-cursor-autocomplete-bind.md](18-cursor-autocomplete-bind.md) | Med | Done — refused while unbindable (`unbindableComposer`); fixtures back in conformance | Autocomplete send is unbound |
 | 19 | [19-paste-boundary.md](19-paste-boundary.md) | Med | Open — name Pi's one-shot path | Long-send verify is Claude/Codex only |
 | 20 | [20-collie-identifiers.md](20-collie-identifiers.md) | Med | Partly — #17; left: `COLLIE_*` in ADR bodies, CLAUDE.md citations | ADRs and logs still name Collie |
 | 21 | [21-phone-overscroll.md](21-phone-overscroll.md) | Med | Stale reference — Bart's call on pull-to-refresh | Pull reloads the PWA (GitHub #16) |
