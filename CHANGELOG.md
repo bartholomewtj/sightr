@@ -34,6 +34,10 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   one compact row; a one-pane space shows that a tap opens it.
 
 ### Fixed
+- A Claude hook beacon no longer overrides the pane's real session. After `/clear`, `/resume` or a
+  harness swap, history followed yesterday's hook file. Herdr's session id now wins, and a beacon for a
+  different harness than the pane's applies nothing. An expired beacon still opens history when Herdr
+  names no session.
 - The harness conformance suite now fails any prompt-select that sends a digit its option row does
   not print (.adr/0009), not only generic menus. Antigravity's unnumbered trust card is the case it
   guards: it walks the pointer and presses Enter.

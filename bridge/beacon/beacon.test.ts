@@ -293,6 +293,59 @@ describe("decorateAgent", () => {
     expect(decorated.status).toBe("working");
     expect(decorated.agentSession).toEqual({ kind: "id", value: "sess-0001" });
   });
+
+  // Spec 07: after /clear, /resume or a harness swap the hook file still names yesterday's chat.
+  const herdrSession = { kind: "id", value: "sess-herdr" } as const;
+  const expired = (over: Partial<BeaconReading> = {}) =>
+    identityOf({
+      liveness: "expired",
+      paneId: "w1:p1",
+      harness: "claude",
+      session: { kind: "id", value: "sess-0001" },
+      sessionName: "old-chat",
+      ...over,
+    } as BeaconReading)!;
+
+  test("Herdr's own session wins over a live beacon that names another", () => {
+    const decorated = decorateAgent(
+      view({ agentSession: herdrSession }),
+      identityOf(reading({ status: "waiting", sessionName: "old-chat" }))!,
+    );
+    expect(decorated.agentSession).toEqual(herdrSession);
+    expect("sessionName" in decorated).toBe(false);
+    expect(decorated.status).toBe("blocked"); // live status still applies
+  });
+
+  test("a live beacon naming Herdr's own session keeps it and adds the name", () => {
+    const decorated = decorateAgent(
+      view({ agentSession: { kind: "id", value: "sess-0001" } }),
+      identityOf(reading({ sessionName: "my-feature" }))!,
+    );
+    expect(decorated.agentSession).toEqual({ kind: "id", value: "sess-0001" });
+    expect(decorated.sessionName).toBe("my-feature");
+  });
+
+  test("an expired beacon opens history only when Herdr named no session", () => {
+    const unnamed = decorateAgent(view(), expired());
+    expect(unnamed.agentSession).toEqual({ kind: "id", value: "sess-0001" });
+    expect(unnamed.sessionName).toBe("old-chat");
+
+    const named = view({ agentSession: herdrSession, status: "working" });
+    expect(decorateAgent(named, expired())).toBe(named);
+  });
+
+  test("a beacon for another harness applies nothing", () => {
+    const pane = view({ agent: "grok", status: "working" });
+    expect(decorateAgent(pane, identityOf(reading({ status: "waiting" }))!)).toBe(pane);
+    expect(decorateAgent(pane, expired())).toBe(pane);
+  });
+
+  test("a shell pane is never promoted by a beacon", () => {
+    const shell = view({ agent: "shell", kind: "shell", status: "unknown" } as Partial<AgentView>);
+    const decorated = decorateAgent(shell, identityOf(reading({ status: "waiting" }))!);
+    expect(decorated).toBe(shell);
+    expect(decorated.agent).toBe("shell");
+  });
 });
 
 describe("beaconsByPane", () => {

@@ -9,7 +9,13 @@ import {
   type PaneCommon,
 } from "../shared/wire.ts";
 import type { AgentSessionRef } from "./journal/types.ts";
-import { beaconsByPane, decorateAgent, type BeaconIdentity } from "./beacon/decorate.ts";
+import {
+  beaconSessionApplies,
+  beaconsByPane,
+  decorateAgent,
+  matchingBeacon,
+  type BeaconIdentity,
+} from "./beacon/decorate.ts";
 import { readBeacons, type BeaconSweepDeps } from "./beacon/reader.ts";
 import { hasBlockingDialog, sniffsDialogs } from "../web/src/lib/harness/dialog-sniff.ts";
 
@@ -498,8 +504,14 @@ export class StateEngine {
       // Enrich claude panes with their own `/rename` session name (read from pane text). Best-effort:
       // a failed read keeps the last-known name and never fails the poll.
       // A pane whose beacon supplied a name is not grid-read for one — the agent already said it.
+      // Only a name that was actually applied counts (same harness, and Herdr named no other session).
       const named = new Set(
-        [...identities].filter(([, i]) => i.sessionName !== undefined).map(([paneId]) => paneId),
+        agents
+          .filter((a) => {
+            const beacon = matchingBeacon(a, identities.get(a.paneId));
+            return beacon?.sessionName !== undefined && beaconSessionApplies(a, beacon);
+          })
+          .map((a) => a.paneId),
       );
       await this.enrichSessionNames(agents, revisions, named);
 
@@ -550,7 +562,7 @@ export class StateEngine {
       if (
         sniffsDialogs(a.agent) &&
         RESTING_STATUS.has(a.status) &&
-        identities.get(a.paneId)?.status === undefined
+        matchingBeacon(a, identities.get(a.paneId))?.status === undefined
       ) {
         candidates.add(a.paneId);
       }
