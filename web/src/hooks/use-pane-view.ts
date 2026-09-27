@@ -435,7 +435,7 @@ export function usePaneView(args: PaneViewArgs) {
 
   // Tap a wizard control (an option digit, step navigation, or the review step's submit/cancel).
   // Same shape as handlePromptAction — the guard re-derives the wizard from a FRESH read and only
-  // a clean match sends the single keystroke (incremental round-trip; grammar/WIZARD_NOTES.md).
+  // a clean match sends the single keystroke (incremental round-trip; harness/claude/wizard.ts).
   // gate: Claude's adapter is the only one that emits `wizard` (buildBlocks routes through the pane's
   // adapter — see harness/registry.ts), so this handler cannot fire for any other agent.
   const handleWizardAction = useCallback(
@@ -477,7 +477,7 @@ export function usePaneView(args: PaneViewArgs) {
   // Tap a preview-dialog control (an option, the note add/edit/remove, or the wizard step nav).
   // Same guard-first shape as the two handlers above, but the choreography behind an intent is
   // MULTI-step (digit→verify→Enter; n→verify→type→Escape — see lib/actions.ts and
-  // grammar/NOTES_NOTES.md), so the handler dispatches on the intent kind.
+  // harness/claude/preview-select.ts), so the handler dispatches on the intent kind.
   // gate: Claude's adapter is the only one that emits `preview-select` — no other registered adapter
   // lifts this kind, so this handler cannot fire for another agent.
   const handlePreviewAction = useCallback(

@@ -11,6 +11,8 @@ adds an entry here and keeps the three version files in step; CI refuses a build
 - `docs/ARCHITECTURE.md` and `docs/HARNESS_CONTRIBUTING.md` stubs so older ADR links resolve.
 
 ### Changed
+- `web/src/lib/actions.ts` is split into one module per job (`menu-`, `wizard-`, `prompt-`, `preview-`,
+  `multi-select-` and `reply-action.ts`), each with its tests beside it; `actions.ts` re-exports them.
 - Slash-command catalogs live under `shared/catalog/`; `shared/agents.ts` is the harness table.
 - Connection mark component is `sightr-mark` (`SightrLoader`), not dog-gallop.
 - With EventSource open, the phone skips periodic `GET /api/snapshot` (home and open pane). Pane dump

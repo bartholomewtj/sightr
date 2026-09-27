@@ -1,5 +1,11 @@
 # 12 — Split actions.ts along the jobs it already names
 
+> **Status 2026-09-28:** DONE.
+> - `actions.ts` is a 14-line barrel over `menu-action.ts` (56 lines), `wizard-action.ts`, `prompt-action.ts`, `preview-action.ts`, `multi-select-action.ts` and `reply-action.ts` (the largest, ~555).
+> - `actions.test.ts` is split along its five "merged …" sections into colocated test files; 133 cases before and after, and the old file passes unchanged against the barrel.
+> - `lib/reply-action.ts` / `lib/prompt-action.ts` citations now resolve.
+> - The phantom `grammar/*_NOTES.md` citations point at the Claude detectors instead.
+>
 > **Status 2026-09-27 (`874b85b`):** OPEN. Counts are now `actions.ts` 1338 lines and `actions.test.ts` 2415. Phantom `lib/reply-action.ts` / `lib/prompt-action.ts` / `lib/grammar/` are cited from ADR 0010, `docs/HERDR_API.md`, `harness/claude/chrome.ts`, `harness/claude/paste.ts`, `harness/claude/prompt-select.test.ts` and `harness/prompt-model.ts`. The reply sweep now lives in `web/src/lib/composer-send.ts`.
 
 Council row 12. Severity: high. Form.

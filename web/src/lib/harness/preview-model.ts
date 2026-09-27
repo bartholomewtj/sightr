@@ -9,7 +9,7 @@
 // lib/dialog-guard.ts) are written against these types alone.
 //
 // Claude's reference detector is harness/claude/preview-select.ts; the verified ground truth is
-// grammar/NOTES_NOTES.md. Imports nothing but its sibling model, so `lib/blocks.ts` can re-export it
+// harness/claude/preview-select.ts. Imports nothing but its sibling model, so `lib/blocks.ts` can re-export it
 // without a cycle. The identity comparators at the bottom are part of the same contract: the race
 // guard compares any adapter's dialog through them (harness/dialog-contract.ts wires kind → comparator).
 

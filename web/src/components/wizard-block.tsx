@@ -17,7 +17,7 @@ export interface WizardBlockProps {
   /**
    * Injected send handler (from AgentChat). Presentational contract: this component NEVER touches
    * the network — every control resolves to ONE keystroke (`keys`) that the handler race-guards
-   * and sends (the incremental round-trip model; see grammar/WIZARD_NOTES.md). Returning/throwing
+   * and sends (the incremental round-trip model; see harness/claude/wizard.ts). Returning/throwing
    * simply clears the busy state.
    */
   onAction: (keys: string[]) => void | Promise<void>;
