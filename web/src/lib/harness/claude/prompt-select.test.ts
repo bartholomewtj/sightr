@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
 import { detectPromptSelect, detectPromptSelectRegion, type PromptFamily } from "./prompt-select";
+import { claudeBuildBlocks } from "./index";
 import { lineText } from "./markers";
 import { promptsEqual, promptsSameIdentity } from "../prompt-model";
 
@@ -346,5 +347,42 @@ describe("detectPromptSelectRegion — render boundary", () => {
     expect(lineText(lines[region!.startLine]!).trim()).toMatch(/^❯?\s*1\.\s+Red$/);
     expect(lineText(lines[region!.startLine - 1]!).trim()).toBe("");
     expect(region!.model).toEqual(detectPromptSelect(lines));
+  });
+});
+
+// Live 2026-09-27, Claude Code 2.1.283. Once a session has a name, Claude paints its input box's
+// labelled top border (`──── add-subtract-function ─`) as the last row under every dialog. Every
+// grammar anchors on the footer being the last row, so no dialog lifted on a named session.
+describe("dialogs on a named session", () => {
+  const blocksOf = (name: string) => claudeBuildBlocks(splitLines(parseAnsi(fixtureText(name))));
+
+  it("lifts a single-select whose question has no `?` under the named-session border", () => {
+    const block = blocksOf("claude--select-named-session-no-qmark.txt").find((b) => b.kind === "prompt-select");
+    expect(block?.kind).toBe("prompt-select");
+    if (block?.kind !== "prompt-select") return;
+    // No "?" in "Pick one": the AskUserQuestion chip (` ☐ Color `) anchors the question instead.
+    expect(block.prompt.question).toBe("Pick one");
+    expect(block.prompt.options.map((o) => o.label)).toEqual(["Red", "Blue", "Chat about this"]);
+    expect(block.prompt.options[1]!.keys).toEqual(["2", "Enter"]);
+  });
+
+  it("lifts the preview variant under the named-session border", () => {
+    const block = blocksOf("claude--select-preview-named-session.txt").find((b) => b.kind === "preview-select");
+    expect(block?.kind).toBe("preview-select");
+    if (block?.kind !== "preview-select") return;
+    expect(block.preview.options.map((o) => o.label)).toEqual(["Sidebar", "Top bar"]);
+  });
+
+  it("keeps the border row in the block's own lines", () => {
+    const lines = splitLines(parseAnsi(fixtureText("claude--select-named-session-no-qmark.txt")));
+    const blocks = claudeBuildBlocks(lines);
+    const last = blocks[blocks.length - 1]!;
+    expect(lineText(last.lines[last.lines.length - 1]!)).toMatch(/add-subtract-function/);
+  });
+
+  it("still needs a question for a family without the chip", () => {
+    const raw = fixtureText("claude--select-named-session-no-qmark.txt").replace(" ☐ Color ", "  Color  ");
+    const block = claudeBuildBlocks(splitLines(parseAnsi(raw))).find((b) => b.kind === "prompt-select");
+    expect(block).toBeUndefined();
   });
 });

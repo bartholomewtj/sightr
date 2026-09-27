@@ -1,0 +1,30 @@
+     
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse AskUserQuestion once with a single question 'Which layout?' header 'Layout', [0m[48;2;55;55;55m      [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55moptions 'Sidebar' and 'Top bar', and give EACH option a preview field containing a [0m[48;2;55;55;55m    [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55msmall ASCII mockup (3 lines). After I answer, reply only with my choice.[0m[48;2;55;55;55m               [0m
+[0m[38;2;153;153;153m  ⎿  [0m[1m[38;2;153;153;153m1[0m[38;2;153;153;153m skill available[0m
+ 
+[0m[38;2;153;153;153m● [0mUser answered Claude's questions:
+[0m[38;2;153;153;153m  ⎿  · Which layout? → Top bar[0m
+
+[0m[38;2;255;255;255m●[0m Top bar
+
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mChurned for 4s · done 6:43 PM[0m
+
+[0m[38;2;80;80;80m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mUse AskUserQuestion once: single question 'Pick one' options Red, Blue (no previews). [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mThen reply only with my choice.[0m[48;2;55;55;55m                                                        [0m
+[0m[38;2;153;153;153m─────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;0;0;0m[48;2;177;185;249m ☐ Color [0m
+
+[0m[1m[38;2;255;255;255mPick one[0m
+
+[0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mRed[0m
+     [0m[38;2;153;153;153mRed[0m
+  [0m[38;2;153;153;153m2.[0m Blue
+     [0m[38;2;153;153;153mBlue[0m
+  [0m[38;2;153;153;153m3. Type something.[0m
+[0m[38;2;153;153;153m─────────────────────────────────────────────────────────────────────────────────────────[0m
+  4. Chat about this
+
+[0m[38;2;153;153;153mEnter to select · ↑/↓ to navigate · Esc to cancel[0m
+[0m[38;2;136;136;136m───────────────────────────────────────────────────────────────── add-subtract-function ─[0m
