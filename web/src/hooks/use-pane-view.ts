@@ -135,19 +135,23 @@ export function usePaneView(args: PaneViewArgs) {
     const lines = parseLines(display);
     const blocks = buildBlocks(lines, { agent: agent?.agent });
     const adapter = adapterFor(agent?.agent);
+    // What sits on the agent's input line right now, whatever the display mode. The send-time
+    // pre-clear needs it even with Raw terminal on (the default): without it a leftover draft (say
+    // from Type into terminal) had the next reply appended to it (#25). The read-only preview stays
+    // stripped-chrome only, because a raw dump already shows the line.
+    const inputLine = adapter?.extractInputDraft(lines) ?? null;
     return {
       lines,
       blocks,
       statusLines: stripChrome
         ? (adapter?.extractStatusLines(lines) ?? [])
         : [],
-      rawTerminalDraft: stripChrome
-        ? (adapter?.extractInputDraft(lines) ?? null)
-        : null,
+      inputLine,
+      rawTerminalDraft: stripChrome ? inputLine : null,
       needsDump: adapter?.needsDump?.(lines) === true,
     };
   }, [display, agent?.agent, stripChrome]);
-  const { lines, blocks, statusLines, rawTerminalDraft, needsDump } = parsedDisplay;
+  const { lines, blocks, statusLines, inputLine, rawTerminalDraft, needsDump } = parsedDisplay;
 
   // A user draft stranded on the input box's "❯" line — a message queued while the agent was busy
   // then recalled, which persists across turns. stripChrome peels the box off the mirror so it goes
@@ -665,6 +669,7 @@ export function usePaneView(args: PaneViewArgs) {
     blocks,
     statusLines,
     rawTerminalDraft,
+    inputLine,
     dialogPresent,
     needsDump,
     promptBlock,

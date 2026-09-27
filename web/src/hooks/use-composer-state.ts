@@ -31,6 +31,7 @@ export interface ComposerStateArgs {
   agentBlocked: boolean;
   terminalDraft: string | null;
   rawTerminalDraft: string | null;
+  inputLine?: string | null;
   promptBlock?: PromptSelectBlock;
   onPromptAction?: (
     a: PromptBlockAction,
@@ -62,6 +63,7 @@ export function useComposerState(args: ComposerStateArgs) {
     promptBlock,
     onPromptAction,
     rawTerminalDraft,
+    inputLine,
     onArmedChange,
   } = args;
   const revalidator = useRevalidator();
@@ -285,6 +287,8 @@ export function useComposerState(args: ComposerStateArgs) {
   // its text tracks and that the send()-time pre-clear sweeps.
   const effectiveStable = suppressEcho(terminalDraft);
   const effectiveRaw = suppressEcho(rawTerminalDraft);
+  // The live input line for the send-time pre-clear, present even with Raw terminal on (#25).
+  const effectiveLine = suppressEcho(inputLine === undefined ? rawTerminalDraft : inputLine);
   const stripReason = gone
     ? "pane is gone"
     : readOnly
@@ -622,6 +626,7 @@ export function useComposerState(args: ComposerStateArgs) {
     locked,
     lockedRef,
     effectiveRaw,
+    effectiveLine,
     showPreview,
     takeOverDraft,
     commands,

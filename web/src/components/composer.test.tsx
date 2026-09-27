@@ -318,6 +318,34 @@ describe("Composer — send", () => {
     await awaitTerminalStall(); // see the helper: an unawaited stall lands in a later test
   }, 15000);
 
+  it("pre-clears leftover input with Raw terminal on, where no preview draft exists (#25)", async () => {
+    const user = userEvent.setup();
+    const callOrder: string[] = [];
+    let sentKeys: string[] | null = null;
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        sentKeys = ((await request.json()) as { keys: string[] }).keys;
+        callOrder.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async () => {
+        callOrder.push("reply");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    // Raw terminal on: the preview inputs are null, but the input line still carries "abc" (left by
+    // Type into terminal). The palette's /status used to be typed after it as "abc/status".
+    renderComposerWithStatus({ terminalDraft: null, rawTerminalDraft: null, inputLine: "abc" });
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "/status");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(callOrder).toEqual(["keys", "reply"]));
+    expect(sentKeys![0]).toBe("ctrl+k");
+    expect(sentKeys).toHaveLength([..."abc"].length + 33);
+    // No read-only preview with Raw terminal on: the raw dump already shows the line.
+    expect(screen.queryByRole("button", { name: /take over/i })).toBeNull();
+    await awaitTerminalStall();
+  }, 15000);
+
   // The burst is the only destructive keystroke path in the app not bound to the screen that
   // authorised it. Ordering ("the read happens first") is not a freshness bound: the read's answer
   // describes the pane at the moment the BRIDGE snapshotted it, and the keys go out when the answer

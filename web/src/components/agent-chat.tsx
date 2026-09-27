@@ -164,6 +164,7 @@ export function AgentChat({
     blocks,
     statusLines,
     rawTerminalDraft,
+    inputLine,
     dialogPresent,
     needsDump,
     promptBlock,
@@ -487,6 +488,7 @@ export function AgentChat({
             text={text}
             terminalDraft={terminalDraft}
             rawTerminalDraft={rawTerminalDraft}
+            inputLine={inputLine}
             onSent={handleSent}
             onArmedChange={setArmed}
           />
