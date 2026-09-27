@@ -1,10 +1,10 @@
 import { type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
 import { liftRegion } from "../scan";
-import { detectPiPromptRegion, detectPiWizardRegion } from "./ask";
+import { detectPiPromptRegion, detectPiReviewRegion, detectPiWizardRegion } from "./ask";
 
 export function piBuildBlocks(lines: StyledLine[]): Block[] {
-  const wizard = detectPiWizardRegion(lines);
+  const wizard = detectPiWizardRegion(lines) ?? detectPiReviewRegion(lines);
   if (wizard) {
     return liftRegion(lines, wizard, {
       kind: "wizard",

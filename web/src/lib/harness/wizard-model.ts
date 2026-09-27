@@ -69,6 +69,11 @@ export type WizardModel =
       answers: WizardAnswer[];
       incomplete: boolean;
       signature: string;
+      /** The harness's submit keys when they are not `WIZARD_SUBMIT_KEYS` (Pi: Enter). `null` = the
+       *  harness will not submit from this screen right now (Pi, while a question is unanswered). */
+      submitKeys?: string[] | null;
+      /** The harness's cancel keys when they are not `WIZARD_CANCEL_KEYS` (Pi: Escape). */
+      cancelKeys?: string[];
     };
 
 /** Keys for the review step's two fixed controls (digit fires instantly there too — verified). */

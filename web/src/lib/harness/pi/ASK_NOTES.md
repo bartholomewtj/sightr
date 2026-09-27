@@ -57,7 +57,7 @@ Source: `~/.pi/agent/extensions/ask.ts` (tool implementation) and `@earendil-wor
 - Tapping buttons while focused is refused (`submitPromptOption` refuses with `{ status: "changed" }`), preventing invalid keystroke execution while free-text input is active.
 
 ## What is NOT Lifted
-- **Submit tab:** The review tab (`Ready to submit`) has no options and uses Enter to submit rather than standard wizard submit keys (`["1"]`). It stays raw in the terminal mirror.
+- **Submit tab:** The review tab (`Ready to submit`) has no options. It lifts as a wizard `review` whose model carries Pi's own keys: Enter submits (only when every question is answered — otherwise Pi paints `Unanswered: …` and ignores Enter, so Submit is disabled) and Escape cancels. Answers echo as `<chip label>: <answer>`. Live 2026-09-27 (pane `wGK:p2`, fixture `pi--ask-multi-review.txt`): Submit from the phone returned `Large, Coffee`.
 - **Input mode:** When input mode is active (Enter pressed on `Type something.`), the options remain for reference and `Your answer:` / editor appears. The frame stays raw and is not lifted into buttons.
 
 ## Fixture Provenance

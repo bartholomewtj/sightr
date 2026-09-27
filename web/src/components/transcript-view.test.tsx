@@ -773,6 +773,22 @@ describe("TranscriptView — tool folds", () => {
     expect(container.querySelector(".text-destructive")).not.toBeNull();
   });
 
+  // Cursor never writes tool results, so every Cursor tool arrived result-less and pulsed "running"
+  // forever (live 2026-09-27). Only a tool on the live tail can still be running.
+  it("drops running once anything follows the result-less tool", async () => {
+    render(
+      <TranscriptView
+        entries={[
+          turn({ uuid: "a1", role: "assistant", parts: [tool("askquestion", "Which fruits?")] }),
+          turn({ uuid: "a2", role: "assistant", parts: [{ kind: "text", text: "Apple, Cherry" }] }),
+        ]}
+      />,
+    );
+    expect(screen.queryByText("running")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /askquestion/ }));
+    expect(screen.queryByText("running")).toBeNull();
+  });
+
   it("shows running on the fold header when any tool has no result", () => {
     render(
       <TranscriptView

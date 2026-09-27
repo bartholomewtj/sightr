@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Brain, ChevronRight, Info, TriangleAlert, Wrench } from "lucide-react";
 
 import { MarkdownText } from "@/components/markdown-text";
@@ -69,7 +69,13 @@ function Highlight({ text, query }: { text: string; query: string }) {
  * thread is mostly tool traffic (705 of 914 turns in a real session) and expanding it all would bury
  * the prose you opened the history to read.
  */
+// True for every row that something came after. A tool with no result there finished without one
+// on record (Cursor never writes tool results; an interrupted Claude tool never gets one), so it is
+// not "running" — only a tool on the live tail can be.
+const SettledRow = createContext(false);
+
 function ToolPart({ part, query }: { part: Extract<TranscriptPart, { kind: "tool" }>; query: string }) {
+  const settled = useContext(SettledRow);
   const [open, setOpen] = useState(false);
   const result = part.result;
   const isError = result?.isError === true;
@@ -95,7 +101,7 @@ function ToolPart({ part, query }: { part: Extract<TranscriptPart, { kind: "tool
             <Highlight text={part.summary} query={query} />
           </span>
         )}
-        {!result && (
+        {!result && !settled && (
           <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground animate-pulse">
             running
           </span>
@@ -130,7 +136,7 @@ function ToolFold({ tools, query }: { tools: FoldTool[]; query: string }) {
   }, [match]);
 
   const isError = tools.some((t) => t.result?.isError === true);
-  const running = tools.some((t) => !t.result);
+  const running = !useContext(SettledRow) && tools.some((t) => !t.result);
   const label = foldLabel(tools);
 
   return (
@@ -410,22 +416,26 @@ export function TranscriptView({
   /** When false, thinking parts are omitted (Display → Show thinking). */
   showThinking?: boolean;
 }) {
+  const items = foldEntries(entries);
+  let lastRow = items.length - 1;
+  while (lastRow >= 0 && items[lastRow]!.kind === "divider") lastRow--;
   return (
     <div className="space-y-3">
-      {foldEntries(entries).map((item) => {
+      {items.map((item, i) => {
         if (item.kind === "divider") return <DayDivider key={item.key} day={item.day} />;
         if (item.kind === "fold") return (
-          <div
-            key={item.key}
-            data-turn={item.entries[0]!.uuid}
-            className={`space-y-1.5 ${
-              item.entries.some((e) => e.uuid === focusedUuid)
-                ? "rounded-lg ring-2 ring-primary/60 ring-offset-2 ring-offset-background"
-                : ""
-            }`}
-          >
-            <ToolFold tools={item.tools} query={query} />
-          </div>
+          <SettledRow.Provider key={item.key} value={i < lastRow}>
+            <div
+              data-turn={item.entries[0]!.uuid}
+              className={`space-y-1.5 ${
+                item.entries.some((e) => e.uuid === focusedUuid)
+                  ? "rounded-lg ring-2 ring-primary/60 ring-offset-2 ring-offset-background"
+                  : ""
+              }`}
+            >
+              <ToolFold tools={item.tools} query={query} />
+            </div>
+          </SettledRow.Provider>
         );
         const parts = showThinking
           ? item.entry.parts
@@ -433,9 +443,11 @@ export function TranscriptView({
         if (parts.length === 0) return null;
         const entry = parts === item.entry.parts ? item.entry : { ...item.entry, parts };
         return (
-          <TurnRow key={item.key} entry={entry} focused={entry.uuid === focusedUuid}>
-            <Turn entry={entry} query={query} seconds={thinkingDuration(entries, item.index)} />
-          </TurnRow>
+          <SettledRow.Provider key={item.key} value={i < lastRow}>
+            <TurnRow entry={entry} focused={entry.uuid === focusedUuid}>
+              <Turn entry={entry} query={query} seconds={thinkingDuration(entries, item.index)} />
+            </TurnRow>
+          </SettledRow.Provider>
         );
       })}
     </div>
