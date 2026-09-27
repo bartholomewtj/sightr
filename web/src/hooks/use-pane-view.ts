@@ -91,9 +91,6 @@ export function usePaneView(args: PaneViewArgs) {
   const [shown, setShown] = useState({ text, revision });
   const liveRef = useRef({ text, revision });
   liveRef.current = { text, revision };
-  // Shell/TUI panes are driven entirely from the live mirror — there is no journal to scroll back
-  // into, and a frozen tail makes every key look like it did nothing until a full reload.
-  const shellMirror = agent?.kind === "shell";
   const adoptedOver = useRef<PaneSnapshot | null>(null);
 
   const adoptSnapshot = useCallback((snap: PaneSnapshot) => {
@@ -102,7 +99,9 @@ export function usePaneView(args: PaneViewArgs) {
   }, []);
 
   useEffect(() => {
-    if (findOpen && !shellMirror) return;
+    // Find freezes every pane, shell/TUI mirrors included (spec 14: a replacing dump jumped the
+    // match). Closing Find re-runs this, so keys still unstick a shell mirror after close.
+    if (findOpen) return;
     if (
       adoptedOver.current &&
       text === adoptedOver.current.text &&
@@ -118,7 +117,7 @@ export function usePaneView(args: PaneViewArgs) {
         ? prev
         : { text, revision },
     );
-  }, [text, revision, findOpen, shellMirror]);
+  }, [text, revision, findOpen]);
   const display = shown.text;
   const hasNew = !following && display !== text;
 
@@ -219,13 +218,19 @@ export function usePaneView(args: PaneViewArgs) {
     setCurrentMatch((c) => (c + delta + matchCount) % matchCount);
   }
   function openFind() {
-    setFollowing(false); // freeze the buffer so the search target is stable while you type
+    // `findOpen` is what freezes the buffer. Not following keeps history refreshes and the
+    // auto-scroller from pulling the view off a match while you search.
+    setFollowing(false);
     setFindOpen(true);
   }
   useEffect(() => onFindOpenRequest(openFind), []);
+  // Find is a temporary pin (spec 14): closing it returns to the live tail rather than leaving you
+  // parked at the last match on a buffer that has moved on.
   function closeFind() {
     setFindOpen(false);
     setFindQuery("");
+    setFollowing(true);
+    listRef.current?.scrollToBottom();
   }
 
   // `historyAvailable`: the pane reported an agent session, so a transcript exists to stack above
