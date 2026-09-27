@@ -79,7 +79,14 @@ export type FolderGitResponse =
 export type TranscriptPart =
   | { kind: "text"; text: string; truncated?: boolean }
   | { kind: "thinking"; text: string; truncated?: boolean }
-  | { kind: "tool"; name: string; summary: string; result?: { text: string; truncated?: boolean; isError?: boolean } };
+  | {
+      kind: "tool";
+      name: string;
+      summary: string;
+      result?: { text: string; truncated?: boolean; isError?: boolean };
+      /** The harness never records tool output (Cursor): the call is complete, with no body to open. */
+      unrecorded?: true;
+    };
 export interface TranscriptEntry { uuid: string; ts: string; role: "user" | "assistant" | "summary" | "note"; parts: TranscriptPart[]; }
 
 export interface SnapshotResponse {

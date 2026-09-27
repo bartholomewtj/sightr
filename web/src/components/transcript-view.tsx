@@ -101,7 +101,7 @@ function ToolPart({ part, query }: { part: Extract<TranscriptPart, { kind: "tool
             <Highlight text={part.summary} query={query} />
           </span>
         )}
-        {!result && !settled && (
+        {!result && !part.unrecorded && !settled && (
           <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground animate-pulse">
             running
           </span>
@@ -136,7 +136,7 @@ function ToolFold({ tools, query }: { tools: FoldTool[]; query: string }) {
   }, [match]);
 
   const isError = tools.some((t) => t.result?.isError === true);
-  const running = !useContext(SettledRow) && tools.some((t) => !t.result);
+  const running = !useContext(SettledRow) && tools.some((t) => !t.result && !t.unrecorded);
   const label = foldLabel(tools);
 
   return (

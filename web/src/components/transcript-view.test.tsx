@@ -100,6 +100,26 @@ describe("TranscriptView", () => {
     expect(pre).not.toHaveClass("whitespace-pre-wrap");
   });
 
+  // Spec 16: a Cursor tool on the LAST row of a done pane pulsed "running" forever.
+  it("an unrecorded tool on the last row is a closed line: not running, nothing to open", async () => {
+    render(
+      <TranscriptView
+        entries={[
+          turn({
+            role: "assistant",
+            parts: [{ kind: "tool", name: "Shell", summary: "ls", unrecorded: true }],
+          }),
+        ]}
+      />,
+    );
+    expect(screen.queryByText("running")).toBeNull();
+    const foldBtn = screen.getAllByRole("button")[0]!;
+    await userEvent.click(foldBtn);
+    expect(screen.queryByText("running")).toBeNull();
+    const toolBtn = screen.getAllByRole("button").find((b) => b !== foldBtn);
+    expect(toolBtn).toBeDisabled();
+  });
+
   it("a tool call with no result isn't expandable (nothing to reveal) and displays running marker", async () => {
     render(
       <TranscriptView

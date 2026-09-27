@@ -8,7 +8,8 @@
 // Herdr's cursor integration reports `agent_session.kind: "id"` with the chat UUID. Do NOT read
 // `~/.cursor/chats/.../store.db` — those blobs are often encrypted (`blobEncryptionKey` in meta).
 //
-// Tool results are not persisted in this JSONL (only `tool_use`); tools render without a result body.
+// Tool results are not persisted in this JSONL (only `tool_use`), so every tool is emitted with
+// `unrecorded: true`: complete, with no body. The phone shows a closed line, never "running".
 
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -112,6 +113,7 @@ export function parseCursorTranscript(text: string): TranscriptEntry[] {
             kind: "tool",
             name: b.name,
             summary: summarizeToolInput(b.input),
+            unrecorded: true,
           });
         }
       }

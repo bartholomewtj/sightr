@@ -62,7 +62,9 @@ describe("parseCursorTranscript", () => {
     ]);
     expect(entries[0]!.parts).toEqual([{ kind: "text", text: "go" }]);
     expect(entries[1]!.parts[0]).toEqual({ kind: "text", text: "on it" });
-    expect(entries[1]!.parts[1]).toMatchObject({ kind: "tool", name: "Shell" });
+    // Spec 16: Cursor never records tool output, so the call is complete with no body.
+    expect(entries[1]!.parts[1]).toMatchObject({ kind: "tool", name: "Shell", unrecorded: true });
+    expect(entries[1]!.parts[1]).not.toHaveProperty("result");
   });
 
   test("skips system / unknown roles and bad lines", () => {
