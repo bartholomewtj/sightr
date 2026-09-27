@@ -1,6 +1,6 @@
 // Grok's IMAGE CHIP, read as evidence that a send containing an image path landed.
 //
-// The collie#34 guard (lib/actions.ts) only presses Enter once extractInputDraft shows what we
+// The collie#34 guard (lib/reply-action.ts) only presses Enter once extractInputDraft shows what we
 // typed. Grok Build rewrites an existing image-file path in the composer into a path-free chip
 // `[Image #N]` (user-guide 03-keyboard-shortcuts.md). The box then holds a token, not the path,
 // the generic substring match never fires, and the send stalls with the text sitting in the

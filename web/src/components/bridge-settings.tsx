@@ -18,7 +18,7 @@ const ROWS: ReadonlyArray<readonly [label: string, key: DraftKey, setting: Bridg
   ["Device allowlist", "allow", "deviceAllowlist", "text", "Device ids allowed to type into agents. Empty with the device header set = every device is read-only."],
   ["Notify delay (seconds)", "delay", "notifyDelayMs", "number", "How long a pane must stay blocked before it raises a push notification."],
   ["Submit keys", "keys", "submitKeys", "text", "Keys sent to submit a reply after the text. Agent-dependent."],
-  ["Read lines", "lines", "readLines", "number", "Scrollback lines pulled for the pane view."],
+  ["Read lines", "lines", "readLines", "number", "Lines read when a request names no count, and the least read to check a prompt before sending. The phone's pane view asks for its own count."],
 ];
 const SHOWN: Record<BridgeSettingKey, (s: BridgeSettings) => string> = {
   deviceAllowlist: (s) => s.deviceAllowlist.join(", ") || "empty",

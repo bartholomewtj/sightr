@@ -401,7 +401,7 @@ describe("extractInputDraft — recovers a stranded prompt-line draft", () => {
 
   // The Latin case above wraps at WORD boundaries, so every fold seam extractInputDraft inserts
   // happens to coincide with a real space in `sent` — draftCarriesSend's "loosen only the fold's own
-  // seam" logic (actions.ts) is never actually exercised by it. CJK text wraps mid-run (no spaces
+  // seam" logic (reply-action.ts) is never actually exercised by it. CJK text wraps mid-run (no spaces
   // to break at), so EVERY seam in a real CJK draft is fabricated by the fold, never a genuine space —
   // this is the case that actually needs the loosening.
   it("extracts a ~40-row wrapped CJK draft (no natural spaces) verified through the fold-seam path", () => {

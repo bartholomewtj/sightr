@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseEnv } from "./env.ts";
+import { parseEnv, skipServe } from "./env.ts";
 
 describe("safe .env parser", () => {
  test("parses grammar without executing values", () => {
@@ -7,4 +7,10 @@ describe("safe .env parser", () => {
   expect(r.values.get('DOUBLE_QUOTES')).toBe('hello world'); expect(r.values.get('WITH_EQUALS')).toBe('foo=bar=baz'); expect(r.values.get('PWNED')).toBe('$(touch /tmp/sightr-never)'); expect(r.values.get('DUP')).toBe('new'); expect(r.warnings[0]).toContain('test.env:11');
  });
  test("does not leak malformed content and handles CRLF",()=>{const r=parseEnv('OK=yes\r\nSIGHTR_VAPID_PRIVATE s3cret-value\r\n1FOO=x\r\nLAST=done','x.env'); expect(r.values.get('LAST')).toBe('done'); expect(r.values.has('SIGHTR_VAPID_PRIVATE')).toBe(false); expect(r.warnings.join(' ')).not.toContain('s3cret-value'); expect(r.warnings.join(' ')).toContain('x.env:2'); expect(r.warnings.join(' ')).toContain('x.env:3');});
+});
+
+// The bridge reads SIGHTR_SKIP_SERVE with envBool (bridge/config.ts); the script must agree (#52).
+describe("skipServe", () => {
+ test("accepts the bridge's on spellings", () => { for (const v of ["1", "on", "true", "yes", "ON", " True "]) expect(skipServe({ SIGHTR_SKIP_SERVE: v })).toBe(true); });
+ test("everything else is off", () => { for (const v of [undefined, "", "0", "off", "false", "no", "banana"]) expect(skipServe({ SIGHTR_SKIP_SERVE: v })).toBe(false); });
 });

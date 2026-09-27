@@ -48,13 +48,14 @@ export function jsonError(message: string, status: number, _acceptEncoding: stri
   return secure(
     new Response(JSON.stringify({ error: message }), {
       status,
-      headers: { "content-type": "application/json; charset=utf-8" },
+      headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
     }),
   );
 }
 
+// no-store like every JSON 200 (http-cache.ts): an error or plain answer is never worth caching.
 export function text(body: string, status: number): Response {
-  return secure(new Response(body, { status }));
+  return secure(new Response(body, { status, headers: { "cache-control": "no-store" } }));
 }
 export function decodePathSegment(raw: string): string | null {
   try {

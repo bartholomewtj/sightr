@@ -2,6 +2,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import type { Run } from "./types.ts";
 import { CtlError, realRun } from "./types.ts";
 import { resolvePaths } from "./paths.ts";
+import { skipServe } from "./env.ts";
 import { hasTailscale, selfDnsName } from "./tailscale.ts";
 
 export type HandlerRecord = { mode: "http" | "https"; port: string; hostPort: string; proxy: string };
@@ -105,9 +106,9 @@ export async function serve(env: Record<string, string | undefined> = process.en
   await mkdir(paths.configDir, { recursive: true });
   const port = env.SIGHTR_PORT ?? "8787";
   const mode: "http" | "https" = env.SIGHTR_SERVE_MODE === "http" ? "http" : "https";
-  if (env.SIGHTR_SKIP_SERVE === "1") {
+  if (skipServe(env)) {
     await stopServe(paths, env, run, io);
-    console.log(`tailscale serve skipped (SIGHTR_SKIP_SERVE=1) — bridge is on 127.0.0.1:${port} only`);
+    console.log(`tailscale serve skipped (SIGHTR_SKIP_SERVE is on) — bridge is on 127.0.0.1:${port} only`);
     return 0;
   }
   await stopServe(paths, env, run, io);

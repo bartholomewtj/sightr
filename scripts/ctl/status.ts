@@ -3,7 +3,7 @@ import { getVersion } from "./version.ts";
 import { bridgeUrl, inboundBlocked, serveStatus } from "./tailscale.ts";
 import { selectSupervisor } from "./supervisor/index.ts";
 import { realRun, type Run } from "./types.ts";
-import { loadEnv } from "./env.ts";
+import { loadEnv, skipServe } from "./env.ts";
 import { hardenConfig } from "./perms.ts";
 export interface Facts { ready:boolean; herdrReady:boolean; service:string; version:string; port:string|number; skipServe:boolean; publicUrl?:string; url:string; blocked:boolean; }
 export function renderStatus(f: Facts): string {
@@ -57,4 +57,4 @@ export async function probeHerdr(
   }
 }
 
-export async function status(env:Record<string,string|undefined>=process.env,run:Run=realRun,opts:{waitMs?:number}={}){const p=await resolvePaths(env,run);const parsed=await loadEnvIfPresent(p.envFile); const effective={...env,...parsed}; await hardenConfig(p.configDir,p.envFile,run,env); const port=Number(effective.SIGHTR_PORT??8787);const r=await ready(port,effective,opts.waitMs);const hr=await probeHerdr(port,effective); const s=selectSupervisor(effective);const url=await bridgeUrl(effective,run);const blocked=effective.SIGHTR_SKIP_SERVE==="1"?false:await inboundBlocked(run);console.log(renderStatus({ready:r,herdrReady:hr,service:await s.describe(run),version:await getVersion(p),port,skipServe:effective.SIGHTR_SKIP_SERVE==="1",publicUrl:effective.SIGHTR_PUBLIC_URL,url,blocked})); if(!effective.SIGHTR_SKIP_SERVE) console.log(`\n  serve config:\n${await serveStatus(run)}`); return 0;}
+export async function status(env:Record<string,string|undefined>=process.env,run:Run=realRun,opts:{waitMs?:number}={}){const p=await resolvePaths(env,run);const parsed=await loadEnvIfPresent(p.envFile); const effective={...env,...parsed}; await hardenConfig(p.configDir,p.envFile,run,env); const port=Number(effective.SIGHTR_PORT??8787);const r=await ready(port,effective,opts.waitMs);const hr=await probeHerdr(port,effective); const s=selectSupervisor(effective);const url=await bridgeUrl(effective,run);const blocked=skipServe(effective)?false:await inboundBlocked(run);console.log(renderStatus({ready:r,herdrReady:hr,service:await s.describe(run),version:await getVersion(p),port,skipServe:skipServe(effective),publicUrl:effective.SIGHTR_PUBLIC_URL,url,blocked})); if(!skipServe(effective)) console.log(`\n  serve config:\n${await serveStatus(run)}`); return 0;}

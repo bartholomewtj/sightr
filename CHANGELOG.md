@@ -14,6 +14,12 @@ a build where they disagree.
 - `scripts/bump.ts` keeps pending notes (#52). It replaced the whole `## [Unreleased]` section with its
   `--note`, so every pending note was lost. It now moves them under the new version heading, puts the
   note first in its section, and leaves an empty `## [Unreleased]` on top.
+- The control script reads `SIGHTR_SKIP_SERVE` with the bridge's spellings (`1`, `on`, `true`, `yes`)
+  and also from the plugin `.env` when it starts the bridge (#52). Before, only `1` counted, so the
+  script and the bridge could disagree.
+- Error responses (`jsonError`, `text()`) are `cache-control: no-store`, like every JSON 200 (#52).
+- Settings → Bridge → Read lines says what it does: the read size when a request names none, and the
+  least read before a prompt send. The phone's pane view asks for its own count (#52).
 
 ## [1.1.0] - 2026-09-28
 

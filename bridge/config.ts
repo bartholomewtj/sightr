@@ -207,7 +207,7 @@ export interface Config {
    * Only for a deployment whose real Host genuinely can't be enumerated. Warned about at startup.
    */
   allowAnyHost: boolean;
-  /** Web Push (VAPID). All three required to enable push; otherwise push is disabled. */
+  /** Web Push (VAPID). The public and private keys turn push on; the subject defaults to `mailto:admin@example.com`. */
   vapidPublic: string;
   vapidPrivate: string;
   vapidSubject: string;
