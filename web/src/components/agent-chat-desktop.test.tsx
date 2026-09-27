@@ -53,8 +53,9 @@ describe("AgentChat desktop controls", () => {
     expect(screen.queryByRole("button", { name: "Keys" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Type into terminal" })).toBeNull();
     expect(screen.getByRole("button", { name: "Attach file" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitemcheckbox", { name: "Terminal" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Display" })).toBeInTheDocument();
+    // The + menu is input-only: Terminal and Display live in the pane menu and Settings.
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Terminal" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Display" })).toBeNull();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();

@@ -19,13 +19,36 @@ adds an entry here and keeps the three version files in step; CI refuses a build
 - Archify HTML is generated in GitHub Pages CI from the JSON sources, not committed.
 - `docs/HERDR_API.md` documents the Windows named pipe and `SIGHTR_POLL_*`.
 - ADR index uses Sightr titles; 0007 is Superseded (idle-lock removed; reconnect lock is WebAuthn).
+- The pane title opens the one pane menu: Find, Context, a Show terminal switch, Switch pane, Space
+  overview, Rename, Close pane and Settings. Rename and Close work for a pane alone in its tab.
+- The composer + menu is input only (Attach file, Keys, Agent commands, Type into terminal). Display
+  prefs live in Settings; Show terminal is also in Settings → Display.
+- Typing into the terminal has one Stop (the strip); + and Send are inert while it is armed.
+- The gesture-wheel handle sits in the composer row instead of floating over cards and strips.
+- Settings groups cards under This device and All devices. The wheel card shows the live wheel and
+  is phone only. Bridge rows say whether a value is from `.env` or set here, with Use .env to reset;
+  Notify delay is in seconds. `GET/POST /api/settings` add `overridden`, `defaults` and `reset`.
+- Context shows the terminal for that visit only; Ctrl+` arms typing without rewriting the saved
+  typing surface; a pane switch replaces history so Back returns where you started.
+- The bottom nav stays on every Files screen; folders have a ⋯ for their actions; file actions are
+  one compact row; a one-pane space shows that a tap opens it.
 
 ### Fixed
 - Panes stay live: dump follows while Working, freeze only during Find, and the bridge keeps the
   fast Herdr cadence while any agent is working or blocked.
 - Subscription-cap log names `push-forget`, the verb that exists.
+- A second space on the same checkout (a subfolder of an open repo) was missing from the tree.
+- Files search on a wide work root timed out and showed nothing; it now stops at a 6 s budget and
+  the page says Searching, No matches, or that the search failed.
+- Forcing Desktop mode On on a phone crushed the layout; below 768 px it is ignored with a note.
+- Error toasts raised on Settings were never shown; "Tap Send again to type anyway" outlived its
+  10 s arm; a stale error stays up until a later key press succeeds.
+- The off state of a switch was invisible in dark mode.
 
 ### Removed
+- The composer Display dock and the + menu Terminal row (moved, see Changed), the unmounted
+  Settings gear, the "Idle pause" copy for a feature that does not exist, and unused `setFontSize`,
+  `shortLabel`, `toggleTab` and `setRecentDir`.
 - Pre-refactor adapter-block golden (`golden.test.ts` / `golden.blocks.json`). Conformance plus
   per-adapter tests against the pane captures remain the gate.
 

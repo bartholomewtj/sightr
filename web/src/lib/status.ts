@@ -41,6 +41,12 @@ export function setStatus(text: string, tone: StatusTone = "info", ttlMs?: numbe
   }
 }
 
+/** Clear the current status only if it is an error — a later success makes a stale error wrong
+ *  (it would otherwise persist until tapped), but an info/transition line is left alone. */
+export function clearErrorStatus(): void {
+  if (current?.tone === "error") clearStatus();
+}
+
 export function clearStatus(): void {
   if (timer) {
     clearTimeout(timer);

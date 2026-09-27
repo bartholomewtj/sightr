@@ -106,10 +106,8 @@ export interface UseDashPrefsReturn {
   setSpaceOpen: (workspaceId: string, open: boolean) => void;
   expandSpace: (workspaceId: string) => void;
   setTabOpen: (tabId: string, open: boolean) => void;
-  toggleTab: (tabId: string) => void;
   setShellsOpen: (open: boolean) => void;
   setRecentOpen: (open: boolean) => void;
-  setRecentDir: (dir: RecentDir) => void;
 }
 
 export function useDashPrefs(): UseDashPrefsReturn {
@@ -155,33 +153,15 @@ export function useDashPrefs(): UseDashPrefsReturn {
     [update],
   );
 
-  const toggleTab = useCallback(
-    (tabId: string) => {
-      update((p) => {
-        const exists = p.expandedTabs.includes(tabId);
-        return {
-          ...p,
-          expandedTabs: exists
-            ? p.expandedTabs.filter((id) => id !== tabId)
-            : [...p.expandedTabs, tabId],
-        };
-      });
-    },
-    [update],
-  );
-
   const setShellsOpen = useCallback((shellsOpen: boolean) => update({ shellsOpen }), [update]);
   const setRecentOpen = useCallback((recentOpen: boolean) => update({ recentOpen }), [update]);
-  const setRecentDir = useCallback((recentDir: RecentDir) => update({ recentDir }), [update]);
 
   return {
     prefs,
     setSpaceOpen,
     expandSpace,
     setTabOpen,
-    toggleTab,
     setShellsOpen,
     setRecentOpen,
-    setRecentDir,
   };
 }

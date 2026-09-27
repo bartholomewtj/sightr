@@ -48,8 +48,8 @@ function onControllerChange() {
   else hadController = true;
 }
 
-// Reload as soon as a freshly-installed worker reaches "activated". Used by both the periodic
-// auto-check and the manual button, so neither depends on vite-plugin-pwa's (unreliable) auto-reload.
+// Reload as soon as a freshly-installed worker reaches "activated". Used by the periodic auto-check,
+// so it doesn't depend on vite-plugin-pwa's (unreliable) auto-reload.
 function watchWorker(worker: ServiceWorker | null) {
   if (!worker) return;
   if (worker.state === "activated") {
@@ -64,14 +64,12 @@ function watchWorker(worker: ServiceWorker | null) {
   });
 }
 
-
-
 registerSW({
   immediate: true,
   onRegisteredSW(_swUrl, r) {
     registration = r;
     if (!r) return;
-    // Any newly-found worker (from the poll below or a manual check) → reload when it activates.
+    // Any newly-found worker (from the poll below) → reload when it activates.
     r.addEventListener("updatefound", () => watchWorker(r.installing));
     // A new SW taking control is the other reliable "we're updated now" signal — but only when it
     // *replaces* a prior controller (see onControllerChange); the first-visit initial claim is not
@@ -80,11 +78,3 @@ registerSW({
     setInterval(() => void r.update().catch(() => {}), UPDATE_CHECK_MS);
   },
 });
-
-// Force an immediate service-worker update check. A newer SW installs,
-// skip-waits, activates, and watchWorker reloads us onto it (the happy path). The ONE path that
-// forceReload()s — unregistering the worker so the reload bypasses a stale precache — is when
-// update() SUCCEEDS (so we're online) but finds nothing to activate while the active worker is stale:
-// the wedged-precache trap. Network-failure paths (a thrown update(), or the stuck-guard) fall back to
-// a PLAIN reload instead — unregistering there would strand an offline PWA on an error page with its
-// precache gone. With no SW at all (plain HTTP / insecure context) a plain reload already re-fetches.

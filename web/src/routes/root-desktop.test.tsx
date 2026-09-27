@@ -88,9 +88,9 @@ it("keeps the phone bottom bar on the Files list", async () => {
   expect(screen.getByRole("navigation", { name: "Main" })).toBeInTheDocument();
 });
 
-it("hides the phone bottom bar on a file preview", async () => {
+it("keeps the phone bottom bar inside Files, so a file is never a dead end", async () => {
   renderFilesRoot("/files/src/nav.ts");
   await waitFor(() => expect(screen.getByText("preview")).toBeInTheDocument());
-  expect(screen.queryByRole("navigation", { name: "Main" })).toBeNull();
+  expect(screen.getByRole("navigation", { name: "Main" })).toBeInTheDocument();
 });
 

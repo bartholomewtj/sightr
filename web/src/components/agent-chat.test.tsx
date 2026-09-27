@@ -15,7 +15,6 @@ import { fixtureAgents } from "@/test/handlers";
 import { AgentChat } from "./agent-chat";
 import { resetDialogPresence, withDialogPresence } from "@/lib/dialog-presence";
 import type { AgentView } from "@/lib/types";
-import { openMore } from "@/test/composer-menu";
 import { openPaneDetails, pickPaneDetails } from "@/test/pane-details";
 import { requestArmToggle } from "@/lib/direct-arm";
 
@@ -991,38 +990,41 @@ describe("AgentChat — Show terminal", () => {
     expect(pending?.previousElementSibling?.textContent ?? "").not.toMatch(/Sept|Sep|2026/);
   });
 
-  it("toggles the terminal dump with the composer toggle and persists the choice across a remount", async () => {
+  it("toggles the terminal dump with the pane menu's Show terminal and persists the choice across a remount", async () => {
     const user = userEvent.setup();
     renderChat({ agent: idleWithJournal, agents: [idleWithJournal], text: live });
     await waitFor(() => expect(screen.getByText("what changed today?")).toBeInTheDocument());
     expect(screen.queryByText(live)).not.toBeInTheDocument();
     expect(screen.queryByText("Live")).not.toBeInTheDocument();
 
-    openMore();
-    expect(screen.getByRole("menuitemcheckbox", { name: "Terminal" })).toHaveAttribute("aria-checked", "false");
-    await user.click(screen.getByRole("menuitemcheckbox", { name: "Terminal" }));
-
+    let menu = openPaneDetails();
+    expect(within(menu).getByRole("switch", { name: "Show terminal" })).toHaveAttribute("aria-checked", "false");
+    await user.click(within(menu).getByRole("switch", { name: "Show terminal" }));
     expect(screen.getByText(live)).toBeInTheDocument();
     expect(screen.getByText("Live")).toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "More" })).toBeNull();
-    openMore();
-    expect(screen.getByRole("menuitemcheckbox", { name: "Terminal" })).toHaveAttribute("aria-checked", "true");
+    expect(within(menu).getByRole("switch", { name: "Show terminal" })).toHaveAttribute("aria-checked", "true");
     fireEvent.keyDown(window, { key: "Escape" });
 
     cleanup();
     renderChat({ agent: idleWithJournal, agents: [idleWithJournal], text: live });
     await waitFor(() => expect(screen.getByText("what changed today?")).toBeInTheDocument());
     expect(screen.getByText(live)).toBeInTheDocument();
-    expect(screen.getByText("Live")).toBeInTheDocument();
 
-    openMore();
-    expect(screen.getByRole("menuitemcheckbox", { name: "Terminal" })).toHaveAttribute("aria-checked", "true");
-    await user.click(screen.getByRole("menuitemcheckbox", { name: "Terminal" }));
-
+    menu = openPaneDetails();
+    await user.click(within(menu).getByRole("switch", { name: "Show terminal" }));
     expect(screen.queryByText(live)).not.toBeInTheDocument();
     expect(screen.queryByText("Live")).not.toBeInTheDocument();
-    openMore();
-    expect(screen.getByRole("menuitemcheckbox", { name: "Terminal" })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("Context shows the terminal for this visit only, without flipping the device pref", async () => {
+    const user = userEvent.setup();
+    renderChat({ agent: idleWithJournal, agents: [idleWithJournal], text: live });
+    await waitFor(() => expect(screen.getByText("what changed today?")).toBeInTheDocument());
+    expect(screen.queryByText(live)).not.toBeInTheDocument();
+    const menu = openPaneDetails();
+    await user.click(within(menu).getByRole("button", { name: /Context/ }));
+    expect(screen.getByText(live)).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem("sightr:display-prefs:v6") ?? "{}").showTerminal ?? false).toBe(false);
   });
 });
 

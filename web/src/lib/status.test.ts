@@ -1,6 +1,6 @@
 import { renderHook, act } from "@testing-library/react";
 
-import { clearStatus, setStatus, useStatus } from "./status";
+import { clearErrorStatus, clearStatus, setStatus, useStatus } from "./status";
 
 // The global status channel: latest-wins, errors persist, everything else auto-clears on a TTL.
 // We observe it through useStatus (the public read) and drive the TTL with fake timers.
@@ -18,6 +18,16 @@ describe("status channel", () => {
     act(() => setStatus("hello", "info"));
     expect(result.current?.text).toBe("hello");
     expect(result.current?.tone).toBe("info");
+  });
+
+  it("clearErrorStatus drops a stale error but leaves other tones alone", () => {
+    const { result } = renderHook(() => useStatus());
+    act(() => setStatus("broke", "error"));
+    act(() => clearErrorStatus());
+    expect(result.current).toBeNull();
+    act(() => setStatus("claude needs you", "info"));
+    act(() => clearErrorStatus());
+    expect(result.current?.text).toBe("claude needs you");
   });
 
   it("preserves an href only when one is supplied", () => {

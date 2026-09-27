@@ -187,16 +187,3 @@ export function wheelSlicesFor(
   }
   return out;
 }
-
-export function shortLabel(key: string): string {
-  switch (key.toLowerCase()) {
-    case "escape":
-      return "Esc";
-    case "enter":
-      return "⏎";
-    case "tab":
-      return "⇥";
-    default:
-      return key;
-  }
-}

@@ -9,7 +9,7 @@ import { isDestructiveInput } from "@/lib/destructive";
 import { fitsDraftStore } from "@/lib/drafts";
 import { textToKeySequence } from "@/lib/key-queue";
 import { normalizeDraft } from "@/hooks/use-terminal-draft";
-import { useComposerState } from "@/hooks/use-composer-state";
+import { FORCE_ARM_MS, useComposerState } from "@/hooks/use-composer-state";
 import { planSendTap, runComposerSend } from "@/lib/composer-send";
 import { ComposerDrawers, ComposerStrips } from "@/components/composer-drawers";
 import { ComposerMenu } from "@/components/composer-menu";
@@ -167,7 +167,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         onStart: () => setSending(true),
         onKeysSent: scheduleKeyRevalidate,
       });
-      if (r.status) setStatus(r.status.text, r.status.tone);
+      // The "Tap Send again to type anyway" offer expires with the arm, so its toast does too.
+      if (r.status) setStatus(r.status.text, r.status.tone, r.armForce ? FORCE_ARM_MS : undefined);
       if (r.clearDraft) updateInput("");
       if (r.armForce) forceConfirm.confirm("force");
       if (r.resetForce) forceConfirm.reset();
