@@ -129,30 +129,12 @@ function Invoke-SightrCtl([string[]]$Arguments, [switch]$NoExit) {
   exit $LASTEXITCODE
 }
 
-# Compiles the Herdr action launcher once; a no-op when build\sightr-action-v1.exe already exists.
-function Write-SightrActionLauncher {
-  $launcherDir = Join-Path $script:PluginRoot "build"
-  $launcher = Join-Path $launcherDir "sightr-action-v1.exe"
-  if (Test-Path -LiteralPath $launcher) {
-    $stream = [IO.File]::OpenRead($launcher)
-    try { $isExecutable = $stream.ReadByte() -eq 77 -and $stream.ReadByte() -eq 90 } finally { $stream.Dispose() }
-    if (-not $isExecutable) {
-      throw "action launcher was built for POSIX; delete '$launcher' and rebuild"
-    }
-    return
-  }
-  New-Item -ItemType Directory -Force -Path $launcherDir | Out-Null
-  Add-Type -Path (Join-Path $PSScriptRoot "sightr-action.cs") -OutputAssembly $launcher -OutputType ConsoleApplication
-}
-
 if ($MyInvocation.InvocationName -eq ".") { return }
 
 switch ($Command) {
-  # Herdr actions run through build\sightr-action-v1.exe, so a linked checkout (where Herdr never
-  # runs the [[build]] step) needs the launcher compiled by the first start, not only by `build`.
-  "start" { Write-SightrActionLauncher; Invoke-SightrCtl @("start") }
+  "start" { Invoke-SightrCtl @("start") }
   "stop" { Invoke-SightrCtl @("stop") }
-  "restart" { Write-SightrActionLauncher; Invoke-SightrCtl @("restart") }
+  "restart" { Invoke-SightrCtl @("restart") }
   "uninstall" { Invoke-SightrCtl @("uninstall") }
   "serve" { Invoke-SightrCtl @("serve") }
   "unserve" { Invoke-SightrCtl @("unserve") }
@@ -170,7 +152,7 @@ switch ($Command) {
   "env-check" { Invoke-SightrCtl @("env-check") }
   "keys" { Invoke-SightrCtl ((@("keys")) + @($CommandArgs)) }
   "push-keys" { Invoke-SightrCtl ((@("keys")) + @($CommandArgs)) }
-  "build" { Write-SightrActionLauncher; Invoke-SightrCtl @("build") }
+  "build" { Invoke-SightrCtl @("build") }
   "_exec-bridge" {
     $env:HERDR_PLUGIN_CONFIG_DIR = $script:ConfigDir
     $env:HERDR_SOCKET_PATH = $script:SocketPath

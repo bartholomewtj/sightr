@@ -5,6 +5,12 @@ adds an entry here and keeps the three version files in step; CI refuses a build
 
 ## [Unreleased]
 
+### Fixed
+- Herdr actions work on a freshly linked checkout (#51). They ran `build/sightr-action-v1.exe`, which
+  only a first `start` from PowerShell could build, so every action failed with "The system cannot
+  find the path specified". Actions now run `contrib/windows/sightr-ctl.ps1` through `powershell`;
+  the launcher and its C# source are gone.
+
 ## [1.1.0] - 2026-09-28
 
 The council spec run (#32–#49) and #47. One prompt-binding matcher for every harness; Cursor long sends and autocomplete refusal; Agy multi-line replies arrive as one message; the pane menu, composer and Settings reshape; SSE-driven polling; dialogs lifted for Claude, Cursor, Grok and Antigravity. Details below.
