@@ -6,7 +6,7 @@
 // (lib/wizard-action.ts → lib/dialog-guard.ts) are written against these types alone.
 //
 // Claude's reference detector is harness/claude/wizard.ts; the verified choreography behind the
-// incremental round-trip is grammar/WIZARD_NOTES.md. This module imports nothing, so `lib/blocks.ts`
+// incremental round-trip is harness/claude/wizard.ts. This module imports nothing, so `lib/blocks.ts`
 // can re-export it without a cycle. The identity comparator lives in dialog-contract.ts.
 
 /** One question chip in the stepper header (the Submit chip is implicit — see `WizardModel`). */

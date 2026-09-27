@@ -84,7 +84,7 @@ export interface WizardBlock {
 
 /**
  * A preview-variant AskUserQuestion (options + preview pane + the per-question note affordance;
- * grammar/NOTES_NOTES.md) lifted out of the raw mirror. Like the other dialog blocks it REPLACES
+ * harness/claude/preview-select.ts) lifted out of the raw mirror. Like the other dialog blocks it REPLACES
  * its region in place; `lines` is provenance only — not rendered, not searchable.
  */
 export interface PreviewSelectBlock {

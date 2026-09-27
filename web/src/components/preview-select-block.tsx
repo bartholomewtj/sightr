@@ -42,7 +42,7 @@ export interface PreviewSelectBlockProps {
 }
 
 // Native, tappable rendering of Claude's preview-variant AskUserQuestion (options + a preview pane
-// + the per-question note; grammar/NOTES_NOTES.md). Mirrors what the TUI shows — the preview pane
+// + the per-question note; harness/claude/preview-select.ts). Mirrors what the TUI shows — the preview pane
 // belongs to the POINTED option, and the note belongs to the QUESTION — because the terminal is
 // the single source of truth. Every visible string (labels, preview text, note text) is a React
 // text node — the XSS boundary is unchanged. One control can be in flight at a time.

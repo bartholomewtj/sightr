@@ -47,7 +47,7 @@ export type PromptFeedbackPurpose = "plan-change" | "free-text";
  *     be PREPENDED to a sentence someone else is mid-way through writing.
  *
  * Both were measured a keystroke at a time against Claude Code 2.1.228 — see
- * `web/src/lib/grammar/PLAN_FEEDBACK_NOTES.md`, which is the ground truth for this whole row.
+ * `web/src/lib/harness/claude/prompt-select.ts`, which is the ground truth for this whole row.
  */
 export interface PromptFeedback {
   /** The key that focuses the field. On Claude this is a digit; on Grok it is `z` — nothing may
