@@ -20,7 +20,12 @@ const allFixtures = readdirSync(PANES_DIR)
 
 const allAgyFixtures = allFixtures.filter((f) => f.startsWith("agy--"));
 
-const NEUTRAL = new Set(["agy--fresh-idle.txt", "agy--working.txt", "agy--done.txt"]);
+const NEUTRAL = new Set([
+  "agy--fresh-idle.txt",
+  "agy--working.txt",
+  "agy--done.txt",
+  "agy--draft-long-scrolled.txt",
+]);
 
 const ownFixtures = allAgyFixtures.filter((f) => !NEUTRAL.has(f));
 const neutralFixtures = allAgyFixtures.filter((f) => NEUTRAL.has(f));
@@ -202,6 +207,34 @@ describe("agyAdapter unit & footer safety", () => {
     const lines = splitLines(parseAnsi(raw));
 
     expect(agyAdapter.extractInputDraft!(lines)).toBe("write a python fibonacci function");
+  });
+});
+
+// Live 2026-09-28 (Agy 1.2.12): a 40-row draft scrolls its box to `↑ 56 more lines` + the tail (#47).
+describe("agy scrolled draft", () => {
+  const LOREM = "lorem ipsum dolor sit amet consectetur adipiscing elit";
+  const sent = Array.from({ length: 40 }, (_, i) => `row ${String(i + 1).padStart(2, "0")}: ${LOREM} ${LOREM}`).join("\n");
+  const lines = splitLines(parseAnsi(readFileSync(join(PANES_DIR, "agy--draft-long-scrolled.txt"), "utf8")));
+  const draft = agyAdapter.extractInputDraft!(lines)!;
+
+  it("reads the scrolled box as a draft that starts with the marker", () => {
+    expect(agyAdapter.composerReady!(lines)).toBe(true);
+    expect(draft.startsWith("↑ 56 more lines row 29:")).toBe(true);
+  });
+
+  it("vouches for the send whose end is the visible tail, and only that one", () => {
+    expect(agyAdapter.draftCarriesSend!(sent, draft)).toBe(true);
+    expect(agyAdapter.draftCarriesSend!(sent.replace("row 40:", "row 41:"), draft)).toBe(false);
+    expect(agyAdapter.draftCarriesSend!(`${sent}\nrow 41: more`, draft)).toBe(false);
+    expect(agyAdapter.draftCarriesSend!(sent, "↑ 56 more lines elit")).toBe(false);
+    expect(agyAdapter.draftCarriesSend!(sent, `row 40: ${LOREM} ${LOREM}`)).toBe(false);
+  });
+
+  it("marks only the scrolled box as opaque, and types multi-line replies as a paste", () => {
+    expect(agyAdapter.draftIsOpaque!(draft)).toBe(true);
+    expect(agyAdapter.draftIsOpaque!("write a python fibonacci function")).toBe(false);
+    expect(agyAdapter.bracketedPaste).toBe(true);
+    expect(antigravityAdapter.bracketedPaste).toBe(true);
   });
 });
 

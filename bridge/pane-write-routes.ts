@@ -50,19 +50,22 @@ const REPLY_SETTLE_MS = 350;
 export async function sendReplySteps(
   client: ReplySender,
   paneId: string,
-  txt: string,
+  txt: string | readonly string[],
   submit: boolean,
   submitKeys: string[],
   sleep: SleepFn = defaultSleep,
 ): Promise<ReplyOutcome> {
+  // A list is one message typed in pieces (bracketedPasteChunks). Once any piece lands, the text
+  // counts as delivered: a resend would type a second copy after the part already in the box.
+  const pieces = (typeof txt === "string" ? [txt] : txt).filter((piece) => piece.length > 0);
   let textDelivered = false;
   try {
-    if (txt) {
-      await client.sendPaneText(paneId, txt);
+    for (const piece of pieces) {
+      await client.sendPaneText(paneId, piece);
       textDelivered = true;
     }
     if (submit) {
-      if (txt) await sleep(REPLY_SETTLE_MS);
+      if (pieces.length > 0) await sleep(REPLY_SETTLE_MS);
       // One RPC per key. A single pane.send_keys write of [Right, Enter] (or paste-terminator +
       // Enter) is what Cursor CLI and Grok on Windows ConPTY swallow: the TUI inserts the text and
       // buffers Enter until a later input event, so the composer shows the message unsubmitted.
@@ -97,7 +100,7 @@ export async function replyPane(
 ): Promise<Response> {
   const bad = requireJsonBody(req);
   if (bad) return bad;
-  let body: { text?: string; submit?: boolean; expected_prompt?: unknown; submit_keys?: unknown };
+  let body: { text?: string; submit?: boolean; expected_prompt?: unknown; submit_keys?: unknown; paste?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -107,6 +110,8 @@ export async function replyPane(
   if (!expected.ok) return text("bad expected_prompt", 400);
   const requested = submitKeysField(body);
   if (!requested.ok) return text("bad submit_keys", 400);
+  if (body.paste !== undefined && typeof body.paste !== "boolean") return text("bad paste", 400);
+  const paste = body.paste === true;
   const txt = body.text ?? "";
   const submit = body.submit ?? true;
   const ae = req.headers.get("accept-encoding");
@@ -119,7 +124,8 @@ export async function replyPane(
         ? await checkPromptBinding(herdr, cfg, paneId, expected.value)
         : null;
       if (binding && !binding.ok) return { binding, outcome: null };
-      return { binding, outcome: await sendReplySteps(herdr, paneId, txt, submit, submitKeys) };
+      const typed = paste ? bracketedPasteChunks(txt) : txt;
+      return { binding, outcome: await sendReplySteps(herdr, paneId, typed, submit, submitKeys) };
     });
   } catch (err) {
     if (err instanceof PaneBusyError) return paneBusy(ae);
@@ -147,6 +153,7 @@ export async function replyPane(
     submit,
     keys: submitKeys,
   };
+  if (paste) detail.paste = true;
   if (binding) detail.promptBinding = binding.audit;
   if (!outcome.ok) {
     detail.sent = false;
@@ -242,6 +249,67 @@ export async function keysPane(
   if (binding) detail.promptBinding = binding.audit;
   audit.record({ action: "keys", paneId, detail });
   return json({ ok: false, error: error ?? "key send failed" } satisfies ActionResponse, ae);
+}
+
+const PASTE_START = "\x1b[200~";
+const PASTE_END = "\x1b[201~";
+const PASTE_MARKER = /\x1b\[20[01]~/g;
+
+/**
+ * Largest piece typed as one paste. Live 2026-09-28 (Agy 1.2.12): 1245 chars in one paste stayed
+ * literal text; 4760 folded into `[Pasted text #1 +40 lines]` and left the pane's screen half drawn,
+ * so the guard could not see the draft. Five back-to-back pastes of ~950 chars stayed literal.
+ */
+export const PASTE_CHUNK_CHARS = 1000;
+
+/**
+ * Drop any paste marker already in the text, so it cannot close the paste early and have its tail
+ * read as keystrokes. The loop catches a marker that only forms once an inner one is cut out.
+ */
+function stripPasteMarkers(txt: string): string {
+  let body = txt;
+  for (let prev = ""; prev !== body; ) {
+    prev = body;
+    body = body.replace(PASTE_MARKER, "");
+  }
+  return body;
+}
+
+/**
+ * Wrap text in bracketed-paste markers so the TUI reads every newline in it as text, not Enter
+ * (#47). Antigravity on Windows ConPTY can take a bare `\n` in a long `send_text` as a submit,
+ * sending the first line and queuing the rest; live 2026-09-28 (Agy 1.2.12), 15 lines inside the
+ * markers stayed one draft and Enter sent them as one message.
+ *
+ * Text over `cap` is typed as consecutive pastes, each wrapped on its own. Agy trims whitespace at
+ * the edges of a paste (live: 40 rows cut at line ends arrived as 36), so every cut falls between two
+ * non-space characters, and never inside a surrogate pair. With no such point in the back half of
+ * the window (a long run of spaces), the cut is at `cap`, and that one seam may lose its whitespace.
+ */
+export function bracketedPasteChunks(txt: string, cap = PASTE_CHUNK_CHARS): string[] {
+  const body = stripPasteMarkers(txt);
+  const pieces: string[] = [];
+  let start = 0;
+  while (body.length - start > cap) {
+    let cut = start + cap;
+    while (cut > start + cap / 2 && !cleanCut(body, cut)) cut--;
+    if (cut <= start + cap / 2) {
+      cut = start + cap;
+      if (isLowSurrogate(body.charCodeAt(cut))) cut--;
+    }
+    pieces.push(body.slice(start, cut));
+    start = cut;
+  }
+  if (start < body.length) pieces.push(body.slice(start));
+  return pieces.map((piece) => PASTE_START + piece + PASTE_END);
+}
+
+function cleanCut(s: string, i: number): boolean {
+  return !/\s/.test(s[i - 1]!) && !/\s/.test(s[i]!) && !isLowSurrogate(s.charCodeAt(i));
+}
+
+function isLowSurrogate(code: number): boolean {
+  return code >= 0xdc00 && code <= 0xdfff;
 }
 
 type SubmitKeysField =

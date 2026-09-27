@@ -409,6 +409,7 @@ export function sendReply(
   submit = true,
   expectedPrompt?: string,
   submitKeys?: string[],
+  paste?: boolean,
 ): Promise<ActionResponse> {
   return req<ActionResponse>(
     `/api/pane/${encodeURIComponent(paneId)}/reply`,
@@ -419,6 +420,7 @@ export function sendReply(
         submit,
         ...(expectedPrompt !== undefined ? { expected_prompt: expectedPrompt } : {}),
         ...(submitKeys && submitKeys.length > 0 ? { submit_keys: submitKeys } : {}),
+        ...(paste ? { paste: true } : {}),
       }),
     },
     recoverPromptChanged,

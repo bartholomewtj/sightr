@@ -1,0 +1,49 @@
+[0m[1m[38;2;122;162;247m  line 04: the quick brown fox jumps over the lazy dog while probing agy newlines ok[0m
+[0m[1m[38;2;122;162;247m  line 05: the quick brown fox jumps over the lazy dog while probing agy newlines ok[0m
+[0m[1m[38;2;122;162;247m  line 06: the quick brown fox jumps over the lazy dog while probing agy newlines ok[0m
+[0m[1m[38;2;122;162;247m  line 07: the quick brown fox jumps over the lazy dog while probing agy newlines ok[0m
+[0m[1m[38;2;122;162;247m  line 08: the quick brown fox jumps over the lazy dog while probing agy newlines ok[0m
+[0m[1m[38;2;122;162;247m  line 09: the quick brown fox jumps over the lazy dog while probing agy newlines ok[0m
+[0m[1m[38;2;122;162;247m  line 10: the quick brown fox jumps over the lazy dog while probing agy newlines ok[0m
+[0m[1m[38;2;122;162;247m  line 11: the quick brown fox jumps over the lazy dog while probing agy newlines ok[0m
+[0m[1m[38;2;122;162;247m  line 12: the quick brown fox jumps over the lazy dog while probing agy newlines ok[0m
+[0m[1m[38;2;122;162;247m  line 13: the quick brown fox jumps over the lazy dog while probing agy newlines ok[0m
+[0m[1m[38;2;122;162;247m  line 14: the quick brown fox jumps over the lazy dog while probing agy newlines ok[0m
+[0m[1m[38;2;122;162;247m  line 15: the quick brown fox jumps over the lazy dog while probing agy newlines ok[0m
+
+[0m[38;2;158;206;106m●[0m [0m[1m[38;2;224;175;104mBash[0m[38;2;169;177;214m(Get-ChildItem -Path . -Force)[0m [0m[38;2;169;177;214m(ctrl+o to expand)[0m
+
+  [0m[38;2;192;202;245mAll 15 lines received intact with newlines preserved:[0m
+  
+  [0m[38;2;169;177;214m• [0m[1m[38;2;169;177;214mLine count[0m[38;2;169;177;214m: 15 / 15[0m
+  [0m[38;2;169;177;214m• [0m[1m[38;2;169;177;214mRange[0m[38;2;169;177;214m: [0m[38;2;122;162;247mline 01[0m[38;2;169;177;214m through [0m[38;2;122;162;247mline 15[0m
+  [0m[38;2;169;177;214m• [0m[1m[38;2;169;177;214mStatus[0m[38;2;169;177;214m: Matches [0m[4m[38;2;122;162;247mlines.txt[0m[38;2;169;177;214m     [0m
+
+[0m[38;2;65;72;104m────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;122;162;247m>[0m [0m[38;2;154;165;206m↑ 56 more lines[0m
+  row 29: lorem ipsum dolor sit amet consectetur adipiscing elit lorem ipsum dolor sit
+  amet consectetur adipiscing elit
+  row 30: lorem ipsum dolor sit amet consectetur adipiscing elit lorem ipsum dolor sit
+  amet consectetur adipiscing elit
+  row 31: lorem ipsum dolor sit amet consectetur adipiscing elit lorem ipsum dolor sit
+  amet consectetur adipiscing elit
+  row 32: lorem ipsum dolor sit amet consectetur adipiscing elit lorem ipsum dolor sit
+  amet consectetur adipiscing elit
+  row 33: lorem ipsum dolor sit amet consectetur adipiscing elit lorem ipsum dolor sit
+  amet consectetur adipiscing elit
+  row 34: lorem ipsum dolor sit amet consectetur adipiscing elit lorem ipsum dolor sit
+  amet consectetur adipiscing elit
+  row 35: lorem ipsum dolor sit amet consectetur adipiscing elit lorem ipsum dolor sit
+  amet consectetur adipiscing elit
+  row 36: lorem ipsum dolor sit amet consectetur adipiscing elit lorem ipsum dolor sit
+  amet consectetur adipiscing elit
+  row 37: lorem ipsum dolor sit amet consectetur adipiscing elit lorem ipsum dolor sit
+  amet consectetur adipiscing elit
+  row 38: lorem ipsum dolor sit amet consectetur adipiscing elit lorem ipsum dolor sit
+  amet consectetur adipiscing elit
+  row 39: lorem ipsum dolor sit amet consectetur adipiscing elit lorem ipsum dolor sit
+  amet consectetur adipiscing elit
+  row 40: lorem ipsum dolor sit amet consectetur adipiscing elit lorem ipsum dolor sit
+  amet consectetur adipiscing elit
+[0m[38;2;65;72;104m────────────────────────────────────────────────────────────────────────────────────────[0m
+                                                                 [0m[38;2;154;165;206mGemini 3.8 Flash · high[0m

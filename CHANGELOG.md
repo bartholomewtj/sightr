@@ -36,6 +36,11 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   one compact row; a one-pane space shows that a tap opens it.
 
 ### Fixed
+- A multi-line reply to Antigravity arrives as one message (#47). It used to be able to submit the
+  first line and queue the rest. The reply is typed as a bracketed paste, in pieces of at most 1000
+  characters cut mid-word, so Agy neither folds it into a `[Pasted text]` token nor trims newlines
+  at a seam. A draft taller than the box (`↑ N more lines`) is matched by its visible tail. The reply
+  route takes `paste: true`.
 - The prompt-binding matcher the bridge 409s on is now the one the tests check, for every harness's
   dialogs, and two Claude dialogs under a named session are pinned in the binding contract.
 - A long reply to Cursor no longer stalls with "didn't reach the input box". Cursor collapses a long

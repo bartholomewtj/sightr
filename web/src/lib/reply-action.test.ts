@@ -84,6 +84,27 @@ describe("adapter submit keys", () => {
     } finally { spy.mockRestore(); }
   });
 
+  it("types a multi-line reply as a paste only when the adapter asks for it (#47)", async () => {
+    const real = registry.adapterFor("claude")!;
+    const spy = vi.spyOn(registry, "adapterFor").mockReturnValue({ ...real, bracketedPaste: true });
+    try {
+      const multi = harness(() => paneWithDraft("hello world"));
+      const out = await sendGuardedReply({ paneId: "w1:p1", text: "hello\nworld", agent: "claude", ...instant });
+      expect(out).toEqual({ status: "sent" });
+      expect(multi[0]).toMatchObject({ text: "hello\nworld", submit: false, paste: true });
+      expect(multi[1]).not.toHaveProperty("paste");
+
+      const single = harness(() => paneWithDraft("hello"));
+      await sendGuardedReply({ paneId: "w1:p1", text: "hello", agent: "claude", ...instant });
+      expect(single.every((call) => !("paste" in call))).toBe(true);
+
+      spy.mockReturnValue(real);
+      const plain = harness(() => paneWithDraft("hello world"));
+      await sendGuardedReply({ paneId: "w1:p1", text: "hello\nworld", agent: "claude", ...instant });
+      expect(plain.every((call) => !("paste" in call))).toBe(true);
+    } finally { spy.mockRestore(); }
+  });
+
   it("omits submit keys for the adapter-less one-shot path", async () => {
     const spy = vi.spyOn(registry, "adapterFor").mockReturnValue(undefined);
     try {
