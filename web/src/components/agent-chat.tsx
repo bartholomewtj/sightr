@@ -247,7 +247,11 @@ export function AgentChat({
     onSent(sent);
   };
   const transcriptEntries = mergePendingUsers(inline.entries, pendingUsers);
-  const inFlight = pendingUsers.filter((p) => !p.opening && !journalHasUser(inline.entries, p.text));
+  // A slash command never keeps the pulse alive: not every harness logs it as your turn, and one
+  // that isn't matched left "Thinking" counting for an hour on an idle pane (#23).
+  const inFlight = pendingUsers.filter(
+    (p) => !p.opening && !p.text.trimStart().startsWith("/") && !journalHasUser(inline.entries, p.text),
+  );
 
   // Dump is live while working. The pulse covers the gap after Send before Herdr flips to working
   // (that status can lag a poll or two, and runningCommand is the previous journal tail). Sit above

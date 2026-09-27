@@ -907,6 +907,17 @@ describe("AgentChat — Show terminal", () => {
     expect(screen.queryByTestId("thinking-pulse")).not.toBeInTheDocument();
   });
 
+  it("a slash command never starts the thinking pulse on an idle pane (#23)", async () => {
+    const user = userEvent.setup();
+    writeDisplayPrefs({ showTerminal: false });
+    renderChat({ agent: idleWithJournal, agents: [idleWithJournal], text: live });
+    await waitFor(() => expect(screen.getByText("what changed today?")).toBeInTheDocument());
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "/context");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(screen.queryByTestId("thinking-pulse")).not.toBeInTheDocument();
+  });
+
   it("hides the pulse snip when Show thinking is off, but keeps the timer", async () => {
     const user = userEvent.setup();
     writeDisplayPrefs({ showTerminal: false, showThinking: false });

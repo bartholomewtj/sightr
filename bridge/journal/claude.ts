@@ -114,6 +114,9 @@ function toolResultText(content: unknown): string {
 
 interface RawRow {
   type?: unknown;
+  subtype?: unknown;
+  isMeta?: unknown;
+  content?: unknown;
   uuid?: unknown;
   timestamp?: unknown;
   isSidechain?: unknown;
@@ -148,14 +151,28 @@ export function parseClaudeTranscript(
       continue; // partial trailing write, or the clipped first line of a tail read
     }
     const type = row.type;
-    if (type !== "user" && type !== "assistant") continue;
     if (row.isSidechain === true && !opts.includeSidechains) continue;
+    const uuid = typeof row.uuid === "string" ? row.uuid : "";
+    const ts = typeof row.timestamp === "string" ? row.timestamp : "";
+
+    // Claude Code 2.1.28x writes a local slash command (/context, /status…) as SYSTEM rows — the
+    // `<command-name>` row, then its `<local-command-stdout>` — where older builds used user rows.
+    // Same envelopes, so the same classifier: the command lands as your turn (which is what clears
+    // the phone's pending send and stops the thinking pulse, #23), its output as a note.
+    if (type === "system" && row.subtype === "local_command" && typeof row.content === "string") {
+      const c = classifyUserText(row.content);
+      if (c !== null) entries.push({ uuid, ts, role: c.role, parts: [{ kind: "text", ...clamp(c.text, MAX_TEXT_CHARS) }] });
+      continue;
+    }
+    if (type !== "user" && type !== "assistant") continue;
+    // `isMeta` user rows are addressed to the model, never typed by you: /context's markdown copy
+    // (which rendered as a "You" bubble holding the skills table, #23), image metadata, caveats,
+    // subagent hand-backs, permission grants.
+    if (type === "user" && row.isMeta === true) continue;
 
     const message = row.message;
     if (message === null || typeof message !== "object") continue;
     const content = (message as { content?: unknown }).content;
-    const uuid = typeof row.uuid === "string" ? row.uuid : "";
-    const ts = typeof row.timestamp === "string" ? row.timestamp : "";
     const parts: TranscriptPart[] = [];
     // Set by a `user` row whose string content turns out to be injected plumbing rather than speech.
     let roleOverride: "note" | undefined;
