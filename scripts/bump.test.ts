@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { bump, nextVersion, readCanonicalVersion } from "./bump.ts";
@@ -15,15 +15,23 @@ function removeTree(root: string) {
   rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
 
-function makeTree(): string {
+function makeTree(changelog?: string): string {
   const root = mkdtempSync(join(tmpdir(), "sightr-bump-"));
   mkdirSync(join(root, "web"));
   mkdirSync(join(root, "scripts"));
   cpSync(join(repoRoot, "herdr-plugin.toml"), join(root, "herdr-plugin.toml"));
   cpSync(join(repoRoot, "package.json"), join(root, "package.json"));
-  cpSync(join(repoRoot, "CHANGELOG.md"), join(root, "CHANGELOG.md"));
+  if (changelog === undefined) cpSync(join(repoRoot, "CHANGELOG.md"), join(root, "CHANGELOG.md"));
+  else writeFileSync(join(root, "CHANGELOG.md"), changelog);
   cpSync(join(repoRoot, "web", "package.json"), join(root, "web", "package.json"));
   return root;
+}
+
+// A changelog whose newest release matches the copied manifests, so the version gate still passes.
+function fixtureChangelog(unreleased: string | undefined): string {
+  const from = readCanonicalVersion(repoRoot);
+  const pending = unreleased === undefined ? "" : `## [Unreleased]\n\n${unreleased}`;
+  return `# Changelog\n\nIntro.\n\n${pending}## [${from}] - 2026-09-28\n\n### Fixed\n- old fix\n`;
 }
 
 function contents(root: string, file: string): string {
@@ -77,7 +85,7 @@ describe("bump", () => {
   });
 
   test("inserts a note in the requested section without changing the old heading", () => {
-    const root = makeTree();
+    const root = makeTree(fixtureChangelog(""));
     try {
       const from = readCanonicalVersion(root);
       const expected = nextVersion(from, "patch");
@@ -85,6 +93,73 @@ describe("bump", () => {
       const changelog = contents(root, "CHANGELOG.md");
       expect(changelog.indexOf(`## [${expected}]`)).toBeLessThan(changelog.indexOf(`## [${from}]`));
       expect(changelog).toContain(`### Added\n- did a thing (#254)\n\n## [${from}]`);
+    } finally {
+      removeTree(root);
+    }
+  });
+
+  test("moves pending Unreleased notes under the new heading and leaves Unreleased empty", () => {
+    const pending = "### Fixed\n- pending fix (#51). Wraps\n  onto a second line.\n\n";
+    const root = makeTree(fixtureChangelog(pending));
+    try {
+      const from = readCanonicalVersion(root);
+      const expected = nextVersion(from, "patch");
+      bump({ root, kind: "patch", today: new Date(2026, 8, 1) });
+      expect(contents(root, "CHANGELOG.md")).toBe(
+        `# Changelog\n\nIntro.\n\n## [Unreleased]\n\n## [${expected}] - 2026-09-01\n\n` +
+          "### Fixed\n- pending fix (#51). Wraps\n  onto a second line.\n\n" +
+          `## [${from}] - 2026-09-28\n\n### Fixed\n- old fix\n`,
+      );
+      expect(checkVersion(root).ok).toBe(true);
+    } finally {
+      removeTree(root);
+    }
+  });
+
+  test("puts the note first in a section the pending notes already have", () => {
+    const root = makeTree(fixtureChangelog("### Changed\n- pending change\n\n### Fixed\n- pending fix\n\n"));
+    try {
+      bump({ root, kind: "patch", note: "the release (#60)", section: "Fixed", today: new Date(2026, 8, 1) });
+      expect(contents(root, "CHANGELOG.md")).toContain(
+        "### Changed\n- pending change\n\n### Fixed\n- the release (#60)\n- pending fix\n\n## [",
+      );
+    } finally {
+      removeTree(root);
+    }
+  });
+
+  test("adds the note's section in Added/Changed/Fixed order when the pending notes lack it", () => {
+    const root = makeTree(fixtureChangelog("### Added\n- pending add\n\n### Fixed\n- pending fix\n\n"));
+    try {
+      bump({ root, kind: "patch", note: "the release (#60)", today: new Date(2026, 8, 1) });
+      expect(contents(root, "CHANGELOG.md")).toContain(
+        "### Added\n- pending add\n\n### Changed\n- the release (#60)\n\n### Fixed\n- pending fix\n\n## [",
+      );
+    } finally {
+      removeTree(root);
+    }
+  });
+
+  test("adds an empty Unreleased heading when the changelog has none", () => {
+    const root = makeTree(fixtureChangelog(undefined));
+    try {
+      const expected = nextVersion(readCanonicalVersion(root), "patch");
+      bump({ root, kind: "patch", note: "the release", today: new Date(2026, 8, 1) });
+      expect(contents(root, "CHANGELOG.md")).toContain(
+        `Intro.\n\n## [Unreleased]\n\n## [${expected}] - 2026-09-01\n\n### Changed\n- the release\n\n## [`,
+      );
+    } finally {
+      removeTree(root);
+    }
+  });
+
+  test("keeps a CRLF changelog CRLF", () => {
+    const root = makeTree(fixtureChangelog("### Fixed\n- pending fix\n\n").replace(/\n/g, "\r\n"));
+    try {
+      bump({ root, kind: "patch", note: "the release", today: new Date(2026, 8, 1) });
+      const changelog = contents(root, "CHANGELOG.md");
+      expect(changelog).toContain("## [Unreleased]\r\n\r\n## [");
+      expect(changelog.replace(/\r\n/g, "")).not.toContain("\n");
     } finally {
       removeTree(root);
     }

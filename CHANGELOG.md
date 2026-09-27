@@ -1,7 +1,8 @@
 # Changelog
 
 Sightr uses [Semantic Versioning](https://semver.org). `bun scripts/bump.ts patch|minor|major --note "..."`
-adds an entry here and keeps the three version files in step; CI refuses a build where they disagree.
+moves the Unreleased notes into a new version entry and keeps the three version files in step; CI refuses
+a build where they disagree.
 
 ## [Unreleased]
 
@@ -10,6 +11,9 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   only a first `start` from PowerShell could build, so every action failed with "The system cannot
   find the path specified". Actions now run `contrib/windows/sightr-ctl.ps1` through `powershell`;
   the launcher and its C# source are gone.
+- `scripts/bump.ts` keeps pending notes (#52). It replaced the whole `## [Unreleased]` section with its
+  `--note`, so every pending note was lost. It now moves them under the new version heading, puts the
+  note first in its section, and leaves an empty `## [Unreleased]` on top.
 
 ## [1.1.0] - 2026-09-28
 
