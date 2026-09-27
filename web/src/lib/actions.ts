@@ -578,6 +578,10 @@ async function dispatchIntent(
     if (args.multi.phase === "checkbox" && args.multi.recipe === "tab-space-enter") {
       return guardedKey(args, args.multi.parked ? ["Tab", "Enter"] : ["Enter"]);
     }
+    if (args.multi.phase === "checkbox" && args.multi.recipe === "pointer-space-s") {
+      // `s` types into `Other:` when the pointer is on it, so step off that row first.
+      return runPointerWalk(args, (m) => (m.focusedN == null ? "Up" : { last: "s" }));
+    }
     return runAdvanceMacro(args);
   }
   if (intent.kind === "toggle") {
@@ -587,6 +591,13 @@ async function dispatchIntent(
       return { status: "changed" };
     }
     if (args.multi.recipe === "tab-space-enter") return runTabSpaceToggle(args, intent.n);
+    if (args.multi.recipe === "pointer-space-s") {
+      const n = intent.n;
+      // focusedN null = pointer on `Other:`, the bottom row: every option is above it.
+      return runPointerWalk(args, (m) =>
+        m.focusedN === n ? { last: "Space" } : m.focusedN == null || m.focusedN > n ? "Up" : "Down",
+      );
+    }
     return guardedKey(args, [String(intent.n)]);
   }
   if (intent.kind === "nav") {
@@ -670,6 +681,56 @@ async function runTabSpaceToggle(args: MultiGuardArgs, n: number): Promise<Actio
       return (await sendMacroStep(["Space"])) ?? { status: "sent" };
     }
     const sent = await sendMacroStep(["Tab"]);
+    if (sent) return sent;
+    await sleep(NAV_SETTLE_MS);
+  }
+  return { status: "changed" };
+}
+
+/**
+ * Cursor `pointer-space-s` walk: entry guard, then one arrow per fresh read until `step` names the
+ * final key, which goes out only after a read that shows the pointer where it belongs. The same
+ * identity check as every macro (checked state included) runs before each key, so a box flipped
+ * by a second device aborts the walk. Keys go one per write — Cursor drops the rest of a batch.
+ */
+async function runPointerWalk(
+  args: MultiGuardArgs,
+  step: (m: Extract<MultiSelectModel, { phase: "checkbox" }>) => "Up" | "Down" | { last: string },
+): Promise<ActionResult> {
+  if (args.multi.phase !== "checkbox" || args.multi.recipe !== "pointer-space-s") {
+    return { status: "changed" };
+  }
+  const guarded = await guardDialog(multiTarget(args));
+  if (!guarded.ok) return guarded.result;
+
+  const sleep = args.sleep ?? defaultSleep;
+  const maxSteps = args.multi.options.length + 4;
+  let expectedPrompt: string | undefined = guarded.region;
+  const sendMacroStep = async (keys: string[]) => {
+    const expected = expectedPrompt;
+    expectedPrompt = undefined;
+    const res = await sendBoundKeys(args, keys, expected);
+    return res.status === "sent" ? null : res;
+  };
+
+  for (let i = 0; i < maxSteps; i++) {
+    let fresh;
+    try {
+      fresh = await readDialog(multiTarget(args));
+    } catch {
+      await sleep(NAV_SETTLE_MS);
+      continue;
+    }
+    const m = fresh.model;
+    if (!m) {
+      await sleep(NAV_SETTLE_MS);
+      continue;
+    }
+    if (!multiSelectIdentity(m, args.multi) || m.phase !== "checkbox") return { status: "changed" };
+    if (m.recipe !== "pointer-space-s") return { status: "changed" };
+    const next = step(m);
+    if (typeof next !== "string") return (await sendMacroStep([next.last])) ?? { status: "sent" };
+    const sent = await sendMacroStep([next]);
     if (sent) return sent;
     await sleep(NAV_SETTLE_MS);
   }

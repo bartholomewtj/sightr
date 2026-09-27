@@ -160,6 +160,28 @@ export async function replyPane(
   );
 }
 
+/** Gap between the keys of one recipe. Live 2026-09-27, Cursor v2026.09.26 ask card: 300ms between
+ *  single-key writes held every key. */
+const KEY_GAP_MS = 80;
+
+/**
+ * One RPC per key, like the reply's submit keys. Ink harnesses (Cursor, Grok) on Windows ConPTY read
+ * a multi-key write as one input event: live 2026-09-27, `[Down, Down, Space]` on a Cursor ask card
+ * moved the pointer once and dropped the rest, so every recipe that walks a pointer
+ * (`Down…, Enter`) picked the wrong row or never submitted.
+ */
+export async function sendKeysPaced(
+  client: ReplySender,
+  paneId: string,
+  keys: string[],
+  sleep: SleepFn = defaultSleep,
+): Promise<void> {
+  for (let i = 0; i < keys.length; i++) {
+    if (i > 0) await sleep(KEY_GAP_MS);
+    await client.sendPaneKeys(paneId, [keys[i]!]);
+  }
+}
+
 export async function keysPane(
   herdr: HerdrClient,
   cfg: Config,
@@ -167,6 +189,7 @@ export async function keysPane(
   req: Request,
   queue: PaneQueue,
   audit: AuditLog = SILENT_AUDIT,
+  sleep: SleepFn = defaultSleep,
 ): Promise<Response> {
   const bad = requireJsonBody(req);
   if (bad) return bad;
@@ -190,7 +213,7 @@ export async function keysPane(
         : null;
       if (binding && !binding.ok) return { binding, sent: false, error: null };
       try {
-        await herdr.sendPaneKeys(paneId, keys);
+        await sendKeysPaced(herdr, paneId, keys, sleep);
         return { binding, sent: true, error: null };
       } catch (err) {
         return { binding, sent: false, error: failureText("key send", err) };

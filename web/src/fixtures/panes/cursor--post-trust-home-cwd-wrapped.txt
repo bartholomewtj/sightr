@@ -1,0 +1,28 @@
+  [0m[38;5;3m│[0m                                                                                       [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  Do you trust the contents of this directory?                                         [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                       [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m    [0m[1m[38;5;6mC:\Users\alice\AppData\Local\Temp\claude\C--projects\0000000a-1111-2222-3333-4444[0m  [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m    [0m[1m[38;5;6m44444444\scratchpad\herd[0m                                                           [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                       [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                       [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  [0m[2m  [a] Trust this workspace[0m                                                           [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  [0m[2m  [q] Quit[0m                                                                           [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                       [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m  [0m[38;5;4m⏳ Trusting workspace...[0m                                                             [0m[38;5;3m│[0m
+  [0m[38;5;3m│[0m                                                                                       [0m[38;5;3m│[0m
+  [0m[38;5;3m╰───────────────────────────────────────────────────────────────────────────────────────╯[0m
+
+
+  Cursor Agent
+  [0m[2mv2026.09.26-dd393fe[0m
+  [0m[2mTip: Use /debug to instrument and debug complex problems.[0m
+
+
+
+ [0m[48;2;21;21;21m                                                                                           [0m
+ [0m[48;2;21;21;21m [0m[2m[48;2;21;21;21m→ [0m[7m[48;2;21;21;21mP[0m[2m[48;2;21;21;21mlan, search, build anything[0m[48;2;21;21;21m                                                            [0m
+ [0m[48;2;21;21;21m                                                                                           [0m
+
+  [0m[2mGrok 4.7 500K Extra High · MAX[0m                                             [0m[38;5;5mRun Everything[0m
+  [0m[2m~\AppData\Local\Temp\agents\sandbox\0000000a-1111-2222-3333-444444444444\scratchpad\he[0m
+  [0m[2mrd[0m

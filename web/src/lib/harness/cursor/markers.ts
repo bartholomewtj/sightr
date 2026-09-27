@@ -22,8 +22,9 @@ const PLACEHOLDERS = [
 export const MODE_STATUS =
   /^\s*(?:Auto|Plan|Ask|Debug|Agent|Composer)\b(?:\s|$|\s*\(|\s*·)/;
 
-/** Cwd (+ optional branch) status at the very tail. */
-export const CWD_STATUS = /^\s*(?:[A-Za-z]:\\|\/|~\/)/;
+/** Cwd (+ optional branch) status at the very tail. Windows paints a home-relative cwd as `~\…`
+ *  (live 2026-09-27, v2026.09.26-dd393fe). */
+export const CWD_STATUS = /^\s*(?:[A-Za-z]:\\|\/|~[\\/])/;
 
 /** Todo/task count Cursor paints under the follow-up prompt while a turn is running. */
 export const TASK_STATUS = /^\d+\s+tasks?$/i;
@@ -59,6 +60,20 @@ export function isStatusRow(text: string): boolean {
   // Right-hand policy chip sometimes shares the Auto row; alone it is still status.
   if (/^Run Everything$/i.test(t)) return true;
   return false;
+}
+
+/**
+ * A long cwd soft-wraps: Cursor breaks the path mid-segment and paints the rest on its own row at
+ * the same indent (`  ~\…\scratchpad\he` / `  rd`, live 2026-09-27). The fragment has no spaces,
+ * so a draft row cannot pass for it.
+ */
+export function isCwdWrapRow(text: string, above: string | undefined): boolean {
+  if (above === undefined || !CWD_STATUS.test(above)) return false;
+  const t = text.trimEnd();
+  const indent = /^\s*/.exec(t)![0].length;
+  if (indent !== /^\s*/.exec(above)![0].length) return false;
+  const body = t.trim();
+  return body.length > 0 && !/\s/.test(body);
 }
 
 /** Wrapped-draft continuation: indented text under the `→` row, above status. Live 2026-09-13. */

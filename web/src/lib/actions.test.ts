@@ -9,6 +9,7 @@ import { detectMenu } from "./harness/claude/menu";
 import { detectMultiSelect } from "./harness/claude/multi-select";
 import { detectPreviewSelect } from "./harness/claude/preview-select";
 import { detectPromptSelect } from "./harness/claude/prompt-select";
+import { cursorAdapter } from "./harness/cursor";
 import { grokAdapter } from "./harness/grok";
 import * as actions from "./actions";
 import { server } from "@/test/setup";
@@ -538,6 +539,80 @@ describe("grok tab-space-enter checkbox recipe", () => {
     const res = await submitMultiSelectIntent({ ...grokBase, multi: m, intent: { kind: "advance" } });
     expect(res).toEqual({ status: "sent" });
     expect(keysSent()).toEqual([["Tab", "Enter"]]);
+  });
+});
+
+// Live-probed 2026-09-27 on Cursor v2026.09.26 (harness/cursor/ASK_NOTES.md § Multi-select).
+describe("cursor pointer-space-s checkbox recipe", () => {
+  const PANES = join(import.meta.dirname, "..", "fixtures", "panes");
+  const cursorBase = { ...base, agent: "cursor" as const };
+  const fruit = () => readFileSync(join(PANES, "cursor--ask-multi-fruit.txt"), "utf8");
+
+  function cursorModel(ansi: string): MultiSelectModel {
+    const block = cursorAdapter.buildBlocks(splitLines(parseAnsi(ansi))).find((b) => b.kind === "multi-select");
+    if (block?.kind !== "multi-select") throw new Error("expected cursor multi-select");
+    return block.multi;
+  }
+
+  /** Move the `›` pointer from its row onto the row labelled `label`. */
+  function pointAt(ansi: string, label: string): string {
+    const rows = ansi.split("\n");
+    const src = rows.findIndex((l) => l.includes("› ["));
+    const dst = rows.findIndex((l) => l.includes(`m${label}`) && l.includes("  [ ]"));
+    if (src < 0 || dst < 0) throw new Error(`pointer rows ${src} ${dst}`);
+    rows[src] = rows[src]!.replace("› [", "  [");
+    rows[dst] = rows[dst]!.replace("  [ ]", "› [ ]");
+    return rows.join("\n");
+  }
+
+  it("toggle of the pointed row sends Space only", async () => {
+    const ansi = fruit();
+    mockFetchPane.mockResolvedValue(paneWith(ansi));
+    const res = await submitMultiSelectIntent({ ...cursorBase, multi: cursorModel(ansi), intent: { kind: "toggle", n: 1 } });
+    expect(res).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Space"]]);
+  });
+
+  it("toggle of a later row walks Down one key per read, then Space — never a digit", async () => {
+    const start = fruit();
+    script(start, start, pointAt(start, "Banana"), pointAt(start, "Cherry"));
+    const res = await submitMultiSelectIntent({ ...cursorBase, multi: cursorModel(start), intent: { kind: "toggle", n: 3 } });
+    expect(res).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Down"], ["Down"], ["Space"]]);
+  });
+
+  it("toggle from the Other: row walks Up", async () => {
+    const onOther = pointAt(fruit(), "Other:");
+    script(onOther, onOther, pointAt(fruit(), "Cherry"));
+    const res = await submitMultiSelectIntent({ ...cursorBase, multi: cursorModel(onOther), intent: { kind: "toggle", n: 3 } });
+    expect(res).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Up"], ["Space"]]);
+  });
+
+  it("submit sends `s`, never Enter (Enter would add the pointed row)", async () => {
+    const ansi = fruit();
+    mockFetchPane.mockResolvedValue(paneWith(ansi));
+    const res = await submitMultiSelectIntent({ ...cursorBase, multi: cursorModel(ansi), intent: { kind: "advance" } });
+    expect(res).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["s"]]);
+  });
+
+  it("submit steps off Other: before `s`, which would type there", async () => {
+    const onOther = pointAt(fruit(), "Other:");
+    script(onOther, onOther, pointAt(fruit(), "Cherry"));
+    const res = await submitMultiSelectIntent({ ...cursorBase, multi: cursorModel(onOther), intent: { kind: "advance" } });
+    expect(res).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Up"], ["s"]]);
+  });
+
+  it("a box flipped mid-walk aborts before the final key", async () => {
+    const start = fruit();
+    const flipped = start.replace("  [ ]\u001b[0m \u001b[0m\u001b[2mBanana", "  [x]\u001b[0m \u001b[0m\u001b[2mBanana");
+    expect(flipped).not.toBe(start);
+    script(start, start, flipped);
+    const res = await submitMultiSelectIntent({ ...cursorBase, multi: cursorModel(start), intent: { kind: "toggle", n: 3 } });
+    expect(res).toEqual({ status: "changed" });
+    expect(keysSent()).toEqual([["Down"]]);
   });
 });
 

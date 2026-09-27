@@ -40,6 +40,9 @@ const allPiFixtures = readdirSync(PANES_DIR)
 const PINNED = [
   "cursor--ask-fruit-other-focused.txt",
   "cursor--ask-fruit.txt",
+  "cursor--ask-multi-fruit.txt",
+  "cursor--ask-multi-wizard-q1.txt",
+  "cursor--ask-multi-wizard-q2.txt",
   "cursor--autocomplete-model-c.txt",
   "cursor--autocomplete-model-composer.txt",
   "cursor--autocomplete-slash-clear.txt",
@@ -56,6 +59,7 @@ const PINNED = [
   "cursor--permission-command.txt",
   "cursor--permission-skip-feedback.txt",
   "cursor--plan-idle.txt",
+  "cursor--post-trust-home-cwd-wrapped.txt",
   "cursor--trust-workspace.txt",
   "cursor--working-tasks.txt",
   "cursor--working.txt",
@@ -64,6 +68,9 @@ const PINNED = [
 const DIALOG = [
   "cursor--ask-fruit-other-focused.txt",
   "cursor--ask-fruit.txt",
+  "cursor--ask-multi-fruit.txt",
+  "cursor--ask-multi-wizard-q1.txt",
+  "cursor--ask-multi-wizard-q2.txt",
   "cursor--permission-command-moved.txt",
   "cursor--permission-command-review-hint.txt",
   "cursor--permission-command.txt",
@@ -211,6 +218,75 @@ describe("cursorBuildBlocks", () => {
     expect(draft).toBe(sent);
     expect(draftCarriesSend(sent, draft)).toBe(true);
     expect(locateComposer(lines)).not.toBeNull();
+  });
+
+  // Live 2026-09-27 (v2026.09.26-dd393fe): after the trust card, a home-relative cwd paints as
+  // `~\…` and soft-wraps onto a bare `rd` row. Neither read as status, so the composer was "not on
+  // screen" and every phone send was refused.
+  it("finds the composer over a `~\\` cwd that wraps onto its own row", () => {
+    const lines = splitLines(
+      parseAnsi(readFileSync(join(PANES_DIR, "cursor--post-trust-home-cwd-wrapped.txt"), "utf8")),
+    );
+    expect(detectTrustRegion(lines)).toBeNull();
+    expect(cursorAdapter.composerReady!(lines)).toBe(true);
+    expect(cursorAdapter.extractInputDraft(lines)).toBeNull();
+    const status = cursorAdapter.extractStatusLines(lines).map(lineText).join("\n");
+    expect(status).toMatch(/Grok 4\.7/);
+    expect(status).toMatch(/^\s*~\\AppData/m);
+    expect(status).toMatch(/^\s*rd$/m);
+  });
+
+  it("does not take a spaced row under the cwd for a wrap", () => {
+    const lines = splitLines(
+      parseAnsi(["  → hi", "", "  C:\\work\\repo", "  not a path"].join("\n")),
+    );
+    expect(locateComposer(lines)).toBeNull();
+  });
+
+  // Live 2026-09-27 (v2026.09.26-dd393fe): multi-select cards lift. The composer is gone under the
+  // card on this build, and Herdr reports `done`, so an unlifted card left the phone blank.
+  describe("multi-select ask cards", () => {
+    function multiOf(raw: string) {
+      const lines = splitLines(parseAnsi(raw));
+      const block = cursorAdapter.buildBlocks(lines).find((b) => b.kind === "multi-select");
+      if (block?.kind !== "multi-select" || block.multi.phase !== "checkbox") return null;
+      return { lines, multi: block.multi };
+    }
+    const fixture = (name: string) => readFileSync(join(PANES_DIR, name), "utf8");
+
+    it("lifts a 1-of-1 card with the pointer on the first option", () => {
+      const { lines, multi } = multiOf(fixture("cursor--ask-multi-fruit.txt"))!;
+      expect(multi.question).toBe("Which fruits do you want?");
+      expect(multi.options.map((o) => [o.n, o.label, o.checked])).toEqual([
+        [1, "Apple", false],
+        [2, "Banana", false],
+        [3, "Cherry", false],
+      ]);
+      expect(multi.recipe).toBe("pointer-space-s");
+      expect(multi.focusedN).toBe(1);
+      expect(multi.steps).toBeNull();
+      expect(multi.advanceLabel).toBe("Submit");
+      expect(cursorAdapter.composerReady!(lines)).toBe(false);
+      expect(multi.signature).not.toContain("›");
+    });
+
+    it("reads checked rows and step chips on a two-question card", () => {
+      const q1 = multiOf(fixture("cursor--ask-multi-wizard-q1.txt"))!.multi;
+      const q2 = multiOf(fixture("cursor--ask-multi-wizard-q2.txt"))!.multi;
+      expect(q1.options.map((o) => o.checked)).toEqual([false, true, false]);
+      expect(q1.steps?.map((s) => s.current)).toEqual([true, false]);
+      expect(q2.question).toBe("Pick veg");
+      expect(q2.focusedN).toBe(2);
+      expect(q2.steps?.map((s) => s.current)).toEqual([false, true]);
+      expect(q1.signature).not.toBe(q2.signature);
+    });
+
+    it("reports no focused option while the pointer is on Other:", () => {
+      const raw = fixture("cursor--ask-multi-fruit.txt")
+        .replace("› [ ]", "  [ ]")
+        .replace("\u001b[2m  [ ]\u001b[0m \u001b[0m\u001b[2mOther:", "\u001b[2m› [ ]\u001b[0m \u001b[0m\u001b[2mOther:");
+      expect(multiOf(raw)!.multi.focusedN).toBeNull();
+    });
   });
 
   it("strips the prompt + status from the raw mirror", () => {
@@ -370,11 +446,11 @@ describe("cursorBuildBlocks", () => {
     expect(bananaAsk!.model.signature).not.toBe(fruitAsk!.model.signature);
     expect(promptsEqual(bananaAsk!.model, fruitAsk!.model)).toBe(false);
 
-    // pick? -> pick? (multi-select): stays raw
+    // pick? -> pick? (multi-select): not a prompt-select — it lifts as multi-select instead
     const multiRaw = replaceOne(rawFruit, "pick?", "pick? (multi-select)");
     const multiLines = splitLines(parseAnsi(multiRaw));
     expect(detectAskRegion(multiLines)).toBeNull();
-    expect(cursorAdapter.buildBlocks(multiLines).every((b) => b.kind === "raw")).toBe(true);
+    expect(cursorAdapter.buildBlocks(multiLines).map((b) => b.kind)).toContain("multi-select");
     expect(askCardPresent(multiLines)).toBe(true);
     expect(cursorAdapter.composerReady!(multiLines)).toBe(false);
 

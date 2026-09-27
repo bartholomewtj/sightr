@@ -322,6 +322,10 @@ function emittableKeys(block: Block): string[] | null {
       if (block.multi.phase === "checkbox" && block.multi.recipe === "tab-space-enter") {
         return ["Tab", "Space", "Enter"];
       }
+      // Cursor `pointer-space-s`: arrows walk, Space toggles, `s` submits, Left/Right change question.
+      if (block.multi.phase === "checkbox" && block.multi.recipe === "pointer-space-s") {
+        return ["Up", "Down", "Space", "s", ...WIZARD_BACK_KEYS, ...WIZARD_NEXT_KEYS];
+      }
       return block.multi.phase === "checkbox"
         ? [
             ...block.multi.options.map((o) => String(o.n)),
