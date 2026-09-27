@@ -1036,16 +1036,36 @@ describe("StateEngine — dialog sniff", () => {
     expect(herdr.reads).toEqual([["w1:p1", "visible", 40, "text"]]);
   });
 
-  test("an unchanged revision reuses the verdict without reading", async () => {
+  test("an unchanged revision reuses a clean verdict until the TTL, then re-checks", async () => {
     const { herdr, poll, agent, advance } = makeDialogEngine();
     herdr.panes = [at("w1:p1", "done", "cursor", 5)];
-    herdr.texts.set("w1:p1", CURSOR_PERMISSION);
+    herdr.texts.set("w1:p1", CURSOR_DONE);
     await poll();
-    advance(60_000);
     await poll();
     await poll();
     expect(herdr.reads.length).toBe(1);
+    expect(agent("w1:p1").status).toBe("done");
+    // A dialog painted without the revision moving is still found on the TTL.
+    herdr.texts.set("w1:p1", CURSOR_PERMISSION);
+    advance(DIALOG_SNIFF_TTL_MS);
+    await poll();
+    expect(herdr.reads.length).toBe(2);
     expect(agent("w1:p1").status).toBe("blocked");
+  });
+
+  test("a detected dialog is re-read every poll, so answering it clears blocked even when the revision is stuck", async () => {
+    // Live, 27 Sep 2026: an agy pane sat at revision 0 and `idle` before and after its trust card
+    // was answered from the phone; the cached `blocked` never cleared.
+    const { herdr, poll, agent } = makeDialogEngine();
+    herdr.panes = [at("w1:p1", "idle", "agy", 0)];
+    herdr.texts.set("w1:p1", AGY_PERMISSION);
+    await poll();
+    expect(agent("w1:p1").status).toBe("blocked");
+    herdr.texts.set("w1:p1", "");
+    await poll();
+    expect(herdr.reads.length).toBe(2);
+    expect(agent("w1:p1").status).toBe("idle");
+    expect("dialogDetected" in agent("w1:p1")).toBe(false);
   });
 
   test("a moved revision showing the idle composer goes back to done", async () => {

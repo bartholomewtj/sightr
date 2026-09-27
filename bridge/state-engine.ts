@@ -567,9 +567,15 @@ export class StateEngine {
           if (!candidates.has(a.paneId)) return false;
           const entry = this.dialogSniffs.get(a.paneId);
           if (!entry || entry.status !== a.status) return true;
+          // Herdr's `revision` does not follow screen text on every pane: live, an agy pane stayed at
+          // revision 0 and `idle` while its trust card was answered, so a cached `blocked` stuck. A
+          // detected dialog is therefore re-read every poll (it is one pane, and blocked keeps the
+          // fast cadence anyway), and a clean verdict is re-checked on the TTL even when the revision
+          // hasn't moved.
+          if (entry.dialog) return true;
           const rev = revisions.get(a.paneId);
-          if (rev === undefined) return now - entry.at >= DIALOG_SNIFF_TTL_MS;
-          return entry.revision !== rev;
+          if (rev !== undefined && entry.revision !== rev) return true;
+          return now - entry.at >= DIALOG_SNIFF_TTL_MS;
         })
         .map(async (a) => {
           try {
