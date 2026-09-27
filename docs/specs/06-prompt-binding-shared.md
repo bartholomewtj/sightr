@@ -1,5 +1,10 @@
 # 06 — One prompt-binding matcher
 
+> **Status 2026-09-28:** DONE.
+> - `shared/prompt-binding.ts` is the one matcher; `bridge/prompt-binding.ts` re-exports it, and conformance's copy is deleted.
+> - Conformance verifies every adapter's composer region and every lifted dialog region against the RAW fixture with it.
+> - The contract test walks `claudeBuildBlocks` order, which pinned two named-session captures the detector order had missed.
+>
 > **Status 2026-09-27 (`874b85b`):** OPEN. Since #29 the bridge imports `web/src/lib/harness/dialog-sniff.ts` at runtime (leaf imports only, no `@shared`). This spec's plan (a pure `shared/` module) still fits; do not add a second bridge→web import for the matcher.
 
 Council row 6. Severity: high. Parser + form.

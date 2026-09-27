@@ -168,5 +168,15 @@
     "fixture": "claude--trust-prompt-unnumbered.txt",
     "detector": "prompt-select",
     "region": "────────────────────────────────────────────────────────────────────────────────────────────\n Accessing workspace:\n\n C:\\claudeOS\\tmp\\sightr-ux\n\n Quick safety check: Is this a project you created or one you trust? (Like your own\n code, a well-known open source project, or work from your team). If not, take a moment\n to review what's in this folder first.\n\n Claude Code'll be able to read, edit, and execute files here.\n\n Security guide\n\n ❯ No, exit\n   Yes, I trust this folder\n\n Enter to confirm · Esc to cancel"
+  },
+  {
+    "fixture": "claude--select-named-session-no-qmark.txt",
+    "detector": "prompt-select",
+    "region": "     \n❯ Use AskUserQuestion once with a single question 'Which layout?' header 'Layout',       \n  options 'Sidebar' and 'Top bar', and give EACH option a preview field containing a     \n  small ASCII mockup (3 lines). After I answer, reply only with my choice.               \n  ⎿  1 skill available\n \n● User answered Claude's questions:\n  ⎿  · Which layout? → Top bar\n\n● Top bar\n\n✻ Churned for 4s · done 6:43 PM\n\n❯ Use AskUserQuestion once: single question 'Pick one' options Red, Blue (no previews).  \n  Then reply only with my choice.                                                        \n─────────────────────────────────────────────────────────────────────────────────────────\n ☐ Color \n\nPick one\n\n❯ 1. Red\n     Red\n  2. Blue\n     Blue\n  3. Type something.\n─────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · ↑/↓ to navigate · Esc to cancel"
+  },
+  {
+    "fixture": "claude--select-preview-named-session.txt",
+    "detector": "preview-select",
+    "region": "  Ran 1 shell command \n        \n● I added subtract(a, b) to calc.py below add, with the docstring \"\"\"Return a minus \n  b.\"\"\". The check passed: subtract(5, 3) returns 2 and the docstring prints.\n     \n✻ Crunched for 18s · done 6:05 PM\n\n❯ Use AskUserQuestion once with a single question 'Which layout?' header 'Layout',       \n  options 'Sidebar' and 'Top bar', and give EACH option a preview field containing a     \n  small ASCII mockup (3 lines). After I answer, reply only with my choice.               \n  ⎿  1 skill available\n\n─────────────────────────────────────────────────────────────────────────────────────────\n ☐ Layout \n\nWhich layout?\n\n❯ 1. Sidebar                      ┌──────────────────────────────────────────┐\n  2. Top bar                      │ +------+-----------+                     │\n                                  │ | nav  |  content  |                     │\n                                  │ +------+-----------+                     │\n                                  └──────────────────────────────────────────┘\n\n                                  Notes: press n to add notes\n\n─────────────────────────────────────────────────────────────────────────────────────────\n  Chat about this\n\nEnter to select · ↑/↓ to navigate · n to add notes · Esc to cancel"
   }
 ]
