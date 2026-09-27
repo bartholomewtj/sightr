@@ -90,7 +90,7 @@ product since. It does not track collie.
 
 ## Install and run
 
-Install the published plugin from PowerShell. Herdr runs the web build once at install time.
+Install the published plugin from PowerShell. It is listed on the [Herdr plugin marketplace](https://herdr.dev/plugins); that listing is the GitHub topic `herdr-plugin` plus `herdr-plugin.toml` on `main`. Herdr runs the web build once at install time.
 
 ```powershell
 herdr plugin install bartholomewtj/sightr
@@ -217,24 +217,29 @@ Created owner-only at startup. It holds `audit.log`, `lock.json` (WebAuthn crede
 ## On the phone
 
 **Spaces tree.** A **Needs you** inbox sits above the space, tab, pane tree. Blocked agents sort
-most-recently-active first. Git worktrees group under their primary checkout, as in Herdr. A pane
-Herdr has named shows that name on the row, the header and the push. The `⋯` menu (or right-click)
-renames or closes a row, opens a closed worktree, or removes a linked worktree without deleting its
-branch.
+most-recently-active first. A Cursor or Antigravity pane counts as Needs you while a dialog waits on
+its screen, even though Herdr calls it done: the bridge reads the visible screen of resting panes of
+those two harnesses to find it. Git worktrees group under their primary checkout, as in Herdr. A
+pane Herdr has named shows that name on the row, the header and the push. A space holding one pane
+shows `→` and opens it on a tap; others expand. The `⋯` menu (or right-click) renames or closes a
+row, opens a closed worktree, or removes a linked worktree without deleting its branch.
 
 **Pane view.** The pane reads like a chat, taken from the harness's own session log. Your messages
 are blue bubbles; the agent's replies are plain text. Runs of tool calls fold into one line, thinking
 collapses to "Thought for 12s". The live terminal hides while the agent is idle and returns when it
-is working, blocked, a prompt is on screen, Type is armed, Find is open, or there is no session log. Tap the
-title for the working directory, statusline, context fill, sibling panes, Find and Switch
-pane. Detected prompts become buttons. A blocked agent with no detected buttons gets **Yes** and
-**No** above the reply box.
+is working, blocked, a prompt is on screen, Type is armed, Find is open, or there is no session log.
+Tap the title for the pane menu: working directory, statusline, sibling panes, Find in output,
+Context (fill level; runs `/context` or `/session` and shows the terminal for that visit), a Show
+terminal switch, Switch pane, Space overview, Rename, Close pane (two taps) and Settings. Detected
+prompts become buttons. A blocked agent with no detected buttons gets **Yes** and **No** above the
+reply box, but only while the agent's own input box is on screen.
 
-**Replies.** Type and Send. The `+` menu offers Attach file (images and text up to 10 MB, uploaded
-to the host and referenced by path), Keys (`Esc`, `Ctrl+C`, arrows, modifiers), Agent commands (the
-harness's slash commands plus your `commands.toml`), Type into terminal, Terminal and Display. Tap
-the circle on the reply box for Keys; hold it for the gesture wheel. Settings picks the wheel's
-slices, up to six.
+**Replies.** Type and Send. Leftover text on the agent's input line is cleared before a send. The
+`+` menu holds input tools only: Attach file (images and text up to 10 MB, uploaded to the host and
+referenced by path), Keys (`Esc`, `Ctrl+C`, arrows, modifiers), Agent commands (the harness's slash
+commands plus your `commands.toml`) and Type into terminal. While typing into the terminal, `+` and
+Send are inert and the strip's Stop ends it. Tap the circle beside Send for Keys; hold it for the
+gesture wheel. Settings picks the wheel's slices, up to six, starting from the default four.
 
 **Beacons.** Sightr normally works out who is in a pane by reading its screen. Claude's hooks can
 instead write a small read-only file naming the pane, session and activity. `hooks install claude`
@@ -243,11 +248,12 @@ hooks alone, and `hooks uninstall claude` removes only what Sightr wrote. A beac
 input. It goes stale after 12 hours. Other harnesses still use the screen.
 
 **Files.** With `SIGHTR_WORK_ROOT` set, browse, search, preview, copy a path, download, edit and save
-text, or delete after a confirm. The Git panel shows read-only `git status` and `git diff`. Open in
+text, or delete after a confirm. Folders have a `⋯` for Download and Copy path. Search stops after
+6 s on a wide root and shows what it found. The Git panel shows read-only `git status` and `git diff`. Open in
 browser renders HTML in a unique origin, not as Sightr, without CSS. A read-only device keeps copy
 and download only.
 
-**Desktop mode.** Settings offers System, On, Off, stored per browser. Resizable sidebar, Composer
+**Desktop mode.** Settings offers System, On, Off, stored per browser. On is ignored below 768 px. Resizable sidebar, Composer
 or Direct typing, `Ctrl+backtick` arms direct typing, `Ctrl+F` finds, `Ctrl+Alt+Up`/`Down` change
 panes. Multiline or destructive pasted text waits for confirmation.
 
@@ -267,7 +273,9 @@ its own credential, an unlock lasts 12 hours from last use, and a bridge restart
 `<state-dir>/lock.json` to reset every credential.
 
 **Runtime settings.** Settings → Bridge changes the device allowlist, notify delay, submit keys and
-read lines live, for every device, with no restart. Theme, display and wheel picks are per device.
+read lines live, for every device, with no restart. Each row says whether its value comes from
+`.env` or was set here; Use .env drops the override. Settings groups cards under This device (theme,
+display, wheel, desktop mode, reconnect lock, push) and All devices (notify when, bridge).
 
 ## Windows service details
 
@@ -368,6 +376,9 @@ bun run build                  # typecheck both, build web/dist
 - **Versions.** `herdr-plugin.toml` is canonical. `bun scripts/bump.ts patch|minor|major --note "..."`
   mirrors it into both `package.json` files and adds a `CHANGELOG.md` entry. `bun scripts/check-version.ts`
   fails when they disagree, and runs in CI and in `build`.
+- **Marketplace.** Keep the GitHub topic `herdr-plugin` and a parseable `herdr-plugin.toml` on `main`.
+  The index at [herdr.dev/plugins](https://herdr.dev/plugins) refreshes about every 30 minutes. There is
+  no submission form.
 - **CI** (`.github/workflows/ci.yml`) runs on push to `main` and on pull requests: frozen installs,
   the version gate, typecheck and tests for root and web, then the web build. It only reads the repo.
   `.github/workflows/pages.yml` compiles Archify JSON to HTML and publishes GitHub Pages (set the
