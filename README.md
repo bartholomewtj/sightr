@@ -25,7 +25,7 @@ you, read its chat, and answer with buttons or an ordinary text box, so phone di
 - **Tap to answer.** Detected prompts, permission cards and ask-cards become buttons. A blocked
   agent with no buttons still gets Yes and No. The reply box is an ordinary text field, so phone
   dictation works.
-- **Desktop mode.** Settings → Desktop: System, On or Off, stored per browser. Resizable sidebar,
+- **Desktop mode.** Settings → Desktop mode: System, On or Off, stored per browser. Resizable sidebar,
   Composer or Direct typing, `Ctrl+backtick` arms typing, `Ctrl+F` finds, `Ctrl+Alt+Up`/`Down`
   change panes.
 
@@ -40,8 +40,8 @@ you, read its chat, and answer with buttons or an ordinary text box, so phone di
 
   <img src="docs/features/git-diff.png" alt="Files Git panel: status list and a redacted diff" width="360">
 
-- **Keys and commands.** Esc, Ctrl+C, arrows, a gesture wheel, and the harness's slash commands
-  plus your `commands.toml`. Hold the circle beside Send to fan the wheel; Settings picks the
+- **Keys and commands.** Esc, Ctrl+C, arrows, a gesture wheel, and slash commands (shipped for
+  Claude, pi and Cursor) plus your `commands.toml`. Hold the circle beside Send to fan the wheel; Settings picks the
   slices, up to six.
 
   <img src="docs/features/gesture-wheel.jpg" alt="Gesture wheel fanned out from the circle beside Send" width="360">
@@ -64,8 +64,8 @@ product since. It does not track collie.
 - The bridge refuses to start unless it binds a loopback address, and cross-checks the TCP peer
   address on every request. Publish it with `tailscale serve` (the default) or your own reverse
   proxy. Never use `tailscale funnel`.
-- The `Host` header must match a loopback name, a discovered Tailscale name, or
-  `SIGHTR_PUBLIC_HOSTS`. This is checked before anything else to defeat DNS rebinding.
+- The `Host` header must match a loopback name, a discovered Tailscale name,
+  `SIGHTR_PUBLIC_HOSTS`, or a host named in `SIGHTR_ALLOWED_ORIGINS`. This is checked before anything else to defeat DNS rebinding.
 - Set `SIGHTR_TRUSTED_USER` to your Tailscale login. With it set, every request must carry a
   matching `Tailscale-User-Login` header, which `tailscale serve` injects. The bridge warns at
   startup while it is unset.
@@ -98,14 +98,16 @@ herdr plugin install bartholomewtj/sightr
 herdr plugin action invoke start --plugin herdr.sightr
 ```
 
-Or link a local checkout. A linked checkout builds the web app and the Herdr action launcher on
-its first `start` instead.
+Or link a local checkout. Herdr does not run the install-time build for a linked checkout, and
+every Herdr action runs `build\sightr-action-v1.exe`, which a fresh clone does not have. Run the
+first `start` through the control script; it builds the web app and the action launcher. After
+that, the Herdr actions work.
 
 ```powershell
 git clone https://github.com/bartholomewtj/sightr.git
 Set-Location sightr
 herdr plugin link "$(Get-Location)"
-herdr plugin action invoke start --plugin herdr.sightr
+powershell -NoProfile -ExecutionPolicy Bypass -File contrib\windows\sightr-ctl.ps1 start
 ```
 
 `start` builds the web app if `web/dist` is missing, registers and enables the `herdr.sightr` Task
@@ -155,11 +157,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File contrib\windows\sightr-c
 ## Configuration
 
 Everything lives in the plugin config directory printed by `herdr plugin config-dir herdr.sightr`.
-The directory falls back to `~/.config/sightr` when Herdr did not inject one.
+The control script resolves it as `HERDR_PLUGIN_CONFIG_DIR`, then that command, then
+`%APPDATA%\herdr\plugins\config\herdr.sightr`, and passes it to the bridge. A bridge started by
+hand with no `HERDR_PLUGIN_CONFIG_DIR` falls back to `~/.config/sightr`.
 
 | File | Purpose |
 |---|---|
-| `.env` | Bridge settings. Start from [`.env.example`](.env.example), which documents every key |
+| `.env` | Bridge and control-script settings. Start from [`.env.example`](.env.example), which documents the bridge keys; the control-script keys are below |
 | `commands.toml` | Your slash commands for the Agent commands menu. Start from [`commands.toml.example`](commands.toml.example) |
 | `keys.toml` | Keys-pad presets and gesture-wheel slices. Start from [`keys.toml.example`](keys.toml.example) |
 | `sightr.log`, `sightr-error.log` | Bridge output. A crash keeps one `*-previous.log` pair |
@@ -177,26 +181,28 @@ keep theirs.
 | `SIGHTR_TRUSTED_USER` | unset | Required Tailscale login. Set it |
 | `SIGHTR_TRUSTED_USER_OPTIONAL` | off | Tolerate a missing identity header. Host-local development only |
 | `SIGHTR_PUBLIC_HOSTS` | unset | Extra allowed `Host` values, comma separated |
+| `SIGHTR_TAILSCALE_HOSTS` | set by `start` | Tailscale names the control script discovered and passes in. Not usually set by hand |
 | `SIGHTR_ALLOWED_ORIGINS` | unset | Extra allowed `Origin` values |
 | `SIGHTR_ALLOW_ANY_HOST` | off | Disable the Host allowlist. Warned at startup |
 | `SIGHTR_DEVICE_HEADER`, `SIGHTR_DEVICE_ALLOWLIST` | unset | Optional per-device write authorisation. Unknown devices become read-only |
 | `SIGHTR_AUDIT`, `SIGHTR_AUDIT_CONTENT` | `1`, `preview` | Audit trail on/off and `preview` or `none` |
-| `SIGHTR_POLL_MS`, `SIGHTR_POLL_IDLE_MS` | `1500`, `12000` | Poll cadence, and the relaxed cadence while the Herdr event stream is healthy and every agent is resting |
+| `SIGHTR_POLL_MS`, `SIGHTR_POLL_IDLE_MS` | `1500`, `12000` | Poll cadence (min 250), and the relaxed cadence (min 1000) while the Herdr event stream is healthy and every agent is resting |
 | `SIGHTR_NOTIFY_DELAY_MS` | `30000` | Wait before a blocked or finished agent pushes a notification |
-| `SIGHTR_READ_LINES` | `200` | Terminal lines pulled on open |
+| `SIGHTR_READ_LINES` | `200` | Terminal lines for a pane read that names no count, and the floor for the read that checks a prompt before a send. The phone asks for its own count (600 agent, 120 shell) |
 | `SIGHTR_SUBMIT_KEYS` | `Enter` | Key sequence that submits a reply |
 | `SIGHTR_TRANSCRIPT` | on | Read chat history from the harness's own session log |
-| `SIGHTR_CLAUDE_ROOT`, `SIGHTR_PI_ROOT`, `SIGHTR_GROK_ROOT`, `SIGHTR_CURSOR_ROOT` | harness default | Where each harness keeps session logs, comma separated, searched in order |
+| `SIGHTR_CLAUDE_ROOT`, `SIGHTR_PI_ROOT`, `SIGHTR_GROK_ROOT`, `SIGHTR_CURSOR_ROOT` | harness default | Where each harness keeps session logs, comma separated, searched in order. The pi and Grok defaults follow `PI_CODING_AGENT_DIR` and `GROK_HOME` |
 | `SIGHTR_BEACONS` | on | Read the identity files Claude's hooks write |
 | `SIGHTR_WORK_ROOT` | unset | Root of the Files tab, readable and writable from every device. Keep it narrow. Unset hides the tab and its routes |
-| `SIGHTR_VAPID_PUBLIC`, `SIGHTR_VAPID_PRIVATE`, `SIGHTR_VAPID_SUBJECT` | unset | Web Push keys. `push-keys` writes them |
+| `SIGHTR_VAPID_PUBLIC`, `SIGHTR_VAPID_PRIVATE`, `SIGHTR_VAPID_SUBJECT` | unset, unset, `mailto:admin@example.com` | Web Push keys. `push-keys` writes them. Push turns on with the public and private keys |
 | `SIGHTR_PUSH_ALLOWED_HOSTS` | unset | Extra push-service hosts |
 | `SIGHTR_STATE_DIR` | `~/.local/state/sightr` | Runtime state, when Herdr did not inject `HERDR_PLUGIN_STATE_DIR` |
 | `HERDR_SOCKET_PATH` | `%APPDATA%\herdr\herdr.sock` | Herdr's control socket |
 
 ### Control-script settings
 
-These are read by `sightr-ctl.ps1` and `scripts/ctl`, not by the bridge.
+These are read by `sightr-ctl.ps1` and `scripts/ctl`. The bridge also reads `SIGHTR_SKIP_SERVE`, only
+to shape its startup warnings. The control script treats only `1` as on.
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -233,12 +239,15 @@ Tap the title for the pane menu: working directory, statusline, sibling panes, F
 Context (fill level; runs `/context` or `/session` and shows the terminal for that visit), a Show
 terminal switch, Switch pane, Space overview, Rename, Close pane (two taps) and Settings. Detected
 prompts become buttons. A blocked agent with no detected buttons gets **Yes** and **No** above the
-reply box, but only while the agent's own input box is on screen.
+reply box, but only while the agent's own input box is on screen. A marked draftr operator-decision
+card answers through `whistlr reply --payload` and never types into the pane
+([`docs/whistlr-31f-sightr.md`](docs/whistlr-31f-sightr.md)).
 
-**Replies.** Type and Send. Leftover text on the agent's input line is cleared before a send. The
+**Replies.** Type and Send. For Claude, Cursor, Grok and Antigravity, leftover text on the agent's
+input line is cleared before a send; pi, Codex and shells get the text as typed. The
 `+` menu holds input tools only: Attach file (images and text up to 10 MB, uploaded to the host and
-referenced by path), Keys (`Esc`, `Ctrl+C`, arrows, modifiers), Agent commands (the harness's slash
-commands plus your `commands.toml`) and Type into terminal. While typing into the terminal, `+` and
+referenced by path), Keys (`Esc`, `Ctrl+C`, arrows, modifiers), Agent commands (the shipped slash
+commands for Claude, pi and Cursor, plus your `commands.toml`) and Type into terminal. While typing into the terminal, `+` and
 Send are inert and the strip's Stop ends it. Tap the circle beside Send for Keys; hold it for the
 gesture wheel. Settings picks the wheel's slices, up to six, starting from the default four.
 
@@ -251,7 +260,8 @@ input. It goes stale after 12 hours. Other harnesses still use the screen.
 **Files.** With `SIGHTR_WORK_ROOT` set, browse, search, preview, copy a path, download, edit and save
 text, or delete after a confirm. Folders have a `⋯` for Download and Copy path. Search stops after
 6 s on a wide root and shows what it found. The Git panel shows read-only `git status` and `git diff`. Open in
-browser renders HTML in a unique origin, not as Sightr, without CSS. A read-only device keeps copy
+browser renders HTML in a sandboxed unique origin, not as Sightr. Its scripts run and can load
+sibling `.js`; sibling `.css` is not served, so only inline styles apply. A read-only device keeps copy
 and download only.
 
 **Desktop mode.** Settings offers System, On, Off, stored per browser. On is ignored below 768 px. Resizable sidebar, Composer
@@ -276,7 +286,8 @@ its own credential, an unlock lasts 12 hours from last use, and a bridge restart
 **Runtime settings.** Settings → Bridge changes the device allowlist, notify delay, submit keys and
 read lines live, for every device, with no restart. Each row says whether its value comes from
 `.env` or was set here; Use .env drops the override. Settings groups cards under This device (theme,
-display, wheel, desktop mode, reconnect lock, push) and All devices (notify when, bridge).
+display, wheel on a phone, desktop mode, keyboard shortcuts on a desktop, reconnect lock, push)
+and All devices (notify when, bridge).
 
 ## Windows service details
 
@@ -347,7 +358,7 @@ header and the device allowlist, the write is queued per pane, sent over the Her
 | `web/src/fixtures/panes/` | Captured terminal screens the harness parsers are tested against |
 | `scripts/ctl.ts`, `scripts/ctl/` | Every control verb, supervisor, `tailscale serve`, update |
 | `scripts/bump.ts`, `scripts/check-version.ts` | Version bump and the version consistency gate |
-| `contrib/windows/` | PowerShell entry point, action launcher source, their tests |
+| `contrib/windows/` | PowerShell entry point and its test, action launcher source |
 | `docs/archify/` | System maps, served by GitHub Pages |
 | `docs/adr/` | Architecture decision records. Code comments cite them by number (`ADR 0009`) |
 | `CONTEXT.md` | Agent map: where to go, standing rules |

@@ -1,4 +1,4 @@
-# Council specs — 2026-09-21 (status as of 2026-09-27, `874b85b`)
+# Council specs — 2026-09-21 (status as of 2026-09-28, `be25263`)
 
 Implementable slices for the Sightr council recommendations. **Row 4 is not in this set** (whistlr wizard / multi-select). Marked prompt-select cards already live in [`docs/whistlr-31f-sightr.md`](../whistlr-31f-sightr.md). Do not reopen that path from these files.
 

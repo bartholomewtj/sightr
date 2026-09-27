@@ -1,5 +1,7 @@
 # 03 — fetch no-store / 304 without a local entry
 
+> **Status 2026-09-28 (`be25263`):** OPEN. The bridge already sends `cache-control: no-store` on every JSON 200 (`bridge/http-cache.ts`) and on the pane and history 304s, so a browser HTTP cache should not hold `/api` frames. `jsonError` and `text()` in `bridge/responses.ts` set none. The client half below is untouched. Confirm the Safari 304 on a device before building.
+
 Council row 3. Severity: high. Cadence.
 
 ## Why

@@ -307,15 +307,15 @@ export function loadConfig(): Config {
         `Tailscale-User-Login header, SIGHTR_DEVICE_HEADER and the same-origin gate are all ` +
         `client-settable and mean nothing on a wide bind, so binding here would hand write access ` +
         `to anything that can reach the port. Use 127.0.0.1 (the default) and put your ingress in ` +
-        `front of it — see README → Variants. If you truly mean to bind wide and have another ` +
-        `control in front, set SIGHTR_ALLOW_NON_LOOPBACK_BIND=1.`,
+        `front of it — see README → Security, read this first. If you truly mean to bind wide and ` +
+        `have another control in front, set SIGHTR_ALLOW_NON_LOOPBACK_BIND=1.`,
     );
   }
   // The operator's config dir — where their `.env` lives, and now their `commands.toml` beside it.
-  // Resolved exactly the way scripts/sightr-ctl.ps1 resolves it MINUS the `herdr` shell-out: the
-  // launcher passes HERDR_PLUGIN_CONFIG_DIR into the Task Scheduler job precisely so this
-  // process never has to ask the CLI, and the two entry points must not disagree about which dir
-  // that is. ~/.config/sightr is the same last-resort default the shim ends on.
+  // The control script (contrib/windows/sightr-ctl.ps1, scripts/ctl/paths.ts) resolves it and passes
+  // HERDR_PLUGIN_CONFIG_DIR into the Task Scheduler job, so this process never asks the CLI. The
+  // ~/.config/sightr fallback only applies to a bridge started by hand without that variable; the
+  // control script's own last resort is %APPDATA%\herdr\plugins\config\herdr.sightr.
   const configDir = process.env.HERDR_PLUGIN_CONFIG_DIR ?? join(homedir(), ".config", "sightr");
 
   // SIGHTR_CLAUDE_ROOT predates the per-harness split and remains Claude's legacy override.
