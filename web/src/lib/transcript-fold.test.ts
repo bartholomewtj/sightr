@@ -1,4 +1,4 @@
-import { foldEntries, foldLabel, thinkingDuration } from "./transcript-fold";
+import { foldEntries, foldLabel, MAX_THINK_SECONDS, thinkingDuration } from "./transcript-fold";
 import type { TranscriptEntry, TranscriptPart } from "./types";
 
 const tool = (name: string, summary = "", result?: { text: string; isError?: boolean }): TranscriptPart => ({
@@ -215,40 +215,61 @@ describe("foldLabel", () => {
 });
 
 describe("thinkingDuration", () => {
-  it("returns seconds between two entries 12 s apart", () => {
+  const think = (uuid: string, ts: string) => at(uuid, ts, [{ kind: "thinking", text: "pondering" }]);
+
+  it("times a thinking-only row to the assistant row after it", () => {
     const entries = [
-      at("a0", "2026-07-25T10:00:00.000Z", [{ kind: "thinking", text: "pondering" }]),
+      think("a0", "2026-07-25T10:00:00.000Z"),
       at("a1", "2026-07-25T10:00:12.000Z", [{ kind: "text", text: "done" }]),
     ];
     expect(thinkingDuration(entries, 0)).toBe(12);
   });
 
-  it("returns null for the last entry", () => {
+  // Spec 15: Claude and Pi put thinking on the same row as the reply.
+  it("calls thinking on a row with speech or a tool finished, not the gap to the next user turn", () => {
     const entries = [
-      at("a0", "2026-07-25T10:00:00.000Z", [{ kind: "thinking", text: "pondering" }]),
+      at("a0", "2026-07-25T10:00:00.000Z", [
+        { kind: "thinking", text: "pondering" },
+        { kind: "text", text: "here it is" },
+      ]),
+      at("u1", "2026-07-26T10:00:00.000Z", [{ kind: "text", text: "next day" }], "user"),
     ];
-    expect(thinkingDuration(entries, 0)).toBeNull();
+    expect(thinkingDuration(entries, 0)).toBe("done");
+    expect(thinkingDuration([entries[0]!], 0)).toBe("done"); // a completed last turn does not pulse
+    expect(thinkingDuration([at("a0", "2026-07-25T10:00:00.000Z", [{ kind: "thinking", text: "t" }, tool("Read", "/a")])], 0)).toBe("done");
   });
 
-  it("returns null when a timestamp is empty or invalid", () => {
-    const entries1 = [
-      at("a0", "", [{ kind: "thinking", text: "pondering" }]),
-      at("a1", "2026-07-25T10:00:12.000Z", [{ kind: "text", text: "done" }]),
-    ];
-    expect(thinkingDuration(entries1, 0)).toBeNull();
-
-    const entries2 = [
-      at("a0", "2026-07-25T10:00:00.000Z", [{ kind: "thinking", text: "pondering" }]),
-      at("a1", "invalid-time", [{ kind: "text", text: "done" }]),
-    ];
-    expect(thinkingDuration(entries2, 0)).toBeNull();
+  it("is live only on a thinking-only last row", () => {
+    expect(thinkingDuration([think("a0", "2026-07-25T10:00:00.000Z")], 0)).toBe("live");
   });
 
-  it("returns null for negative difference", () => {
-    const entries = [
-      at("a0", "2026-07-25T10:00:12.000Z", [{ kind: "thinking", text: "pondering" }]),
-      at("a1", "2026-07-25T10:00:00.000Z", [{ kind: "text", text: "done" }]),
+  it("never labels idle time as thought: a user row next, or a gap past the cap", () => {
+    const userNext = [
+      think("a0", "2026-07-25T10:00:00.000Z"),
+      at("u1", "2026-07-26T10:00:00.000Z", [{ kind: "text", text: "hours later" }], "user"),
     ];
-    expect(thinkingDuration(entries, 0)).toBeNull();
+    expect(thinkingDuration(userNext, 0)).toBe("done");
+    const longGap = [
+      think("a0", "2026-07-25T10:00:00.000Z"),
+      at("a1", "2026-07-25T11:00:00.000Z", [{ kind: "text", text: "an hour on" }]),
+    ];
+    expect(thinkingDuration(longGap, 0)).toBe("done");
+    const atCap = [
+      think("a0", "2026-07-25T10:00:00.000Z"),
+      at("a1", new Date(Date.parse("2026-07-25T10:00:00.000Z") + MAX_THINK_SECONDS * 1000).toISOString(), [
+        { kind: "text", text: "slow" },
+      ]),
+    ];
+    expect(thinkingDuration(atCap, 0)).toBe(MAX_THINK_SECONDS);
+  });
+
+  it("is done, not a number, when a timestamp is empty, invalid or runs backwards", () => {
+    const next = (ts: string) => at("a1", ts, [{ kind: "text", text: "done" }]);
+    expect(thinkingDuration([think("a0", ""), next("2026-07-25T10:00:12.000Z")], 0)).toBe("done");
+    expect(thinkingDuration([think("a0", "2026-07-25T10:00:00.000Z"), next("invalid-time")], 0)).toBe("done");
+    expect(thinkingDuration([think("a0", "2026-07-25T10:00:12.000Z"), next("2026-07-25T10:00:00.000Z")], 0)).toBe(
+      "done",
+    );
   });
 });
+

@@ -178,18 +178,30 @@ export function foldLabel(tools: readonly { name: string }[]): string {
   return joined.charAt(0).toUpperCase() + joined.slice(1);
 }
 
-/** Seconds between a thinking entry and the entry that followed it — how long the agent thought.
- *  Null when there is no next entry (it is still thinking, or the log ends here) or either
- *  timestamp is missing / unparseable, so the caller can say "Thinking" instead of a wrong number. */
-export function thinkingDuration(entries: TranscriptEntry[], index: number): number | null {
-  if (index < 0 || index + 1 >= entries.length) return null;
-  const currentTs = entries[index]?.ts;
-  const nextTs = entries[index + 1]?.ts;
-  if (!currentTs || !nextTs) return null;
-  const current = new Date(currentTs).getTime();
-  const next = new Date(nextTs).getTime();
-  if (Number.isNaN(current) || Number.isNaN(next)) return null;
-  const diffMs = next - current;
-  if (diffMs < 0) return null;
-  return Math.round(diffMs / 1000);
+/** How long a thinking part took: seconds, `"live"` (still thinking), or `"done"` (finished, but the
+ *  log cannot say for how long). */
+export type ThinkingTime = number | "live" | "done";
+
+/** A gap longer than this is not think time; it is the agent (or the operator) idle between turns. */
+export const MAX_THINK_SECONDS = 10 * 60;
+
+/** How long the thinking in `entries[index]` took (spec 15). Timestamps + parts only:
+ *  - speech or a tool on the same row means the thinking already finished, and the row's own
+ *    timestamp cannot say how long it took: `"done"`;
+ *  - a thinking-only row is timed to the assistant row after it; a user row after it, a gap over
+ *    {@link MAX_THINK_SECONDS}, or a missing / unparseable / negative timestamp is idle or unknown,
+ *    and a lying "Thought for 1440m" is worse than none: `"done"`;
+ *  - a thinking-only LAST row is the one still thinking: `"live"`. */
+export function thinkingDuration(entries: TranscriptEntry[], index: number): ThinkingTime {
+  const entry = entries[index];
+  if (entry === undefined) return "done";
+  if (entry.parts.some((p) => p.kind !== "thinking")) return "done";
+  const next = entries[index + 1];
+  if (next === undefined) return "live";
+  if (next.role === "user") return "done";
+  const current = new Date(entry.ts).getTime();
+  const after = new Date(next.ts).getTime();
+  if (!entry.ts || !next.ts || Number.isNaN(current) || Number.isNaN(after)) return "done";
+  const seconds = Math.round((after - current) / 1000);
+  return seconds < 0 || seconds > MAX_THINK_SECONDS ? "done" : seconds;
 }

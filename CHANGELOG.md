@@ -34,6 +34,9 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   one compact row; a one-pane space shows that a tap opens it.
 
 ### Fixed
+- "Thought for" is think time, not idle time. Thinking beside a reply or a tool shows a collapsed
+  "Thought", and a finished last turn no longer pulses "Thinking". A gap to a user turn, or over 10
+  minutes, is never labelled as thought.
 - A Cursor tool on the last row of a finished pane no longer pulses "running" forever. Cursor never
   records tool output, so its tools now arrive marked complete (`unrecorded`) and show as a closed line.
 - Swiping up through a pane's history can no longer show the recent turns twice. An unknown history

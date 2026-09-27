@@ -1,5 +1,7 @@
 # 15 — Thinking duration is think time, not inter-turn idle
 
+> **Status 2026-09-27:** DONE. `thinkingDuration` returns seconds, `"live"` or `"done"` (`ThinkingTime`, `MAX_THINK_SECONDS` = 10 min); `"done"` renders a collapsed "Thought".
+
 Council row 15. Severity: medium. Journal.
 
 ## Why

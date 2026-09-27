@@ -503,7 +503,31 @@ describe("TranscriptView — thinking", () => {
     expect(thinkingText.closest("div")).toHaveClass("italic", "text-muted-foreground");
   });
 
-  it("renders 'Thinking' when duration is null on a thinking part in the last entry", () => {
+  // Spec 15: Claude and Pi write the thinking on the same row as the reply, so a finished last turn
+  // must not pulse as if the model were still thinking.
+  it("a completed last turn with thinking beside its reply is a collapsed 'Thought', not a pulse", () => {
+    render(
+      <TranscriptView
+        entries={[
+          turn({
+            uuid: "a1",
+            role: "assistant",
+            ts: "2026-07-25T10:00:00.000Z",
+            parts: [
+              { kind: "thinking", text: "Pondered it" },
+              { kind: "text", text: "Here is the answer" },
+            ],
+          }),
+        ]}
+      />,
+    );
+    const thinkingBtn = screen.getByRole("button", { name: /^Thought$/ });
+    expect(thinkingBtn).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Thinking")).toBeNull();
+    expect(document.querySelector(".animate-pulse")).toBeNull();
+  });
+
+  it("renders 'Thinking' on a thinking-only part in the last entry", () => {
     render(
       <TranscriptView
         entries={[
