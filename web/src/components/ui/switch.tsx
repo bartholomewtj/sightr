@@ -37,7 +37,9 @@ function Switch({ checked, onCheckedChange, disabled, id, ...rest }: SwitchProps
       <span
         className={cn(
           "inline-block size-5 transform rounded-full bg-background shadow transition-transform",
-          checked ? "translate-x-[1.375rem]" : "translate-x-0.5",
+          // Off: the thumb takes the border colour, so it reads on a dark track as well as a light
+          // one (bg-background on bg-muted vanished in dark mode).
+          checked ? "translate-x-[1.375rem]" : "translate-x-0.5 bg-muted-foreground",
         )}
       />
     </button>

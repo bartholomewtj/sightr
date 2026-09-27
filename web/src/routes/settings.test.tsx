@@ -54,7 +54,9 @@ describe("SettingsRoute", () => {
     expect(appearance.closest(".grid-cols-2")).toBeNull();
     expect(screen.getByText("Desktop mode")).toBeInTheDocument();
     expect(screen.getByText("Gesture wheel")).toBeInTheDocument();
-    expect(screen.queryByRole("switch", { name: "Show terminal" })).toBeNull();
+    expect(screen.getByRole("switch", { name: "Show terminal" })).toBeInTheDocument();
+    expect(screen.getByText("This device")).toBeInTheDocument();
+    expect(screen.getByText("All devices")).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Tap to type" })).toBeInTheDocument();
     expect(await screen.findByRole("switch", { name: "Push notifications" })).toBeInTheDocument();
     expect(screen.getAllByRole("radio", { name: "System" })[1]!).toHaveAttribute("aria-checked", "true");
@@ -78,10 +80,12 @@ describe("SettingsRoute", () => {
     expect(grid!.children).toHaveLength(2);
     expect(grid!.children[0]).toContainElement(appearance);
     expect(grid!.children[0]).toContainElement(screen.getByText("Desktop mode"));
-    expect(grid!.children[0]).toContainElement(screen.getByText("Gesture wheel"));
+    // The wheel is phone-only, so its card is too.
+    expect(screen.queryByText("Gesture wheel")).toBeNull();
     expect(grid!.children[0]).toContainElement(screen.getByRole("switch", { name: "Raw terminal" }));
     expect(screen.queryByRole("switch", { name: "Tap to type" })).toBeNull();
-    expect(grid!.children[1]).toContainElement(screen.getByText("Push notifications"));
+    // Push is this device's subscription; Notify when is bridge-wide.
+    expect(grid!.children[0]).toContainElement(screen.getByText("Push notifications"));
     expect(grid!.children[1]).toContainElement(screen.getByText("Finished"));
     expect(screen.queryByText("App updates")).toBeNull();
     expect(await screen.findByRole("switch", { name: "Push notifications" })).toBeInTheDocument();

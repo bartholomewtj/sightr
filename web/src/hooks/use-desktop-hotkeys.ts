@@ -2,7 +2,6 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { triage } from "@/lib/triage";
 import { panePath } from "@/lib/nav";
-import { desktopPrefs, setTyping } from "@/lib/desktop";
 import { isDirectArmed, requestArmToggle } from "@/lib/direct-arm";
 import { requestFindOpen } from "@/lib/find-request";
 import { FILES_FIND_ID, sidebarSlot } from "@/components/desktop-sidebar-slot";
@@ -82,7 +81,7 @@ export function useDesktopHotkeys({ agents, currentPaneId }: DesktopHotkeyArgs):
         case "direct":
           if (route === "files") return;
           event.preventDefault();
-          if (desktopPrefs().typing === "composer") setTyping("direct");
+          // Arms for this session only; the saved typing surface is Settings' to change.
           requestArmToggle();
           return;
         case "find":

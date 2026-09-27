@@ -3,6 +3,8 @@ import { Bell, Keyboard, Loader2, Terminal } from "lucide-react";
 import { useRouteLoaderData } from "react-router";
 
 import { AppHeader } from "@/components/app-header";
+import { StatusArea } from "@/components/status-area";
+import { SectionLabel } from "@/components/ui/section-label";
 import { ConnectionInfo } from "@/components/connection-info";
 import { Card } from "@/components/ui/card";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
@@ -98,24 +100,27 @@ export function SettingsRoute() {
   const notifyCards =
     state?.availability !== "server-off" ? <NotifyPrefsControl readOnly={readOnly} /> : null;
 
+  // Two groups, labelled, so it's clear which switches follow you to other devices: "This device"
+  // is stored in this browser (or is this device's push subscription / lock key); "All devices" is
+  // stored on the bridge and applies to every phone and desktop at once.
   const deviceCards = (
     <>
-      {/* First: it's the setting people come here to change, and below the notification stack it
-          sat off-screen on a phone, a scroll into a 1240px page. */}
+      <SectionLabel className="px-1">This device</SectionLabel>
+      {/* First: it's the setting people come here to change. */}
       <ThemeControl />
       <DisplaySettings />
-      <WheelPrefsControl />
-      {/* Device behaviour sits with appearance — both are "how this device treats you", as opposed
-          to the herd/notification settings below. */}
+      {/* The wheel only renders on the phone composer. */}
+      {!desktop && <WheelPrefsControl />}
       <DesktopControl />
       <LockSettings readOnly={readOnly} />
+      {pushCard}
       {desktop && <Card className="p-0"><button type="button" className="flex w-full items-start gap-3 p-4 text-left" onClick={openShortcuts}><Keyboard className="mt-0.5 size-5 shrink-0 text-muted-foreground" /><span><span className="block text-sm font-medium">Keyboard shortcuts</span><span className="mt-1 block text-xs text-muted-foreground">See every desktop shortcut. Press ? anywhere.</span></span></button></Card>}
     </>
   );
 
   const herdCards = (
     <>
-      {pushCard}
+      <SectionLabel className="px-1">All devices</SectionLabel>
       {notifyCards}
       <BridgeSettings readOnly={readOnly} device={root?.device} />
     </>
@@ -156,6 +161,11 @@ export function SettingsRoute() {
         </SettingsWidth>
 
       </main>
+
+      {/* Toasts raised here (a push, notify or bridge save that failed) need somewhere to show. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-screen-sm px-3 pb-[calc(env(safe-area-inset-bottom)_+_4rem)]">
+        <StatusArea />
+      </div>
     </div>
   );
 }

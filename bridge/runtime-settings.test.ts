@@ -32,7 +32,7 @@ describe("RuntimeSettingsStore", () => {
 
 describe("settings validation and route", () => {
   test("validates and normalises patches", () => {
-    expect(validateSettingsPatch({ deviceAllowlist: [" phone ", "phone"], submitKeys: ["enter"] })).toEqual({ ok: true, patch: { deviceAllowlist: ["phone"], submitKeys: ["Enter"] } });
+    expect(validateSettingsPatch({ deviceAllowlist: [" phone ", "phone"], submitKeys: ["enter"] })).toEqual({ ok: true, patch: { deviceAllowlist: ["phone"], submitKeys: ["Enter"] }, reset: [] });
     expect(validateSettingsPatch({ deviceAllowlist: [] }).ok).toBe(true);
     expect(validateSettingsPatch({ deviceAllowlist: [" "] }).ok).toBe(false);
     expect(validateSettingsPatch({ deviceAllowlist: ["x".repeat(65)] }).ok).toBe(false);
@@ -45,15 +45,32 @@ describe("settings validation and route", () => {
     expect(validateSettingsPatch({ submitKeys: ["ctrl+c"] }).ok).toBe(true); expect(validateSettingsPatch({ submitKeys: ["PageUp"] }).ok).toBe(false);
     expect(validateSettingsPatch({ submitKeys: [] }).ok).toBe(false); expect(validateSettingsPatch({ submitKeys: Array(9).fill("a") }).ok).toBe(false);
     expect(validateSettingsPatch({ nope: 1 }).ok).toBe(false);
+    expect(validateSettingsPatch({ reset: ["readLines"] })).toEqual({ ok: true, patch: {}, reset: ["readLines"] });
+    expect(validateSettingsPatch({ reset: ["nope"] }).ok).toBe(false);
+    expect(validateSettingsPatch({ reset: "readLines" }).ok).toBe(false);
   });
   test("GET and POST return settings", async () => {
     const d = await temp(); const s = new RuntimeSettingsStore(cfg(d));
-    const get = await settingsRoute(new Request("http://x/api/settings"), cfg(d), s); expect(get.status).toBe(200); expect(await get.json()).toEqual(s.current());
+    const get = await settingsRoute(new Request("http://x/api/settings"), cfg(d), s); expect(get.status).toBe(200); expect(await get.json()).toEqual({ ...s.current(), overridden: [], defaults: s.current() });
     const post = await settingsRoute(new Request("http://x/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ readLines: 500 }) }), cfg(d), s);
     expect(post.status).toBe(200); expect(s.current().readLines).toBe(500);
     const before = s.current();
     const invalid = await settingsRoute(new Request("http://x/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ readLines: 49 }) }), cfg(d), s);
     expect(invalid.status).toBe(400); expect(s.current()).toEqual(before);
     expect((await settingsRoute(new Request("http://x/api/settings", { method: "PUT" }), cfg(d), s)).status).toBe(405);
+  });
+  test("says which values are overridden, and reset returns a value to .env", async () => {
+    const d = await temp(); const s = new RuntimeSettingsStore(cfg(d));
+    const post = (body: unknown) => settingsRoute(new Request("http://x/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }), cfg(d), s);
+    const set = await (await post({ readLines: 500 })).json();
+    expect(set.overridden).toEqual(["readLines"]); expect(set.readLines).toBe(500); expect(set.defaults.readLines).toBe(200);
+    const reset = await (await post({ reset: ["readLines"] })).json();
+    expect(reset.overridden).toEqual([]); expect(reset.readLines).toBe(200);
+    expect(JSON.parse(await readFile(join(d, "settings.json"), "utf8"))).toEqual({});
+  });
+  test("saving the .env value drops the override instead of pinning it", async () => {
+    const d = await temp(); const s = new RuntimeSettingsStore(cfg(d));
+    await s.set({ notifyDelayMs: 5000 }); expect(s.view().overridden).toEqual(["notifyDelayMs"]);
+    await s.set({ notifyDelayMs: 30000 }); expect(s.view().overridden).toEqual([]);
   });
 });

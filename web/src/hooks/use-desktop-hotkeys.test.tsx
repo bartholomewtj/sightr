@@ -85,7 +85,7 @@ describe('desktop arm hotkey', () => {
   afterEach(() => { cleanup(); __resetDesktop(); });
 
   describe("desktop arm hotkey", () => {
-    it("switches composer to direct and requests arm", () => { const fn = vi.fn(); const off = onArmToggleRequest(fn); mount(); expect(dispatch("`").defaultPrevented).toBe(true); expect(desktopPrefs().typing).toBe("direct"); expect(fn).toHaveBeenCalledOnce(); off(); });
+    it("requests arm for this session without rewriting the saved typing surface", () => { const fn = vi.fn(); const off = onArmToggleRequest(fn); mount(); expect(dispatch("`").defaultPrevented).toBe(true); expect(desktopPrefs().typing).toBe("composer"); expect(fn).toHaveBeenCalledOnce(); off(); });
     it("requests again without changing direct", () => { setTyping("direct"); const fn = vi.fn(); const off = onArmToggleRequest(fn); mount(); dispatch("`"); expect(fn).toHaveBeenCalledOnce(); expect(desktopPrefs().typing).toBe("direct"); off(); });
     it("does not claim other chords", () => { const fn = vi.fn(); const off = onArmToggleRequest(fn); mount(); expect(dispatch("`", { shiftKey: true }).defaultPrevented).toBe(false); expect(dispatch("`", { altKey: true }).defaultPrevented).toBe(false); expect(dispatch("`", { ctrlKey: false }).defaultPrevented).toBe(false); expect(fn).not.toHaveBeenCalled(); off(); });
     it("unsubscribes with the hook", () => { const fn = vi.fn(); const off = onArmToggleRequest(fn); const { unmount } = mount(); off(); unmount(); expect(dispatch("`").defaultPrevented).toBe(false); });

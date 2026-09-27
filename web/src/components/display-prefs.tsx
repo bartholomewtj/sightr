@@ -7,26 +7,15 @@ import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import { FONT_MAX, FONT_MIN } from "@/hooks/use-display-prefs";
 import { useDesktop } from "@/lib/desktop";
 
-// The mirror's display prefs, as LABELLED rows behind the composer's ⚙ toggle.
-//
-// These used to be a permanent icon-only "View" row above the Controls row — five 28px glyphs that
-// cost a whole row of a phone viewport for settings you touch once and then never again. Worse, the
-// raw-terminal toggle was a bare `>_` icon whose only explanation was a `title` attribute no phone
-// ever shows; nobody could tell what it did. Behind the ⚙ each pref gets a real name and, where it
-// isn't self-evident, a sentence.
-//
-// It rides the same in-flow ComposerDock as Keys/Quick rather than a covering sheet, deliberately:
-// every control here changes how the mirror LOOKS, so you have to be able to see the mirror while
-// you flip it.
+// The mirror's display prefs, as LABELLED rows in Settings → Display (this device). Each pref gets
+// a real name and, where it isn't self-evident, a sentence. Show terminal is also a switch in the
+// pane menu, the one pref you flip mid-conversation.
 
 interface DisplayPrefsContentProps {
   prefs: DisplayPrefs;
   stepFontSize: (delta: number) => void;
   setRawTerminal: (raw: boolean) => void;
   setTapToFocus: (tapToFocus: boolean) => void;
-  // Kept on the interface: ComposerDrawers types its `display` prop as Parameters<typeof DisplayPrefsContent>[0],
-  // and the composer passes the whole prefs bundle through. The Terminal toggle itself is a row in
-  // the + menu (composer-menu.tsx), not a switch here.
   setShowTerminal: (showTerminal: boolean) => void;
   setShowThinking: (showThinking: boolean) => void;
 }
@@ -62,6 +51,7 @@ export function DisplayPrefsContent({
   stepFontSize,
   setRawTerminal,
   setTapToFocus,
+  setShowTerminal,
   setShowThinking,
 }: DisplayPrefsContentProps) {
   const desktop = useDesktop().on;
@@ -80,6 +70,19 @@ export function DisplayPrefsContent({
           />
         }
       />}
+      <Row
+        label="Show terminal"
+        hint="On, the live terminal stays under the chat on every pane. Off, it shows only while the agent is working or waiting on you. The pane menu flips the same switch."
+        htmlFor="pref-show-terminal"
+        control={
+          <Switch
+            id="pref-show-terminal"
+            checked={prefs.showTerminal}
+            onCheckedChange={setShowTerminal}
+            aria-label="Show terminal"
+          />
+        }
+      />
       <Row
         label="Raw terminal"
         hint="On by default. Keeps the verbatim terminal dump; detected prompt buttons still appear below it. Off strips terminal chrome and status strips."

@@ -16,6 +16,8 @@ import type {
   CreateResponse,
   NotifyPrefs,
   BridgeSettings,
+  BridgeSettingsView,
+  BridgeSettingKey,
   PaneHistoryResponse,
   PaneReadResponse,
   SnapshotResponse,
@@ -25,7 +27,7 @@ import type {
   SaveFileResponse,
 } from "./types";
 
-export type { NotifyPrefs, BridgeSettings };
+export type { NotifyPrefs, BridgeSettings, BridgeSettingsView, BridgeSettingKey };
 
 /**
  * Marks every API request as XHR so a fronting identity proxy answers it with a status we can read.
@@ -592,9 +594,10 @@ export function setNotifyPrefs(patch: Partial<NotifyPrefs>): Promise<NotifyPrefs
   });
 }
 
-export function getBridgeSettings(): Promise<BridgeSettings> { return req<BridgeSettings>("/api/settings"); }
-export function setBridgeSettings(patch: Partial<BridgeSettings>): Promise<BridgeSettings> {
-  return req<BridgeSettings>("/api/settings", { method: "POST", body: JSON.stringify(patch) });
+export function getBridgeSettings(): Promise<BridgeSettingsView> { return req<BridgeSettingsView>("/api/settings"); }
+/** Patch values and/or `reset` keys back to their `.env` value. */
+export function setBridgeSettings(patch: Partial<BridgeSettings> & { reset?: BridgeSettingKey[] }): Promise<BridgeSettingsView> {
+  return req<BridgeSettingsView>("/api/settings", { method: "POST", body: JSON.stringify(patch) });
 }
 
 export function uploadImage(paneId: string, file: File): Promise<UploadResponse> {

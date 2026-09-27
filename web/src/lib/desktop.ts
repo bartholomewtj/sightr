@@ -10,15 +10,25 @@ const OLD_STORAGE_KEY = "sightr:desktop:v1";
 const DEFAULT_PREFS: StoredPrefs = { layout: "system", typing: "composer", sidebarPx: 280 };
 const DEFAULT_STATE: DesktopPrefs = { ...DEFAULT_PREFS, on: false };
 const QUERY = "(min-width: 768px) and (hover: hover) and (pointer: fine)";
+/** Below this width the sidebar layout cannot fit, so a forced "On" is ignored (phone stays phone). */
+export const DESKTOP_MIN_WIDTH = 768;
+const WIDTH_QUERY = `(min-width: ${DESKTOP_MIN_WIDTH}px)`;
 let prefs: StoredPrefs | undefined;
 let snapshot: DesktopPrefs | undefined;
 const listeners = new Set<() => void>();
 let mediaQuery: MediaQueryList | undefined;
+let widthQuery: MediaQueryList | undefined;
 let mediaNotify: (() => void) | undefined;
 
 function systemOn(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   return window.matchMedia(QUERY)?.matches ?? false;
+}
+/** Wide enough for the sidebar layout. innerWidth rather than a media query so a missing or stubbed
+ *  matchMedia doesn't read as "narrow". */
+export function wideEnough(): boolean {
+  if (typeof window === "undefined") return true;
+  return window.innerWidth >= DESKTOP_MIN_WIDTH;
 }
 function clampSidebar(value: unknown): number {
   return Math.min(480, Math.max(200, typeof value === "number" && Number.isFinite(value) ? value : 280));
@@ -51,7 +61,7 @@ function load(): StoredPrefs {
 function current(): StoredPrefs { return (prefs ??= load()); }
 function getSnapshot(): DesktopPrefs {
   const state = current();
-  const on = state.layout === "on" || (state.layout === "system" && systemOn());
+  const on = (state.layout === "on" && wideEnough()) || (state.layout === "system" && systemOn());
   if (!snapshot || snapshot.layout !== state.layout || snapshot.typing !== state.typing || snapshot.sidebarPx !== state.sidebarPx || snapshot.on !== on) snapshot = { ...state, on };
   return snapshot;
 }
@@ -59,7 +69,10 @@ function unbindMedia(): void {
   if (!mediaQuery || !mediaNotify) return;
   if (mediaQuery.removeEventListener) mediaQuery.removeEventListener("change", mediaNotify);
   else mediaQuery.removeListener?.(mediaNotify);
+  if (widthQuery?.removeEventListener) widthQuery.removeEventListener("change", mediaNotify);
+  else widthQuery?.removeListener?.(mediaNotify);
   mediaQuery = undefined;
+  widthQuery = undefined;
   mediaNotify = undefined;
 }
 function bindMedia(): void {
@@ -70,6 +83,10 @@ function bindMedia(): void {
   mediaNotify = notify;
   if (mediaQuery.addEventListener) mediaQuery.addEventListener("change", notify);
   else mediaQuery.addListener?.(notify);
+  // A forced "On" depends on width too: rotate or resize across 768px and the layout follows.
+  widthQuery = window.matchMedia(WIDTH_QUERY);
+  if (widthQuery?.addEventListener) widthQuery.addEventListener("change", notify);
+  else widthQuery?.addListener?.(notify);
 }
 function save(): void {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(current())); } catch { /* memory remains authoritative */ }
