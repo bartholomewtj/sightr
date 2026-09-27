@@ -32,7 +32,7 @@ describe("AgentChat desktop controls", () => {
     expect(within(sheet).getByText("Panes")).toBeInTheDocument();
     fireEvent.click(within(sheet).getByRole("button", { name: "Switch pane…" }));
     expect(screen.getByRole("dialog", { name: "Switch pane" })).toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "Pane details" })).toBeNull();
+    expect(screen.queryByTestId("pane-cwd")).toBeNull();
   });
 
   it("hides phone controls while keeping the composer on desktop", () => {
@@ -47,7 +47,7 @@ describe("AgentChat desktop controls", () => {
     expect(within(popover).getByText("Panes")).toBeInTheDocument();
     expect(within(popover).queryByRole("button", { name: "Switch pane…" })).toBeNull();
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("dialog", { name: "Pane details" })).toBeNull();
+    expect(screen.queryByTestId("pane-cwd")).toBeNull();
     // The + menu drops the phone-only rows but keeps Attach, Terminal and Display.
     openMore();
     expect(screen.queryByRole("button", { name: "Keys" })).toBeNull();

@@ -28,23 +28,23 @@ interface PaneActionsSheetProps {
 
 type Mode = "actions" | "rename";
 
-// Row actions for a single pane: rename (set/clear its label) and close (kill). Reached by tapping
-// the active pane pill or right-clicking any pill. Opens on an action-list view (Rename / Close pane); rename is a second
-// tap away so the sheet doesn't shove a keyboard-triggering input at you just to close a pane. The
-// action rows + rename view are the SHARED pieces (action-sheet-rows) the tab sheet also uses, so the
-// two stay identical. The label is user text rendered only into an <input> value / text node — never
-// markup — so it stays within the pane-output XSS boundary. Both actions are writes, so under
-// read-only they're replaced by a note.
-export function PaneActionsSheet({
+/**
+ * Rename + close for one pane, shared by the tree's pane sheet and the pane menu behind the header
+ * title, so the two can't drift. `onDone` closes whatever surface hosts the rows.
+ */
+export function usePaneActions({
   open,
-  onClose,
   pane,
-  readOnly = false,
   onRenamed,
   onClosed,
-  anchor = null,
-}: PaneActionsSheetProps) {
-  const desktop = useDesktop().on;
+  onDone,
+}: {
+  open: boolean;
+  pane: AgentView | null;
+  onRenamed: () => void;
+  onClosed: (paneId: string) => void;
+  onDone: () => void;
+}) {
   const [mode, setMode] = useState<Mode>("actions");
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
@@ -52,7 +52,7 @@ export function PaneActionsSheet({
   const { pending, confirm, reset } = usePendingConfirm();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Reset to the action list — and reprefill the label — whenever the sheet opens on a (new) pane,
+  // Reset to the action list — and reprefill the label — whenever the host opens on a (new) pane,
   // AND whenever it closes, so reopening never lands you mid-rename. Intentionally NOT keyed on the
   // live label, so a background poll landing while you type can't clobber your edit.
   useEffect(() => {
@@ -77,7 +77,7 @@ export function PaneActionsSheet({
       if (res.ok) {
         setStatus(next ? "Renamed" : "Label cleared", "success");
         onRenamed();
-        onClose();
+        onDone();
       } else {
         setStatus(res.error ?? "Rename failed", "error");
       }
@@ -96,7 +96,7 @@ export function PaneActionsSheet({
     try {
       const res = await api.closePane(pane.paneId);
       if (res.ok) {
-        onClose();
+        onDone();
         onClosed(pane.paneId);
       } else {
         setStatus(res.error ?? "Close failed", "error");
@@ -110,41 +110,71 @@ export function PaneActionsSheet({
 
   const confirming = !!pane && pending === pane.paneId;
 
+  const renameRow = (
+    <ActionRow
+      icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
+      label="Rename"
+      onClick={() => setMode("rename")}
+    />
+  );
+  const closeRow = (
+    <DestructiveActionRow
+      icon={<XCircle className="size-4 shrink-0" />}
+      label="Close pane"
+      confirmLabel="Tap again to close"
+      closingLabel="Closing…"
+      armed={confirming}
+      closing={closing}
+      onClick={() => void requestClose()}
+    />
+  );
+  const renameView = (
+    <RenameView
+      inputRef={inputRef}
+      label={label}
+      onLabelChange={setLabel}
+      onSave={() => void save()}
+      onBack={() => setMode("actions")}
+      saving={saving}
+      // A blank pane field clears the label (blank → null on the bridge), so Save stays enabled.
+      canSave={true}
+      placeholder="name this pane"
+    />
+  );
+  return { mode, renameRow, closeRow, renameView };
+}
+
+// Row actions for a single pane: rename (set/clear its label) and close (kill). Reached from a pane
+// row's ⋯ (or right-click / long-press) in the Spaces tree; the open pane's own copy lives in the
+// pane menu behind the header title. Rename is a second tap away so the sheet doesn't shove a
+// keyboard-triggering input at you just to close a pane. The label is user text rendered only into
+// an <input> value / text node — never markup. Both actions are writes, so under read-only they're
+// replaced by a note.
+export function PaneActionsSheet({
+  open,
+  onClose,
+  pane,
+  readOnly = false,
+  onRenamed,
+  onClosed,
+  anchor = null,
+}: PaneActionsSheetProps) {
+  const desktop = useDesktop().on;
+  const actions = usePaneActions({ open, pane, onRenamed, onClosed, onDone: onClose });
+
   const title = pane ? paneDisplayName(pane) : "Pane";
   const body = readOnly ? (
-        <p className="py-2 text-sm text-muted-foreground">
-          Read-only — this device isn't authorised to rename or close panes.
-        </p>
-      ) : mode === "actions" ? (
-        <div className="flex flex-col gap-1">
-          <ActionRow
-            icon={<Pencil className="size-4 shrink-0 text-muted-foreground" />}
-            label="Rename"
-            onClick={() => setMode("rename")}
-          />
-          <DestructiveActionRow
-            icon={<XCircle className="size-4 shrink-0" />}
-            label="Close pane"
-            confirmLabel="Tap again to close"
-            closingLabel="Closing…"
-            armed={confirming}
-            closing={closing}
-            onClick={() => void requestClose()}
-          />
-        </div>
-      ) : (
-        <RenameView
-          inputRef={inputRef}
-          label={label}
-          onLabelChange={setLabel}
-          onSave={() => void save()}
-          onBack={() => setMode("actions")}
-          saving={saving}
-          // A blank pane field clears the label (blank → null on the bridge), so Save stays enabled.
-          canSave={true}
-          placeholder="name this pane"
-        />
-      );
+    <p className="py-2 text-sm text-muted-foreground">
+      Read-only — this device isn't authorised to rename or close panes.
+    </p>
+  ) : actions.mode === "actions" ? (
+    <div className="flex flex-col gap-1">
+      {actions.renameRow}
+      {actions.closeRow}
+    </div>
+  ) : (
+    actions.renameView
+  );
   return desktop ? (
     <ActionPopover open={open} onClose={onClose} anchor={anchor} title={title}>{body}</ActionPopover>
   ) : (

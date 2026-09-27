@@ -147,7 +147,7 @@ describe("AgentChat — header title block", () => {
     expect(screen.queryByText("/home/you/webapp")).toBeNull();
     // The agent is conveyed by its icon (aria-label only), so its name isn't repeated as text.
     expect(screen.queryByText(/claude/i)).toBeNull();
-    expect(screen.getByRole("button", { name: "Pane details" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pane menu" })).toBeInTheDocument();
     // No header buttons for Find / Traces any more, and no status pill text.
     expect(screen.queryByRole("button", { name: "Find in output" })).toBeNull();
     expect(screen.queryByText("needs you")).toBeNull();
@@ -158,7 +158,7 @@ describe("AgentChat — header title block", () => {
     const sheet = openPaneDetails();
     expect(within(sheet).getByText("/home/you/webapp")).toHaveClass("font-mono");
     expect(within(sheet).getByRole("button", { name: "Context" })).toBeInTheDocument();
-    expect(within(sheet).getByRole("button", { name: "Open space overview" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "Space overview" })).toBeInTheDocument();
     expect(within(sheet).getByRole("button", { name: "Find in output" })).toBeInTheDocument();
     expect(within(sheet).getByRole("button", { name: "Switch pane…" })).toBeInTheDocument();
   });
@@ -212,7 +212,7 @@ describe("AgentChat — header title block", () => {
     );
     render(<RouterProvider router={router} />);
 
-    pickPaneDetails("Open space overview");
+    pickPaneDetails("Space overview");
     expect(await screen.findByTestId("home")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/");
     const saved = JSON.parse(localStorage.getItem("sightr:dash-prefs:v2") ?? "{}");
@@ -827,9 +827,9 @@ describe("AgentChat — touch targets (#233)", () => {
   it("uses a 44px-tall title button and full-width rows for the pane actions", () => {
     const agent = { ...fixtureAgents[0]!, hasSession: true };
     renderChat({ agent, agents: [agent] });
-    expect(screen.getByRole("button", { name: "Pane details" })).toHaveClass("min-h-11");
+    expect(screen.getByRole("button", { name: "Pane menu" })).toHaveClass("min-h-11");
     const sheet = openPaneDetails();
-    for (const name of ["Find in output", "Open space overview"]) {
+    for (const name of ["Find in output", "Space overview"]) {
       expect(within(sheet).getByRole("button", { name })).toHaveClass("w-full");
     }
   });
@@ -1149,4 +1149,4 @@ describe("AgentChat — dialog presence glue (#372)", () => {
 
     expect(withDialogPresence([grokAgent])[0]!.dialogPresent).toBeUndefined();
   });
-});
+});

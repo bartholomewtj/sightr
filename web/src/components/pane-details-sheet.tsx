@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ArrowLeftRight, Gauge, LayoutGrid, Search } from "lucide-react";
+import { ArrowLeftRight, Gauge, LayoutGrid, Search, Settings, SquareTerminal } from "lucide-react";
 
 import { contextUsageFrom } from "@/lib/context-usage";
 import { lineText, type StyledLine } from "@/lib/blocks";
@@ -8,15 +8,20 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { ActionPopover } from "@/components/ui/popover";
 import { useDesktop } from "@/lib/desktop";
 import { PaneStrip } from "@/components/pane-strip";
+import { usePaneActions } from "@/components/pane-actions-sheet";
+import { Switch } from "@/components/ui/switch";
+import { paneDisplayName } from "@/lib/types";
 import { MIRROR_INVERT, MIRROR_SPACE, styleFor } from "@/components/mirror-space";
 import type { MenuPoint } from "@/lib/menu-anchor";
 import type { AgentView } from "@/lib/types";
 
-// Everything the one-line pane header no longer has room for, one tap (or a swipe on the title)
-// away: the full working directory, the agent's own statusline, the other panes in this tab, and
-// the actions that used to be header buttons (space overview, Find). Phone: a bottom sheet.
-// Desktop: a popover under the title. Every row closes the sheet when chosen, so the thing it opened
-// (the find bar, another pane) is not stacked under a dialog.
+// The pane menu: the ONE place for everything about the open pane, one tap (or a swipe) on the
+// header title away. Info first (full working directory, the agent's own statusline, the other
+// panes in this tab), then view actions (Find, Context, Show terminal), then navigation (Switch
+// pane, Space overview), then the writes (Rename, Close pane), then Settings. Phone: a bottom sheet.
+// Desktop: a popover under the title. Every action row closes the menu when chosen, so the thing it
+// opened (the find bar, another pane) is not stacked under a dialog. Show terminal is a toggle and
+// Rename swaps the menu for the rename field in place.
 
 export interface PaneDetailsProps {
   agent: AgentView;
@@ -33,13 +38,17 @@ export interface PaneDetailsProps {
   currentPaneId: string;
   onSelectPane: (paneId: string) => void;
   readOnly?: boolean;
-  onRenamed?: () => void;
-  onClosed?: (paneId: string) => void;
+  onRenamed: () => void;
+  onClosed: (paneId: string) => void;
   onOpenSpace: () => void;
   /** Find in output — offered only when there is buffered output to search. */
   find: { available: boolean; onOpen: () => void };
   /** The cross-space switcher (ThreadSidebar). Omit on desktop, where the sidebar lists every pane. */
   onSwitchPane?: () => void;
+  /** Show terminal: the live dump under the journal. `checked` is what the pane shows right now. */
+  terminal: { checked: boolean; onToggle: () => void };
+  /** Leave the pane for Settings. */
+  onSettings: () => void;
   /**
    * Run `/context` (Claude, Grok) or `/session` (Pi). The sheet also reads a fill level off the
    * statusline when the TUI painted one (`ctx:33%`, `12% ctx`), Grok's header used/window count
@@ -66,6 +75,8 @@ export function PaneDetailsSheet({
   find,
   onSwitchPane,
   onContext,
+  terminal,
+  onSettings,
 }: PaneDetailsProps & {
   open: boolean;
   onClose: () => void;
@@ -77,6 +88,8 @@ export function PaneDetailsSheet({
     [statusLines.map(lineText).join("\n"), dumpText ?? ""].join("\n"),
   );
 
+  const actions = usePaneActions({ open, pane: agent, onRenamed, onClosed, onDone: onClose });
+
   // Close first, then act: the find bar takes over the header row, and that should not happen
   // under a still-open dialog.
   function pick(action: () => void) {
@@ -84,10 +97,12 @@ export function PaneDetailsSheet({
     action();
   }
 
-  const body = (
+  const body = actions.mode === "rename" ? (
+    actions.renameView
+  ) : (
     <div className="flex flex-col gap-3">
-      {/* The full path, wrapping. The header used to show a shortened form; this is the one place
-          the whole thing is readable, and it's a text node (never markup). */}
+      {/* The full path, wrapping. This is the one place the whole thing is readable, and it's a
+          text node (never markup). */}
       <div className="break-all px-3 font-mono text-xs text-muted-foreground" data-testid="pane-cwd">
         {agent.cwd}
       </div>
@@ -99,16 +114,19 @@ export function PaneDetailsSheet({
       )}
 
       <PaneStrip
-        layout="list"
         panes={panes}
         currentPaneId={currentPaneId}
         onSelect={(id) => pick(() => onSelectPane(id))}
-        readOnly={readOnly}
-        onRenamed={onRenamed}
-        onClosed={onClosed}
       />
 
       <div className="flex flex-col gap-1">
+        {find.available && (
+          <Row
+            icon={<Search className="size-4 shrink-0" />}
+            label="Find in output"
+            onClick={() => pick(find.onOpen)}
+          />
+        )}
         {(onContext || contextUsage) && (
           <Row
             icon={<Gauge className="size-4 shrink-0" />}
@@ -121,18 +139,22 @@ export function PaneDetailsSheet({
             onClick={onContext ? () => pick(onContext) : undefined}
           />
         )}
-        <Row
-          icon={<LayoutGrid className="size-4 shrink-0" />}
-          label="Open space overview"
-          onClick={() => pick(onOpenSpace)}
-        />
-        {find.available && (
-          <Row
-            icon={<Search className="size-4 shrink-0" />}
-            label="Find in output"
-            onClick={() => pick(find.onOpen)}
+        {/* A toggle, not an action: it stays open so the flip is visible, and it is view state a
+            read-only device can still change. */}
+        <label className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-accent">
+          <span className="text-muted-foreground">
+            <SquareTerminal className="size-4 shrink-0" />
+          </span>
+          <span className="flex-1">Show terminal</span>
+          <Switch
+            checked={terminal.checked}
+            onCheckedChange={terminal.onToggle}
+            aria-label="Show terminal"
           />
-        )}
+        </label>
+      </div>
+
+      <div className="flex flex-col gap-1 border-t border-border/60 pt-2">
         {onSwitchPane && (
           <Row
             icon={<ArrowLeftRight className="size-4 shrink-0" />}
@@ -140,6 +162,26 @@ export function PaneDetailsSheet({
             onClick={() => pick(onSwitchPane)}
           />
         )}
+        <Row
+          icon={<LayoutGrid className="size-4 shrink-0" />}
+          label="Space overview"
+          onClick={() => pick(onOpenSpace)}
+        />
+      </div>
+
+      {!readOnly && (
+        <div className="flex flex-col gap-1 border-t border-border/60 pt-2">
+          {actions.renameRow}
+          {actions.closeRow}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1 border-t border-border/60 pt-2">
+        <Row
+          icon={<Settings className="size-4 shrink-0" />}
+          label="Settings"
+          onClick={() => pick(onSettings)}
+        />
       </div>
     </div>
   );
@@ -149,13 +191,13 @@ export function PaneDetailsSheet({
       open={open}
       onClose={onClose}
       anchor={anchor}
-      title="Pane details"
+      title={paneDisplayName(agent)}
       className="max-w-[22rem]"
     >
       {body}
     </ActionPopover>
   ) : (
-    <BottomSheet open={open} onClose={onClose} title="Pane details">
+    <BottomSheet open={open} onClose={onClose} title={paneDisplayName(agent)}>
       {body}
     </BottomSheet>
   );

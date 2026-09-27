@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { PaneStrip } from "./pane-strip";
@@ -95,63 +95,7 @@ describe("PaneStrip", () => {
     expect(onSelect).toHaveBeenCalledExactlyOnceWith("w1:p2");
   });
 
-  // A contextmenu on a pill (Android Chrome / right-click) reaches the DOM as expected;
-  // with the write actions wired it opens the actions sheet. This is the path the on-device bug broke.
-  it("opens the actions sheet on contextmenu when actions are wired", () => {
-    render(
-      <PaneStrip
-        panes={[pane("w1:p1", "claude"), pane("w1:p2", "grok")]}
-        currentPaneId="w1:p1"
-        onSelect={vi.fn()}
-        onRenamed={vi.fn()}
-        onClosed={vi.fn()}
-      />,
-    );
-    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
-    fireEvent.contextMenu(screen.getByRole("button", { name: /grok/ }));
-    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
-  });
-
-  it("stays inert on contextmenu when the write actions are not wired", () => {
-    render(
-      <PaneStrip
-        panes={[pane("w1:p1", "claude"), pane("w1:p2", "grok")]}
-        currentPaneId="w1:p1"
-        onSelect={vi.fn()}
-      />,
-    );
-    fireEvent.contextMenu(screen.getByRole("button", { name: /grok/ }));
-    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
-  });
-
-  it("does not open a sheet after holding a pill, and still selects on click", () => {
-    vi.useFakeTimers();
-    try {
-      const onSelect = vi.fn();
-      render(
-        <PaneStrip
-          panes={[pane("w1:p1", "claude"), pane("w1:p2", "grok")]}
-          currentPaneId="w1:p1"
-          onSelect={onSelect}
-          onRenamed={vi.fn()}
-          onClosed={vi.fn()}
-        />,
-      );
-      const pill = screen.getByRole("button", { name: /grok/ });
-      fireEvent.pointerDown(pill);
-      vi.advanceTimersByTime(1000);
-      expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
-      fireEvent.click(pill);
-      expect(onSelect).toHaveBeenCalledExactlyOnceWith("w1:p2");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  // Tapping the already-active pill used to be a dead re-navigate (onSelect with the same id it's
-  // already on). With actions wired, that tap now opens the same actions sheet — so the
-  // pill is never a dead tap.
-  it("opens the actions sheet on a plain tap of the ACTIVE pill when actions are wired", async () => {
+  it("a tap of the open pane is a no-op", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
     render(
@@ -159,44 +103,9 @@ describe("PaneStrip", () => {
         panes={[pane("w1:p1", "claude"), pane("w1:p2", "grok")]}
         currentPaneId="w1:p1"
         onSelect={onSelect}
-        onRenamed={vi.fn()}
-        onClosed={vi.fn()}
       />,
     );
-    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
     await user.click(screen.getByRole("button", { name: /claude/ }));
-    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
-  });
-
-  it("still navigates on a tap of an INACTIVE pill even when actions are wired", async () => {
-    const user = userEvent.setup();
-    const onSelect = vi.fn();
-    render(
-      <PaneStrip
-        panes={[pane("w1:p1", "claude"), pane("w1:p2", "grok")]}
-        currentPaneId="w1:p1"
-        onSelect={onSelect}
-        onRenamed={vi.fn()}
-        onClosed={vi.fn()}
-      />,
-    );
-    await user.click(screen.getByRole("button", { name: /grok/ }));
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith("w1:p2");
-    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
-  });
-
-  it("a tap of the ACTIVE pill still just re-selects (no-op) when actions are NOT wired", async () => {
-    const user = userEvent.setup();
-    const onSelect = vi.fn();
-    render(
-      <PaneStrip
-        panes={[pane("w1:p1", "claude"), pane("w1:p2", "grok")]}
-        currentPaneId="w1:p1"
-        onSelect={onSelect}
-      />,
-    );
-    await user.click(screen.getByRole("button", { name: /claude/ }));
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith("w1:p1");
   });
 });
