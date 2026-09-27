@@ -631,13 +631,19 @@ export function usePaneView(args: PaneViewArgs) {
   //    (and steal focus from the note editor). Only a tap on the raw terminal text should focus.
   //  - the user is selecting text (text selection), so copy works instead of the tap
   //    collapsing the selection and popping the keyboard.
+  // On phone it also bails while the pane is blocked or a dialog is lifted (spec 01): the one
+  // intended tap there is an option button, and a near-miss on dump text or the PromptPanel's
+  // caption/padding (`role="group"`) must not pop the keyboard over Allow.
   function focusFromMirror(e: ReactMouseEvent<HTMLDivElement>) {
     if (!desktop && !tapToFocus) return;
+    if (!desktop && (dialogPresent || agent?.status === "blocked")) return;
     const target = e.target as Element | null;
     // The `a` is what keeps a tap on an autolinked URL (components/ansi-output) from popping the
     // keyboard on top of the page it just opened. Don't trim it out of this selector.
     if (
-      target?.closest?.("button, a, input, textarea, select, [role='textbox']")
+      target?.closest?.(
+        "button, a, input, textarea, select, [role='textbox'], [role='group']",
+      )
     )
       return;
     const sel = window.getSelection();

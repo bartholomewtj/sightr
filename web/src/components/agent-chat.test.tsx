@@ -261,7 +261,8 @@ describe("AgentChat — raw-terminal mode", () => {
   // pref must gate ONLY the focus, never the mirror's own controls: someone who turned it off to
   // stop the keyboard appearing has not asked to lose the prompt buttons.
   it("focuses the composer on a mirror tap by default", async () => {
-    renderChat({ text: "just some output\n" });
+    // Working, not the blocked fixture: a blocked pane never tap-focuses on phone (spec 01).
+    renderChat({ agent: { ...fixtureAgents[0]!, status: "working" }, text: "just some output\n" });
     const line = screen.getByText(/just some output/);
     fireEvent.click(line);
     await waitFor(() => expect(document.activeElement).toBe(screen.getByPlaceholderText(/Type a reply/i)));
@@ -760,9 +761,13 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
     expect(box).not.toHaveFocus();
   });
 
+  // fixtureAgents[0] is blocked, and a blocked pane never tap-focuses on phone (spec 01 below), so
+  // the "tap still types" cases use the same Claude pane while it is working.
+  const workingClaude = { ...fixtureAgents[0]!, status: "working" as const };
+
   it("DOES still focus the composer when the raw mirror text is tapped", async () => {
     const user = userEvent.setup();
-    renderChat({ text: "recent pane output" });
+    renderChat({ agent: workingClaude, text: "recent pane output" });
     const box = screen.getByPlaceholderText(/type a reply/i);
 
     await user.click(screen.getByText("recent pane output"));
@@ -770,12 +775,36 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
   });
 
   it("focuses during the tap event so mobile browsers can open the software keyboard", () => {
-    renderChat({ text: "recent pane output" });
+    renderChat({ agent: workingClaude, text: "recent pane output" });
     const box = screen.getByPlaceholderText(/type a reply/i);
 
     fireEvent.click(screen.getByText("recent pane output"));
 
     expect(box).toHaveFocus();
+  });
+
+  // Spec 01: on a blocked pane the one intended tap is a button. A near-miss on dump text or on the
+  // PromptPanel's caption/padding must not pop the keyboard over Allow.
+  it("does NOT focus the composer when a blocked pane's dump text is tapped on phone", () => {
+    renderChat({ text: "recent pane output" });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    fireEvent.click(screen.getByText("recent pane output"));
+
+    expect(box).not.toHaveFocus();
+  });
+
+  it("does NOT focus the composer when dump text or prompt chrome is tapped while a dialog is up", async () => {
+    writeDisplayPrefs({ rawTerminal: false });
+    renderChat({ agent: workingClaude, text: MENU_TEXT });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    const group = await screen.findByRole("group");
+
+    fireEvent.click(group);
+    expect(box).not.toHaveFocus();
+
+    fireEvent.click(screen.getByText(/Do you want to create hello\.txt\?/));
+    expect(box).not.toHaveFocus();
   });
 });
 
