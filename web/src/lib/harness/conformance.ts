@@ -1,4 +1,5 @@
 import { MAX_REPLY_BYTES, PROMPT_TAIL_LINES } from "@shared/limits";
+import { verifyExpectedPrompt } from "@shared/prompt-binding";
 
 // The HarnessAdapter CONFORMANCE suite — the CI gate every adapter must clear before its dialog
 // buttons are allowed to go hot. It is a single `describe`-registering function, parameterised on
@@ -77,28 +78,12 @@ function textLine(text: string): StyledLine {
   return { segments: [{ text, style: {}, muted: false }] };
 }
 
-// The prompt-binding matcher operates on already-parsed text here. The shared limit keeps this
-// conformance contract aligned with the bridge without importing bridge implementation code.
+// Regions are checked with the bridge's own matcher (shared/prompt-binding.ts, spec 06) against the
+// RAW fixture bytes, which is what the bridge's `recent`/`ansi` re-read hands it, SGR and all.
 const BRIDGE_PROMPT_TAIL_LINES = PROMPT_TAIL_LINES;
 
-function normalizeRegion(text: string): string[] {
-  return text
-    .replace(/\r\n?/g, "\n")
-    .split("\n")
-    .map((line) => line.replace(/\s+$/, ""))
-    .filter((line) => line.length > 0);
-}
-
-/** Index in `fresh` of the LAST line of the LAST occurrence of `expected`, or -1. */
-function lastMatchEnd(fresh: string[], expected: string[]): number {
-  if (expected.length === 0) return -1;
-  let end = -1;
-  for (let start = 0; start <= fresh.length - expected.length; start++) {
-    if (expected.every((line, offset) => fresh[start + offset] === line)) {
-      end = start + expected.length - 1;
-    }
-  }
-  return end;
+function loadRaw(name: string): string {
+  return readFileSync(join(PANES_DIR, name), "utf8");
 }
 
 // A couple of lines of ordinary agent output to append below a dialog. They must be NON-blank (a
@@ -470,22 +455,35 @@ export function describeAdapterConformance(
         // it. An adapter that cannot fit the window must return null and take an unbound write.
         for (const name of all) {
           it(`${name}: a named region ends inside the bridge's ${BRIDGE_PROMPT_TAIL_LINES}-row tail window`, () => {
-            const lines = loadLines(name);
-            const region = prompt(lines);
+            const region = prompt(loadLines(name));
             if (region === null) return;
-            // Both sides normalized the way the bridge normalizes: trailing whitespace off, blank
-            // rows dropped entirely (bridge/prompt-binding.ts `normalizePromptRegion`).
-            const fresh = normalizeRegion(lines.map(lineText).join("\n"));
-            const expected = normalizeRegion(region);
-            const matchEnd = lastMatchEnd(fresh, expected);
-            expect(matchEnd, `${name}: the named region is not on its own screen`).toBeGreaterThan(-1);
             expect(
-              fresh.length - 1 - matchEnd,
-              `${name}: ${fresh.length - 1 - matchEnd} non-blank rows sit below the named region — ` +
-                `the bridge can only bind within the last ${BRIDGE_PROMPT_TAIL_LINES}`,
-            ).toBeLessThan(BRIDGE_PROMPT_TAIL_LINES);
+              verifyExpectedPrompt(loadRaw(name), region),
+              `${name}: the bridge cannot bind this region (last ${BRIDGE_PROMPT_TAIL_LINES} non-blank rows only)`,
+            ).toEqual({ ok: true });
           });
         }
+      }
+    });
+
+    // Every dialog an adapter lifts hands the bridge a region to bind its first keystroke to
+    // (DIALOG_CONTRACT[kind].region). The bridge 409s any write whose region it cannot find in its
+    // fresh raw read, so each one must verify against its own raw capture, in live `buildBlocks`
+    // arbitration order, with the bridge's own matcher (spec 06).
+    describe("dialog regions bind on their own raw screen", () => {
+      if (ownFixtures.length === 0) it.todo("no own dialog fixtures supplied");
+      for (const name of ownFixtures) {
+        it(`${name}: every lifted dialog's region verifies with the bridge's matcher`, () => {
+          const raw = loadRaw(name);
+          for (const block of adapter.buildBlocks(loadLines(name))) {
+            if (!(block.kind in DIALOG_CONTRACT)) continue;
+            const kind = block.kind as DialogKind;
+            const model = dialogModelOf(block, kind);
+            if (model === null) continue;
+            const region = (DIALOG_CONTRACT[kind].region as (m: unknown) => string)(model);
+            expect(verifyExpectedPrompt(raw, region), `${name}: ${kind} region`).toEqual({ ok: true });
+          }
+        });
       }
     });
 

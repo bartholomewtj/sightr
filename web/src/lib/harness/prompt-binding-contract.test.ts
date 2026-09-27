@@ -4,11 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../ansi";
 import { splitLines, type StyledLine } from "../blocks";
-import { detectMultiSelect } from "./claude/multi-select";
-import { detectPreviewSelect } from "./claude/preview-select";
-import { detectPromptSelect } from "./claude/prompt-select";
-import { detectWizard } from "./claude/wizard";
-import { detectMenu } from "./claude/menu";
+import { claudeAdapter } from "./claude";
+import { DIALOG_CONTRACT, dialogModelOf, type DialogKind } from "./dialog-contract";
 
 // The client half of the prompt-binding contract. See the sibling test in
 // bridge/prompt-binding.test.ts for the full reasoning; in short:
@@ -37,20 +34,17 @@ const REGIONS = JSON.parse(
   readFileSync(join(FIXTURES_DIR, "prompt-binding-regions.json"), "utf8"),
 ) as { fixture: string; detector: string; region: string }[];
 
-/** The region each detector hands to the bridge, or null when it does not recognise the pane. The
- *  order mirrors the precedence the action layer uses, so a pane is attributed to one detector. */
+/** The region the live path hands the bridge: the first dialog block `claudeBuildBlocks` lifts, and
+ *  its DIALOG_CONTRACT region. Spec 06: this walks the live arbitration order, not a hand-rolled
+ *  detector order (which once tried prompt-select before wizard, the reverse of the adapter). */
 function detectRegion(lines: StyledLine[]): { detector: string; region: string } | null {
-  const prompt = detectPromptSelect(lines);
-  if (prompt) return { detector: "prompt-select", region: prompt.signature };
-  const wizard = detectWizard(lines);
-  if (wizard) return { detector: "wizard", region: wizard.signature };
-  const preview = detectPreviewSelect(lines);
-  if (preview) return { detector: "preview-select", region: preview.regionSignature };
-  const multi = detectMultiSelect(lines);
-  if (multi) return { detector: "multi-select", region: multi.regionSignature };
-  // Last, exactly as claudeBuildBlocks orders it: the generic menu only claims what all four declined.
-  const menu = detectMenu(lines);
-  if (menu) return { detector: "menu", region: menu.signature };
+  for (const block of claudeAdapter.buildBlocks(lines)) {
+    if (!(block.kind in DIALOG_CONTRACT)) continue;
+    const kind = block.kind as DialogKind;
+    const model = dialogModelOf(block, kind);
+    if (model === null) continue;
+    return { detector: kind, region: (DIALOG_CONTRACT[kind].region as (m: unknown) => string)(model) };
+  }
   return null;
 }
 

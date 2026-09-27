@@ -34,6 +34,8 @@ adds an entry here and keeps the three version files in step; CI refuses a build
   one compact row; a one-pane space shows that a tap opens it.
 
 ### Fixed
+- The prompt-binding matcher the bridge 409s on is now the one the tests check, for every harness's
+  dialogs, and two Claude dialogs under a named session are pinned in the binding contract.
 - A long reply to Cursor no longer stalls with "didn't reach the input box". Cursor collapses a long
   paste into `[Pasted text #N +M lines]` like Claude, and Sightr now accepts that token when it
   matches the send, so Enter goes out.
