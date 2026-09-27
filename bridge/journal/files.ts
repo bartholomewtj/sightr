@@ -1,6 +1,7 @@
 // The filesystem half of the journal, shared by every adapter.
 //
-// SECURITY. Reading session logs is the only thing in the bridge that touches the filesystem, so the
+// SECURITY. The journal is one of two filesystem readers in the bridge (the Files tab, workdir.ts,
+// is the other; ADR 0026). Both use the containment rule in ../containment.ts. For session logs the
 // path is pinned shut here rather than re-argued per harness:
 //  - the client never supplies a path — only a pane id, which the route maps to a session ref;
 //  - an `id` ref is pattern-validated by its adapter before it is ever concatenated into a path;
@@ -21,8 +22,11 @@
 // A journal is exactly as sensitive as the pane mirror Sightr already serves (it is the same
 // conversation), but it reaches further back — `SIGHTR_TRANSCRIPT=off` disables the feature wholesale.
 
-import { realpath, stat } from "node:fs/promises";
-import { sep } from "node:path";
+import { stat } from "node:fs/promises";
+
+// Containment lives outside the journal because the Files tab uses it too (spec 13). Re-exported so
+// every adapter keeps its single import site.
+export { containedRealpath, containedRealpathIn } from "../containment.ts";
 
 /** Most bytes we will ever pull off one log. Beyond this we keep the TAIL (newest turns). */
 export const MAX_TRANSCRIPT_BYTES = 32 * 1024 * 1024; // 32 MB
@@ -38,21 +42,6 @@ export async function exists(path: string): Promise<boolean> {
 }
 
 /**
- * Resolve `candidate` and return it only if it is still inside `root` afterwards.
- *
- * The check runs on the REAL paths of both sides, which is the whole point: comparing the strings we
- * were handed would be satisfied by a symlink pointing anywhere. Null means "not ours to read" —
- * callers treat that identically to "no log", so a containment failure is never distinguishable from
- * an absent file by anything the client can see.
- */
-export async function containedRealpath(candidate: string, root: string): Promise<string | null> {
-  const real = await realpath(candidate).catch(() => null);
-  const realRoot = await realpath(root).catch(() => null);
-  if (real === null || realRoot === null) return null;
-  return real === realRoot || real.startsWith(realRoot + sep) ? real : null;
-}
-
-/**
  * Normalise an adapter's root configuration to the list it searches, in order.
  *
  * Adapters accept a bare string as well as a list purely so a caller with one root (every test
@@ -63,26 +52,6 @@ export async function containedRealpath(candidate: string, root: string): Promis
 export function rootList(roots: string | readonly string[]): string[] {
   const list = typeof roots === "string" ? [roots] : [...roots];
   return list.map((r) => r.trim()).filter((r) => r !== "");
-}
-
-/**
- * First root that really contains `candidate`, or null.
- *
- * ONLY for a path an adapter did not build — a session ref that arrived as a path (pi). Since no root
- * derived the name, the question is simply "does this file live in a journal we serve", and each root
- * answers for itself; the check per root is the same {@link containedRealpath} as everywhere else.
- * Never use this on a path built from a root: there the building root is the only one that may
- * contain it (see the header).
- */
-export async function containedRealpathIn(
-  candidate: string,
-  roots: readonly string[],
-): Promise<string | null> {
-  for (const root of roots) {
-    const real = await containedRealpath(candidate, root);
-    if (real !== null) return real;
-  }
-  return null;
 }
 
 /** Size + mtime, or null when the file is gone. The store's cache-validity probe (see types.ts). */

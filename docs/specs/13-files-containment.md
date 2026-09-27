@@ -1,5 +1,7 @@
 # 13 — Files-tab containment module
 
+> **Status 2026-09-27:** DONE. `bridge/containment.ts` holds `containedRealpath` / `containedRealpathIn`; `journal/files.ts` re-exports them and no longer claims to be the only reader; `workdir*.ts` import the new module. ADR 0026 amended in place (same number). `operator-file.ts` only cited the rule in a comment. No CHANGELOG entry: nothing operator-facing changed.
+>
 > **Status 2026-09-27 (`874b85b`):** OPEN. Also covers `bridge/operator-file.ts`, which imports `containedRealpath`.
 
 Council row 13. Severity: medium. Form + fork.

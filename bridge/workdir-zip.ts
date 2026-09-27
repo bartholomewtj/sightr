@@ -1,6 +1,6 @@
 import { readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { containedRealpath } from "./journal/files.ts";
+import { containedRealpath } from "./containment.ts";
 
 export interface ZipFile { real: string; name: string; size: number; dosTime: number; dosDate: number; data?: Uint8Array }
 export interface ZipPlan { files: ZipFile[]; size: number }
