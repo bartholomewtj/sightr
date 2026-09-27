@@ -25,7 +25,7 @@ One spec = one run. Do not implement a sibling spec in the same run. Numbers mat
 | 18 | [18-cursor-autocomplete-bind.md](18-cursor-autocomplete-bind.md) | Med | Done — refused while unbindable (`unbindableComposer`); fixtures back in conformance | Autocomplete send is unbound |
 | 19 | [19-paste-boundary.md](19-paste-boundary.md) | Med | Partly — Cursor verifies its paste token; left: Codex no-adapter one-shot | Long-send verify is Claude/Codex only |
 | 20 | [20-collie-identifiers.md](20-collie-identifiers.md) | Med | Done — fork ADRs use 1.0 names; inherited mapping note; citations fixed | ADRs and logs still name Collie |
-| 21 | [21-phone-overscroll.md](21-phone-overscroll.md) | Med | Stale reference — Bart's call on pull-to-refresh | Pull reloads the PWA (GitHub #16) |
+| 21 | [21-phone-overscroll.md](21-phone-overscroll.md) | Med | Open — rewritten 28 Sep: shell lock + in-app pull-to-refresh on pane and Spaces; Android/CDP check | Pull reloads the PWA |
 | 22 | [22-safe-area-top.md](22-safe-area-top.md) | Med | Done — banner owns the notch while open; headers use `--chrome-top-inset` | Banner + header both pad the notch |
 
 ## Rules for every slice
