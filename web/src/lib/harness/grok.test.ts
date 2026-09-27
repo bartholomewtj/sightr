@@ -68,6 +68,7 @@ const PINNED = [
   "grok--plan-tab-prompt.txt",
   "grok--prompt-ascii-draft.txt",
   "grok--prompt-ascii.txt",
+  "grok--startup-1-0-41.txt",
   "grok--startup-build-chip.txt",
   "grok--startup.txt",
   "grok--user-bubble.txt",
@@ -993,6 +994,19 @@ describe("grokBuildBlocks", () => {
     const text = block.lines.map(lineText).join("\n");
     expect(text).not.toContain("[stable]");
     expect(text).not.toContain("Grok Build  1.0.13");
+    expect(text).not.toMatch(/│\s*>/);
+  });
+
+  it("Grok Build 1.0.41's untagged startup chip is chrome — the first send is not refused (#24)", () => {
+    const lines = splitLines(
+      parseAnsi(readFileSync(join(PANES_DIR, "grok--startup-1-0-41.txt"), "utf8")),
+    );
+    expect(grokAdapter.composerReady!(lines)).toBe(true);
+    const [block] = grokAdapter.buildBlocks(lines);
+    expect(block?.kind).toBe("raw");
+    if (block?.kind !== "raw") return;
+    const text = block.lines.map(lineText).join("\n");
+    expect(text).not.toContain("Grok Build  1.0.41");
     expect(text).not.toMatch(/│\s*>/);
   });
 
