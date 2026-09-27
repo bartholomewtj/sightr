@@ -396,7 +396,7 @@ export function usePaneView(args: PaneViewArgs) {
       };
       // Two recipes behind one block: a single guarded keystroke for an option, and the plan
       // dialog's multi-step feedback sequence (digit → verify focus → type → Enter, which denies the
-      // plan and hands the agent the text — see lib/actions.ts).
+      // plan and hands the agent the text — see lib/prompt-action.ts).
       const result =
         action.kind === "option"
           ? await submitPromptOption({ ...base, option: action.option })
@@ -476,7 +476,7 @@ export function usePaneView(args: PaneViewArgs) {
 
   // Tap a preview-dialog control (an option, the note add/edit/remove, or the wizard step nav).
   // Same guard-first shape as the two handlers above, but the choreography behind an intent is
-  // MULTI-step (digit→verify→Enter; n→verify→type→Escape — see lib/actions.ts and
+  // MULTI-step (digit→verify→Enter; n→verify→type→Escape — see lib/preview-action.ts and
   // harness/claude/preview-select.ts), so the handler dispatches on the intent kind.
   // gate: Claude's adapter is the only one that emits `preview-select` — no other registered adapter
   // lifts this kind, so this handler cannot fire for another agent.
@@ -537,7 +537,7 @@ export function usePaneView(args: PaneViewArgs) {
   // Tap a multi-select control (toggle a checkbox, Submit, the "Chat about this" escape, or the
   // review screen's confirm/cancel). Same guard-first shape as the wizard handler — the guard
   // re-derives the dialog from a FRESH read; toggle sends one digit, Submit drives the closed-loop
-  // Down→Up→verify→Enter macro (see lib/actions.ts). gate: Claude's adapter is the only
+  // Down→Up→verify→Enter macro (see lib/multi-select-action.ts). gate: Claude's adapter is the only
   // one that emits `multi-select`, so this handler cannot fire for another agent.
   const handleMultiSelectAction = useCallback(
     async (action: MultiSelectIntent, multi: MultiSelectModel) => {
@@ -577,7 +577,7 @@ export function usePaneView(args: PaneViewArgs) {
 
   // Tap a generic-menu control (a footer-named key like Enter/s/Esc, or an arrow). Same guard-first
   // shape as the handlers above; the arrow taps pass `nav`, which swaps the guard's signature check
-  // for an identity-only one (moving the highlight is the tap's own effect — see lib/actions.ts).
+  // for an identity-only one (moving the highlight is the tap's own effect — see lib/menu-action.ts).
   // gate: Claude's adapter is the only one that emits `menu` (buildBlocks routes through the pane’s
   // adapter — see harness/registry.ts), so this handler cannot fire for another agent.
   const handleMenuAction = useCallback(

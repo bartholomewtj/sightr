@@ -21,7 +21,7 @@ import {
 import { NOTE_MAX_LENGTH } from "@/lib/actions";
 import { WIZARD_BACK_KEYS, WIZARD_NEXT_KEYS } from "@/lib/harness/wizard-model";
 
-/** One tap's intent, resolved to keystrokes by the injected handler (actions.ts). */
+/** One tap's intent, resolved to keystrokes by the injected handler (lib/preview-action.ts). */
 export type PreviewBlockAction =
   | { kind: "option"; option: PreviewOption }
   | { kind: "note"; text: string } // "" removes the note

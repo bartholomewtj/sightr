@@ -1701,8 +1701,7 @@ describe("Composer — quick keys / image attach", () => {
     const user = userEvent.setup();
     renderComposer();
 
-    // The quick-key strip only renders once composerFocused && keyboardOpen — keyboardOpen defaults
-    // to false in jsdom (no visualViewport resize fires), so none of its keys are present here.
+    // The composer has no quick-key strip; Esc and Tab live in the nav tray and the Keys dock.
     expect(screen.queryByRole("button", { name: "Esc" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Tab" })).not.toBeInTheDocument();
 

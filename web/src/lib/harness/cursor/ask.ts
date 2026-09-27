@@ -337,8 +337,8 @@ export function detectAskRegion(lines: StyledLine[]): AskRegion | null {
   if (!card) return null;
 
   // Multi-select cards stay raw this pass: Enter adds the pointed row before
-  // submitting, so a Submit button needs its own pointer walk; actions.ts has no
-  // such recipe, and nothing is probed.
+  // submitting, so a Submit button needs its own pointer walk; no lib/*-action.ts has
+  // a recipe for that, and nothing is probed.
   if (card.multi) return null;
 
   const realOptionRows = card.rows.slice(0, card.rows.length - 1);

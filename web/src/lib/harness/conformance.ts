@@ -314,7 +314,7 @@ function emittableKeys(block: Block): string[] | null {
         : controls;
     }
     case "preview-select": {
-      // actions.ts's recipe: a digit moves the pointer, Enter selects, `n` opens the note
+      // preview-action.ts's recipe: a digit moves the pointer, Enter selects, `n` opens the note
       // input, ctrl+k/Backspace clear it, Escape blurs; a wizard step navigates with Left/Right.
       const digits = block.preview.options.map((o) => String(o.n));
       const controls = [
@@ -563,7 +563,7 @@ export function describeAdapterConformance(
         });
 
         // A menu HAS the keyboard. If the adapter can tell whether its composer is on screen, it must
-        // say no here — otherwise the reply pre-flight (lib/actions.ts) would type the user's
+        // say no here — otherwise the reply pre-flight (lib/reply-action.ts) would type the user's
         // message into the modal, which is the exact `/model` bug the grammar exists to end.
         it(`${name}: composerReady is false while the modal is up`, () => {
           if (!adapter.composerReady) return; // "no idea" is allowed; a wrong "yes" is not

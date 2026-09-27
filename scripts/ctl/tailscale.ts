@@ -1,4 +1,5 @@
 import type { Run } from "./types.ts";
+import { skipServe } from "./env.ts";
 
 export async function selfDnsName(run: Run): Promise<string> {
   const r = await run("tailscale", ["status", "--json"]);
@@ -17,7 +18,7 @@ export async function selfHosts(run: Run): Promise<string> {
 export async function hasTailscale(run: Run): Promise<boolean> { return (await run("tailscale", ["version"])).code !== 127; }
 export async function bridgeUrl(env: Record<string,string|undefined>, run: Run): Promise<string> {
   const port = env.SIGHTR_PORT ?? "8787";
-  if (env.SIGHTR_SKIP_SERVE === "1") return env.SIGHTR_PUBLIC_URL ?? `http://127.0.0.1:${port} (SIGHTR_SKIP_SERVE=1; public URL unset)`;
+  if (skipServe(env)) return env.SIGHTR_PUBLIC_URL ?? `http://127.0.0.1:${port} (SIGHTR_SKIP_SERVE on; public URL unset)`;
   const name = await selfDnsName(run);
   if (!name) return `http://127.0.0.1:${port} (Tailscale name unavailable)`;
   return env.SIGHTR_SERVE_MODE === "http" ? `http://${name}:${port}` : `https://${name}`;

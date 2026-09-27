@@ -17,6 +17,10 @@ export function parseEnv(text: string, fileLabel: string): { values: Map<string,
     values.set(key, value);
   }); return { values, warnings };
 }
+// Same spellings as the bridge's envBool (bridge/config.ts), so the script and the bridge agree.
+export function skipServe(env: Record<string, string | undefined>): boolean {
+  return ["on", "1", "true", "yes"].includes((env.SIGHTR_SKIP_SERVE ?? "").trim().toLowerCase());
+}
 export async function loadEnv(path: string) { return parseEnv(await readFile(path, "utf8"), path); }
 
 export async function effectiveEnv(env: Record<string, string | undefined> = process.env, run: Run = realRun): Promise<{ paths: Paths; effective: Record<string, string | undefined> }> {

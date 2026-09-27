@@ -7,7 +7,7 @@
 //
 // Unpeeled, the status-row walk stops on popup rows, `promptBody` never reaches the live `→ …`
 // prompt, `composerReady` / `extractInputDraft` read false, and phone sends report "Message didn't
-// reach the input box" (actions.ts) while the draft is visibly on screen.
+// reach the input box" (reply-action.ts) while the draft is visibly on screen.
 
 import { isBlank, lineText } from "../../blocks";
 import { promptBody } from "./markers";

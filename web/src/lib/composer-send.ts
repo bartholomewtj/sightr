@@ -120,7 +120,7 @@ export async function runComposerSend(
       agent,
       force: forced,
       // Clear a stranded draft on the terminal's "❯" line before pane.send_text appends at cursor —
-      // ctrl+k kills cursor→end, Backspace sweep kills the head (actions.ts pattern). Skip
+      // ctrl+k kills cursor→end, Backspace sweep kills the head (reply-action.ts pattern). Skip
       // when there's no draft: a blind sweep races the TUI and Enter can fire before the PTY
       // settles. Keys on terminalLine (the actual current line, echo-suppressed), so our own
       // in-flight echo never triggers a (destructive) clear of a message that's already on its way,

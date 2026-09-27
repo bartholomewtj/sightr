@@ -3,7 +3,7 @@ import os from "node:os";
 import { appendFile, mkdir, rename, writeFile } from "node:fs/promises";
 import { openSync } from "node:fs";
 import { resolvePaths } from "./paths.ts";
-import { loadEnv } from "./env.ts";
+import { loadEnv, skipServe } from "./env.ts";
 import { migrateLegacyConfig } from "./config-migrate.ts";
 import { resolveBun } from "./bun.ts";
 import { realRun, type Run } from "./types.ts";
@@ -66,7 +66,7 @@ export async function prepareBridgeEnv(argv: string[], env: Record<string, strin
     HERDR_PLUGIN_CONFIG_DIR: cfg ?? base.configDir,
     HERDR_SOCKET_PATH: socket || env.HERDR_SOCKET_PATH || vals.HERDR_SOCKET_PATH || path.join(roaming, "herdr", "herdr.sock"),
     SIGHTR_PORT: env.SIGHTR_PORT ?? vals.SIGHTR_PORT ?? "8787",
-    SIGHTR_TAILSCALE_HOSTS: env.SIGHTR_SKIP_SERVE === "1" ? "" : (env.SIGHTR_TAILSCALE_HOSTS ?? vals.SIGHTR_TAILSCALE_HOSTS ?? await selfHosts(run)),
+    SIGHTR_TAILSCALE_HOSTS: skipServe({ ...env, ...vals }) ? "" : (env.SIGHTR_TAILSCALE_HOSTS ?? vals.SIGHTR_TAILSCALE_HOSTS ?? await selfHosts(run)),
   };
   if (!effective.HERDR_PLUGIN_STATE_DIR) effective.HERDR_PLUGIN_STATE_DIR = path.join(local, "herdr", "plugins", "herdr.sightr");
   const bun = await resolveBun(effective);
