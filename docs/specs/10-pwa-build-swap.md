@@ -1,5 +1,7 @@
 # 10 — PWA swaps on X-Sightr-Build
 
+> **Status 2026-09-27:** DONE. `web/src/lib/pwa-update.ts` (`onServerBuild`, `checkForUpdate`, `forceReload`), wired in `pwa.ts`. Live check: an open phone page swapped to a rebuild in about 3 s.
+
 Council row 10. Severity: high. Cadence.
 
 ## Why
