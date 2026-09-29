@@ -3,6 +3,7 @@ import { fetchPane, sendKeys, sendReply } from "./api";
 import { parseAnsi } from "./ansi";
 import { splitLines } from "./blocks";
 import { detectPromptSelect } from "./harness/claude/prompt-select";
+import { detectAskRegion } from "./harness/grok/ask";
 import { FEEDBACK_MAX_LENGTH, submitPromptFeedback, submitPromptOption } from "./actions";
 
 vi.mock("./api", () => ({
@@ -194,6 +195,88 @@ describe("submitPromptFeedback — digit → verify focus → type → verify te
       status: "sent",
     });
     expect(mockSendReply.mock.calls[0]![1]).toBe(clipped);
+  });
+});
+
+function grokAsk(state: "idle" | "focused" | "typed", text = "papaya"): string {
+  const z =
+    state === "idle"
+      ? "  ┃  z (○) Type your answer here"
+      : state === "focused"
+        ? "  ┃  z (•) >"
+        : `  ┃  z (•) > ${text}`;
+  return [
+    "  ┃  Which fruit?",
+    "  ┃  1 (○) Apple    Crisp",
+    "  ┃  2 (○) Banana   Soft",
+    z,
+    "  ┃  ↑/↓ navigate · y copy                                                                 Enter:submit",
+    "  Tab:next answer  │  Esc:scrollback",
+  ].join("\n");
+}
+
+function grokModel(state: "idle" | "focused" | "typed" = "idle", text = "papaya") {
+  const m = detectAskRegion(splitLines(parseAnsi(grokAsk(state, text))));
+  if (!m) throw new Error(`grok ask ${state} did not detect`);
+  return m.model;
+}
+
+describe("submitPromptFeedback — Grok z custom answer", () => {
+  it("sends z, types, then Enter once the custom answer is on screen", async () => {
+    const idle = grokModel();
+    const typed = grokModel("typed", "papaya");
+    mockFetchPane
+      .mockResolvedValueOnce(paneWith(grokAsk("idle")))
+      .mockResolvedValueOnce(paneWith(grokAsk("focused")))
+      .mockResolvedValue(paneWith(grokAsk("typed", "papaya")));
+
+    const res = await submitPromptFeedback({
+      ...base,
+      agent: "grok",
+      prompt: idle,
+      text: "papaya",
+    });
+
+    expect(res).toEqual({ status: "sent" });
+    expect(mockSendKeys.mock.calls).toEqual([
+      ["w1:p1", ["z"], idle.signature],
+      ["w1:p1", ["Enter"], typed.signature],
+    ]);
+    expect(mockSendReply.mock.calls).toEqual([["w1:p1", "papaya", false]]);
+  });
+
+  it("refuses a free-text row whose key is not z, and sends nothing", async () => {
+    const piLike = {
+      ...grokModel(),
+      feedback: { key: "3", focused: false, text: "", purpose: "free-text" as const },
+    };
+    const res = await submitPromptFeedback({ ...base, agent: "grok", prompt: piLike, text: "papaya" });
+    expect(res).toEqual({
+      status: "error",
+      error: "This dialog's free-text row is not typed from the phone",
+    });
+    expect(mockFetchPane).not.toHaveBeenCalled();
+    expect(mockSendKeys).not.toHaveBeenCalled();
+    expect(mockSendReply).not.toHaveBeenCalled();
+  });
+
+  it("refuses a z row that is already focused or already holds text", async () => {
+    const focused = await submitPromptFeedback({
+      ...base,
+      agent: "grok",
+      prompt: grokModel("focused"),
+      text: "papaya",
+    });
+    expect(focused).toEqual({ status: "changed" });
+    const typed = await submitPromptFeedback({
+      ...base,
+      agent: "grok",
+      prompt: grokModel("typed", "papaya"),
+      text: "more",
+    });
+    expect(typed).toEqual({ status: "changed" });
+    expect(mockSendKeys).not.toHaveBeenCalled();
+    expect(mockSendReply).not.toHaveBeenCalled();
   });
 });
 

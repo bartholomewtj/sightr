@@ -6,6 +6,9 @@ a build where they disagree.
 
 ## [Unreleased]
 
+### Fixed
+- Grok question cards. A two-option checkbox checks the tapped row. Radio options past 9 answer with a–f when the list runs from 1 with no gaps. The phone types the free-text row when its key is z.
+
 ## [1.1.1] - 2026-09-28
 
 ### Fixed

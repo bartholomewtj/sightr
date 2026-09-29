@@ -1,16 +1,19 @@
 import { regionSignature, rstrip, lastNonBlankIndex } from "../scan";
 // Grok `ask_user_question` card — the captured 2026-08-31 w50:p1 card uses a light `│` gutter
 // and `Shift+x:dismiss`; older captures use the heavy `┃` gutter. Both replace the composer.
-// Digit N on a radio card was live-probed (ASK_NOTES.md): `2` submitted immediately. Checkbox
-// (`[ ]`) cards are a different widget — a digit submits rather than toggles. They lift as
+// Digit N on a radio card was live-probed (ASK_NOTES.md): `2` submitted immediately. Official keys
+// continue `1`–`9` then `a`–`f` (Grok user-guide); the phone sends that key. A gap, a letter past
+// `f`, or a card that does not start at `1` is a different widget — refuse. Checkbox (`[ ]`) cards
+// are a different widget — a digit submits rather than toggles, and so does a letter. They lift as
 // `multi-select` with recipe `tab-space-enter` (phone Keys tray, 2026-09-03): Tab walks, Space
-// toggles, Enter submits. Never emit a digit. The complete radio layout is consecutive 1..n
-// radios, a `z` row, and an inner `Enter:select|submit|edit` hint. A card missing any of those,
-// or painting an `a`–`f` option row, is a different widget — refuse rather than emit digits.
+// toggles, Enter submits. Never emit a digit or an `a`–`f` letter. The complete radio layout is
+// that consecutive key run, a `z` row, and an inner `Enter:select|submit|edit` hint. A card missing
+// any of those is refused.
 // Esc-park keeps the same card; its footer differs and must still match. Radio prepends Tab so a
 // tap re-enters before the digit. Checkbox sets `parked` so the Tab/Space walk Tabs once to re-enter
-// before Space; Enter is `Tab, Enter`. Radio `z` is modelled as `purpose: "free-text"` so a focused
-// row can lock the option buttons; Sighter does not type into it. Pure; no pane access.
+// before Space; Enter is `Tab, Enter`. Radio `z` is modelled as `purpose: "free-text"` (key `z`) so
+// a focused row can lock the option buttons; the phone types that row (submitPromptFeedback). Pi
+// and Cursor free-text keys are digits and stay untyped. Pure; no pane access.
 //
 // When a radio card's hint row contains `[n/m]` with m ≥ 2, it lifts as a `wizard` (question phase)
 // rather than `prompt-select`. Stepper chips show 1/m..m/m; Right/Left navigate between questions
@@ -41,12 +44,18 @@ export interface AskWizardRegion {
   startLine: number;
 }
 
-const CHECKBOX = /^\s*[┃│]\s+[1-9]\s+\[[ x✔✓]\]/i;
-const CHECKBOX_ROW = /^\s*[┃│]\s+([1-9])\s+\[([ x✔✓])\]\s*(.*?)\s*$/i;
+// Official ask keys, in order. Option index i sends ASK_KEYS[i]. Checkbox rows use the same
+// order as their ordinal `n` (a = 10 … f = 15) and never send the letter.
+const ASK_KEYS = "123456789abcdef";
+const CHECKBOX = /^\s*[┃│]\s+[1-9a-f]\s+\[[ x✔✓]\]/i;
+const CHECKBOX_ROW = /^\s*[┃│]\s+([1-9a-f])\s+\[([ x✔✓])\]\s*(.*?)\s*$/i;
 const Z_CHECKBOX = /^\s*[┃│]\s+z\s+\[[ x✔✓]\]\s+Type your answer here\s*$/i;
-// Official keys include `a`–`f` as answers. Those digits/letters are unprobed, so a card that
-// paints one is a different widget — refuse rather than emit 1..n and ignore the extras.
-const LETTER_OPTION = /^\s*[┃│]\s+[a-zA-Z]\s+\(([●○])\)/;
+// `a`–`f` continue the radio sequence. Any other letter radio row (including a bare `z` that
+// missed the free-text rules above) is a different widget.
+const LETTER_RADIO = /^\s*[┃│]\s+([a-fA-F])\s+\(([●○])\)\s+(.+?)\s*$/;
+const OTHER_LETTER_RADIO = /^\s*[┃│]\s+[a-zA-Z]\s+\(([●○])\)/;
+// A radio mark on a checkbox card is a different widget. Digits and `a`–`f` both.
+const RADIO_MARK_ROW = /^\s*[┃│]\s+\S{1,3}\s+\([●○•]\)/;
 // Idle z is `(○)`. The English placeholder is the usual rest; after typing then Esc-park the
 // row can keep `> hi` instead of the placeholder (live R10). Still idle — a digit answers.
 const Z_IDLE = /^\s*[┃│]\s+z\s+\(○\)(.*)$/;
@@ -120,6 +129,22 @@ function parseRadioAsk(lines: StyledLine[]): RadioAskParse | null {
     return joined === "" ? undefined : joined;
   }
 
+  function pushRadio(token: string, rawBody: string): boolean {
+    const n = token.toLowerCase();
+    if (seen.has(n)) return false;
+    seen.add(n);
+    // Grok's own scrollbar column paints a `█` cell at the right edge of long option rows —
+    // it is chrome, not the description's last word.
+    const raw = rawBody.trim().replace(/\s+█$/, "");
+    const split = raw.split(/\s{2,}/);
+    const label = (split[0] ?? raw).trim();
+    const description = takeWrap(split.slice(1).join(" ").trim());
+    const option: PromptOption = { label, keys: [n] };
+    if (description !== undefined) option.description = description;
+    options.unshift(option);
+    return true;
+  }
+
   for (let i = card.end; i >= card.start; i--) {
     const t = texts[i]!;
     if (CHECKBOX.test(t)) return null;
@@ -136,21 +161,15 @@ function parseRadioAsk(lines: StyledLine[]): RadioAskParse | null {
       feedback = { key: "z", focused: true, text: (z[1] ?? "").trimEnd(), purpose: "free-text" };
       continue;
     }
-    if (LETTER_OPTION.test(t)) return null;
+    const letter = LETTER_RADIO.exec(t);
+    if (letter) {
+      if (!pushRadio(letter[1]!, letter[3]!)) return null;
+      continue;
+    }
+    if (OTHER_LETTER_RADIO.test(t)) return null;
     const opt = GUTTER_OPTION_ANY.exec(t);
     if (opt) {
-      const n = opt[1]!;
-      if (seen.has(n)) return null;
-      seen.add(n);
-      // Grok's own scrollbar column paints a `█` cell at the right edge of long option rows —
-      // it is chrome, not the description's last word.
-      const raw = opt[3]!.trim().replace(/\s+█$/, "");
-      const split = raw.split(/\s{2,}/);
-      const label = (split[0] ?? raw).trim();
-      const description = takeWrap(split.slice(1).join(" ").trim());
-      const option: PromptOption = { label, keys: [n] };
-      if (description !== undefined) option.description = description;
-      options.unshift(option);
+      if (!pushRadio(opt[1]!, opt[3]!)) return null;
       continue;
     }
     const hint = HINT_ROW.exec(t);
@@ -190,7 +209,7 @@ function parseRadioAsk(lines: StyledLine[]): RadioAskParse | null {
   if (!isAskFooter(texts[fi]!, feedback.focused)) return null;
   if (question === "" || options.length < 2) return null;
   for (let i = 0; i < options.length; i++) {
-    if (options[i]!.keys[0] !== String(i + 1)) return null;
+    if (options[i]!.keys[0] !== ASK_KEYS[i]) return null;
   }
   // `Enter:edit` with an idle-looking z row: the keyboard is parked on the free-text field
   // (Esc from a focused z leaves it there), so a digit would TYPE, not answer. Model it as
@@ -299,6 +318,17 @@ function focusedOptionN(
   rows: { n: number; bg: string | undefined }[],
   zBg: string | undefined,
 ): number | null {
+  // The focused checkbox cell is the one whose background differs from the `z` row. A majority
+  // vote is wrong at exactly two options: each colour appears once, map order makes the real
+  // highlight the mode, and the other row is reported. Live Grok 1.0.44 paints focus
+  // rgb(70,70,70) and the unfocused row plus `z` rgb(64,64,64). Zero differences means `z` is
+  // focused, the card is parked, or the paint is unreadable — return null rather than Tab onto `z`.
+  if (zBg) {
+    const differ = rows.filter((row) => row.bg && row.bg !== zBg);
+    if (differ.length === 1) return differ[0]!.n;
+    if (differ.length === 0) return null;
+  }
+
   const counts = new Map<string, number>();
   for (const row of rows) {
     if (!row.bg) continue;
@@ -312,6 +342,11 @@ function focusedOptionN(
       modeCount = count;
     }
   }
+  let leaders = 0;
+  for (const count of counts.values()) {
+    if (count === modeCount) leaders += 1;
+  }
+  if (leaders !== 1) return null;
   const highlighted = rows.filter((row) => row.bg && row.bg !== mode);
   if (highlighted.length === 1) return highlighted[0]!.n;
   if (highlighted.length === 0 && zBg && zBg !== mode) return null;
@@ -406,14 +441,15 @@ export function detectCheckboxAskRegion(lines: StyledLine[]): CheckboxAskRegion 
     }
     const cb = CHECKBOX_ROW.exec(t);
     if (cb) {
-      const n = cb[1]!;
-      if (seen.has(n)) return null;
-      seen.add(n);
+      const token = cb[1]!.toLowerCase();
+      const n = ASK_KEYS.indexOf(token) + 1;
+      if (n === 0 || seen.has(token)) return null;
+      seen.add(token);
       const mark = cb[2] ?? " ";
       const body = splitOptionBody(cb[3] ?? "");
       const description = takeWrap(body.description);
       const option: MultiSelectOption = {
-        n: Number(n),
+        n,
         label: body.label,
         checked: mark !== " ",
       };
@@ -423,7 +459,7 @@ export function detectCheckboxAskRegion(lines: StyledLine[]): CheckboxAskRegion 
       firstOption = i;
       continue;
     }
-    if (LETTER_OPTION.test(t) || GUTTER_OPTION_ANY.test(t)) return null;
+    if (RADIO_MARK_ROW.test(t)) return null;
     if (FOREIGN_OPTION.test(t)) return null;
     const body = t.replace(/^\s*[┃│]\s*/, "").trim().replace(/\s+█$/, "");
     if (body === "") continue;

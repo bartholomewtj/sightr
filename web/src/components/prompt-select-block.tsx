@@ -41,7 +41,8 @@ const FEEDBACK_COPY: Record<PromptFeedbackPurpose, { offer: string | null; edito
     typedPrefix: "Feedback is being written in the terminal: ",
   },
   "free-text": {
-    offer: null, editorLabel: "", placeholder: "", help: "", send: "", sending: "",
+    offer: "Type your answer", editorLabel: "Your answer", placeholder: "Type a custom answer…",
+    help: "Sends this text as the question's custom answer.", send: "Send answer", sending: "Sending answer…",
     focused: "The free-text row has the keyboard in the terminal — these buttons would type into it instead of answering. They resume when it closes.",
     typedPrefix: "A custom answer is being written in the terminal: ",
   },
@@ -66,8 +67,10 @@ const FEEDBACK_COPY: Record<PromptFeedbackPurpose, { offer: string | null; edito
 //     non-empty field puts the caret at position 0, so our words would be prepended to theirs. The
 //     affordance is replaced by a read-only card showing what is in there.
 //
-// Only the empty, unfocused state offers the composer, whose Send drives digit → focus → type →
-// Enter and lands as DENY-with-feedback (the agent re-plans) — which is what the button says.
+// Only the empty, unfocused state offers the composer. On a plan card, Send drives the row's key,
+// then type, then Enter, and lands as deny-with-feedback. On a Grok radio card the same choreography
+// sends `z` and lands as the custom answer. Pi and Cursor free-text keys are digits, so they get no
+// composer — the offer below is limited to key `z`.
 export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBlockProps) {
   const [sending, setSending] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -78,6 +81,12 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
   const feedbackCopy = feedback
     ? FEEDBACK_COPY[feedback.purpose === "free-text" ? "free-text" : "plan-change"]
     : null;
+  // Pi and Cursor also model a free-text row, but its key is a digit. Offering the composer there
+  // would send that digit. Grok's custom answer is the only free-text row the phone types.
+  const offer =
+    feedbackCopy?.offer && (feedback?.purpose !== "free-text" || feedback.key === "z")
+      ? feedbackCopy.offer
+      : null;
 
   async function press(id: string, action: PromptBlockAction): Promise<boolean> {
     if (locked) return false;
@@ -157,7 +166,7 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
             {feedbackCopy.typedPrefix}{feedback.text}
           </span>
         </div>
-      ) : feedback && feedbackCopy && feedbackCopy.offer && editorOpen ? (
+      ) : feedback && feedbackCopy && offer && editorOpen ? (
         <div className="flex flex-col gap-1.5 rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
           <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
             <MessageSquarePlus className="size-3.5 shrink-0" />
@@ -196,7 +205,7 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
             </button>
           </div>
         </div>
-      ) : feedback && feedbackCopy && feedbackCopy.offer ? (
+      ) : feedback && feedbackCopy && offer ? (
         <button
           type="button"
           disabled={locked}
@@ -207,7 +216,7 @@ export function PromptSelectBlock({ prompt, onAction, disabled }: PromptSelectBl
           className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border/60 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
         >
           <MessageSquarePlus className="size-3.5 shrink-0" />
-          {feedbackCopy.offer}
+          {offer}
         </button>
       ) : null}
     </PromptPanel>

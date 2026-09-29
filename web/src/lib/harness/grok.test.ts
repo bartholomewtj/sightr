@@ -345,6 +345,71 @@ describe("grokBuildBlocks", () => {
     expect(region!.model.options.map((o) => o.label)).toEqual(["Cheese", "Pepperoni", "Mushrooms"]);
   });
 
+  function twoOptionCheckbox(focus: 1 | 2 | null): string {
+    const cell = (n: 1 | 2) => (focus === n ? "70;70;70" : "64;64;64");
+    const row = (text: string, bg: string) => `  │  \x1b[48;2;${bg}m${text}\x1b[0m`;
+    return [
+      "  │  Which tree?",
+      row("1 [ ] Oak", cell(1)),
+      row("2 [ ] Pine", cell(2)),
+      row("z [ ] Type your answer here", "64;64;64"),
+      "  │  ↑/↓ navigate · y copy                                                                 Enter:submit",
+      "  Tab:next answer  │  Esc:scrollback",
+    ].join("\n");
+  }
+
+  it("a two-option checkbox reports the row whose cell differs from z", () => {
+    const onFirst = detectCheckboxAskRegion(splitLines(parseAnsi(twoOptionCheckbox(1))));
+    const onSecond = detectCheckboxAskRegion(splitLines(parseAnsi(twoOptionCheckbox(2))));
+    const unreadable = detectCheckboxAskRegion(splitLines(parseAnsi(twoOptionCheckbox(null))));
+    expect(onFirst?.model.phase).toBe("checkbox");
+    expect(onSecond?.model.phase).toBe("checkbox");
+    expect(unreadable?.model.phase).toBe("checkbox");
+    if (onFirst?.model.phase !== "checkbox" || onSecond?.model.phase !== "checkbox") return;
+    if (unreadable?.model.phase !== "checkbox") return;
+    expect(onFirst.model.focusedN).toBe(1);
+    expect(onSecond.model.focusedN).toBe(2);
+    expect(unreadable.model.focusedN).toBeNull();
+    expect(onFirst.model.options.map((o) => o.label)).toEqual(["Oak", "Pine"]);
+  });
+
+  it("checkbox a–f rows lift as tab-space-enter with ordinals, not letter keys", () => {
+    const keys = "123456789ab".split("");
+    const spoof = [
+      "  ┃  Which animals?",
+      ...keys.map((k, i) => `  ┃  ${k} [ ] Animal${i}`),
+      "  ┃  z [ ] Type your answer here",
+      "  ┃  ↑/↓ navigate · y copy                                                                 Enter:submit",
+      "  Tab:next answer  │  Esc:scrollback",
+    ].join("\n");
+    const lines = splitLines(parseAnsi(spoof));
+    const region = detectCheckboxAskRegion(lines);
+    expect(region).not.toBeNull();
+    expect(region!.model.phase).toBe("checkbox");
+    if (region!.model.phase !== "checkbox") return;
+    expect(region!.model.recipe).toBe("tab-space-enter");
+    expect(region!.model.options.map((o) => o.n)).toEqual(keys.map((_, i) => i + 1));
+    expect(region!.model.options[9]).toMatchObject({ n: 10, label: "Animal9" });
+    expect(region!.model.options[10]).toMatchObject({ n: 11, label: "Animal10" });
+    expect(JSON.stringify(region!.model)).not.toMatch(/"keys"/);
+  });
+
+  it("checkbox refuses a gap from 2 to a, and the card still needs a dump", () => {
+    const spoof = [
+      "  ┃  Which animals?",
+      "  ┃  1 [ ] Ant",
+      "  ┃  2 [ ] Bee",
+      "  ┃  a [ ] Jay",
+      "  ┃  z [ ] Type your answer here",
+      "  ┃  ↑/↓ navigate · y copy                                                                 Enter:submit",
+      "  Tab:next answer  │  Esc:scrollback",
+    ].join("\n");
+    const lines = splitLines(parseAnsi(spoof));
+    expect(detectCheckboxAskRegion(lines)).toBeNull();
+    expect(checkboxAskPresent(lines)).toBe(true);
+    expect(grokAdapter.needsDump!(lines)).toBe(true);
+  });
+
   it("checkbox wizard [1/2] lifts as multi-select with stepper, Submit, never digits", () => {
     const lines = splitLines(
       parseAnsi(readFileSync(join(PANES_DIR, "grok--ask-multi-wizard-q1.txt"), "utf8")),
@@ -935,17 +1000,75 @@ describe("grokBuildBlocks", () => {
     expect(detectAskRegion(splitLines(parseAnsi(spoof)))).toBeNull();
   });
 
-  it("ask refuses a card that paints an a–f option row", () => {
-    const spoof = [
-      "  ┃  Which color?",
-      "  ┃  1 (○) Red    Warm",
-      "  ┃  2 (○) Green  Calm",
-      "  ┃  a (○) Extra  Unprobed letter option",
+  function radioCard(optionRows: string[]): string {
+    return [
+      "  ┃  Which animal?",
+      ...optionRows,
       "  ┃  z (○) Type your answer here",
       "  ┃  ↑/↓ navigate · y copy                                                                 Enter:submit",
       "  Tab:next answer  │  Esc:scrollback",
     ].join("\n");
+  }
+
+  it("ask refuses a radio card that skips from 2 to a", () => {
+    const spoof = radioCard([
+      "  ┃  1 (○) Red    Warm",
+      "  ┃  2 (○) Green  Calm",
+      "  ┃  a (○) Extra  Skipped 3",
+    ]);
     expect(detectAskRegion(splitLines(parseAnsi(spoof)))).toBeNull();
+  });
+
+  it("a consecutive 1–9 then a–c radio card lifts, and the letter is the key", () => {
+    const keys = "123456789abc".split("");
+    const spoof = radioCard(keys.map((k, i) => `  ┃  ${k} (○) Animal${i}  Kind`));
+    const ask = detectAskRegion(splitLines(parseAnsi(spoof)));
+    expect(ask).not.toBeNull();
+    expect(ask!.model.options.map((o) => o.keys)).toEqual(keys.map((k) => [k]));
+    expect(ask!.model.options[9]).toMatchObject({ label: "Animal9", keys: ["a"] });
+    expect(ask!.model.options[11]).toMatchObject({ label: "Animal11", keys: ["c"] });
+    expect(ask!.model.feedback).toEqual({ key: "z", focused: false, text: "", purpose: "free-text" });
+  });
+
+  it("an uppercase A on a consecutive card is sent as a", () => {
+    const keys = "123456789A".split("");
+    const spoof = radioCard(keys.map((k, i) => `  ┃  ${k} (○) Animal${i}  Kind`));
+    const ask = detectAskRegion(splitLines(parseAnsi(spoof)));
+    expect(ask).not.toBeNull();
+    expect(ask!.model.options[9]!.keys).toEqual(["a"]);
+  });
+
+  it("ask refuses a letter past f", () => {
+    const spoof = radioCard([
+      "  ┃  1 (○) Red    Warm",
+      "  ┃  g (○) Extra  Past f",
+    ]);
+    expect(detectAskRegion(splitLines(parseAnsi(spoof)))).toBeNull();
+  });
+
+  it("ask refuses a card whose options are only a and b", () => {
+    const spoof = radioCard([
+      "  ┃  a (○) Ant    Small",
+      "  ┃  b (○) Bee    Small",
+    ]);
+    expect(detectAskRegion(splitLines(parseAnsi(spoof)))).toBeNull();
+  });
+
+  it("a consecutive letter radio card with [1/2] lifts as a wizard and keeps the letter key", () => {
+    const keys = "123456789a".split("");
+    const rows = [
+      "  ┃  Which animal?",
+      ...keys.map((k, i) => `  ┃  ${k} (○) Animal${i}  Kind`),
+      "  ┃  z (○) Type your answer here",
+      "  ┃  [1/2] ↑/↓ navigate · ←/→ question · y copy                                                 Enter:select",
+      "  Tab:next answer  │  Esc:scrollback",
+    ].join("\n");
+    const wizard = detectAskWizardRegion(splitLines(parseAnsi(rows)));
+    expect(wizard).not.toBeNull();
+    expect(wizard!.model.phase).toBe("question");
+    if (wizard!.model.phase !== "question") return;
+    expect(wizard!.model.options[9]!.keys).toEqual(["a"]);
+    expect(wizard!.model.steps.map((s) => s.label)).toEqual(["1/2", "2/2"]);
   });
 
   it("an ordinary composer holding Build anything is still a draft", () => {
