@@ -1,14 +1,14 @@
 // The Grok Build adapter. Chrome/status/draft are Tier 1. Interactive kinds with dated captures
 // and notes: permission (`prompt-select` — cards are CLASSIFIED by row, not layout-pinned: the
 // bottom Yes/No pair becomes the buttons, persistent rows never do; see permission.ts),
-// ask_user_question radio cards (`prompt-select`, digit N submits; `z` is free-text — parsed to
-// lock buttons, not typed from the phone), and plan approval (`menu` of footer-named keys,
-// including the Tab-into-composer
+// ask_user_question radio cards (`prompt-select`; key `1`–`9` then `a`–`f` submits; `z` is
+// free-text and is typed from the phone when that key is `z`), and plan approval (`menu` of
+// footer-named keys, including the Tab-into-composer
 // footer). Checkbox asks, including `[n/m]` wizard steps (stepper chips, Left/Right nav, Enter
 // submits), lift as `multi-select` (`tab-space-enter`: Tab/Space toggle, Enter submit; a digit
-// still submits — never emit one). Esc-park still lifts; the first Tab re-enters. Multi-question
-// radio asks (`[n/m]`, m ≥ 2) lift as `wizard` (digit answers the current step; Left/Right change
-// step).
+// or an `a`–`f` letter still submits — never emit one). Esc-park still lifts; the first Tab
+// re-enters. Multi-question radio asks (`[n/m]`, m ≥ 2) lift as `wizard` (the option's own key
+// answers the current step; Left/Right change step).
 // The chrome probes sit on the REPLY path: registering any
 // adapter switches core off one-shot send, after which `extractInputDraft` is what the submit key
 // waits on and `composerReady` decides whether a byte is typed. Two Grok rewrites of that draft

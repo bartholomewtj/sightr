@@ -18,6 +18,7 @@ import { fetchPane, sendKeys, sendReply } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines, type PromptModel } from "@/lib/blocks";
 import { detectPromptSelect } from "@/lib/harness/claude/prompt-select";
+import { grokAdapter } from "@/lib/harness/grok";
 import { submitPromptFeedback, submitPromptOption } from "@/lib/actions";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
 import { PromptSelectBlock, type PromptBlockAction } from "./prompt-select-block";
@@ -483,6 +484,42 @@ describe("PromptSelectBlock — the feedback input row", () => {
     await user.type(screen.getByRole("textbox", { name: "Feedback text" }), "keep me");
     await user.click(screen.getByRole("button", { name: "Send feedback" }));
     expect(screen.getByRole("textbox", { name: "Feedback text" })).toHaveValue("keep me");
+  });
+
+  it("offers a custom-answer composer on a Grok card whose free-text key is z", async () => {
+    const blocks = grokAdapter.buildBlocks(splitLines(parseAnsi(fixtureText("grok--ask-color.txt"))));
+    const prompt = blocks.find((b) => b.kind === "prompt-select");
+    expect(prompt?.kind).toBe("prompt-select");
+    if (prompt?.kind !== "prompt-select") return;
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    render(<PromptSelectBlock prompt={prompt.prompt} onAction={onAction} />);
+    await user.click(screen.getByRole("button", { name: "Type your answer" }));
+    expect(screen.getByText(/question's custom answer/)).toBeInTheDocument();
+    await user.type(screen.getByRole("textbox", { name: "Feedback text" }), "papaya");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+    expect(onAction).toHaveBeenCalledWith({ kind: "feedback", text: "papaya" });
+  });
+
+  it("does not offer a composer for a free-text row whose key is a digit", () => {
+    render(
+      <PromptSelectBlock
+        prompt={{
+          question: "Which fruit?",
+          family: "select",
+          options: [
+            { label: "Apple", keys: ["1"] },
+            { label: "Banana", keys: ["2"] },
+          ],
+          feedback: { key: "3", focused: false, text: "", purpose: "free-text" },
+          signature: "sig",
+          coreSignature: "Which fruit?",
+        }}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Type your answer" })).toBeNull();
+    expect(screen.getByRole("button", { name: /Apple/ })).toBeEnabled();
   });
 
   it("says WE are sending, not that the terminal is, while our own sequence runs", async () => {

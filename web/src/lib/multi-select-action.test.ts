@@ -430,6 +430,46 @@ describe("grok tab-space-enter checkbox recipe", () => {
     expect(res).toEqual({ status: "sent" });
     expect(keysSent()).toEqual([["Tab", "Enter"]]);
   });
+
+  function twoOption(focus: 1 | 2): string {
+    const cell = (n: 1 | 2) => (focus === n ? "70;70;70" : "64;64;64");
+    const row = (text: string, bg: string) => `  │  \x1b[48;2;${bg}m${text}\x1b[0m`;
+    return [
+      "  │  Which tree?",
+      row("1 [ ] Oak", cell(1)),
+      row("2 [ ] Pine", cell(2)),
+      row("z [ ] Type your answer here", "64;64;64"),
+      "  │  ↑/↓ navigate · y copy                                                                 Enter:submit",
+      "  Tab:next answer  │  Esc:scrollback",
+    ].join("\n");
+  }
+
+  it("a two-option card focused on row 1 Spaces that row and Tabs to row 2", async () => {
+    const on1 = twoOption(1);
+    const on2 = twoOption(2);
+    const m = grokModel(on1);
+    expect(m.phase === "checkbox" && m.focusedN).toBe(1);
+    mockFetchPane.mockResolvedValue(paneWith(on1));
+    const first = await submitMultiSelectIntent({ ...grokBase, multi: m, intent: { kind: "toggle", n: 1 } });
+    expect(first).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Space"]]);
+
+    mockSendKeys.mockClear();
+    script(on1, on1, on2);
+    const second = await submitMultiSelectIntent({ ...grokBase, multi: m, intent: { kind: "toggle", n: 2 } });
+    expect(second).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Tab"], ["Space"]]);
+  });
+
+  it("a two-option card focused on row 2 Spaces that row, never the letter or digit", async () => {
+    const on2 = twoOption(2);
+    const m = grokModel(on2);
+    expect(m.phase === "checkbox" && m.focusedN).toBe(2);
+    mockFetchPane.mockResolvedValue(paneWith(on2));
+    const res = await submitMultiSelectIntent({ ...grokBase, multi: m, intent: { kind: "toggle", n: 2 } });
+    expect(res).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Space"]]);
+  });
 });
 
 // Live-probed 2026-09-27 on Cursor v2026.09.26 (harness/cursor/ASK_NOTES.md § Multi-select).

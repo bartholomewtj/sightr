@@ -122,9 +122,10 @@ export async function submitPromptOption(
 }
 
 /**
- * Deny the plan WITH feedback: entry guard → the input row's digit → poll until the field is
- * verifiably focused → type via the reply path (one paste; immune to the per-key focus race) → poll
- * until our own words are visibly in the box → Enter.
+ * Deny the plan WITH feedback, or send a Grok custom answer: entry guard → the input row's key
+ * (Claude's digit, or Grok's `z`) → poll until the field is verifiably focused → type via the reply
+ * path (one paste; immune to the per-key focus race) → poll until our own words are visibly in the
+ * box → Enter.
  *
  * Refused before anything is sent unless the box is EMPTY and unfocused. Two different hazards:
  *   - focused already — someone at the terminal is typing in it right now;
@@ -132,8 +133,8 @@ export async function submitPromptOption(
  *     PREPENDED to theirs and the Enter would submit the pair as one garbled sentence. Backspace at
  *     position 0 is a no-op, so there is no safe clear from here either. The phone waits instead.
  *
- * If focus never lands, nothing has been typed and nothing is submitted — the digit's pointer move is
- * the only side effect, and `Up` (from the keys pad, or the terminal) undoes it. If the text never
+ * If focus never lands, nothing has been typed and nothing is submitted — the focus key's pointer
+ * move is the only side effect, and `Up` (from the keys pad, or the terminal) undoes it. If the text never
  * lands, NO Enter is sent: the words sit unsubmitted in the box for a human to finish or discard,
  * which is the same bargain actions's `stalled` strikes.
  */
@@ -142,11 +143,11 @@ export async function submitPromptFeedback(
 ): Promise<PromptActionResult> {
   const row = args.prompt.feedback;
   if (!row || row.focused || row.text !== "") return { status: "changed" };
-  // Grok's `z` row is a custom answer, not Claude's deny-with-feedback input. The sequence
-  // below (digit → focus → type → Enter) was measured on Claude Code; running it on a
-  // free-text row would send the wrong key and the wrong Enter. The phone locks the option
-  // buttons while that row is focused and leaves typing to the terminal.
-  if (row.purpose === "free-text") {
+  // Pi and Cursor free-text rows are focused by a digit, and that digit is also an answer on
+  // those widgets, so the phone does not type them. Grok's custom answer is `z`. The sequence
+  // below already sends `row.key`, then checks the field is focused and empty, types, checks
+  // the text, and submits with Enter (while a free-text answer is being typed, Enter submits).
+  if (row.purpose === "free-text" && row.key !== "z") {
     return { status: "error", error: "This dialog's free-text row is not typed from the phone" };
   }
   const text = sanitizeTypedText(args.text, FEEDBACK_MAX_LENGTH);
