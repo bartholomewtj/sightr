@@ -7,6 +7,7 @@ a build where they disagree.
 ## [Unreleased]
 
 ### Fixed
+- A marked operator-decision card submits `whistlr reply` with `--thread`, `--text`, `--payload`, `--schema whistlr.decision_response.v1`, and `--json`. The reply is the broker's JSON answer, including its id. A non-JSON exit is a failure.
 - Grok question cards. A two-option checkbox checks the tapped row. Radio options past 9 answer with a–f when the list runs from 1 with no gaps. The phone types the free-text row when its key is z.
 
 ## [1.1.1] - 2026-09-28

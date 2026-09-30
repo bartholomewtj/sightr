@@ -238,7 +238,7 @@ Context (fill level; runs `/context` or `/session` and shows the terminal for th
 terminal switch, Switch pane, Space overview, Rename, Close pane (two taps) and Settings. Detected
 prompts become buttons. A blocked agent with no detected buttons gets **Yes** and **No** above the
 reply box, but only while the agent's own input box is on screen. A marked draftr operator-decision
-card answers through `whistlr reply --payload` and never types into the pane
+card answers through `whistlr reply --text --payload --json` and never types into the pane
 ([`docs/whistlr-31f-sightr.md`](docs/whistlr-31f-sightr.md)).
 
 **Replies.** Type and Send. For Claude, Cursor, Grok and Antigravity, leftover text on the agent's

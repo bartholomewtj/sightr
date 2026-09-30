@@ -6,7 +6,7 @@ One sdlc run. Do not start a second pipeline. Do not start Jev. Do not implement
 
 draftr 31F can echo parser-shaped claude/grok/pi cards into the invoking pane. Sightr already lifts harness ask-cards from the pane log and sends keys back to the pane. That key path does **not** post `whistlr reply`. Echo is not a live harness dialog, so keys would type into the invoking agent. Nothing maps the operator's pick to `whistlr.decision_response.v1`.
 
-This slice is the missing bridge: when the lifted card is a draftr operator decision, the phone pick submits `whistlr reply --payload` and does **not** send keys.
+This slice is the missing bridge: when the lifted card is a draftr operator decision, the phone pick submits `whistlr reply --text --payload --json` and does **not** send keys.
 
 ## Marker contract (draftr will emit; parse it here)
 
@@ -48,7 +48,7 @@ qid / answer mapping for `whistlr.decision_response.v1`:
 On operator pick of a marked card: spawn
 
 ```
-whistlr reply --thread <id> --payload <json> --schema whistlr.decision_response.v1
+whistlr reply --thread <id> --text <label> --payload <json> --schema whistlr.decision_response.v1 --json
 ```
 
 (31C already shipped this.) Do **not** `sendKeys` / `sendGuardedKeys` for marked cards.
@@ -67,7 +67,7 @@ Builder writes for this run are `web/src/`, `bridge/`, `shared/`, `docs/`, `CHAN
 
 - `bridge/decision-marker.ts` — pure parse of the marker line / lifted region → `{ thread, run }` or refuse. No I/O.
 - `bridge/decision-payload.ts` — pure `{ answers: { q1: <option id or text> } }` builder. No I/O.
-- `bridge/decision-reply.ts` — spawn `whistlr` with injectable runner (default `Bun.spawn`). Argv exactly `--thread`, `--payload` (JSON string), `--schema whistlr.decision_response.v1`. Never calls pane key APIs.
+- `bridge/decision-reply.ts` — spawn `whistlr` with injectable runner (default `Bun.spawn`). Argv exactly `--thread`, `--text`, `--payload` (JSON string), `--schema whistlr.decision_response.v1`, `--json`. Never calls pane key APIs.
 - `bridge/decision-reply.test.ts` — the five required tests (mock spawn; no live pane, live sightr, or live whistlr broker).
 - `bridge/decision-reply-routes.ts` (or a tightly scoped addition in `bridge/pane-write-routes.ts`) — write-gated POST that accepts the lifted region + selected option (or pre-parsed thread + answer), parses, spawns, returns `{ ok: true }` / error. Must not call `herdr.sendPaneKeys` / `sendReplySteps`.
 - `bridge/server.ts` — register the route next to existing pane write actions; same write `guard` as `/keys`. Extend `PANE_ROUTE` (or add a sibling) rather than a new MCP surface.
@@ -99,7 +99,7 @@ Bridge tests may import the web detectors only if that stays cheap; otherwise ke
 
 ## Behaviour
 
-1. Phone tap on a marked prompt-select option → bridge spawns `whistlr reply` with `--thread`, `--payload`, `--schema whistlr.decision_response.v1`.
+1. Phone tap on a marked prompt-select option → bridge spawns `whistlr reply` with `--thread`, `--text`, `--payload`, `--schema whistlr.decision_response.v1`, `--json`.
 2. That tap does not call `sendGuardedKeys` / `sendKeys` / `sendBoundKeys` / `herdr.sendPaneKeys`.
 3. Unmarked prompt-select (and every other existing dialog) still sends keys only; no whistlr spawn.
 4. Marker parse refuse (truncated / missing thread) → no spawn, no keys; surface the existing `{ status: "changed" | "error" }` style failure so the UI refreshes instead of typing.
@@ -109,7 +109,7 @@ Bridge tests may import the web detectors only if that stays cheap; otherwise ke
 
 `bun test` (repo root) green. Cover:
 
-1. Marked grok-shaped card → pick option → `whistlr reply` argv has `--thread`, `--payload`, `--schema whistlr.decision_response.v1`; no key send.
+1. Marked grok-shaped card → pick option → `whistlr reply` argv has `--thread`, `--text`, `--payload`, `--schema whistlr.decision_response.v1`, `--json`; no key send.
 2. Marked claude-shaped card → same.
 3. Unmarked prompt-select → keys only; no whistlr spawn.
 4. Marker parse refuses a truncated / missing thread id (no spawn).
@@ -121,7 +121,7 @@ Also keep `bun run typecheck` green (it is part of `bun run test`).
 
 ## Done means
 
-- Marked card pick posts `whistlr reply --payload` and does not type into the pane.
+- Marked card pick posts `whistlr reply --text --payload --json` and does not type into the pane.
 - Unmarked harness cards unchanged.
 - Root `bun run test` green.
 - draftr 31F remains a later slice (add the marker + production map there). Do not start it from this run.
@@ -141,13 +141,13 @@ Also keep `bun run typecheck` green (it is part of `bun run test`).
 ## What shipped
 
 ### Overview
-This change bridges draftr operator decisions to whistlr replies without sending keystrokes into the pane. When a terminal card contains the marker `whistlr.decision thread=<uuid> run=<8hex>`, selecting an option in Sightr formats and submits `whistlr reply --thread <uuid> --payload <json> --schema whistlr.decision_response.v1` and skips keystroke injection. Unmarked harness dialogs continue using existing key-sending paths.
+This change bridges draftr operator decisions to whistlr replies without sending keystrokes into the pane. When a terminal card contains the marker `whistlr.decision thread=<uuid> run=<8hex>`, selecting an option in Sightr formats and submits `whistlr reply --thread <uuid> --text <label> --payload <json> --schema whistlr.decision_response.v1 --json` and skips keystroke injection. Unmarked harness dialogs continue using existing key-sending paths.
 
 ### Where it lives
 - `shared/decision-marker.ts`: Marker parser (`parseDecisionMarkerLine`, `parseDecisionMarker`) extracting `thread` (UUID) and `run` (8-char hex) or refusing malformed/truncated IDs.
 - `bridge/decision-marker.ts`: Re-exports marker parsing utilities for bridge server code.
 - `bridge/decision-payload.ts`: Builds decision payload (`buildDecisionPayload`) conforming to `whistlr.decision_response.v1` (`{ answers: { [qid]: <id|label> }, notes? }`).
-- `bridge/decision-reply.ts`: CLI invocation helper (`submitDecisionReply`) executing `whistlr reply --thread <id> --payload <json> --schema whistlr.decision_response.v1` with pluggable process runner.
+- `bridge/decision-reply.ts`: CLI invocation helper (`submitDecisionReply`) executing `whistlr reply --thread <id> --text <label> --payload <json> --schema whistlr.decision_response.v1 --json` with pluggable process runner.
 - `bridge/decision-reply-routes.ts`: HTTP route handler (`decisionReplyPane`) handling `POST /api/pane/:paneId/decision-reply`, acquiring pane queue lock, scanning marker metadata, and invoking whistlr without dispatching pane keys.
 - `bridge/server.ts`: Extends `PANE_ROUTE` regex to match `/decision-reply` and wires `decisionReplyPane`.
 - `shared/wire.ts` & `web/src/lib/types.ts`: Protocol definitions for `DecisionOption` and `DecisionReplyRequest`.
@@ -168,7 +168,7 @@ Run the automated test suite from the repository root:
 bun test
 ```
 This runs `bun run typecheck` and `bun test ./bridge ./scripts`, validating:
-1. Marked Grok and Claude cards execute `whistlr reply` with `--thread`, `--payload`, and `--schema whistlr.decision_response.v1` without sending keys.
+1. Marked Grok and Claude cards execute `whistlr reply` with `--thread`, `--text`, `--payload`, `--schema whistlr.decision_response.v1`, and `--json` without sending keys.
 2. Unmarked prompt selections send keys only without spawning whistlr.
 3. Marker parsing refuses missing or truncated thread UUIDs without spawning or typing.
 4. Option selection maps correctly to `{ answers: { q1: "<keyLabel|digit|label>" } }`.
