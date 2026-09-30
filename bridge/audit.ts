@@ -42,6 +42,7 @@ export type AuditContent = "preview" | "none";
  */
 const METADATA_KEYS: ReadonlySet<string> = new Set([
   "checked",
+  "id",
   "keys",
   "passed",
   "reason",

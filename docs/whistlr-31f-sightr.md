@@ -48,7 +48,7 @@ qid / answer mapping for `whistlr.decision_response.v1`:
 On operator pick of a marked card: spawn
 
 ```
-whistlr reply --thread <id> --payload <json> --schema whistlr.decision_response.v1
+whistlr reply --thread <id> --text <label> --payload <json> --schema whistlr.decision_response.v1 --json
 ```
 
 (31C already shipped this.) Do **not** `sendKeys` / `sendGuardedKeys` for marked cards.
@@ -147,7 +147,7 @@ This change bridges draftr operator decisions to whistlr replies without sending
 - `shared/decision-marker.ts`: Marker parser (`parseDecisionMarkerLine`, `parseDecisionMarker`) extracting `thread` (UUID) and `run` (8-char hex) or refusing malformed/truncated IDs.
 - `bridge/decision-marker.ts`: Re-exports marker parsing utilities for bridge server code.
 - `bridge/decision-payload.ts`: Builds decision payload (`buildDecisionPayload`) conforming to `whistlr.decision_response.v1` (`{ answers: { [qid]: <id|label> }, notes? }`).
-- `bridge/decision-reply.ts`: CLI invocation helper (`submitDecisionReply`) executing `whistlr reply --thread <id> --payload <json> --schema whistlr.decision_response.v1` with pluggable process runner.
+- `bridge/decision-reply.ts`: CLI invocation helper (`submitDecisionReply`) executing `whistlr reply --thread <id> --text <label> --payload <json> --schema whistlr.decision_response.v1 --json` with pluggable process runner.
 - `bridge/decision-reply-routes.ts`: HTTP route handler (`decisionReplyPane`) handling `POST /api/pane/:paneId/decision-reply`, acquiring pane queue lock, scanning marker metadata, and invoking whistlr without dispatching pane keys.
 - `bridge/server.ts`: Extends `PANE_ROUTE` regex to match `/decision-reply` and wires `decisionReplyPane`.
 - `shared/wire.ts` & `web/src/lib/types.ts`: Protocol definitions for `DecisionOption` and `DecisionReplyRequest`.

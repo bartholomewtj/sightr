@@ -75,7 +75,7 @@ describe("Operator-decision answer bridge (whistlr-31f)", () => {
     const spawnCalls: string[][] = [];
     const mockRunner: SpawnRunner = async (cmd: string[]) => {
       spawnCalls.push(cmd);
-      return { exitCode: 0, stdout: "ok", stderr: "" };
+      return { exitCode: 0, stdout: JSON.stringify({ ok: true, id: "m1" }), stderr: "" };
     };
 
     const fakeHerdr = new FakeHerdrClient();
@@ -118,6 +118,11 @@ describe("Operator-decision answer bridge (whistlr-31f)", () => {
     expect(schemaIdx).toBeGreaterThan(-1);
     expect(cmd[schemaIdx + 1]).toBe("whistlr.decision_response.v1");
 
+    const textIdx = cmd.indexOf("--text");
+    expect(textIdx).toBeGreaterThan(-1);
+    expect(cmd[textIdx + 1]).toBe("Red");
+    expect(cmd).toContain("--json");
+
     // No key send
     expect(fakeHerdr.keys).toHaveLength(0);
     expect(fakeHerdr.texts).toHaveLength(0);
@@ -139,7 +144,7 @@ describe("Operator-decision answer bridge (whistlr-31f)", () => {
     const spawnCalls: string[][] = [];
     const mockRunner: SpawnRunner = async (cmd: string[]) => {
       spawnCalls.push(cmd);
-      return { exitCode: 0, stdout: "ok", stderr: "" };
+      return { exitCode: 0, stdout: JSON.stringify({ ok: true, id: "m2" }), stderr: "" };
     };
 
     const fakeHerdr = new FakeHerdrClient();
@@ -206,7 +211,7 @@ describe("Operator-decision answer bridge (whistlr-31f)", () => {
     const spawnCalls: string[][] = [];
     const mockRunner: SpawnRunner = async (cmd: string[]) => {
       spawnCalls.push(cmd);
-      return { exitCode: 0, stdout: "ok", stderr: "" };
+      return { exitCode: 0, stdout: JSON.stringify({ ok: true, id: "m3" }), stderr: "" };
     };
 
     const fakeHerdr = new FakeHerdrClient();
@@ -442,27 +447,49 @@ describe("Operator-decision answer bridge (whistlr-31f)", () => {
     const invocations: string[][] = [];
     const runner: SpawnRunner = async (cmd: string[]) => {
       invocations.push(cmd);
-      return { exitCode: 0, stdout: "done" };
+      return { exitCode: 0, stdout: JSON.stringify({ ok: true, id: "m1" }) };
     };
 
     const res = await submitDecisionReply({
       thread: "11111111-2222-3333-4444-555555555555",
+      text: "Red",
       payload: { answers: { q1: "test" } },
       runner,
     });
 
-    expect(res.ok).toBe(true);
+    expect(res).toEqual({ ok: true, id: "m1", reply: { ok: true, id: "m1" } });
     expect(invocations).toHaveLength(1);
     expect(invocations[0]).toEqual([
       "whistlr",
       "reply",
       "--thread",
       "11111111-2222-3333-4444-555555555555",
+      "--text",
+      "Red",
       "--payload",
       '{"answers":{"q1":"test"}}',
       "--schema",
       "whistlr.decision_response.v1",
+      "--json",
     ]);
+  });
+
+  test("submitDecisionReply carries a fake broker reply and refuses a non-JSON exit", async () => {
+    const ok = await submitDecisionReply({
+      thread: "11111111-2222-3333-4444-555555555555",
+      text: "Green",
+      payload: { answers: { q1: "2" } },
+      runner: async () => ({ exitCode: 0, stdout: '{"ok":true,"id":"m9"}' }),
+    });
+    expect(ok).toEqual({ ok: true, id: "m9", reply: { ok: true, id: "m9" } });
+
+    const bad = await submitDecisionReply({
+      thread: "11111111-2222-3333-4444-555555555555",
+      text: "Green",
+      payload: { answers: { q1: "2" } },
+      runner: async () => ({ exitCode: 0, stdout: "done" }),
+    });
+    expect(bad).toEqual({ ok: false, error: "whistlr reply was not JSON" });
   });
 
   // Additional parse edge cases per contract

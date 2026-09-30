@@ -6,7 +6,7 @@ import { json, requireJsonBody, text } from "./responses.ts";
 import type { ActionResponse, DecisionReplyRequest } from "../shared/wire.ts";
 import { parseDecisionMarker, parseDecisionMarkerLine } from "./decision-marker.ts";
 import { buildDecisionPayload } from "./decision-payload.ts";
-import { submitDecisionReply, type SpawnRunner } from "./decision-reply.ts";
+import { submitDecisionReply, type DecisionReplyResult, type SpawnRunner } from "./decision-reply.ts";
 
 export async function decisionReplyPane(
   _herdr: HerdrClient,
@@ -34,7 +34,7 @@ export async function decisionReplyPane(
   const ae = req.headers.get("accept-encoding");
   const key = paneKey(paneId);
 
-  let queued: { ok: true } | { ok: false; error: string };
+  let queued: DecisionReplyResult;
   try {
     queued = await queue.run(key, async () => {
       let thread: string | undefined;
@@ -72,6 +72,7 @@ export async function decisionReplyPane(
 
       return submitDecisionReply({
         thread,
+        text: body.option.label,
         payload,
         runner,
       });
@@ -90,6 +91,7 @@ export async function decisionReplyPane(
       detail: {
         option: body.option.label,
         ok: true,
+        id: queued.id,
       },
     });
     return json({ ok: true } satisfies ActionResponse, ae);
