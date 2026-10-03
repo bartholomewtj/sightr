@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { Config } from "./config.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { JournalAdapter, TranscriptEntry, TranscriptSource } from "./journal/types.ts";
-import { snapshotRoute, type SnapshotDeps } from "./snapshot-route.ts";
+import { sharedSnapshot, snapshotRoute, type SnapshotDeps } from "./snapshot-route.ts";
 import type { AgentView } from "./state-engine.ts";
 import type { SnapshotResponse } from "./snapshot-route.ts";
 
@@ -194,5 +194,22 @@ describe("snapshotRoute — runningCommand stays off the poll", () => {
     await store.flushRunningCommandRefresh(adapter, REF);
     expect(calls.load).toBe(1);
     expect(store.peekRunningCommand(adapter, REF)).toBe(true);
+  });
+});
+
+describe("sharedSnapshot — the SSE broadcast body", () => {
+  // Regression: the broadcast used to run snapshotRoute's access gate on a synthetic request with
+  // no identity header, so with SIGHTR_TRUSTED_USER set every push was the text "identity required".
+  test("is JSON even when a trusted user is required", async () => {
+    const deps = { ...depsFor([workingClaude], null, null), cfg: { ...cfg(), trustedUser: "me@example.com" } } as SnapshotDeps;
+    const body = await sharedSnapshot(deps);
+    const parsed = JSON.parse(body) as SnapshotResponse;
+    expect(parsed.bridge).toBe("connected");
+    expect(parsed.agents.map((a) => a.paneId)).toEqual(["w1:p1"]);
+  });
+
+  test("the route itself still refuses a request without the identity", async () => {
+    const deps = { ...depsFor([workingClaude], null, null), cfg: { ...cfg(), trustedUser: "me@example.com" } } as SnapshotDeps;
+    expect((await snapshotRoute(snapshotReq(), deps)).status).toBe(403);
   });
 });
