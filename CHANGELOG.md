@@ -6,6 +6,8 @@ a build where they disagree.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-03
+
 ### Added
 - Connection telemetry. The phone records request outcomes and latency, amber/red stretches, wake-to-live time and snapshot-stream lifetimes, and posts them to `POST /api/conn`. The bridge adds stream attach/detach, Herdr link drops and restarts. Everything goes to `<state-dir>/conn.log`, which holds timings only. `sightr-ctl conn [--since 7d] [--json]` analyses the log and lists findings with the setting to change. `SIGHTR_CONN_LOG=0` turns it off.
 
