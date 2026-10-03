@@ -60,7 +60,7 @@ function cfg(): Config {
     beacons: false,
     workRoot: "",
     audit: false,
-    auditContent: "preview",
+    auditContent: "preview", connLog: false,
   };
 }
 

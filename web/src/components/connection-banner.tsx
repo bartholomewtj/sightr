@@ -18,6 +18,8 @@ import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useOnline } from "@/hooks/use-online";
 import { isConnecting } from "@/lib/connection";
+import { effectiveAnchor } from "@/lib/connection-health";
+import { noteTrouble } from "@/lib/conn-telemetry";
 import * as api from "@/lib/api";
 import { clockTime } from "@/lib/format";
 import type { BridgeStatus } from "@/lib/types";
@@ -138,6 +140,8 @@ function ConnectionStateBanner({
   const connecting = isConnecting({ bridge, error, stalled });
   const trouble = useConnectionTrouble(connecting);
   const lost = useConnectionLost(connecting);
+  // Connection telemetry: one `gap` per amber/red stretch the operator actually saw.
+  useEffect(() => { noteTrouble(trouble, lost, effectiveAnchor()); }, [trouble, lost]);
 
   // What the live signals want on screen right now — red wins over amber; null = healthy (or a blip
   // that never reached trouble). Green is NOT derived here: it's a timed confirmation the state machine

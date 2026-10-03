@@ -227,6 +227,8 @@ export interface Config {
   audit: boolean;
   /** How much of a value's content the trail keeps: "preview" (default) or "none". */
   auditContent: AuditContent;
+  /** Whether connection telemetry is written to `<stateDir>/conn.log` (SIGHTR_CONN_LOG=0 turns it off). */
+  connLog: boolean;
   /**
    * Whether the bridge reads the identity files Claude's own hooks write (`<stateDir>/beacons`).
    *
@@ -352,6 +354,7 @@ export function loadConfig(): Config {
     skipServe: envBool("SIGHTR_SKIP_SERVE", false),
     audit: envBool("SIGHTR_AUDIT", true),
     auditContent: parseAuditContent(process.env.SIGHTR_AUDIT_CONTENT),
+    connLog: envBool("SIGHTR_CONN_LOG", true),
     beacons: envBool("SIGHTR_BEACONS", true),
   };
 }

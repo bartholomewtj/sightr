@@ -3,6 +3,7 @@ import { useRevalidator } from "react-router";
 
 import { applySnapshot, setSnapshotPushMode } from "@/lib/loaders";
 import { openSnapshotStream } from "@/lib/api";
+import { noteConn } from "@/lib/conn-telemetry";
 import type { HomeData } from "@/lib/loaders";
 
 // Adaptive polling, the React Router way: a timer that calls `revalidator.revalidate()`, which
@@ -63,16 +64,24 @@ export function usePolling(data: HomeData | undefined, paneId?: string | null): 
     let delay = 1000;
     const open = () => {
       if (stopped || document.hidden || typeof EventSource !== "function") return;
+      // Connection telemetry: how long the stream took to open, and how long it lived before an error.
+      const dialedAt = Date.now();
+      let openedAt: number | null = null;
       source = openSnapshotStream((snapshot) => {
         applySnapshot(snapshot);
         if (ref.current.state === "idle") ref.current.revalidate();
       }, () => {
+        noteConn({ kind: "sse.drop", upMs: openedAt === null ? 0 : Date.now() - openedAt, opened: openedAt !== null });
         setSnapshotPushMode(false);
         setPushConnected(false);
         source?.close(); source = undefined;
         if (!stopped) { retry.current = window.setTimeout(open, delay); delay = Math.min(delay * 2, 30_000); }
       });
-      source.addEventListener("open", () => { delay = 1000; setSnapshotPushMode(true); setPushConnected(true); });
+      source.addEventListener("open", () => {
+        openedAt = Date.now();
+        noteConn({ kind: "sse.open", connectMs: openedAt - dialedAt });
+        delay = 1000; setSnapshotPushMode(true); setPushConnected(true);
+      });
     };
     const visibility = () => {
       source?.close(); source = undefined; setSnapshotPushMode(false); setPushConnected(false);

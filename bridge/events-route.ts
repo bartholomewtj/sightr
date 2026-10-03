@@ -1,4 +1,5 @@
 import { guard } from "./access.ts";
+import { SILENT_CONN, type ConnLog } from "./conn-log.ts";
 import type { SnapshotDeps } from "./snapshot-route.ts";
 import { snapshotRoute } from "./snapshot-route.ts";
 import { buildId } from "./static-assets.ts";
@@ -84,6 +85,8 @@ export function eventsRoute(
   req: Request,
   deps: SnapshotDeps,
   events: SnapshotEvents,
+  conn: ConnLog = SILENT_CONN,
+  now: () => number = Date.now,
 ): Response {
   const denied = guard(req, deps.cfg, "read");
   if (denied) return denied;
@@ -100,7 +103,19 @@ export function eventsRoute(
         const response = await snapshotRoute(new Request(req, { headers }), deps);
         return response.text();
       };
-      detach = events.attach({ send, close: () => { try { controller.close(); } catch {} }, ...(needsPerClientRender(deps.cfg) ? { render } : {}) }, urlClient(req));
+      // The bridge's half of the connection trail: how long each stream lived and how it ended. A
+      // stream that dies at the same age again and again is an intermediary's idle cut, not a phone.
+      const sid = urlClient(req);
+      const openedAt = now();
+      let ended = false;
+      const end = (why: "cancel" | "replaced") => {
+        if (ended) return;
+        ended = true;
+        conn.bridge({ kind: "sse.detach", sid, upMs: now() - openedAt, why });
+      };
+      conn.bridge({ kind: "sse.attach", sid });
+      const attached = events.attach({ send, close: () => { end("replaced"); try { controller.close(); } catch {} }, ...(needsPerClientRender(deps.cfg) ? { render } : {}) }, sid);
+      detach = () => { end("cancel"); attached(); };
       void (async () => {
         const headers = new Headers();
         req.headers.forEach((value, name) => { if (name !== "accept-encoding") headers.set(name, value); });

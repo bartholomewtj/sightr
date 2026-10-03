@@ -57,7 +57,7 @@ function testCfg(overrides: Partial<Config> = {}): Config {
     skipServe: false,
     workRoot: "",
     audit: true,
-    auditContent: "preview", beacons: false,
+    auditContent: "preview", connLog: false, beacons: false,
     ...overrides,
   };
 }

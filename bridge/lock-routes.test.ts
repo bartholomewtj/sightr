@@ -47,7 +47,7 @@ const cfg = {
   beacons: false,
   workRoot: "",
   audit: false,
-  auditContent: "preview",
+  auditContent: "preview", connLog: false,
 } as Config;
 const roCfg = { ...cfg, deviceHeader: "x-device" } as Config;
 
