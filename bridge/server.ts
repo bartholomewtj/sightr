@@ -33,7 +33,7 @@ import { replyPane, keysPane, closePane, renamePane, uploadPane } from "./pane-w
 import { decisionReplyPane } from "./decision-reply-routes.ts";
 import { renameTab, renameWorkspace, closeTab, closeWorkspace, createTab, createWorkspace, removeWorktree, openWorktree } from "./tree-routes.ts";
 import { createWorktreeIndex } from "./worktrees.ts";
-import { snapshotRoute, bridgeConfigRoute } from "./snapshot-route.ts";
+import { snapshotRoute, sharedSnapshot, bridgeConfigRoute } from "./snapshot-route.ts";
 import { createSnapshotEvents, eventsRoute, type SnapshotEvents } from "./events-route.ts";
 import { subscribeRoute, notifyPrefsRoute } from "./notify-routes.ts";
 import { createPaneQueue } from "./pane-queue.ts";
@@ -65,10 +65,7 @@ export function startServer(opts: {
   const conn = opts.conn ?? SILENT_CONN;
   const snapshotDeps = () => ({ cfg, engine, activity, workdir, worktrees, journals, transcripts, offerHistory });
   let events!: SnapshotEvents;
-  events = createSnapshotEvents(async () => {
-    const request = new Request("http://localhost/api/snapshot", { headers: { host: "localhost" } });
-    return (await snapshotRoute(request, snapshotDeps())).text();
-  });
+  events = createSnapshotEvents(() => sharedSnapshot(snapshotDeps()));
   opts.onEvents?.(events);
   const challenges = createChallenges();
   // One per-pane write queue for the whole process: two panes never wait on each other.

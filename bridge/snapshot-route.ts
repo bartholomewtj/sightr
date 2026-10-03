@@ -47,6 +47,23 @@ export function stampRunningCommand(
 export async function snapshotRoute(req: Request, deps: SnapshotDeps): Promise<Response> {
   const gate = checkAccess(req, deps.cfg);
   if (!gate.ok) return text(gate.reason, 403);
+  return renderSnapshot(req, deps);
+}
+
+/**
+ * The snapshot the SSE fan-out sends to every stream at once. Each stream passed the access gate
+ * when it attached (eventsRoute), so this renders without asking again. Running the gate here
+ * judged a synthetic request that carries no identity header, so with SIGHTR_TRUSTED_USER set
+ * every broadcast was the text "identity required" instead of JSON. The phone could not parse it,
+ * dropped the stream and reconnected every ~1.4 s, never receiving a push (found via conn.log).
+ * Per-device deployments render per client through snapshotRoute instead (needsPerClientRender).
+ */
+export async function sharedSnapshot(deps: SnapshotDeps): Promise<string> {
+  const request = new Request("http://localhost/api/snapshot", { headers: { host: "localhost" } });
+  return (await renderSnapshot(request, deps)).text();
+}
+
+async function renderSnapshot(req: Request, deps: SnapshotDeps): Promise<Response> {
   const { agents, shellPanes, workspaces, tabs, bridge } = deps.engine.current();
   const device = deviceAuth(req, deps.cfg);
   // Attach each pane's deps.activity timestamps. Done here rather than in the state engine so the
