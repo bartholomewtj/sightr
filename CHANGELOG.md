@@ -6,8 +6,10 @@ a build where they disagree.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-03
+
 ### Fixed
-- Live updates over the snapshot stream work with `SIGHTR_TRUSTED_USER` set. Every broadcast snapshot was the text "identity required", so the phone dropped the stream, reconnected about every 1.4 s and never received a push. Found by the new connection telemetry.
+- Live updates over the snapshot stream work with `SIGHTR_TRUSTED_USER` set. Every broadcast snapshot was the text "identity required", so the phone dropped the stream, reconnected about every 1.4 s and never received a push. Found by the new connection telemetry (#65).
 
 ## [1.2.0] - 2026-10-03
 
