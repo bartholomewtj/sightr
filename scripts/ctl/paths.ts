@@ -16,3 +16,12 @@ export async function resolvePaths(env: Record<string, string | undefined> = pro
   if (!config) config = path.join(env.APPDATA ?? path.join(home, "AppData", "Roaming"), "herdr/plugins/config/herdr.sightr");
   return { pluginRoot, configDir: config, envFile: path.join(config, ".env"), webDist: path.join(pluginRoot, "web/dist"), buildInfo: path.join(pluginRoot, "web/dist/build-info.json") };
 }
+
+/**
+ * The state directory exec-bridge hands the bridge when Herdr injected none (the Task Scheduler
+ * launch). A verb that reads the bridge's state must default the same way, or it reads a directory
+ * the running bridge never wrote.
+ */
+export function defaultPluginStateDir(env: Record<string, string | undefined>, home: string = os.homedir()): string {
+  return path.join(env.LOCALAPPDATA ?? path.join(home, "AppData", "Local"), "herdr", "plugins", "herdr.sightr");
+}

@@ -4,6 +4,7 @@
 import { trackBusy } from "./busy";
 import { noteLockRequired } from "./lock";
 import { markLive } from "./connection-health";
+import { fetchClassOf, SESSION_ID, timedFetch } from "./conn-telemetry";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { SEEN_HEADER } from "@shared/limits";
 import { EVENTS_PATH } from "./sw-routes";
@@ -191,7 +192,7 @@ async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>):
   // GET reads get the short leash; anything mutating gets the longer mutation budget.
   const method = init?.method?.toUpperCase() ?? "GET";
   const timeoutMs = method === "GET" ? GET_TIMEOUT_MS : MUTATION_TIMEOUT_MS;
-  const res = await fetch(path, {
+  const res = await timedFetch(fetchClassOf(path, method), () => fetch(path, {
     ...init,
     signal: withTimeout(init?.signal, timeoutMs),
     headers: {
@@ -199,7 +200,7 @@ async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>):
       [XHR_HEADER]: XHR_HEADER_VALUE,
       ...init?.headers,
     },
-  });
+  }));
   captureBuild(res);
   if (!res.ok) {
     const detail = await errorDetail(res);
@@ -241,15 +242,11 @@ export function openFileUrl(path: string): string {
   return `/api/files/open/${path.split("/").filter(Boolean).map(encodeURIComponent).join("/")}`;
 }
 
-const EVENT_CLIENT_ID = typeof crypto !== "undefined" && "randomUUID" in crypto
-  ? crypto.randomUUID()
-  : `${Date.now()}-${Math.random()}`;
-
 export function openSnapshotStream(
   onSnapshot: (snapshot: SnapshotResponse) => void,
   onError: () => void,
 ): EventSource {
-  const query = new URLSearchParams({ client: EVENT_CLIENT_ID });
+  const query = new URLSearchParams({ client: SESSION_ID });
   const path = `${EVENTS_PATH}?${query}`;
   const source = new EventSource(path);
   source.addEventListener("snapshot", (event) => {
@@ -316,7 +313,7 @@ export async function fetchPane(
   };
   if (cached) headers["if-none-match"] = cached.etag;
 
-  const res = await fetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
+  const res = await timedFetch("pane", () => fetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers }));
   captureBuild(res); // pane polls carry the build header too (incl. 304s) — keep the store fresh
 
   if (res.status === 304 && cached) {
@@ -381,7 +378,7 @@ export async function fetchHistory(
   };
   if (cached) headers["if-none-match"] = cached.etag;
 
-  const res = await fetch(path, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers });
+  const res = await timedFetch("history", () => fetch(path, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers }));
   captureBuild(res);
   if (res.status === 304 && cached) return { ...cached.response, notModified: true };
   if (!res.ok) {

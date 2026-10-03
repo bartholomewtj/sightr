@@ -37,6 +37,9 @@ import { snapshotRoute, bridgeConfigRoute } from "./snapshot-route.ts";
 import { createSnapshotEvents, eventsRoute, type SnapshotEvents } from "./events-route.ts";
 import { subscribeRoute, notifyPrefsRoute } from "./notify-routes.ts";
 import { createPaneQueue } from "./pane-queue.ts";
+import { SILENT_CONN, type ConnLog } from "./conn-log.ts";
+import { connRoute } from "./conn-route.ts";
+import { CONN_PATH } from "../shared/conn.ts";
 
 const MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024;
 const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|decision-reply))?$/;
@@ -55,9 +58,11 @@ export function startServer(opts: {
   activity: ActivityLedger;
   lock: LockStore;
   audit: AuditLog;
+  conn?: ConnLog;
   onEvents?: (events: SnapshotEvents) => void;
 }) {
   const { cfg, herdr, engine, notifications, push, notifyPrefs, settings, activity, lock, audit } = opts;
+  const conn = opts.conn ?? SILENT_CONN;
   const snapshotDeps = () => ({ cfg, engine, activity, workdir, worktrees, journals, transcripts, offerHistory });
   let events!: SnapshotEvents;
   events = createSnapshotEvents(async () => {
@@ -136,7 +141,8 @@ export function startServer(opts: {
       if (workdir.owns(pathname)) return workdir.handle(req, url);
 
       if (pathname === "/api/snapshot") return snapshotRoute(req, snapshotDeps());
-      if (pathname === "/api/events" && req.method === "GET") return eventsRoute(req, snapshotDeps(), events);
+      if (pathname === "/api/events" && req.method === "GET") return eventsRoute(req, snapshotDeps(), events, conn);
+      if (pathname === CONN_PATH) return connRoute(req, cfg, conn);
 
       // ── Structural creates: new tab / new space (each opens a fresh shell pane) ──
       if (pathname === "/api/tab" && req.method === "POST") {

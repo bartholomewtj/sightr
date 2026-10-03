@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { noteConn, noteLive } from "./conn-telemetry";
+
 // The ONE connection-health clock, shared by every consumer (the header pill, the outage banner, the
 // in-pane header, the boot splash). Module-scoped store in the lib/busy.ts + lib/server-build.ts
 // idiom — plain module state + a subscribe + a useSyncExternalStore hook — so escalation is derived
@@ -70,6 +72,7 @@ function emit() {
  */
 export function markLive(): void {
   lastLiveAt = Date.now();
+  noteLive(lastLiveAt);
   lostLatched = false;
   emit();
 }
@@ -95,6 +98,7 @@ export function markWake(): void {
 export function latchLost(): void {
   if (lostLatched) return;
   lostLatched = true;
+  noteConn({ kind: "lost" });
   emit();
 }
 

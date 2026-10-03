@@ -2,7 +2,7 @@ import path from "node:path";
 import os from "node:os";
 import { appendFile, mkdir, rename, writeFile } from "node:fs/promises";
 import { openSync } from "node:fs";
-import { resolvePaths } from "./paths.ts";
+import { defaultPluginStateDir, resolvePaths } from "./paths.ts";
 import { loadEnv, skipServe } from "./env.ts";
 import { migrateLegacyConfig } from "./config-migrate.ts";
 import { resolveBun } from "./bun.ts";
@@ -68,7 +68,7 @@ export async function prepareBridgeEnv(argv: string[], env: Record<string, strin
     SIGHTR_PORT: env.SIGHTR_PORT ?? vals.SIGHTR_PORT ?? "8787",
     SIGHTR_TAILSCALE_HOSTS: skipServe({ ...env, ...vals }) ? "" : (env.SIGHTR_TAILSCALE_HOSTS ?? vals.SIGHTR_TAILSCALE_HOSTS ?? await selfHosts(run)),
   };
-  if (!effective.HERDR_PLUGIN_STATE_DIR) effective.HERDR_PLUGIN_STATE_DIR = path.join(local, "herdr", "plugins", "herdr.sightr");
+  if (!effective.HERDR_PLUGIN_STATE_DIR) effective.HERDR_PLUGIN_STATE_DIR = defaultPluginStateDir({ ...env, LOCALAPPDATA: local }, home);
   const bun = await resolveBun(effective);
   if (!bun) throw new Error("error: bun not found on PATH");
   return { base, effective, bun, bridge: path.join(base.pluginRoot, "bridge/index.ts") };

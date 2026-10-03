@@ -145,6 +145,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File contrib\windows\sightr-c
 | Update within, or across, a major version | `update`, `update --major` | `update`, `update-major` |
 | Remove the scheduled task and serve mapping | `uninstall` | `uninstall` |
 | Tail the bridge logs | `logs [N]` | script only |
+| Analyse connection telemetry | `conn [--since 7d] [--json]` | script only |
 | Claude beacon hooks | `hooks install claude`, `hooks uninstall claude`, `hooks status` | script only |
 | Web Push keys, a test push, list or prune devices | `push-keys`, `push-test`, `push-list`, `push-forget` | `push-keys`, `push-test`; list/forget are script only |
 | Build, publish or unpublish by hand | `build`, `serve`, `unserve` | script only |
@@ -184,6 +185,7 @@ keep theirs.
 | `SIGHTR_ALLOW_ANY_HOST` | off | Disable the Host allowlist. Warned at startup |
 | `SIGHTR_DEVICE_HEADER`, `SIGHTR_DEVICE_ALLOWLIST` | unset | Optional per-device write authorisation. Unknown devices become read-only |
 | `SIGHTR_AUDIT`, `SIGHTR_AUDIT_CONTENT` | `1`, `preview` | Audit trail on/off and `preview` or `none` |
+| `SIGHTR_CONN_LOG` | on | Connection telemetry to `<state-dir>/conn.log` (see Connection telemetry) |
 | `SIGHTR_POLL_MS`, `SIGHTR_POLL_IDLE_MS` | `1500`, `12000` | Poll cadence (min 250), and the relaxed cadence (min 1000) while the Herdr event stream is healthy and every agent is resting |
 | `SIGHTR_NOTIFY_DELAY_MS` | `30000` | Wait before a blocked or finished agent pushes a notification |
 | `SIGHTR_READ_LINES` | `200` | Terminal lines for a pane read that names no count, and the floor for the read that checks a prompt before a send. The phone asks for its own count (600 agent, 120 shell) |
@@ -215,7 +217,7 @@ to shape its startup warnings. The control script treats only `1` as on.
 ### State directory
 
 Resolved as `HERDR_PLUGIN_STATE_DIR`, then `SIGHTR_STATE_DIR`, then `~/.local/state/sightr`.
-Created owner-only at startup. It holds `audit.log`, `lock.json` (WebAuthn credentials),
+Created owner-only at startup. It holds `audit.log`, `conn.log`, `lock.json` (WebAuthn credentials),
 `settings.json`, `notify-prefs.json`, `push-subscriptions.json`, `activity.json`,
 `pane-claims.json`, `beacons/`, and `uploads/` (10 MB per file, 200 MB total, swept after 48 hours).
 
@@ -416,6 +418,37 @@ bun run build                  # typecheck both, build web/dist
   call, unverified.
 - **Logs**: `logs 200` tails the config-directory logs. Bridge startup prints every security warning
   it has, so read the first lines first.
+
+## Connection telemetry
+
+Sightr records how its connection behaves so it can be tuned from evidence. Each phone notes what it
+saw and posts a batch to the bridge every five minutes and when the page hides:
+
+- request outcome and latency per class (snapshot, pane, history, other reads, writes), as a histogram;
+- every amber or red "reconnecting" stretch, from the last live moment to recovery;
+- time from waking the app to the first live data;
+- snapshot-stream (SSE) opens and drops, and how long each stream lived;
+- online/offline flips and, where the browser exposes it (Android), the network class.
+
+The bridge adds its own side: each stream's attach and detach, Herdr link drops, and every restart.
+All of it lands in `<state-dir>/conn.log`, one JSON line per event, owner-only, capped at 5 MB with
+one rotated copy. It holds timings, counts and enums only: no pane ids, text or URLs. The bridge
+rebuilds every phone event from an allowlist (`shared/conn.ts`). A batch the bridge cannot take (offline,
+locked) waits in the phone's local storage for the next one. `SIGHTR_CONN_LOG=0` turns it off.
+
+`sightr-ctl conn` reads the log back:
+
+```powershell
+powershell -File contrib/windows/sightr-ctl.ps1 conn              # last 7 days
+powershell -File contrib/windows/sightr-ctl.ps1 conn --since 30d  # or 24h, or 2026-10-01
+powershell -File contrib/windows/sightr-ctl.ps1 conn --json       # for scripts and trend tracking
+```
+
+It reports the share of visible time the app was live, each gap blamed on a bridge restart, a Herdr
+drop or the network, wake-to-live time, stream lifetimes, and per-class request failure and latency.
+Then it lists findings, each naming the setting or file to change: for example, streams that keep dying
+at the same age (an idle cut in the path; `EVENT_KEEPALIVE_MS`), wakes that show amber, or reads that
+hit the `GET_TIMEOUT_MS` leash.
 
 ## License
 

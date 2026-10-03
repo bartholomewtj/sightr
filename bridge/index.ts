@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { ACTIVITY_KEY, ActivityLedger } from "./activity.ts";
 import { createAuditLog } from "./audit.ts";
+import { createConnLog } from "./conn-log.ts";
 import { loadConfig, type Config } from "./config.ts";
 import { EventPoker } from "./event-poker.ts";
 import { DEFAULT_TIMEOUT_MS, HerdrClient } from "./herdr-client.ts";
@@ -15,6 +16,7 @@ import { createLockStore } from "./lock.ts";
 import { startServer } from "./server.ts";
 import { engineCadence, StateEngine } from "./state-engine.ts";
 import { beaconReader } from "./beacon-io.ts";
+import { buildId } from "./static-assets.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
@@ -35,6 +37,10 @@ if (migratedFrom) console.log(`state: copied pre-1.0 Sighter state from ${migrat
 await mkdir(cfg.stateDir, { recursive: true, mode: 0o700 });
 
 const audit = createAuditLog({ stateDir: cfg.stateDir, enabled: cfg.audit, content: cfg.auditContent });
+// Connection telemetry (`sightr-ctl conn` reads it back). A start line marks every restart, so the
+// report can tell an outage the bridge caused from one the network did.
+const conn = createConnLog({ stateDir: cfg.stateDir, enabled: cfg.connLog });
+conn.bridge({ kind: "bridge.start", version: await buildId() });
 
 // ── Process-global services ───────────────────────────────────────────────────
 const push = new Push(cfg);
@@ -81,6 +87,16 @@ poker.onHealth((h) => {
 engine.onUpdate((s) => poker.setAgentPanes(s.agents.map((a) => a.paneId)));
 engine.onUpdate(applyCadence);
 engine.onUpdate(() => snapshotEvents?.notify());
+let herdrDownAt: number | null = null;
+engine.onLink((status, err) => {
+  if (status === "disconnected") {
+    herdrDownAt = Date.now();
+    conn.bridge({ kind: "herdr.down", err: (err ?? "").replace(/\s+/g, " ").slice(0, 120) });
+  } else {
+    conn.bridge({ kind: "herdr.up", downMs: herdrDownAt === null ? null : Date.now() - herdrDownAt });
+    herdrDownAt = null;
+  }
+});
 
 // Activity bookkeeping. A status change stamps `activeAt` (the only thing that can make a pane
 // read as unseen); every successful poll reconciles the ledger against the panes that exist, which
@@ -130,7 +146,7 @@ const sweepTimer = setInterval(() => {
 sweepTimer.unref();
 
 const server = startServer({
-  cfg, herdr, engine, notifications, push, notifyPrefs, settings, activity, lock, audit,
+  cfg, herdr, engine, notifications, push, notifyPrefs, settings, activity, lock, audit, conn,
   onEvents: (events) => { snapshotEvents = events; },
 });
 

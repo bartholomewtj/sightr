@@ -141,6 +141,7 @@ export interface EngineSnapshot {
 type TransitionListener = (agent: AgentView, from: AgentStatus, to: AgentStatus) => void;
 type RemoveListener = (paneId: string) => void;
 type UpdateListener = (snap: EngineSnapshot) => void;
+type LinkListener = (status: BridgeStatus, err?: string) => void;
 
 export class StateEngine {
   private agents: AgentView[] = [];
@@ -178,6 +179,7 @@ export class StateEngine {
   private readonly transitionListeners = new Set<TransitionListener>();
   private readonly removeListeners = new Set<RemoveListener>();
   private readonly updateListeners = new Set<UpdateListener>();
+  private readonly linkListeners = new Set<LinkListener>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private started = false;
   private polling = false;
@@ -219,6 +221,12 @@ export class StateEngine {
   onUpdate(fn: UpdateListener): () => void {
     this.updateListeners.add(fn);
     return () => this.updateListeners.delete(fn);
+  }
+
+  /** Fires when the Herdr link changes: the first good poll, a poll that fails after a good one, recovery. */
+  onLink(fn: LinkListener): () => void {
+    this.linkListeners.add(fn);
+    return () => this.linkListeners.delete(fn);
   }
 
   current(): EngineSnapshot {
@@ -519,16 +527,20 @@ export class StateEngine {
       this.shellPanes = shellPanes;
       this.workspaces = workspaceViews;
       this.tabs = tabViews;
+      const wasConnected = this.bridge === "connected";
       this.bridge = "connected";
+      if (!wasConnected) for (const fn of this.linkListeners) fn("connected");
 
       // After all transition/removal bookkeeping so listeners see a consistent, current snapshot.
       const snap = this.current();
       for (const fn of this.updateListeners) fn(snap);
     } catch (err) {
-      if (this.bridge === "connected") {
+      const wasConnected = this.bridge === "connected";
+      if (wasConnected) {
         console.warn(`[state] poll failed, marking disconnected: ${(err as Error).message}`);
       }
       this.bridge = "disconnected";
+      if (wasConnected) for (const fn of this.linkListeners) fn("disconnected", (err as Error).message);
     } finally {
       this.polling = false;
       // Run the single follow-up an event-poke asked for while this poll was in flight.
