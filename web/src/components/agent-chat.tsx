@@ -389,7 +389,15 @@ export function AgentChat({
           className={cn("min-h-0 min-w-0 flex-1 border-t border-border/40", desktop && armed && "ring-2 ring-inset ring-you")}
           onClick={focusFromMirror}
         >
-          <ChatMessageList ref={listRef} dep={display} onAtBottomChange={setFollowing} hasNew={hasNew} className="px-2 py-3">
+          <ChatMessageList
+            ref={listRef}
+            dep={display}
+            onAtBottomChange={setFollowing}
+            hasNew={hasNew}
+            className="px-2 py-3"
+            onPullRefresh={desktop ? undefined : () => revalidator.revalidate()}
+            pullEnabled={!desktop && revalidator.state === "idle"}
+          >
             <>
               {/* Agent panes: last transcript turns sit above the live tail so a swipe up reads
                   the conversation. The dump is off while idle and controlled by the composer's

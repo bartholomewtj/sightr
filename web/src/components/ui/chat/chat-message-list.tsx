@@ -3,7 +3,9 @@ import { ArrowDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { PullIndicator } from "@/components/pull-indicator";
 import { useAutoScroll } from "@/hooks/use-auto-scroll";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 
 export interface ChatMessageListHandle {
   /** Imperatively jump to the latest output (e.g. after sending a reply). */
@@ -19,6 +21,11 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
   onAtBottomChange?: (atBottom: boolean) => void;
   /** Dot the "jump to latest" button when newer output arrived while you were scrolled up. */
   hasNew?: boolean;
+  /** In-app pull-to-refresh. Phone only — desktop must not pass this. Calls the route's
+   *  revalidate; never reloads the page. A pull does not grow history. */
+  onPullRefresh?: () => void;
+  /** False while a refresh from this list is still in flight. */
+  pullEnabled?: boolean;
 }
 
 // Scrollable conversation container that auto-follows new messages and shows a "jump to latest"
@@ -26,13 +33,15 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
 // after an action, and reports at-bottom changes so the parent can freeze content while you read.
 const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListProps>(
   function ChatMessageList(
-    { className, children, dep, onAtBottomChange, hasNew, ...props },
+    { className, children, dep, onAtBottomChange, hasNew, onPullRefresh, pullEnabled = true, ...props },
     ref,
   ) {
     const { scrollRef, isAtBottom, scrollToBottom, onScroll } = useAutoScroll<HTMLDivElement>({
       dep,
       onAtBottomChange,
     });
+    const pull = usePullToRefresh(scrollRef, onPullRefresh ?? (() => {}), Boolean(onPullRefresh) && pullEnabled);
+    const refreshing = pull.refreshing;
 
     React.useImperativeHandle(
       ref,
@@ -47,14 +56,16 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
         <div
           ref={scrollRef}
           onScroll={onScroll}
+          aria-busy={refreshing || undefined}
           className={cn(
-            "h-full min-w-0 w-full overflow-y-auto overflow-x-hidden px-3 py-4",
+            "h-full min-w-0 w-full overflow-y-auto overflow-x-hidden overscroll-y-contain px-3 py-4",
             className,
           )}
           {...props}
         >
           {children}
         </div>
+        <PullIndicator pull={pull} />
 
         {!isAtBottom && (
           <Button
