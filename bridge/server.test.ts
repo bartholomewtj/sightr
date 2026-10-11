@@ -6,6 +6,7 @@ import { SEEN_HEADER, marksPaneSeen, isLoopbackPeer, isStateChangingMethod, chec
 import { decodePathSegment, failureText, isJsonContentType } from "./responses.ts";
 import { BUILD_HEADER, withBuildHeader, resolveStaticPath, isReservedAuthPath, cacheControlFor, isPrivateStaticFile } from "./static-assets.ts";
 import {
+  paneReadMatches,
   paneReadResponse,
   historyParams,
   readPane,
@@ -832,6 +833,22 @@ describe("paneReadSpec", () => {
     expect(
       paneReadSpec({ paneId: "w:p1", kind: "agent" } as import("./state-engine.ts").AgentView, 600),
     ).toEqual({ source: "recent", lines: 600 });
+  });
+});
+
+describe("paneReadMatches — a read must be the pane that was asked for", () => {
+  test("accepts the pane that was asked for", () => {
+    expect(paneReadMatches("wR:p7E", { pane_id: "wR:p7E" })).toBe(true);
+  });
+
+  test("refuses a body that names another pane", () => {
+    // 2026-10-11: the phone showed wR:p7B's Grok chat while the route was the new Pi pane wR:p7E.
+    expect(paneReadMatches("wR:p7E", { pane_id: "wR:p7B" })).toBe(false);
+  });
+
+  test("accepts a body that names no pane (an older server omits the field)", () => {
+    expect(paneReadMatches("wR:p7E", {})).toBe(true);
+    expect(paneReadMatches("wR:p7E", { pane_id: "" })).toBe(true);
   });
 });
 

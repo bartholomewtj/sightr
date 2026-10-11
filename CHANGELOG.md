@@ -6,6 +6,9 @@ a build where they disagree.
 
 ## [Unreleased]
 
+### Fixed
+- A pane read that Herdr answers for a different pane is no longer served as this pane's screen. The phone showed one pane's title and chat while the reply went to another; the bridge stamped the requested pane id onto the body and dropped the id Herdr returned. The mirror, the history fingerprint and the prompt-binding re-read now refuse that body.
+
 ## [1.2.1] - 2026-10-03
 
 ### Fixed

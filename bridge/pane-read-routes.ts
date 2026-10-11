@@ -17,6 +17,20 @@ const MAX_HISTORY_LIMIT = 5000;
 /** Shell/TUI panes (draftr run tab, win-terminal-browser, …) only need the viewport. */
 export const SHELL_MIRROR_LINES_CAP = 120;
 
+/**
+ * Whether a pane read is the pane that was asked for.
+ *
+ * Herdr's `pane.read` result names the pane it read (`pane_id`). The bridge used to stamp the
+ * REQUESTED id onto the body and drop the returned one, so a read that came back for a different
+ * pane was served, cached, and used to bind history as if it were this pane's screen. Live on
+ * 2026-10-11: the phone showed Grok pane `wR:p7B` (its title and its finished chat) while the
+ * route, the upload and the reply were the new Pi pane `wR:p7E`. A missing id stays accepted — an
+ * older server that omits the field must still work.
+ */
+export function paneReadMatches(requestedPaneId: string, read: { pane_id?: string }): boolean {
+  return read.pane_id === undefined || read.pane_id === "" || read.pane_id === requestedPaneId;
+}
+
 /** How to read a pane mirror. Shell panes use `visible` so Herdr never scroll-harvests scrollback. */
 export function paneReadSpec(
   pane: AgentView | undefined,
@@ -58,6 +72,7 @@ export async function readPane(
     // Herdr's scroll harvester — which can take many seconds on a draftr run tab. HERDR_API.md →
     // `pane.read`.
     const read = await herdr.readPane(paneId, source, readLines, "ansi");
+    if (!paneReadMatches(paneId, read)) return text("pane read mismatch", 502);
     const data = paneReadResponse(paneId, read);
     // ETag is derived from the serialised body — if content hasn't changed the client gets a 304
     // and skips the whole transfer (the big win on a cellular link).
@@ -158,7 +173,8 @@ async function paneHistoryHint(herdr: HerdrClient, pane: AgentView): Promise<str
         ? Math.min(pane.readableLines, 120)
         : 80;
     const read = await herdr.readPane(pane.paneId, "visible", lines, "text");
-    if (read.text.trim() !== "") parts.push(read.text);
+    // A read that names another pane must not fingerprint THIS pane onto that pane's session.
+    if (paneReadMatches(pane.paneId, read) && read.text.trim() !== "") parts.push(read.text);
   } catch {
     // Best-effort: title / a remembered bind still work if the read fails.
   }
