@@ -4,6 +4,7 @@ import { SILENT_AUDIT, type AuditDetail, type AuditLog } from "./audit.ts";
 import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 import { makeRoomForUpload, TEXT_SNIFF_BYTES, uploadExt } from "./uploads.ts";
+import { paneReadMatches } from "./pane-read-routes.ts";
 import { DEFAULT_PROMPT_TAIL_LINES, verifyExpectedPrompt, type PromptBindingResult } from "./prompt-binding.ts";
 import type { ActionResponse, UploadResponse } from "../shared/wire.ts";
 import { failureText, json, requireJsonBody, secure, text } from "./responses.ts";
@@ -389,6 +390,16 @@ async function checkPromptBinding(
     // cfg.readLines alone because a small legal setting may not contain the expected region; include
     // room for the accepted tail and for blank separator lines that normalization drops.
     fresh = await herdr.readPane(paneId, "recent", bindingReadLines, "ansi");
+    // The re-read is what authorises the keystroke. A body that names another pane is not evidence
+    // this pane still shows the prompt, so it fails the same way a failed read does.
+    if (!paneReadMatches(paneId, fresh)) {
+      return {
+        ok: false,
+        error: "pane read mismatch",
+        status: 502,
+        audit: { checked: true, passed: false, expected, reason: "read_failed" },
+      };
+    }
   } catch (err) {
     return {
       ok: false,
