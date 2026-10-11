@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 
 import { TreeRoute } from "./tree";
@@ -47,5 +47,17 @@ describe("TreeRoute phone scroll", () => {
     expect(scroller).not.toBeNull();
     expect(scroller).toHaveClass("min-h-0", "flex-1", "overscroll-contain");
     expect(scroller?.querySelector("main")).toBeNull();
+  });
+
+  it("refreshes in place on a pull at the top and never reloads", async () => {
+    const { router, container } = renderTree();
+    const revalidate = vi.spyOn(router, "revalidate");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sightr home" })).toBeInTheDocument());
+    const scroller = container.querySelector(".overflow-y-auto") as HTMLElement;
+    const finger = (y: number) => ({ identifier: 1, target: scroller, clientX: 10, clientY: y });
+    fireEvent.touchStart(scroller, { touches: [finger(0)] });
+    fireEvent.touchMove(scroller, { touches: [finger(90)] });
+    fireEvent.touchEnd(scroller, { changedTouches: [finger(90)] });
+    expect(revalidate).toHaveBeenCalledTimes(1);
   });
 });

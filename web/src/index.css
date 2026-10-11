@@ -220,12 +220,14 @@
   }
 }
 
-/* ── Desktop mode is a fixed frame ───────────────────────────────────────────────────────────────
-   Desktop mode has exactly two scroll regions — the pane mirror and the History transcript (plus the
-   sidebar's own tree box). The page itself must never scroll. */
-html.sightr-desktop,
-html.sightr-desktop body,
-html.sightr-desktop #root {
+/* ── The document is a fixed frame (spec 21) ─────────────────────────────────────────────────────
+   Phone and desktop both pin html, body and #root to the viewport. Only the inner scrollers
+   (the pane mirror, Spaces, the sidebar tree) may scroll. A pull at the top of a short card used
+   to scroll the document and reload the PWA. Desktop already had this frame on a desktop-only
+   selector; the rule is now unconditional so phone gets the same lock. */
+html,
+body,
+#root {
   height: 100dvh;
   overflow: hidden;
 }

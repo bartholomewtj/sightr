@@ -11,6 +11,7 @@ import { __resetConnectionHealth } from "@/lib/connection-health";
 import { server } from "@/test/setup";
 import { clearStatus } from "@/lib/status";
 import { submitMultiSelectIntent, submitPromptOption, submitWizardKeys } from "@/lib/actions";
+import { canGrowRequestedLines } from "@/lib/loaders";
 import { fixtureAgents } from "@/test/handlers";
 import { AgentChat } from "./agent-chat";
 import { resetDialogPresence, withDialogPresence } from "@/lib/dialog-presence";
@@ -1158,11 +1159,25 @@ describe("AgentChat — top-of-mirror history affordance", () => {
 describe('desktop pane scroll containment', () => {
   beforeEach(() => { __resetDesktop(); Element.prototype.scrollTo = () => {}; });
   afterEach(() => __resetDesktop());
-  function show() { const agent = fixtureAgents[0]!; const router = createMemoryRouter([{ path: "/", element: <AgentChat paneId={agent.paneId} agent={agent} agents={[agent]} shellPanes={[]} text={Array.from({ length: 500 }, (_, i) => `line ${i}`).join("\n")} onBack={() => {}} onSelect={() => {}} /> }], { initialEntries: ["/"] }); return render(<RouterProvider router={router} />); }
+  function show() { const agent = fixtureAgents[0]!; const router = createMemoryRouter([{ path: "/", element: <AgentChat paneId={agent.paneId} agent={agent} agents={[agent]} shellPanes={[]} text={Array.from({ length: 500 }, (_, i) => `line ${i}`).join("\n")} onBack={() => {}} onSelect={() => {}} /> }], { initialEntries: ["/"] }); return { ...render(<RouterProvider router={router} />), router }; }
 
   describe("desktop pane scroll containment", () => {
     it("keeps pane chrome outside the mirror scroller", () => { setDesktop(true); const view = show(); const scrollers = view.container.querySelectorAll(".overflow-y-auto"); expect(scrollers).toHaveLength(1); expect(scrollers[0]).not.toContainElement(view.container.querySelector("header")); expect(scrollers[0]).not.toContainElement(screen.getByPlaceholderText(/type a reply/i)); expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument(); expect(view.container.firstElementChild).toHaveClass("overflow-hidden"); expect(view.container.querySelector("div.relative.shrink-0")).toBeInTheDocument(); });
     it("preserves the phone class list", () => { const view = show(); expect(view.container.firstElementChild).toHaveClass("max-w-[100dvw]", "overflow-x-hidden"); expect(view.container.firstElementChild).not.toHaveClass("overflow-hidden"); expect(view.container.querySelector("div.relative.shrink-0")).toBeNull(); });
+    it("contains overscroll on the pane scroller", () => { const view = show(); const scroller = view.container.querySelector(".overflow-y-auto"); expect(scroller).toHaveClass("overscroll-y-contain"); });
+    it("revalidates a pull at the top without growing history or reloading", () => {
+      const view = show();
+      const revalidate = vi.spyOn(view.router, "revalidate");
+      const scroller = view.container.querySelector(".overflow-y-auto") as HTMLElement;
+      const paneId = fixtureAgents[0]!.paneId;
+      const before = canGrowRequestedLines(paneId);
+      const finger = (y: number) => ({ identifier: 1, target: scroller, clientX: 8, clientY: y });
+      fireEvent.touchStart(scroller, { touches: [finger(0)] });
+      fireEvent.touchMove(scroller, { touches: [finger(96)] });
+      fireEvent.touchEnd(scroller, { changedTouches: [finger(96)] });
+      expect(revalidate).toHaveBeenCalledTimes(1);
+      expect(canGrowRequestedLines(paneId)).toBe(before);
+    });
   });
 });
 

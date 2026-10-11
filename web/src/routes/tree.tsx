@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRevalidator, useRouteLoaderData } from "react-router";
 
 import { AppHeader } from "@/components/app-header";
+import { PullIndicator } from "@/components/pull-indicator";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { SpaceTree } from "@/components/space-tree";
 import { NewSpaceSheet } from "@/components/new-space-sheet";
 import { StatusArea } from "@/components/status-area";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { isReadOnly } from "@/lib/types";
@@ -20,11 +22,17 @@ export function TreeRoute() {
   const { newSpace, newTab } = useSpaceActions();
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   const desktop = useDesktop().on;
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const pull = usePullToRefresh(
+    scrollerRef,
+    () => revalidator.revalidate(),
+    !desktop && revalidator.state === "idle",
+  );
 
   if (desktop) return <div className="flex min-h-full items-center justify-center text-muted-foreground">Pick a pane</div>;
 
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
+    <div className="relative mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
       <AppHeader
         bridge={data.bridge}
         error={data.error}
@@ -32,7 +40,11 @@ export function TreeRoute() {
         wordmark
       />
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+      <div
+        ref={scrollerRef}
+        aria-busy={pull.refreshing || undefined}
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
+      >
         <ReadOnlyBanner device={data.device} />
         <SpaceTree
           workspaces={data.workspaces}
@@ -47,6 +59,7 @@ export function TreeRoute() {
           lastSeenAt={data.lastSeenAt}
         />
       </div>
+      <PullIndicator pull={pull} />
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-screen-sm px-3 pb-[calc(env(safe-area-inset-bottom)_+_4rem)]">
         <StatusArea />
