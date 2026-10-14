@@ -1,6 +1,6 @@
 # 23 — Local servers tab
 
-Status: open. Not a council slice. One run.
+Status: done — #73, `b0e11aa`. Not a council slice. One run.
 
 ## What the operator gets
 

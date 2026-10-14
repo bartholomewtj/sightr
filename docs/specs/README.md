@@ -27,6 +27,7 @@ One spec = one run. Do not implement a sibling spec in the same run. Numbers mat
 | 20 | [20-collie-identifiers.md](20-collie-identifiers.md) | Med | Done — fork ADRs use 1.0 names; inherited mapping note; citations fixed | ADRs and logs still name Collie |
 | 21 | [21-phone-overscroll.md](21-phone-overscroll.md) | Med | Done — #68. Live phone check still open (bridge serves the installed plugin); iOS rubber-band unverified (with 02/03) | Pull reloads the PWA |
 | 22 | [22-safe-area-top.md](22-safe-area-top.md) | Med | Done — banner owns the notch while open; headers use `--chrome-top-inset` | Banner + header both pad the notch |
+| 23 | [23-local-servers-tab.md](23-local-servers-tab.md) | — | Done — #73. Not a council slice | Local tab lists the PC's loopback servers |
 
 ## Rules for every slice
 

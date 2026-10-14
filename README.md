@@ -78,6 +78,10 @@ product since. It does not track collie.
 - `SIGHTR_WORK_ROOT` is the whole of what the Files tab can read, edit and delete, from every
   device that can reach the bridge. Point it at the narrowest folder you need, never at a home
   directory, and leave it unset to hide the tab.
+- The Local tab lists whatever is listening on this machine's loopback and links each one at
+  `http://<tailscale-host>:<port>/`. Reaching those ports from a phone takes a forwarder on the
+  host — the bridge only serves the list. It never publishes a port itself, and it never touches
+  port 443, which `tailscale serve` owns.
 
 ## Requirements
 
@@ -351,7 +355,8 @@ header and the device allowlist, the write is queued per pane, sent over the Her
 | `bridge/state-migrate.ts` | One-time copy of a sibling state directory if this one is empty |
 | `shared/agents.ts`, `shared/catalog/` | The harness descriptor table and per-harness slash catalogs |
 | `shared/wire.ts`, `shared/limits.ts` | Types and limits both sides agree on |
-| `web/src/routes/` | Spaces tree, pane view, files, settings |
+| `bridge/local-servers.ts` | `GET /api/local-servers`: loopback listeners and this machine's Tailscale name, for the Local tab |
+| `web/src/routes/` | Spaces tree, pane view, files, local, settings |
 | `web/src/lib/harness/` | Screen parsers per harness: prompts, ask-cards, permission cards |
 | `web/src/lib/`, `web/src/hooks/`, `web/src/components/` | API client, ANSI parsing, transcript folding, UI |
 | `web/src/fixtures/panes/` | Captured terminal screens the harness parsers are tested against |
