@@ -76,6 +76,26 @@ export type FolderGitResponse =
   | { available: false; reason: "outside-root" | "not-a-repo" | "git-unavailable" | "timeout" }
   | { available: true; repo: string; rel: string; branch?: string; detached?: boolean; noCommits?: boolean; clean: boolean; entries: FolderGitEntry[]; hidden: number; statusTruncated: boolean; diff: string; diffTruncated: boolean; panes: string[] };
 
+/** One option of a pending Grok `ask_user_question`. Caps live in the journal parser. */
+export interface TranscriptAskOption {
+  label: string;
+  description?: string;
+}
+/** One question of a pending Grok `ask_user_question`. `multi` is the tool's `multi_select` flag. */
+export interface TranscriptAskQuestion {
+  question: string;
+  multi: boolean;
+  options: TranscriptAskOption[];
+}
+/**
+ * The full question card, kept only while the tool has no result yet. The screen paints a couple of
+ * rows; this is how the phone shows the rest. Dropped once the tool_result lands.
+ */
+export interface TranscriptAsk {
+  id: string;
+  questions: TranscriptAskQuestion[];
+}
+
 export type TranscriptPart =
   | { kind: "text"; text: string; truncated?: boolean }
   | { kind: "thinking"; text: string; truncated?: boolean }
@@ -86,6 +106,8 @@ export type TranscriptPart =
       result?: { text: string; truncated?: boolean; isError?: boolean };
       /** The harness never records tool output (Cursor): the call is complete, with no body to open. */
       unrecorded?: true;
+      /** Pending Grok `ask_user_question` arguments. Absent once the call has a result. */
+      ask?: TranscriptAsk;
     };
 export interface TranscriptEntry { uuid: string; ts: string; role: "user" | "assistant" | "summary" | "note"; parts: TranscriptPart[]; }
 

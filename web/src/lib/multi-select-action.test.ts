@@ -431,7 +431,7 @@ describe("grok tab-space-enter checkbox recipe", () => {
     expect(keysSent()).toEqual([["Tab", "Enter"]]);
   });
 
-  function twoOption(focus: 1 | 2): string {
+  function twoOption(focus: 1 | 2 | null): string {
     const cell = (n: 1 | 2) => (focus === n ? "70;70;70" : "64;64;64");
     const row = (text: string, bg: string) => `  │  \x1b[48;2;${bg}m${text}\x1b[0m`;
     return [
@@ -459,6 +459,22 @@ describe("grok tab-space-enter checkbox recipe", () => {
     const second = await submitMultiSelectIntent({ ...grokBase, multi: m, intent: { kind: "toggle", n: 2 } });
     expect(second).toEqual({ status: "sent" });
     expect(keysSent()).toEqual([["Tab"], ["Space"]]);
+  });
+
+  it("an unreadable highlight sends Up until a row is painted, then Space — never a digit", async () => {
+    const hidden = twoOption(null);
+    const on1 = twoOption(1);
+    const m = grokModel(hidden);
+    expect(m.phase === "checkbox" && m.focusedN).toBeNull();
+    script(hidden, hidden, on1);
+    const res = await submitMultiSelectIntent({
+      ...grokBase,
+      multi: m,
+      sleep: async () => {},
+      intent: { kind: "toggle", n: 1 },
+    });
+    expect(res).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Up"], ["Space"]]);
   });
 
   it("a two-option card focused on row 2 Spaces that row, never the letter or digit", async () => {

@@ -15,6 +15,8 @@ import {
 } from "./grok/ask";
 import { WIZARD_BACK_KEYS, WIZARD_NEXT_KEYS, wizardsEqual } from "./wizard-model";
 import { multiSelectEquals } from "./multi-select-model";
+import type { TranscriptAsk } from "@shared/wire";
+import { setPaneAskCatalog, withAskPane } from "./ask-pane";
 import { detectPermissionRegion } from "./grok/permission";
 import { detectPlanMenuRegion } from "./grok/plan-menu";
 import { describeAdapterConformance } from "./conformance";
@@ -507,6 +509,240 @@ describe("grokBuildBlocks", () => {
     expect(q1Region).not.toBeNull();
     expect(q2Region).not.toBeNull();
     expect(multiSelectEquals(q1Region!.model, q2Region!.model)).toBe(false);
+  });
+
+  function narrowCheckbox(rows: string[]): string {
+    return [
+      ...rows,
+      "  │  z [ ] Type your answer here",
+      "  │  [1/3] ↑/↓ navigate · y copy                                                                 Enter:select",
+      "  Tab:next answer  │  Esc:scrollback",
+    ].join("\n");
+  }
+
+  const councilCatalog: TranscriptAsk = {
+    id: "call-council",
+    questions: [
+      {
+        question: "Pick at least 3 lenses — as many as you want.",
+        multi: true,
+        options: [
+          { label: "Hit target (Recommended)", description: "Hunts for buttons smaller than a thumb." },
+          { label: "Card overflow (Recommended)", description: "Hunts for a 10-option card that scrolls the confirm control off." },
+          { label: "Choice fidelity (Recommended)", description: "Hunts for the phone dropping an option." },
+          { label: "Multi-select", description: "Hunts for a multi-select question that submits on the first tap." },
+        ],
+      },
+      {
+        question: "Which model should the council agents run on?",
+        multi: false,
+        options: [{ label: "grok-4.7 (Recommended)", description: "Review Cat 67, blend $3/M." }],
+      },
+      {
+        question: "Want more than these 10 lenses?",
+        multi: false,
+        options: [
+          { label: "No, that's enough", description: "Use the lenses picked above." },
+          { label: "Yes, generate another 10", description: "Generate another 10 lenses that do not repeat this batch." },
+          { label: "I'll type extra lenses", description: "Type extra lenses under Other." },
+        ],
+      },
+    ],
+  };
+
+  it("joins a wrapped checkbox question and the description under option 1", () => {
+    const lines = splitLines(
+      parseAnsi(
+        narrowCheckbox([
+          "  │  Pick at least 3 lenses — as many as you",
+          "  │  want.",
+          "  │  1 [ ] Hit target (Recommended)  Hunts for buttons",
+          "  │  smaller than a thumb.",
+          "  │  2 [ ] Card overflow (Recommend…",
+        ]),
+      ),
+    );
+    const region = detectCheckboxAskRegion(lines);
+    expect(region).not.toBeNull();
+    if (region!.model.phase !== "checkbox") throw new Error("expected checkbox");
+    expect(region!.model.question).toBe("Pick at least 3 lenses — as many as you want.");
+    expect(region!.model.options.map((o) => o.label)).toEqual([
+      "Hit target (Recommended)",
+      "Card overflow (Recommend…",
+    ]);
+    expect(region!.model.options[0]!.description).toMatch(/smaller than a thumb/);
+    expect(region!.model.advanceLabel).toBe("Next");
+  });
+
+  it("a one-option checkbox lifts", () => {
+    const lines = splitLines(
+      parseAnsi(
+        [
+          "  │  Which one?",
+          "  │  1 [ ] Only",
+          "  │  z [ ] Type your answer here",
+          "  │  ↑/↓ navigate · y copy                                                                 Enter:submit",
+          "  Tab:next answer  │  Esc:scrollback",
+        ].join("\n"),
+      ),
+    );
+    const region = detectCheckboxAskRegion(lines);
+    expect(region?.model.phase).toBe("checkbox");
+    if (region?.model.phase !== "checkbox") return;
+    expect(region.model.options.map((o) => o.label)).toEqual(["Only"]);
+  });
+
+  it("a checkbox window that does not start at 1 stays raw without a catalog", () => {
+    const lines = splitLines(
+      parseAnsi(
+        narrowCheckbox([
+          "  │  Pick at least 3 lenses — as many as you want.",
+          "  │  3 [ ] Choice fidelity (Recommended)",
+          "  │  4 [ ] Multi-select",
+        ]),
+      ),
+    );
+    expect(detectCheckboxAskRegion(lines)).toBeNull();
+    expect(checkboxAskPresent(lines)).toBe(true);
+    expect(grokAdapter.needsDump!(lines)).toBe(true);
+  });
+
+  it("a scrolled checkbox with no option rows still needs a dump", () => {
+    const lines = splitLines(
+      parseAnsi(
+        narrowCheckbox([
+          "  │  a multi-select question that submits on the first tap,",
+          "  │  or looks the same as single-select.",
+        ]),
+      ),
+    );
+    expect(checkboxAskPresent(lines)).toBe(true);
+    expect(detectCheckboxAskRegion(lines)).toBeNull();
+    expect(grokAdapter.needsDump!(lines)).toBe(true);
+  });
+
+  it("the pending ask fills hidden checkbox rows, full labels, and a scrolled-off card", () => {
+    const top = splitLines(
+      parseAnsi(
+        narrowCheckbox([
+          "  │  Pick at least 3 lenses — as many as you",
+          "  │  want.",
+          "  │  1 [x] Hit target (Recommended)  Hunts for buttons",
+          "  │  2 [ ] Card overflow (Recommend…",
+        ]),
+      ),
+    );
+    const scrolled = splitLines(
+      parseAnsi(
+        narrowCheckbox([
+          "  │  a multi-select question that submits on the first tap,",
+          "  │  or looks the same as single-select.",
+        ]),
+      ),
+    );
+    const window = splitLines(
+      parseAnsi(
+        narrowCheckbox([
+          "  │  3 [ ] Choice fidelity (Recommended)",
+          "  │  4 [ ] Multi-select",
+        ]),
+      ),
+    );
+    const topRegion = detectCheckboxAskRegion(top, councilCatalog);
+    const scrolledRegion = detectCheckboxAskRegion(scrolled, councilCatalog);
+    const windowRegion = detectCheckboxAskRegion(window, councilCatalog);
+    for (const region of [topRegion, scrolledRegion, windowRegion]) {
+      expect(region?.model.phase).toBe("checkbox");
+      if (region?.model.phase !== "checkbox") continue;
+      expect(region.model.question).toBe("Pick at least 3 lenses — as many as you want.");
+      expect(region.model.options.map((o) => o.label)).toEqual([
+        "Hit target (Recommended)",
+        "Card overflow (Recommended)",
+        "Choice fidelity (Recommended)",
+        "Multi-select",
+      ]);
+      expect(region.model.options[1]!.description).toMatch(/confirm control/);
+      expect(region.model.signature).toBe(topRegion!.model.signature);
+    }
+    if (topRegion?.model.phase !== "checkbox" || scrolledRegion?.model.phase !== "checkbox") return;
+    expect(topRegion.model.options[0]!.checked).toBe(true);
+    expect(scrolledRegion.model.options[0]!.checked).toBe(false);
+
+    setPaneAskCatalog("w-ask:p1", councilCatalog);
+    const remembered = withAskPane("w-ask:p1", () => detectCheckboxAskRegion(top, councilCatalog));
+    const after = withAskPane("w-ask:p1", () => detectCheckboxAskRegion(scrolled, councilCatalog));
+    if (remembered?.model.phase !== "checkbox" || after?.model.phase !== "checkbox") {
+      throw new Error("expected checkbox");
+    }
+    expect(remembered.model.options[0]!.checked).toBe(true);
+    expect(after.model.options[0]!.checked).toBe(true);
+    withAskPane("w-ask:p1", () => {
+      expect(grokAdapter.needsDump!(scrolled)).toBe(false);
+      const block = grokAdapter.buildBlocks(scrolled).find((b) => b.kind === "multi-select");
+      expect(block?.kind).toBe("multi-select");
+    });
+  });
+
+  it("a catalog does not lift a gapped checkbox or a step past the end", () => {
+    const gap = splitLines(
+      parseAnsi(
+        [
+          "  ┃  Which animals?",
+          "  ┃  1 [ ] Ant",
+          "  ┃  2 [ ] Bee",
+          "  ┃  a [ ] Jay",
+          "  ┃  z [ ] Type your answer here",
+          "  ┃  ↑/↓ navigate · y copy                                                                 Enter:submit",
+          "  Tab:next answer  │  Esc:scrollback",
+        ].join("\n"),
+      ),
+    );
+    expect(detectCheckboxAskRegion(gap, councilCatalog)).toBeNull();
+    expect(grokAdapter.needsDump!(gap)).toBe(true);
+
+    const ansi = readFileSync(join(PANES_DIR, "grok--ask-multi-wizard-q1.txt"), "utf8");
+    const threeOfTwo = splitLines(parseAnsi(ansi.replace("[1/2]", "[3/2]")));
+    expect(detectCheckboxAskRegion(threeOfTwo, councilCatalog)).toBeNull();
+  });
+
+  it("a one-option radio lifts, and [n/m] makes it a wizard step", () => {
+    const body = [
+      "  │  Which model should the council agents run on?",
+      "  │  1 (○) grok-4.7 (Recommended)  Review Cat 67",
+      "  │  z (○) Type your answer here",
+    ];
+    const alone = splitLines(
+      parseAnsi(
+        [
+          ...body,
+          "  │  ↑/↓ navigate · y copy                                                                 Enter:submit",
+          "  Tab:next answer  │  Esc:scrollback",
+        ].join("\n"),
+      ),
+    );
+    const stepped = splitLines(
+      parseAnsi(
+        [
+          ...body,
+          "  │  [2/3] ↑/↓ navigate · y copy                                                                 Enter:select",
+          "  Tab:next answer  │  Esc:scrollback",
+        ].join("\n"),
+      ),
+    );
+    const prompt = detectAskRegion(alone);
+    expect(prompt).not.toBeNull();
+    expect(prompt!.model.options.map((o) => o.label)).toEqual(["grok-4.7 (Recommended)"]);
+    expect(prompt!.model.options[0]!.keys).toEqual(["1"]);
+    expect(detectAskWizardRegion(alone)).toBeNull();
+
+    const wizard = detectAskWizardRegion(stepped, councilCatalog);
+    expect(wizard).not.toBeNull();
+    expect(wizard!.model.phase).toBe("question");
+    if (wizard!.model.phase !== "question") return;
+    expect(wizard!.model.steps.find((s) => s.current)?.label).toBe("2/3");
+    expect(wizard!.model.options.map((o) => o.label)).toEqual(["grok-4.7 (Recommended)"]);
+    expect(wizard!.model.options[0]!.description).toBe("Review Cat 67, blend $3/M.");
+    expect(wizard!.model.question).toBe("Which model should the council agents run on?");
   });
 
   it("needsDump is only the unlifted checkbox ask, not radio or idle", () => {

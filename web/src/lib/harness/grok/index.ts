@@ -36,6 +36,8 @@
 import { type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
 import { liftRegion } from "../scan";
+import { currentAskCatalog } from "../ask-pane";
+import type { TranscriptAsk } from "@shared/wire";
 import {
   composerPrompt,
   composerReady,
@@ -54,6 +56,9 @@ export function grokBuildBlocks(lines: StyledLine[]): Block[] {
   // surface (raw mirror and dialog blocks alike) sits on the mirror's own ground — see
   // stripCanvasBackground. Detection is text-based and unaffected.
   lines = stripCanvasBackground(lines);
+  // Set by the pane view (and the race guard) around this call. Null in tests and for every
+  // other agent, so a screen-only parse is unchanged.
+  const catalog = currentAskCatalog<TranscriptAsk>();
   const permission = detectPermissionRegion(lines);
   if (permission) {
     return liftRegion(lines, permission, {
@@ -63,7 +68,7 @@ export function grokBuildBlocks(lines: StyledLine[]): Block[] {
     });
   }
 
-  const checkbox = detectCheckboxAskRegion(lines);
+  const checkbox = detectCheckboxAskRegion(lines, catalog);
   if (checkbox) {
     return liftRegion(lines, checkbox, {
       kind: "multi-select",
@@ -72,12 +77,12 @@ export function grokBuildBlocks(lines: StyledLine[]): Block[] {
     });
   }
 
-  const askWizard = detectAskWizardRegion(lines);
+  const askWizard = detectAskWizardRegion(lines, catalog);
   if (askWizard) {
     return liftRegion(lines, askWizard, { kind: "wizard", wizard: askWizard.model, lines: lines.slice(askWizard.startLine) });
   }
 
-  const ask = detectAskRegion(lines);
+  const ask = detectAskRegion(lines, catalog);
   if (ask) {
     return liftRegion(lines, ask, { kind: "prompt-select", prompt: ask.model, lines: lines.slice(ask.startLine) });
   }
@@ -100,7 +105,8 @@ export const grokAdapter: HarnessAdapter = {
   composerReady,
   composerPrompt,
   // Only true for a checkbox ask card that is present on screen but could not be lifted.
-  needsDump: (lines) => checkboxAskPresent(lines) && detectCheckboxAskRegion(lines) === null,
+  needsDump: (lines) =>
+    checkboxAskPresent(lines) && detectCheckboxAskRegion(lines, currentAskCatalog<TranscriptAsk>()) === null,
   // Image paths never appear in the box as themselves — Grok rewrites them into `[Image #N]` —
   // so the reply guard's literal match can't verify them and the send stalls. These two read that
   // token: as send evidence when it's consistent with what we typed, and as "this isn't the user's

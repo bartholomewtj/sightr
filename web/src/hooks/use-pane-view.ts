@@ -14,6 +14,9 @@ import { setStatus } from "@/lib/status";
 import { parseLines } from "@/lib/blocks";
 import { hasParsedDialog, noteDialogPresence } from "@/lib/dialog-presence";
 import { adapterFor, buildBlocks } from "@/lib/harness";
+import { setPaneAskCatalog, withAskPane } from "@/lib/harness/ask-pane";
+import { pendingGrokAsk } from "@/lib/harness/grok/ask-catalog";
+import type { TranscriptAsk } from "@shared/wire";
 import { onFindOpenRequest } from "@/lib/find-request";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import {
@@ -130,7 +133,18 @@ export function usePaneView(args: PaneViewArgs) {
   // the agent, a menu is up, or no box at the tail, in which case the strip is hidden. A second parse
   // of `display`, but memoised on it, so it only recomputes when the buffer content changes — off the
   // render hot path.
+  // The journal's pending ask, copied into state once history arrives so this memo re-runs.
+  // The module map is what the race guard reads on a later tap; this render writes it before
+  // the blocks are built, inside the same pane scope. A pane switch must not reuse the previous
+  // pane's questions for one frame.
+  const [askState, setAskState] = useState<{ paneId: string; ask: TranscriptAsk | null }>({
+    paneId: "",
+    ask: null,
+  });
+  const askCatalog = askState.paneId === paneId ? askState.ask : null;
   const parsedDisplay = useMemo(() => {
+    setPaneAskCatalog(paneId, askCatalog);
+    return withAskPane(paneId, () => {
     const lines = parseLines(display);
     const blocks = buildBlocks(lines, { agent: agent?.agent });
     const adapter = adapterFor(agent?.agent);
@@ -153,7 +167,8 @@ export function usePaneView(args: PaneViewArgs) {
       rawTerminalDraft: stripChrome ? inputLine : null,
       needsDump: adapter?.needsDump?.(lines) === true,
     };
-  }, [display, agent?.agent, stripChrome]);
+    });
+  }, [display, agent?.agent, stripChrome, paneId, askCatalog]);
   const { lines, blocks, statusLines, inputLine, composerOnScreen, rawTerminalDraft, needsDump } = parsedDisplay;
 
   // A user draft stranded on the input box's "❯" line — a message queued while the agent was busy
@@ -254,6 +269,15 @@ export function usePaneView(args: PaneViewArgs) {
     status: agent?.status,
     getScrollElement,
   });
+  // History arrives after the first paint. The pending ask is what fills options the card
+  // scrollbar never put in the Herdr buffer. Same id means the same call — don't re-render.
+  // The map is written in the memo above, on the render that builds the buttons.
+  useLayoutEffect(() => {
+    const next = pendingGrokAsk(inline.entries);
+    setAskState((prev) =>
+      prev.paneId === paneId && prev.ask?.id === next?.id ? prev : { paneId, ask: next },
+    );
+  }, [paneId, inline.entries]);
 
   // Load older scrollback: raise the per-pane requested line count and refetch. The enlarged buffer
   // prepends older lines at the top, so we adopt it into the frozen display and re-anchor the scroll

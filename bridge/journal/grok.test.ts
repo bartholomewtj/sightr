@@ -99,6 +99,57 @@ describe("parseGrokTranscript", () => {
     ]);
   });
 
+  test("keeps a pending ask_user_question and drops it once the result lands", () => {
+    const args = {
+      questions: [
+        {
+          question: "Which model?",
+          multi_select: false,
+          options: [{ label: "grok-4.7 (Recommended)", description: "The one on this seat." }],
+        },
+        {
+          question: "Pick lenses",
+          multi_select: true,
+          options: [{ label: "Hit target" }, { label: "" }, { label: "Overflow" }],
+        },
+      ],
+    };
+    const call = assistant("Asking.", [
+      { id: "call-ask", name: "ask_user_question", arguments: JSON.stringify(args) },
+    ]);
+    const pending = parseGrokTranscript(call);
+    const tool = pending[0]!.parts.find((p) => p.kind === "tool");
+    expect(tool).toMatchObject({
+      name: "ask_user_question",
+      ask: {
+        id: "call-ask",
+        questions: [
+          {
+            question: "Which model?",
+            multi: false,
+            options: [{ label: "grok-4.7 (Recommended)", description: "The one on this seat." }],
+          },
+          {
+            question: "Pick lenses",
+            multi: true,
+            options: [{ label: "Hit target" }, { label: "Overflow" }],
+          },
+        ],
+      },
+    });
+
+    const answered = parseGrokTranscript(
+      [
+        call,
+        JSON.stringify({ type: "tool_result", tool_call_id: "call-ask", content: "User answered." }),
+      ].join("\n"),
+    );
+    const done = answered[0]!.parts.find((p) => p.kind === "tool");
+    expect(done?.kind).toBe("tool");
+    if (done?.kind === "tool") expect(done.ask).toBeUndefined();
+    expect(done).toMatchObject({ result: { text: "User answered." } });
+  });
+
   test("folds a tool_result onto the matching call", () => {
     const text = [
       assistant("Looking.", [
