@@ -36,6 +36,8 @@ export interface PiAskOption {
   description?: string;
   keys: string[];
   keyLabel?: string;
+  /** Set when Pi painted a trailing ` ✓` on this row (multiSelect, toggled on). */
+  chosen?: boolean;
 }
 
 export interface PiAskParse {
@@ -67,6 +69,8 @@ interface RawOption {
   label: string;
   description?: string;
   lineIndex: number;
+  /** Trailing ` ✓` on a multiSelect row Pi has toggled on. */
+  chosen: boolean;
 }
 
 /**
@@ -159,6 +163,11 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
         label = [label, ...pendingLabelWrap.reverse()].join(" ");
         pendingLabelWrap = [];
       }
+      // Pi paints a trailing check on a toggled multiSelect row. Strip it before the
+      // "Type something." check, or a checked free-text row fails the frame and the
+      // phone drops the buttons.
+      const chosen = label.endsWith(" ✓");
+      if (chosen) label = label.slice(0, -2);
       let description: string | undefined = undefined;
       if (pendingDesc.length > 0) {
         description = pendingDesc.reverse().join(" ");
@@ -170,6 +179,7 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
         label,
         description,
         lineIndex: r,
+        chosen,
       });
       r--;
       continue;
@@ -326,6 +336,7 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
       label: raw.label,
       keys,
       keyLabel: String(i + 1),
+      ...(raw.chosen ? { chosen: true } : {}),
     };
     if (raw.description !== undefined) {
       opt.description = raw.description;
@@ -392,7 +403,7 @@ export function detectPiWizardRegion(lines: StyledLine[]): PiWizardRegion | null
     ...(opt.description !== undefined ? { description: opt.description } : {}),
     keys: opt.keys,
     ...(opt.keyLabel !== undefined ? { keyLabel: opt.keyLabel } : {}),
-    chosen: false,
+    chosen: opt.chosen === true,
     escape: false,
   }));
 

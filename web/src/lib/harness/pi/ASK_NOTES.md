@@ -21,6 +21,7 @@ Source: `~/.pi/agent/extensions/ask.ts` (tool implementation) and `@earendil-wor
 2. **Key handling (`ask.ts` ~233–310):**
    - Up/Down move `optionIndex` (clamped, no wrap).
    - Enter on a standard option saves the answer (submitting in 1Q, or advancing to next tab/Submit in multi).
+   - When that question's `multiSelect` is true and the card has more than one question, Enter toggles the row (a trailing ` ✓`) and stays on the list. Right/Tab still moves to the next question. A second Enter on the same row clears it. The phone keeps sending Up/Down then Enter, so the buttons stay up.
    - Enter on `Type something.` enters custom input mode (`inputMode = true`).
    - Esc cancels the questionnaire.
    - Multi: Tab/Right advance to next tab (wrapping modulo), Shift+Tab/Left move back.
