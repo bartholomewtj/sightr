@@ -76,10 +76,34 @@ The adapter lifts a radio `prompt-select` with `keys: ["N"]` (or `["a"]`…`["f"
 complete captured layout: consecutive `1`–`9` then `a`–`f`, a `z` row, and an inner
 `Enter:select` / `Enter:submit` / `Enter:edit` hint — as one contiguous gutter run with nothing
 but a couple of blank rows between the card and its footer (the capture shows exactly one).
+One radio option is enough; the run still has to start at `1` when no catalog is passed.
 Wizard steps and Esc-park keep that layout. `z` is modelled as `feedback` with
 `purpose: "free-text"`. A focused row locks the option buttons. The phone types that row when
 its key is `z`, reusing the plan-feedback sequence with `row.key` instead of a digit. A card
 missing `z` or the Enter hint, or painting a non-consecutive letter row, returns null. Checkbox
 cards lift as `multi-select` (`tab-space-enter`). A description that wraps onto the next
-gutter row (no option mark) stays on that option; it does not refuse the card. Fixture:
+gutter row (no option mark) stays on that option; it does not refuse the card. A checkbox
+question that wraps the same way is one question (the rows join with a space). Fixture:
 `grok--ask-r3-wrap.txt`.
+
+Council card, 2026-10-14 (parser and journal; the Up step below was not live-probed):
+
+- A 54-column pane paints about two checkbox rows. The rest sit in Grok's own card scrollbar
+  and are not in the Herdr buffer, so a screen parse cannot invent them. When this pane's
+  journal still has an unanswered `ask_user_question`, and the painted widget, `[n/m]` step,
+  and visible labels match that call, the phone uses the catalog's question, labels, and
+  descriptions, including rows that were never painted and labels the pane ellipsized. An
+  empty visible window (the options have scrolled off) is allowed. A window that does not
+  start at `1` stays raw unless that catalog matches. A non-contiguous key run (`2` then `a`)
+  and a checkbox hint of `[3/2]` stay raw even with a catalog. After the tool result lands the
+  catalog is dropped, so a later permission card cannot inherit it. Parses with no catalog
+  stay screen-only.
+- Checkbox presence is the `z` row, the hint, and the ask footer. It does not require a
+  painted checkbox row, so a scrolled card still asks for the terminal dump until the catalog
+  lifts it. A radio mark with no checkbox row is not that presence.
+- The toggle walk is still `tab-space-enter`. Digits and `a`–`f` are never sent. A 2026-10-13
+  note records that a checkbox digit toggles and leaves the card up; the phone still does not
+  send one, because a digit on a mis-detected radio submits. When the highlight cell is
+  unreadable, the walk sends Up toward option 1, then Space. That Up step was not live-probed
+  on a real card. A checked row that scrolls off stays checked for that pane and that catalog
+  step; a painted mark wins when the row is on screen.

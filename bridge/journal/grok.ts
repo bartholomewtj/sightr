@@ -57,6 +57,7 @@ import {
 import { grokPromptBody } from "../../shared/grok-prompt.ts";
 import { containedRealpath, exists, loadTail, rootList, statFile } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
+import type { TranscriptAsk, TranscriptAskOption, TranscriptAskQuestion } from "../../shared/wire.ts";
 import type {
   AgentSessionRef,
   InferSessionOpts,
@@ -65,6 +66,56 @@ import type {
   TranscriptPart,
   TranscriptSource,
 } from "./types.ts";
+
+/** A phone card does not need a novel. Past this the row is a different widget. */
+const MAX_ASK_QUESTIONS = 8;
+const MAX_ASK_OPTIONS = 15;
+const MAX_ASK_QUESTION_CHARS = 500;
+const MAX_ASK_LABEL_CHARS = 200;
+const MAX_ASK_DESC_CHARS = 400;
+
+function clipAsk(text: string, max: number): string {
+  const line = text.replace(/\s+/g, " ").trim();
+  return line.length > max ? line.slice(0, max) : line;
+}
+
+/**
+ * The questions a pending `ask_user_question` asked, or undefined when the arguments are not that
+ * shape. Only the fields the phone renders are kept, and each one is capped.
+ */
+function parseAskPayload(id: string, args: unknown): TranscriptAsk | undefined {
+  if (id === "" || !args || typeof args !== "object") return undefined;
+  const rawQs = (args as { questions?: unknown }).questions;
+  if (!Array.isArray(rawQs)) return undefined;
+  const questions: TranscriptAskQuestion[] = [];
+  for (const raw of rawQs) {
+    if (questions.length >= MAX_ASK_QUESTIONS) break;
+    if (!raw || typeof raw !== "object") continue;
+    const q = raw as { question?: unknown; multi_select?: unknown; options?: unknown };
+    if (typeof q.question !== "string" || !Array.isArray(q.options)) continue;
+    const question = clipAsk(q.question, MAX_ASK_QUESTION_CHARS);
+    if (question === "") continue;
+    const options: TranscriptAskOption[] = [];
+    for (const rawOpt of q.options) {
+      if (options.length >= MAX_ASK_OPTIONS) break;
+      if (!rawOpt || typeof rawOpt !== "object") continue;
+      const o = rawOpt as { label?: unknown; description?: unknown };
+      if (typeof o.label !== "string") continue;
+      const label = clipAsk(o.label, MAX_ASK_LABEL_CHARS);
+      if (label === "") continue;
+      const opt: TranscriptAskOption = { label };
+      if (typeof o.description === "string") {
+        const description = clipAsk(o.description, MAX_ASK_DESC_CHARS);
+        if (description !== "") opt.description = description;
+      }
+      options.push(opt);
+    }
+    if (options.length === 0) continue;
+    questions.push({ question, multi: q.multi_select === true, options });
+  }
+  if (questions.length === 0) return undefined;
+  return { id, questions };
+}
 
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOG_NAME = "chat_history.jsonl";
@@ -303,13 +354,19 @@ export function parseGrokTranscript(text: string): TranscriptEntry[] {
           if (!raw || typeof raw !== "object") continue;
           const tc = raw as { id?: unknown; name?: unknown; arguments?: unknown };
           const name = typeof tc.name === "string" ? tc.name : "tool";
+          const args = parseToolArgs(tc.arguments);
+          const callId = typeof tc.id === "string" ? tc.id : "";
           const part: Extract<TranscriptPart, { kind: "tool" }> = {
             kind: "tool",
             name,
-            summary: summarizeToolInput(parseToolArgs(tc.arguments)),
+            summary: summarizeToolInput(args),
           };
+          if (name === "ask_user_question") {
+            const ask = parseAskPayload(callId, args);
+            if (ask) part.ask = ask;
+          }
           parts.push(part);
-          if (typeof tc.id === "string" && tc.id !== "") pendingTools.set(tc.id, part);
+          if (callId !== "") pendingTools.set(callId, part);
         }
       }
       if (parts.length === 0) continue;
@@ -324,6 +381,8 @@ export function parseGrokTranscript(text: string): TranscriptEntry[] {
       if (target) {
         pendingTools.delete(id);
         target.result = clamp(resultText, MAX_RESULT_CHARS);
+        // The card is gone. Keeping the questions would fill a later permission prompt.
+        delete target.ask;
       } else if (resultText.trim() !== "") {
         entries.push({
           uuid,

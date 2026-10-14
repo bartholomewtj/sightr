@@ -155,11 +155,13 @@ async function guardedKey(args: MultiGuardArgs, keys: string[]): Promise<ActionR
 const NAV_SETTLE_MS = 250;
 
 /**
- * Grok checkbox toggle: Tab until the highlight sits on option `n`, then Space. Digits submit
- * on that widget (ASK_NOTES.md) — this path must never send one. Each Tab re-reads `focusedN`
- * (the colour highlight). Space is the last key; identity includes `checked`, so a flip by
- * another device aborts the walk before Space. A parked card (`Tab/Space:question`) gets one
- * extra Tab first — that footer's named key re-enters; Space before that is a no-op.
+ * Grok checkbox toggle: Tab until the highlight sits on option `n`, then Space. A digit toggles
+ * too, and a digit on a mis-read radio submits, so this path never sends one. Each step re-reads
+ * `focusedN` (the colour highlight). When the highlight is on a row the card has scrolled off,
+ * `focusedN` is null — Up is clamped toward option 1 and brings a row back into the buffer, then
+ * Tab finishes the walk. Space is the last key; identity includes `checked`, so a flip by another
+ * device aborts the walk before Space. A parked card (`Tab/Space:question`) gets one extra Tab
+ * first — that footer's named key re-enters; Space before that is a no-op.
  */
 async function runTabSpaceToggle(args: MultiGuardArgs, n: number): Promise<ActionResult> {
   if (args.multi.phase !== "checkbox" || args.multi.recipe !== "tab-space-enter") {
@@ -169,7 +171,9 @@ async function runTabSpaceToggle(args: MultiGuardArgs, n: number): Promise<Actio
   if (!guarded.ok) return guarded.result;
 
   const sleep = args.sleep ?? defaultSleep;
-  const maxSteps = args.multi.options.length + 3;
+  // Up back to a painted row, then Tab across the list. A short cap died while the highlight
+  // was still on a row the pane had not painted.
+  const maxSteps = args.multi.options.length * 2 + 4;
   let expectedPrompt: string | undefined = guarded.region;
   const sendMacroStep = async (keys: string[]) => {
     const expected = expectedPrompt;
@@ -202,7 +206,10 @@ async function runTabSpaceToggle(args: MultiGuardArgs, n: number): Promise<Actio
     if (m.focusedN === n) {
       return (await sendMacroStep(["Space"])) ?? { status: "sent" };
     }
-    const sent = await sendMacroStep(["Tab"]);
+    // Null means the highlight is on a description or an option the card scrollbar hid.
+    // Up is clamped at option 1, so it walks that highlight back into the painted rows.
+    // A readable highlight still Tabs — that is the probed path and it must not change.
+    const sent = await sendMacroStep([m.focusedN == null ? "Up" : "Tab"]);
     if (sent) return sent;
     await sleep(NAV_SETTLE_MS);
   }

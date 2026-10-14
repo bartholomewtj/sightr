@@ -103,6 +103,32 @@ function closingRule(texts: string[]): number {
   return c;
 }
 
+/** Help row just above the closing rule. A narrow pane wraps "… Esc" / "cancel" onto the next row. */
+function helpAbove(texts: string[], c: number): { start: number; multi: boolean } | null {
+  if (c < 2) return null;
+  let start = c - 1;
+  const kindOf = (row: string): boolean | null => {
+    if (HELP_SINGLE.test(row)) return false;
+    if (HELP_MULTI.test(row)) return true;
+    return null;
+  };
+  let kind = kindOf(texts[start]!);
+  if (kind === null && start >= 1) {
+    const cont = texts[start]!.trim();
+    const head = texts[start - 1]!;
+    if (cont.length > 0 && cont.length <= 16 && /navigate/.test(head)) {
+      const joined = kindOf(`${head.trimEnd()} ${cont}`);
+      if (joined !== null) {
+        kind = joined;
+        start -= 1;
+      }
+    }
+  }
+  if (kind === null) return null;
+  if (start < 1 || !isBlank(texts[start - 1]!)) return null;
+  return { start, multi: kind };
+}
+
 export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
   const texts = lines.map((l) => rstrip(lineText(l)));
 
@@ -110,22 +136,14 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
   const c = closingRule(texts);
   if (c < 0) return null;
 
-  // 2. Help row
-  if (c < 2) return null;
-  const helpRow = texts[c - 1]!;
-  let multi = false;
-  if (HELP_SINGLE.test(helpRow)) {
-    multi = false;
-  } else if (HELP_MULTI.test(helpRow)) {
-    multi = true;
-  } else {
-    return null;
-  }
+  // 2. Help row. Options sit above the blank that sits above the help.
+  const help = helpAbove(texts, c);
+  if (!help) return null;
+  const multi = help.multi;
+  const helpStart = help.start;
 
-  if (!isBlank(texts[c - 2]!)) return null;
-
-  // 3. Options, walking up from c - 3
-  let r = c - 3;
+  // 3. Options, walking up from the blank above the help
+  let r = helpStart - 2;
   let pendingDesc: string[] = [];
   let pendingLabelWrap: string[] = [];
   const collectedOptions: RawOption[] = [];
@@ -408,16 +426,19 @@ export function detectPiReviewRegion(lines: StyledLine[]): PiWizardRegion | null
   const texts = lines.map((l) => rstrip(lineText(l)));
   const c = closingRule(texts);
   if (c < 4) return null;
-  if (!HELP_MULTI.test(texts[c - 1]!) || !isBlank(texts[c - 2]!)) return null;
+  const help = helpAbove(texts, c);
+  if (!help || !help.multi) return null;
 
-  const status = texts[c - 3]!;
+  const statusIdx = help.start - 2;
+  if (statusIdx < 1) return null;
+  const status = texts[statusIdx]!;
   const ready = REVIEW_READY.test(status);
   if (!ready && !REVIEW_MISSING.test(status)) return null;
-  if (!isBlank(texts[c - 4]!)) return null;
+  if (!isBlank(texts[statusIdx - 1]!)) return null;
 
   // Walk up over the echoed answers to the title.
   let title = -1;
-  for (let i = c - 5; i >= Math.max(0, c - MAX_REVIEW_ROWS); i--) {
+  for (let i = statusIdx - 2; i >= Math.max(0, c - MAX_REVIEW_ROWS); i--) {
     if (REVIEW_TITLE.test(texts[i]!)) {
       title = i;
       break;
@@ -446,7 +467,7 @@ export function detectPiReviewRegion(lines: StyledLine[]): PiWizardRegion | null
 
   // `<label>: <answer>` rows; a row that starts no known label continues the answer above it.
   const answers: { question: string; answer: string }[] = [];
-  for (let i = title + 2; i < c - 4; i++) {
+  for (let i = title + 2; i < statusIdx - 1; i++) {
     const t = texts[i]!;
     if (isBlank(t)) continue;
     const step = steps.find((st) => t.trimStart().startsWith(`${st.label}: `));

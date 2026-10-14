@@ -26,6 +26,7 @@
 
 import { fetchPane, sendKeys } from "./api";
 import { parseLines, type StyledLine } from "./blocks";
+import { withAskPane } from "./harness/ask-pane";
 import { adapterFor } from "./harness/registry";
 import {
   DIALOG_CONTRACT,
@@ -90,6 +91,14 @@ export function dialogDetector<K extends DialogKind>(
   };
 }
 
+/** Re-derive as `paneId`, so a Grok ask catalog the view stored is visible to the guard too. */
+function paneDetector<K extends DialogKind>(
+  target: DialogTarget<K>,
+): (lines: StyledLine[]) => DialogModels[K] | null {
+  const detect = dialogDetector(target.kind, target.agent);
+  return (lines) => withAskPane(target.paneId, () => detect(lines));
+}
+
 /** Which comparison a step needs: `commits` for a keystroke that acts, `identity` for one whose own
  *  effect is the change it would otherwise be blamed for (an arrow, a pointer walk, a note flow). */
 export type Compare = "commits" | "identity";
@@ -107,7 +116,7 @@ export async function guardDialog<K extends DialogKind>(
   return entryGuard(
     target,
     target.model,
-    dialogDetector(target.kind, target.agent),
+    paneDetector(target),
     contract[compare],
     contract.region,
   );
@@ -157,7 +166,7 @@ export async function readDialog<K extends DialogKind>(
   return readModel(
     target.paneId,
     target.requestedLines,
-    dialogDetector(target.kind, target.agent),
+    paneDetector(target),
   );
 }
 
@@ -173,7 +182,7 @@ export async function pollDialog<K extends DialogKind>(
   return pollUntil(
     target,
     target.model,
-    dialogDetector(target.kind, target.agent),
+    paneDetector(target),
     accept,
     DIALOG_CONTRACT[target.kind].identity,
   );
@@ -209,7 +218,7 @@ export async function awaitDialogSettled<K extends DialogKind>(
   target: DialogTarget<K> & { sleep?: Sleep },
   compare: Compare = "commits",
 ): Promise<SettleOutcome> {
-  const detect = dialogDetector(target.kind, target.agent);
+  const detect = paneDetector(target);
   const same = DIALOG_CONTRACT[target.kind][compare];
   const sleep = target.sleep ?? defaultSleep;
   let goneStreak = 0;

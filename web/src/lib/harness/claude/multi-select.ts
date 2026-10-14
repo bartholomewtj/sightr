@@ -17,7 +17,7 @@
 // (web/src/fixtures/panes/claude--select-multiselect-*.txt), and never touches a pane or the network.
 
 import type { StyledLine } from "../../blocks";
-import { classifyFooter, isBlank, isHorizontalRule, lineText } from "./markers";
+import { classifyTailFooter, isBlank, isHorizontalRule, lineText } from "./markers";
 import { checkboxState, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
 import { parseReviewBody, parseStepperLine } from "./wizard";
 import type { WizardStepChip } from "../wizard-model";
@@ -191,13 +191,15 @@ function detectCheckboxPhase(
   texts: string[],
   fi: number,
 ): MultiSelectRegion | null {
-  if (classifyFooter(texts[fi]!) !== "select") return null;
+  const tail = classifyTailFooter(texts, fi);
+  if (!tail || tail.family !== "select") return null;
+  const scanEnd = tail.scanEnd;
 
   // Numbered rows near the footer — the trailing 1,2,…,m run (the checkbox options + the numbered
   // "Chat about this" escape); a numbered body above it drops out (same hazard as prompt-select).
-  const from = Math.max(0, fi - OPTION_SCAN_WINDOW);
+  const from = Math.max(0, scanEnd - OPTION_SCAN_WINDOW);
   const rows: { index: number; n: number; label: string }[] = [];
-  for (let i = from; i < fi; i++) {
+  for (let i = from; i < scanEnd; i++) {
     const parsed = parseOptionRow(texts[i]!);
     if (parsed) rows.push({ index: i, ...parsed });
   }
@@ -206,7 +208,7 @@ function detectCheckboxPhase(
   if (menu.length < 2) return null;
   if (menu.length > 9) return null; // a row ≥10 needs the unsendable digit "10"
   const firstOpt = menu[0]!.index;
-  if (fi - menu[menu.length - 1]!.index > MAX_FOOTER_GAP) return null;
+  if (scanEnd - menu[menu.length - 1]!.index > MAX_FOOTER_GAP) return null;
 
   // The screen MUST carry the navigable advance row, and we locate it by POSITION, not by scanning
   // for the first line that reads "Submit"/"Next". Claude Code draws it in exactly one place: last
@@ -265,7 +267,7 @@ function detectCheckboxPhase(
     const cb = checkboxState(row.label);
     if (!cb) return null; // the checkbox-prefix discriminator: bail to the single-select grammar
     if (isFreeTextLabel(cb.rest)) continue;
-    const nextIdx = r + 1 < menu.length ? menu[r + 1]!.index : fi;
+    const nextIdx = r + 1 < menu.length ? menu[r + 1]!.index : scanEnd;
     const desc: string[] = [];
     for (let i = row.index + 1; i < nextIdx; i++) {
       const t = texts[i]!;

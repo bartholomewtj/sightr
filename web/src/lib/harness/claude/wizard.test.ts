@@ -26,6 +26,34 @@ function fixtureLines(name: string): StyledLine[] {
   return splitLines(parseAnsi(fixtureText(name)));
 }
 
+describe("detectWizard — a wrapped footer on a narrow pane", () => {
+  it("lifts a two-question step whose hint wrapped after Esc", () => {
+    const buf = [
+      "←  ☐ Color  ☐ Size  ✔ Submit  →",
+      "",
+      "Which color?",
+      "",
+      "❯ 1. Red",
+      "     Warm",
+      "  2. Blue",
+      "     Cool",
+      "  3. Type something.",
+      "─".repeat(52),
+      "  4. Chat about this",
+      "",
+      "Enter to select · Tab/Arrow keys to navigate · Esc",
+      "to cancel",
+    ].join("\n");
+    const model = detectWizard(splitLines(parseAnsi(buf)));
+    expect(model).not.toBeNull();
+    if (model!.phase !== "question") throw new Error("expected question phase");
+    expect(model!.question).toBe("Which color?");
+    expect(model!.options.map((o) => o.label)).toEqual(["Red", "Blue", "Chat about this"]);
+    expect(model!.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["4"]]);
+    expect(model!.options[2]!.description).toBeUndefined();
+  });
+});
+
 describe("detectWizard — question phase", () => {
   it("fresh wizard (q1): all chips unanswered, first current, digit-alone keys", () => {
     const model = detectWizard(fixtureLines("claude--wizard-q1.txt"));

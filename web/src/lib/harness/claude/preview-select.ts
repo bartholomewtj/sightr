@@ -16,7 +16,7 @@
 
 import type { StyledLine } from "../../blocks";
 import { regionSignature } from "../scan";
-import { classifyFooter, isBlank, isHorizontalRule, lineText } from "./markers";
+import { classifyTailFooter, isBlank, isHorizontalRule, lineText } from "./markers";
 import { parseOptionRow } from "./prompt-select";
 import { parseStepperLine } from "./wizard";
 import type { PreviewNote, PreviewOption, PreviewSelectModel } from "../preview-model";
@@ -43,6 +43,26 @@ const NOTE_EDITING_FOOTER = /ctrl\+g to edit\b/i;
 // The two literal Notes-line states Claude Code renders (the placeholder's … is U+2026).
 const NOTE_HINT = "press n to add notes";
 const NOTE_PLACEHOLDER = "Add notes on this design…";
+
+/** Column of the Notes label. A wide pane paints `Notes:`. A narrow pane wraps the colon off. */
+function indexOfNotesLabel(text: string): number {
+  const exact = text.indexOf("Notes:");
+  if (exact >= 0) return exact;
+  const loose = text.search(/Notes\b/);
+  if (loose < 0 || !/press n to add/i.test(text)) return -1;
+  return loose;
+}
+
+function notesLabelWidth(text: string): number {
+  return text.indexOf("Notes:") >= 0 ? "Notes:".length : "Notes".length;
+}
+
+/** Put a wrapped `Notes:` / `press n to add notes` back into the placeholder the parser knows. */
+function collapseWrappedNote(rest: string): string {
+  const collapsed = rest.replace(/\s+/g, " ").replace(/ ?: ?/g, " ").trim();
+  if (collapsed.toLowerCase() === NOTE_HINT) return NOTE_HINT;
+  return rest;
+}
 
 // The unnumbered escape row below the rule ("Chat about this", possibly carrying the pointer).
 // Not reachable via Down (it clamps at the last option), so it is tolerated but never up-levelled.
@@ -82,23 +102,29 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
   const texts = lines.map(lineText);
 
   // 1. Tail anchor: the last non-blank line is a select-family footer that offers `n to add notes`.
+  //    A narrow pane wraps that hint; classifyTailFooter joins the two rows.
   let fi = texts.length - 1;
   while (fi >= 0 && isBlank(texts[fi]!)) fi--;
   if (fi < 0) return null;
-  const footer = texts[fi]!;
-  if (classifyFooter(footer) !== "select" || !NOTES_FOOTER.test(footer)) return null;
+  const tail = classifyTailFooter(texts, fi);
+  if (!tail || tail.family !== "select" || !NOTES_FOOTER.test(tail.text)) return null;
+  const footer = tail.text;
+  const scanEnd = tail.scanEnd;
   const editing = NOTE_EDITING_FOOTER.test(footer);
 
   // 2. The `Notes:` line, a few lines above the footer. Between them only the escape row, the
   //    rule, and blanks may appear — anything else means an unknown layout, so bail to raw.
   let notesIdx = -1;
-  for (let i = fi - 1, seen = 0; i >= 0 && seen < NOTES_SCAN_LIMIT; i--, seen++) {
+  for (let i = scanEnd - 1, seen = 0; i >= 0 && seen < NOTES_SCAN_LIMIT; i--, seen++) {
     const t = texts[i]!;
     const trimmed = t.trim();
-    if (trimmed.startsWith("Notes:")) {
+    const notesAt = indexOfNotesLabel(t);
+    if (notesAt >= 0) {
       notesIdx = i;
       break;
     }
+    // A narrow pane wraps "Notes:" so the colon and the word "notes" land on the next row.
+    if (/^:\s*\S/.test(trimmed) && trimmed.length <= 40) continue;
     if (isBlank(t) || isHorizontalRule(t) || ESCAPE_ROW.test(trimmed)) continue;
     return null;
   }
@@ -106,8 +132,13 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
 
   // The Notes label's column anchors the preview pane: everything left of it on the rows above is
   // option-list territory, everything from it rightward is preview content.
-  const noteCol = texts[notesIdx]!.indexOf("Notes:");
-  const note = parseNote(texts[notesIdx]!.slice(noteCol + "Notes:".length), editing);
+  const noteCol = indexOfNotesLabel(texts[notesIdx]!);
+  let noteRest = texts[notesIdx]!.slice(noteCol + notesLabelWidth(texts[notesIdx]!));
+  const noteTail = texts[notesIdx + 1];
+  if (noteTail && /^:\s*\S/.test(noteTail.trim()) && noteTail.trim().length <= 40) {
+    noteRest = `${noteRest} ${noteTail.trim()}`;
+  }
+  const note = parseNote(collapseWrappedNote(noteRest), editing);
 
   // 3. Option rows: numbered rows 1..k, matched on the text LEFT of the preview column. Unlike the
   //    full-width grammars, this variant's left column is only ~30 wide, so a longer label WRAPS

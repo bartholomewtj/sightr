@@ -17,7 +17,7 @@
 
 import type { StyledLine } from "../../blocks";
 import { regionSignature } from "../scan";
-import { classifyFooter, isBlank, isHorizontalRule, lineText } from "./markers";
+import { classifyTailFooter, isBlank, isHorizontalRule, lineText } from "./markers";
 import { checkboxState, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
 import {
   WIZARD_BACK_KEYS,
@@ -159,14 +159,18 @@ function detectQuestionPhase(
   texts: string[],
   fi: number,
 ): WizardRegion | null {
-  if (classifyFooter(texts[fi]!) !== "select") return null;
+  const tail = classifyTailFooter(texts, fi);
+  if (!tail || tail.family !== "select") return null;
+  // A wrapped hint ("Esc" / "to cancel") must not be read as an option description. `scanEnd` is
+  // the first footer row; `fi` stays the last physical row so the signature still covers the tail.
+  const scanEnd = tail.scanEnd;
 
   // Numbered rows near the footer (same shape as the single-question menu). The menu is the trailing
   // 1,2,…,m run of them (see trailingMenuRows) — a numbered body above the current question's options
   // sits above it and drops out, the same body-list hazard prompt-select guards against.
-  const from = Math.max(0, fi - OPTION_SCAN_WINDOW);
+  const from = Math.max(0, scanEnd - OPTION_SCAN_WINDOW);
   const rows: { index: number; n: number; label: string }[] = [];
-  for (let i = from; i < fi; i++) {
+  for (let i = from; i < scanEnd; i++) {
     const parsed = parseOptionRow(texts[i]!);
     if (parsed) rows.push({ index: i, ...parsed });
   }
@@ -183,7 +187,7 @@ function detectQuestionPhase(
   // mirror + keys pad. (The multi-select grammar only claims the single-question checkbox form.)
   if (menu.some((row) => checkboxState(row.label) !== null)) return null;
   const firstOpt = menu[0]!.index;
-  if (fi - menu[menu.length - 1]!.index > MAX_FOOTER_GAP) return null;
+  if (scanEnd - menu[menu.length - 1]!.index > MAX_FOOTER_GAP) return null;
 
   // The stepper header above the first option — THE wizard discriminator. Stop at a horizontal
   // rule (the dialog's top border) so the scan can't wander into scrollback.
@@ -206,7 +210,7 @@ function detectQuestionPhase(
   for (let r = 0; r < menu.length; r++) {
     const row = menu[r]!;
     if (isFreeTextLabel(row.label)) continue;
-    const nextIdx = r + 1 < menu.length ? menu[r + 1]!.index : fi;
+    const nextIdx = r + 1 < menu.length ? menu[r + 1]!.index : scanEnd;
     const desc: string[] = [];
     for (let i = row.index + 1; i < nextIdx; i++) {
       const t = texts[i]!;
