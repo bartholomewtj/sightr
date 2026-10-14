@@ -107,3 +107,7 @@ Council card, 2026-10-14 (parser and journal; the Up step below was not live-pro
   unreadable, the walk sends Up toward option 1, then Space. That Up step was not live-probed
   on a real card. A checked row that scrolls off stays checked for that pane and that catalog
   step; a painted mark wins when the row is on screen.
+- Live Grok 4.7, 2026-10-14, 54-column pane: before any box is checked the hint reads
+  `Enter:select`. After Tab then Space checks a box, the hint repaints as `Enter:next` and the
+  footer swaps `Esc:scrollback` for `Esc:unselect`. The card stays up. `Enter:next` advances,
+  the same as `Enter:select`. It is not submit.

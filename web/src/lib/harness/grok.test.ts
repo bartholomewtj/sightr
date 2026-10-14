@@ -457,6 +457,16 @@ describe("grokBuildBlocks", () => {
     expect(region!.model.steps?.[0]?.current).toBe(true);
   });
 
+  it("checkbox wizard Enter:next still advances after a box is checked", () => {
+    const ansi = readFileSync(join(PANES_DIR, "grok--ask-multi-wizard-q1.txt"), "utf8");
+    const lines = splitLines(parseAnsi(ansi.replace("Enter:submit", "Enter:next")));
+    const region = detectCheckboxAskRegion(lines);
+    expect(region).not.toBeNull();
+    if (region!.model.phase !== "checkbox") throw new Error("expected checkbox");
+    expect(region!.model.advanceLabel).toBe("Next");
+    expect(checkboxAskPresent(lines)).toBe(true);
+  });
+
   it("checkbox wizard fallbacks", () => {
     const ansi = readFileSync(join(PANES_DIR, "grok--ask-multi-wizard-q1.txt"), "utf8");
 

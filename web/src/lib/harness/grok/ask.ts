@@ -7,8 +7,10 @@ import { regionSignature, rstrip, lastNonBlankIndex } from "../scan";
 // are a different widget. Live Grok 1.0.52 (2026-10-13): a digit toggles that box and leaves the
 // card up. Space still toggles the focused row, so the phone keeps `tab-space-enter` and never
 // emits a digit or an `a`–`f` letter. The hint verb names the advance button: `Enter:select`
-// moves to the next question, `Enter:submit` sends the form. The complete radio layout is
-// that consecutive key run, a `z` row, and an inner `Enter:select|submit|edit` hint. A card missing
+// and `Enter:next` move to the next question, `Enter:submit` sends the form. Live Grok 4.7
+// (2026-10-14) repaints a checkbox hint as `Enter:next` once a box is checked. The complete
+// radio layout is that consecutive key run, a `z` row, and an inner
+// `Enter:select|submit|edit|next` hint. A card missing
 // any of those is refused.
 // Esc-park keeps the same card; its footer differs and must still match. Radio prepends Tab so a
 // tap re-enters before the digit. Checkbox sets `parked` so the Tab/Space walk Tabs once to re-enter
@@ -75,7 +77,7 @@ const Z_FOCUSED = /^\s*[┃│]\s+z\s+\([●•]\)\s+[❯>]\s*(.*)$/;
 // `z (○)` and the global footer says `Tab:next answer` — but a digit still types into the
 // free-text field (live-probed 2026-08-22, twice via the guarded send path;
 // grok--ask-z-parked.txt). `select`/`submit` mean the cursor is on an option row.
-const HINT_ROW = /^\s*[┃│]\s+(?:\[\d+\/\d+\]\s+)?↑\/↓ navigate\b.*Enter:(select|submit|edit)$/i;
+const HINT_ROW = /^\s*[┃│]\s+(?:\[\d+\/\d+\]\s+)?↑\/↓ navigate\b.*Enter:(select|submit|edit|next)$/i;
 const HINT_STEP = /^\s*[┃│]\s+\[(\d+)\/(\d+)\]\s+↑\/↓ navigate\b/;
 // A row shaped like a control — a short key token followed by a mark — that no specific rule
 // matched is an unprobed widget row: refuse the whole card rather than lift around it.
@@ -608,9 +610,9 @@ export function detectCheckboxAskRegion(
       escape: null,
       pointer: focusedN === null ? "other" : "option",
       steps,
-      // `Enter:select` on a non-final step advances. `Enter:submit` sends the form. The button
+      // `Enter:select` and `Enter:next` advance. `Enter:submit` sends the form. The button
       // says which of those the hint row names.
-      advanceLabel: hintVerb === "select" ? "Next" : "Submit",
+      advanceLabel: hintVerb === "select" || hintVerb === "next" ? "Next" : "Submit",
       recipe: "tab-space-enter",
       ...(parked ? { parked: true } : {}),
       focusedN,
