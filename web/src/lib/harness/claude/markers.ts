@@ -192,3 +192,34 @@ export function classifyFooter(text: string): PromptFamily | null {
   if (/\btab to amend\b/.test(t)) return "permission";
   return null;
 }
+
+/** A hint bar Claude wrapped onto the next row of a narrow pane. The continuation is the short
+ *  tail ("to cancel"); the head already names the confirm phrase. Longer than this is a different
+ *  line, not a wrap. */
+const FOOTER_WRAP_TAIL = 20;
+// The head of a wrapped hint starts with the confirm phrase. A transcript line that merely
+// mentions "enter to select" later in the sentence must not become a footer.
+const FOOTER_HEAD = /^\s*(enter to select|enter to confirm|esc to cancel|tab to amend|ctrl\+g to edit)\b/i;
+
+/**
+ * The dialog footer at `fi` (the last non-blank row, after any trailing marker was peeled).
+ * `scanEnd` is the exclusive bound for the rows ABOVE the footer — equal to `fi` when the hint
+ * fits on one row, and `fi - 1` when a narrow pane wrapped it. Callers keep `fi` as the signature's
+ * last line so the wrapped tail stays in the on-screen region.
+ */
+export function classifyTailFooter(
+  texts: string[],
+  fi: number,
+): { family: PromptFamily; scanEnd: number; text: string } | null {
+  const direct = classifyFooter(texts[fi]!);
+  if (direct) return { family: direct, scanEnd: fi, text: texts[fi]! };
+  if (fi < 1 || isBlank(texts[fi - 1]!)) return null;
+  const cont = texts[fi]!.trim();
+  if (cont.length === 0 || cont.length > FOOTER_WRAP_TAIL) return null;
+  const head = texts[fi - 1]!;
+  if (!FOOTER_HEAD.test(head)) return null;
+  const joined = `${head.trimEnd()} ${cont}`;
+  const family = classifyFooter(joined);
+  if (!family) return null;
+  return { family, scanEnd: fi - 1, text: joined };
+}

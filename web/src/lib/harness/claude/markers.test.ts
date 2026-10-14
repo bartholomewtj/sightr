@@ -4,6 +4,7 @@ import { parseAnsi } from "../../ansi";
 import { splitLines } from "../../blocks";
 import {
   classifyFooter,
+  classifyTailFooter,
   isBlank,
   isBoxBorder,
   isHorizontalRule,
@@ -234,6 +235,35 @@ describe("classifyFooter", () => {
     expect(classifyFooter("⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents")).toBeNull();
     expect(classifyFooter("← for agents")).toBeNull();
     expect(classifyFooter("Do you want to proceed?")).toBeNull();
+  });
+});
+
+describe("classifyTailFooter", () => {
+  it("keeps a one-row hint and treats that row as the content bound", () => {
+    const texts = ["  1. Red", "Enter to select · Esc to cancel"];
+    expect(classifyTailFooter(texts, 1)).toEqual({
+      family: "select",
+      scanEnd: 1,
+      text: "Enter to select · Esc to cancel",
+    });
+  });
+
+  it("joins a hint a 52-column pane wrapped after Esc", () => {
+    const texts = [
+      "  2. Blue",
+      "Enter to select · Tab/Arrow keys to navigate · Esc",
+      "to cancel",
+    ];
+    expect(classifyTailFooter(texts, 2)).toEqual({
+      family: "select",
+      scanEnd: 1,
+      text: "Enter to select · Tab/Arrow keys to navigate · Esc to cancel",
+    });
+  });
+
+  it("does not glue a short last line onto prose", () => {
+    const texts = ["The user said enter to select nothing", "to cancel"];
+    expect(classifyTailFooter(texts, 1)).toBeNull();
   });
 });
 

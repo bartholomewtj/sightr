@@ -4,9 +4,10 @@ import { regionSignature, rstrip, lastNonBlankIndex } from "../scan";
 // Digit N on a radio card was live-probed (ASK_NOTES.md): `2` submitted immediately. Official keys
 // continue `1`–`9` then `a`–`f` (Grok user-guide); the phone sends that key. A gap, a letter past
 // `f`, or a card that does not start at `1` is a different widget — refuse. Checkbox (`[ ]`) cards
-// are a different widget — a digit submits rather than toggles, and so does a letter. They lift as
-// `multi-select` with recipe `tab-space-enter` (phone Keys tray, 2026-09-03): Tab walks, Space
-// toggles, Enter submits. Never emit a digit or an `a`–`f` letter. The complete radio layout is
+// are a different widget. Live Grok 1.0.52 (2026-10-13): a digit toggles that box and leaves the
+// card up. Space still toggles the focused row, so the phone keeps `tab-space-enter` and never
+// emits a digit or an `a`–`f` letter. The hint verb names the advance button: `Enter:select`
+// moves to the next question, `Enter:submit` sends the form. The complete radio layout is
 // that consecutive key run, a `z` row, and an inner `Enter:select|submit|edit` hint. A card missing
 // any of those is refused.
 // Esc-park keeps the same card; its footer differs and must still match. Radio prepends Tab so a
@@ -109,7 +110,9 @@ function parseRadioAsk(lines: StyledLine[]): RadioAskParse | null {
   if (firstOption < 0) return null;
 
   const options: PromptOption[] = [];
-  let question = "";
+  // Walking upward, each unclassified row overwrote `question`, so a preview line under the
+  // prompt (live Grok 1.0.52: the focused option's preview) was dropped. Keep every row.
+  const questionParts: string[] = [];
   let questionLine = -1;
   let decision: { thread: string; run: string } | undefined;
   let step: { n: number; m: number } | null = null;
@@ -200,10 +203,11 @@ function parseRadioAsk(lines: StyledLine[]): RadioAskParse | null {
       }
       return null;
     }
-    question = body;
+    questionParts.unshift(body);
     questionLine = i;
   }
 
+  const question = questionParts.join(" ");
   if (!sawHint) return null;
   if (!feedback) return null;
   if (!isAskFooter(texts[fi]!, feedback.focused)) return null;
@@ -413,6 +417,7 @@ export function detectCheckboxAskRegion(lines: StyledLine[]): CheckboxAskRegion 
   let sawZ = false;
   let zBg: string | undefined;
   let sawHint = false;
+  let hintVerb = "";
   let firstOption = -1;
   const seen = new Set<string>();
   let pendingWrap: string[] = [];
@@ -430,6 +435,7 @@ export function detectCheckboxAskRegion(lines: StyledLine[]): CheckboxAskRegion 
     const hint = HINT_ROW.exec(t);
     if (hint) {
       sawHint = true;
+      hintVerb = (hint[1] ?? "").toLowerCase();
       const s = HINT_STEP.exec(t);
       if (s) step = { n: Number(s[1]), m: Number(s[2]) };
       continue;
@@ -510,7 +516,9 @@ export function detectCheckboxAskRegion(lines: StyledLine[]): CheckboxAskRegion 
       escape: null,
       pointer: focusedN === null ? "other" : "option",
       steps,
-      advanceLabel: "Submit",
+      // `Enter:select` on a non-final step advances. `Enter:submit` sends the form. The button
+      // says which of those the hint row names.
+      advanceLabel: hintVerb === "select" ? "Next" : "Submit",
       recipe: "tab-space-enter",
       ...(parked ? { parked: true } : {}),
       focusedN,

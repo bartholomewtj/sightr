@@ -219,6 +219,54 @@ describe("pi ask detector", () => {
       expect(piBuildBlocks(synthetic).every((b) => b.kind === "raw")).toBe(true);
     });
 
+    it("a wrapped Submit-tab help row still lifts as review", () => {
+      const synthetic = [
+        baseRule,
+        " ←  ■ Color   ■ Size   ✓ Submit  →",
+        "",
+        " Ready to submit",
+        "",
+        " Color: Red",
+        " Size: Small",
+        "",
+        " Press Enter to submit",
+        "",
+        " Tab/←→ navigate • ↑↓ select • Enter confirm • Esc",
+        " cancel",
+        baseRule,
+        footerPwd,
+        footerStats,
+      ].map(textLine);
+      const blocks = piBuildBlocks(synthetic);
+      const last = blocks.at(-1);
+      expect(last?.kind).toBe("wizard");
+      if (last?.kind !== "wizard") return;
+      expect(last.wizard.phase).toBe("review");
+      if (last.wizard.phase !== "review") return;
+      expect(last.wizard.submitKeys).toEqual(["Enter"]);
+    });
+
+    it("a multi-question help row wrapped after Esc still lifts", () => {
+      const synthetic = [
+        baseRule,
+        " ←  □ Color   □ Size   ✓ Submit  →",
+        "",
+        " Which color?",
+        "",
+        "> 1. Red",
+        "  2. Blue",
+        "  3. Type something.",
+        "",
+        " Tab/←→ navigate • ↑↓ select • Enter confirm • Esc",
+        " cancel",
+        baseRule,
+        footerPwd,
+        footerStats,
+      ].map(textLine);
+      const blocks = piBuildBlocks(synthetic);
+      expect(blocks.at(-1)?.kind).toBe("wizard");
+    });
+
     it("help row missing stays raw", () => {
       const synthetic = [
         baseRule,

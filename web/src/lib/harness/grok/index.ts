@@ -4,9 +4,9 @@
 // ask_user_question radio cards (`prompt-select`; key `1`–`9` then `a`–`f` submits; `z` is
 // free-text and is typed from the phone when that key is `z`), and plan approval (`menu` of
 // footer-named keys, including the Tab-into-composer
-// footer). Checkbox asks, including `[n/m]` wizard steps (stepper chips, Left/Right nav, Enter
-// submits), lift as `multi-select` (`tab-space-enter`: Tab/Space toggle, Enter submit; a digit
-// or an `a`–`f` letter still submits — never emit one). Esc-park still lifts; the first Tab
+// footer). Checkbox asks, including `[n/m]` wizard steps (stepper chips, Left/Right nav), lift
+// as `multi-select` (`tab-space-enter`: Tab/Space toggle; Enter follows the hint — select
+// advances, submit sends). A digit toggles and is never emitted. Esc-park still lifts; the first Tab
 // re-enters. Multi-question radio asks (`[n/m]`, m ≥ 2) lift as `wizard` (the option's own key
 // answers the current step; Left/Right change step).
 // The chrome probes sit on the REPLY path: registering any

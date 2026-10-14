@@ -410,7 +410,7 @@ describe("grokBuildBlocks", () => {
     expect(grokAdapter.needsDump!(lines)).toBe(true);
   });
 
-  it("checkbox wizard [1/2] lifts as multi-select with stepper, Submit, never digits", () => {
+  it("checkbox wizard [1/2] lifts as multi-select with stepper, Next when the hint says select", () => {
     const lines = splitLines(
       parseAnsi(readFileSync(join(PANES_DIR, "grok--ask-multi-wizard-q1.txt"), "utf8")),
     );
@@ -421,7 +421,7 @@ describe("grokBuildBlocks", () => {
     expect(region!.model.phase).toBe("checkbox");
     if (region!.model.phase !== "checkbox") return;
     expect(region!.model.recipe).toBe("tab-space-enter");
-    expect(region!.model.advanceLabel).toBe("Submit");
+    expect(region!.model.advanceLabel).toBe("Next");
     expect(region!.model.escape).toBeNull();
     expect(region!.model.parked).toBeUndefined();
     expect(region!.model.steps).toEqual([
@@ -443,6 +443,16 @@ describe("grokBuildBlocks", () => {
     expect(grokAdapter.composerReady!(lines)).toBe(false);
     expect(checkboxAskPresent(lines)).toBe(true);
     expect(grokAdapter.needsDump!(lines)).toBe(false);
+  });
+
+  it("checkbox wizard Enter:select is the Next button", () => {
+    const ansi = readFileSync(join(PANES_DIR, "grok--ask-multi-wizard-q1.txt"), "utf8");
+    const lines = splitLines(parseAnsi(ansi.replace("Enter:submit", "Enter:select")));
+    const region = detectCheckboxAskRegion(lines);
+    expect(region).not.toBeNull();
+    if (region!.model.phase !== "checkbox") throw new Error("expected checkbox");
+    expect(region!.model.advanceLabel).toBe("Next");
+    expect(region!.model.steps?.[0]?.current).toBe(true);
   });
 
   it("checkbox wizard fallbacks", () => {
@@ -473,7 +483,7 @@ describe("grokBuildBlocks", () => {
         { label: "1/2", answered: false, current: false },
         { label: "2/2", answered: false, current: true },
       ]);
-      expect(q2Region!.model.advanceLabel).toBe("Submit");
+      expect(q2Region!.model.advanceLabel).toBe("Next");
     }
 
     // "[1/2]" -> "[1/1]"
