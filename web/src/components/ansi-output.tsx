@@ -144,6 +144,7 @@ export interface AnsiMirrorProps {
   rawDump?: boolean;
   onPromptAction?: (action: PromptBlockAction, prompt: PromptModel) => boolean | void | Promise<boolean | void>;
   onWizardAction?: (keys: string[], wizard: WizardModel) => void | Promise<void>;
+  onWizardFeedback?: (text: string, wizard: WizardModel) => boolean | void | Promise<boolean | void>;
   onPreviewAction?: (action: PreviewBlockAction, preview: PreviewSelectModel) => void | Promise<void>;
   onMultiSelectAction?: (action: MultiSelectIntent, multi: MultiSelectModel) => void | Promise<void>;
   onMenuAction?: (action: MenuBlockAction, menu: MenuModel) => void | Promise<void>;
@@ -163,6 +164,7 @@ export const AnsiMirror = memo(function AnsiMirror({
   rawDump = false,
   onPromptAction,
   onWizardAction,
+  onWizardFeedback,
   onPreviewAction,
   onMultiSelectAction,
   onMenuAction,
@@ -245,6 +247,11 @@ export const AnsiMirror = memo(function AnsiMirror({
       wizard={wizardBlock.wizard}
       disabled={promptDisabled || !onWizardAction}
       onAction={(keys) => onWizardAction?.(keys, wizardBlock.wizard)}
+      onFeedback={
+        onWizardFeedback
+          ? (text) => onWizardFeedback(text, wizardBlock.wizard)
+          : undefined
+      }
     />
   ) : previewBlock ? (
     <PreviewSelectBlock

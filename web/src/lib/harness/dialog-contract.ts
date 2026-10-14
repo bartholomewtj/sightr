@@ -28,7 +28,7 @@ import { menusEqual, menusSameIdentity, type MenuModel } from "./menu-model";
 import { multiSelectEquals, multiSelectIdentity, type MultiSelectModel } from "./multi-select-model";
 import { previewCoreEqual, previewsEqual, type PreviewSelectModel } from "./preview-model";
 import { promptsEqual, promptsSameIdentity, type PromptModel } from "./prompt-model";
-import { wizardsEqual, type WizardModel } from "./wizard-model";
+import { wizardsEqual, wizardsSameIdentity, type WizardModel } from "./wizard-model";
 
 /** The model each interactive block kind carries. Keys are exactly the non-`raw` `Block["kind"]`s that
  *  OWN THE KEYBOARD — a new interactive kind that lands without an entry here fails to typecheck in
@@ -100,9 +100,11 @@ export const DIALOG_CONTRACT: { [K in DialogKind]: DialogComparators<DialogModel
     region: (m) => m.signature,
   },
   wizard: {
-    // Every wizard key commits too — a digit selects AND advances; Left/Right change the step.
+    // An option digit (Claude) or Enter (Pi) commits and advances; Left/Right change the step.
+    // Pi's type-in walk moves the pointer and fills the editor itself, so mid-flight polls and the
+    // post-send settle for that flow use identity, which ignores both.
     commits: wizardsEqual,
-    identity: wizardsEqual,
+    identity: wizardsSameIdentity,
     signature: (m) => m.signature,
     region: (m) => m.signature,
   },

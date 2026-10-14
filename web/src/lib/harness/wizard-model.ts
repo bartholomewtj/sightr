@@ -20,6 +20,26 @@ export interface WizardStepChip {
   current: boolean;
 }
 
+/**
+ * Pi's `Type something.` row on a multi-question card. Not an option button: the phone walks the
+ * pointer with `keys` (arrows, then Enter — never a digit), types, and Enter submits. `focused` /
+ * `editing` / `text` are what OUR choreography changes, so identity ignores them.
+ */
+export interface WizardFeedback {
+  /** Up/Down to the free-text row, then Enter to open the editor. Never a digit. */
+  keys: string[];
+  /** The row number Pi painted (`4`), shown as the badge. Not sent. */
+  keyLabel: string;
+  /** The `>` pointer sits on this row. Option buttons must not fire — Enter would open the editor. */
+  focused: boolean;
+  /** Enter already opened the editor (`✎` and `Your answer:`). Keystrokes belong to that box. */
+  editing: boolean;
+  /** Editor contents with the cursor and padding removed. Empty until something is typed. */
+  text: string;
+  /** A saved custom answer (`✓` on the row). Survives the editor opening, so identity includes it. */
+  customChosen: boolean;
+}
+
 /** One selectable option of the CURRENT question. */
 export interface WizardOption {
   label: string;
@@ -62,6 +82,8 @@ export type WizardModel =
       question: string;
       options: WizardOption[];
       signature: string;
+      /** Pi multi-question cards. Absent on Claude, whose free-text row stays with the composer. */
+      feedback?: WizardFeedback;
     }
   | {
       phase: "review";
@@ -93,29 +115,82 @@ export const WIZARD_NEXT_KEYS = ["Right"];
  * Part of the CONTRACT, not of any harness: the race guard (lib/dialog-guard.ts) compares whatever
  * adapter produced the block through exactly this function.
  */
-export function wizardsEqual(a: WizardModel, b: WizardModel): boolean {
-  if (a.phase !== b.phase) return false;
-  // The region signature is decisive (a re-rendered wizard changes it); the field checks below stay
-  // as a fast-path and to keep intent explicit. `revision` is a stub, so this is the real guard.
-  if (a.signature !== b.signature) return false;
-  if (
-    a.steps.length !== b.steps.length ||
-    !a.steps.every(
+function sameSteps(a: WizardModel, b: WizardModel): boolean {
+  return (
+    a.steps.length === b.steps.length &&
+    a.steps.every(
       (s, i) =>
         s.label === b.steps[i]!.label &&
         s.answered === b.steps[i]!.answered &&
         s.current === b.steps[i]!.current,
     )
-  ) {
-    return false;
-  }
+  );
+}
+
+/** Visible free-text state. A committing tap must not fire across a pointer move or typed text. */
+function sameFeedback(a: WizardFeedback | undefined, b: WizardFeedback | undefined): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return (
+    a.keyLabel === b.keyLabel &&
+    a.focused === b.focused &&
+    a.editing === b.editing &&
+    a.text === b.text &&
+    a.customChosen === b.customChosen
+  );
+}
+
+/** Free-text identity: the row is still this row. Pointer, editor, and typed text are our own doing. */
+function sameFeedbackIdentity(a: WizardFeedback | undefined, b: WizardFeedback | undefined): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return a.keyLabel === b.keyLabel && a.customChosen === b.customChosen;
+}
+
+export function wizardsEqual(a: WizardModel, b: WizardModel): boolean {
+  if (a.phase !== b.phase) return false;
+  // The region signature is decisive (a re-rendered wizard changes it); the field checks below stay
+  // as a fast-path and to keep intent explicit. `revision` is a stub, so this is the real guard.
+  if (a.signature !== b.signature) return false;
+  if (!sameSteps(a, b)) return false;
   if (a.phase === "question" && b.phase === "question") {
     return (
       a.question === b.question &&
       a.options.length === b.options.length &&
       a.options.every(
         (o, i) => o.label === b.options[i]!.label && o.chosen === b.options[i]!.chosen,
+      ) &&
+      sameFeedback(a.feedback, b.feedback)
+    );
+  }
+  if (a.phase === "review" && b.phase === "review") {
+    return (
+      a.incomplete === b.incomplete &&
+      a.answers.length === b.answers.length &&
+      a.answers.every(
+        (qa, i) => qa.question === b.answers[i]!.question && qa.answer === b.answers[i]!.answer,
       )
+    );
+  }
+  return false;
+}
+
+/**
+ * Same question of the same card, ignoring the free-text pointer and whatever is in the editor.
+ * The type-in choreography moves both on purpose. A different question, a flipped check, or a saved
+ * custom answer (`customChosen`) still fails — those re-route the next key.
+ */
+export function wizardsSameIdentity(a: WizardModel, b: WizardModel): boolean {
+  if (a.phase !== b.phase) return false;
+  if (!sameSteps(a, b)) return false;
+  if (a.phase === "question" && b.phase === "question") {
+    return (
+      a.question === b.question &&
+      a.options.length === b.options.length &&
+      a.options.every(
+        (o, i) => o.label === b.options[i]!.label && o.chosen === b.options[i]!.chosen,
+      ) &&
+      sameFeedbackIdentity(a.feedback, b.feedback)
     );
   }
   if (a.phase === "review" && b.phase === "review") {

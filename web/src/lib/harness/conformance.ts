@@ -309,8 +309,9 @@ function emittableKeys(block: Block): string[] | null {
         ...(review?.submitKeys ?? WIZARD_SUBMIT_KEYS),
         ...(review?.cancelKeys ?? WIZARD_CANCEL_KEYS),
       ];
+      const feedback = block.wizard.phase === "question" ? (block.wizard.feedback?.keys ?? []) : [];
       return block.wizard.phase === "question"
-        ? [...block.wizard.options.flatMap((o) => o.keys), ...controls]
+        ? [...block.wizard.options.flatMap((o) => o.keys), ...feedback, ...controls]
         : controls;
     }
     case "preview-select": {

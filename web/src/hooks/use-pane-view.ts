@@ -37,7 +37,7 @@ import type {
 } from "@/lib/blocks";
 import type { MultiSelectIntent } from "@/lib/actions";
 import { submitPromptFeedback, submitPromptOption } from "@/lib/actions";
-import { submitWizardKeys } from "@/lib/actions";
+import { submitWizardFeedback, submitWizardKeys } from "@/lib/actions";
 import {
   submitPreviewKeys,
   submitPreviewNote,
@@ -498,6 +498,45 @@ export function usePaneView(args: PaneViewArgs) {
     ],
   );
 
+  // Pi multi-question "Type something.": arrows, Enter, type, Enter. Settle on identity so the
+  // pointer move and the editor text are not treated as the answer having already landed.
+  const handleWizardFeedback = useCallback(
+    async (text: string, wizard: WizardModel) => {
+      if (readOnly) {
+        setStatus("Read-only — device not authorised", "error");
+        return false;
+      }
+      if (settling.current) return false;
+      const result = await submitWizardFeedback({
+        paneId,
+        requestedLines,
+        detectedRevision: shown.revision,
+        agent: agent?.agent,
+        wizard,
+        text,
+      });
+      if (result.status === "sent") {
+        setStatus("Answer sent", "success");
+        await settleAfterSend("wizard", wizard, shown.revision, "identity");
+      } else if (result.status === "changed") {
+        setStatus("Wizard changed — refreshing", "warn");
+        revalidator.revalidate();
+      } else {
+        setStatus(result.error || "Send failed", "error");
+      }
+      return result.status === "sent";
+    },
+    [
+      readOnly,
+      paneId,
+      requestedLines,
+      shown.revision,
+      agent?.agent,
+      settleAfterSend,
+      revalidator,
+    ],
+  );
+
   // Tap a preview-dialog control (an option, the note add/edit/remove, or the wizard step nav).
   // Same guard-first shape as the two handlers above, but the choreography behind an intent is
   // MULTI-step (digit→verify→Enter; n→verify→type→Escape — see lib/preview-action.ts and
@@ -731,6 +770,7 @@ export function usePaneView(args: PaneViewArgs) {
     onSent,
     handlePromptAction,
     handleWizardAction,
+    handleWizardFeedback,
     handlePreviewAction,
     handleMultiSelectAction,
     handleMenuAction,

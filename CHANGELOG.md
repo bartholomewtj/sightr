@@ -11,6 +11,7 @@ a build where they disagree.
 - Pull down at the top of a pane, or of Spaces, to refresh the herd in place. A small mark tracks the pull. The refresh is the same revalidation the app already uses. It does not reload the page, and it does not load older history.
 
 ### Fixed
+- Pi multi-question cards. The phone types a custom answer: arrows move to Type something, Enter opens the box, and Enter sends the text. No digit is sent.
 - A pull-down at the top of the phone no longer reloads the PWA. The document is pinned to the screen, the same way desktop already was, and the pane scroller contains its own overscroll. A needs-you card stays on screen.
 - A pane read that Herdr answers for a different pane is no longer served as this pane's screen. The phone showed one pane's title and chat while the reply went to another; the bridge stamped the requested pane id onto the body and dropped the id Herdr returned. The mirror, the history fingerprint and the prompt-binding re-read now refuse that body.
 

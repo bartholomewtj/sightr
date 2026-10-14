@@ -7,8 +7,10 @@
 // by walking the `>` pointer using Up/Down arrow keys, followed by Enter. Digits are NEVER
 // emitted (ADR 0009). The option number is presented via keyLabel.
 //
-// "Type something." is free-text input and is never typed from the phone: while Pi's pointer sits
-// on it, the option buttons lock (modelled via feedback.focused).
+// "Type something." is free-text. On a multi-question card it stays on the wizard as `feedback`:
+// the phone walks the pointer with arrows, Enter opens the editor, then types and Enter submits.
+// Digits are never sent. While the pointer sits on that row, or the editor is open, option buttons
+// lock. A one-question card still models the row as prompt-select feedback and does not type it.
 //
 // See ASK_NOTES.md for verified recipe, source references, and live observations.
 
@@ -18,6 +20,7 @@ import type { WizardModel, WizardOption, WizardStepChip } from "../wizard-model"
 import { isBlank, regionSignature } from "../scan";
 import {
   DESCRIPTION,
+  HELP_INPUT,
   HELP_MULTI,
   HELP_SINGLE,
   LABEL_WRAP,
@@ -28,6 +31,7 @@ import {
   RULE,
   STATS,
   TAB_BAR,
+  YOUR_ANSWER,
 } from "./markers";
 import { parseDecisionMarkerLine } from "@shared/decision-marker";
 
@@ -50,6 +54,14 @@ export interface PiAskParse {
   steps: WizardStepChip[];
   signature: string;
   coreSignature: string;
+  /** Keys that open the editor: arrows onto `Type something.`, then Enter. Never a digit. */
+  openKeys: string[];
+  /** Enter on `Type something.` has opened Pi's editor. */
+  editing: boolean;
+  /** Editor contents (cursor and padding removed). Empty outside input mode. */
+  editorText: string;
+  /** The free-text row carries Pi's trailing `✓` (a saved custom answer). */
+  otherChosen: boolean;
   decision?: { thread: string; run: string };
 }
 
@@ -71,6 +83,8 @@ interface RawOption {
   lineIndex: number;
   /** Trailing ` ✓` on a multiSelect row Pi has toggled on. */
   chosen: boolean;
+  /** Trailing ` ✎` — this is the free-text row and the editor is open. */
+  pencil: boolean;
 }
 
 /**
@@ -108,12 +122,16 @@ function closingRule(texts: string[]): number {
 }
 
 /** Help row just above the closing rule. A narrow pane wraps "… Esc" / "cancel" onto the next row. */
-function helpAbove(texts: string[], c: number): { start: number; multi: boolean } | null {
+function helpAbove(
+  texts: string[],
+  c: number,
+): { start: number; multi: boolean; input: boolean } | null {
   if (c < 2) return null;
   let start = c - 1;
-  const kindOf = (row: string): boolean | null => {
-    if (HELP_SINGLE.test(row)) return false;
-    if (HELP_MULTI.test(row)) return true;
+  const kindOf = (row: string): "single" | "multi" | "input" | null => {
+    if (HELP_SINGLE.test(row)) return "single";
+    if (HELP_MULTI.test(row)) return "multi";
+    if (HELP_INPUT.test(row)) return "input";
     return null;
   };
   let kind = kindOf(texts[start]!);
@@ -130,7 +148,50 @@ function helpAbove(texts: string[], c: number): { start: number; multi: boolean 
   }
   if (kind === null) return null;
   if (start < 1 || !isBlank(texts[start - 1]!)) return null;
-  return { start, multi: kind };
+  return { start, multi: kind === "multi", input: kind === "input" };
+}
+
+/**
+ * The editor Pi paints under the options once Enter has opened `Type something.`.
+ * Returns the blank row directly under the options (where the normal walker starts) and the text.
+ * Border rows are `─`; a non-final visual line is `width - 1` columns (the cursor column is reserved),
+ * so a space at a wrap survives. The last line's trailing spaces are the cursor plus padding.
+ */
+function takeEditor(
+  texts: string[],
+  helpStart: number,
+): { optionsEndBlank: number; text: string } | null {
+  let i = helpStart - 1;
+  if (i < 1 || !isBlank(texts[i]!)) return null;
+  i--;
+  const rows: string[] = [];
+  while (i >= 0 && !YOUR_ANSWER.test(texts[i]!)) {
+    rows.push(texts[i]!);
+    i--;
+    if (rows.length > 30) return null;
+  }
+  if (i < 1 || !isBlank(texts[i - 1]!)) return null;
+  rows.reverse();
+  return { optionsEndBlank: i - 1, text: readEditorText(rows) };
+}
+
+function readEditorText(rows: string[]): string {
+  const border = rows.map((r) => r.trim()).find((t) => /^─{4,}$/.test(t));
+  const width = border?.length ?? 0;
+  const content = rows.filter((r) => {
+    const t = r.trim();
+    return t.length > 0 && !/^─+$/.test(t);
+  });
+  if (content.length === 0) return "";
+  if (width === 0) return content.map((r) => r.trim()).join("");
+  const layout = Math.max(1, width - 1);
+  return content
+    .map((r, idx) => {
+      const body = r.startsWith(" ") ? r.slice(1) : r;
+      if (idx < content.length - 1) return body.slice(0, layout);
+      return body.trimEnd();
+    })
+    .join("");
 }
 
 export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
@@ -143,11 +204,19 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
   // 2. Help row. Options sit above the blank that sits above the help.
   const help = helpAbove(texts, c);
   if (!help) return null;
-  const multi = help.multi;
+  let multi = help.multi;
+  const editing = help.input;
   const helpStart = help.start;
 
-  // 3. Options, walking up from the blank above the help
+  // 3. Options. In input mode the editor sits between the options and the help row.
+  let editorText = "";
   let r = helpStart - 2;
+  if (editing) {
+    const taken = takeEditor(texts, helpStart);
+    if (!taken) return null;
+    editorText = taken.text;
+    r = taken.optionsEndBlank - 1;
+  }
   let pendingDesc: string[] = [];
   let pendingLabelWrap: string[] = [];
   const collectedOptions: RawOption[] = [];
@@ -163,9 +232,10 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
         label = [label, ...pendingLabelWrap.reverse()].join(" ");
         pendingLabelWrap = [];
       }
-      // Pi paints a trailing check on a toggled multiSelect row. Strip it before the
-      // "Type something." check, or a checked free-text row fails the frame and the
-      // phone drops the buttons.
+      // Pi paints a trailing check on a toggled multiSelect row, and ` ✎` while the editor
+      // is open. Strip both before the "Type something." check, or the phone drops the buttons.
+      const pencil = label.endsWith(" ✎");
+      if (pencil) label = label.slice(0, -2);
       const chosen = label.endsWith(" ✓");
       if (chosen) label = label.slice(0, -2);
       let description: string | undefined = undefined;
@@ -180,6 +250,7 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
         description,
         lineIndex: r,
         chosen,
+        pencil,
       });
       r--;
       continue;
@@ -220,7 +291,9 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
   if (parsedOptions[n - 1]!.label !== OTHER_LABEL) return null;
   for (let i = 0; i < n - 1; i++) {
     if (parsedOptions[i]!.label === OTHER_LABEL) return null;
+    if (parsedOptions[i]!.pencil) return null;
   }
+  if (parsedOptions[n - 1]!.pencil !== editing) return null;
   const firstOptionLine = parsedOptions[0]!.lineIndex;
 
   // 4. Question: non-blank rows above blankAboveOptions, each starting with one space
@@ -244,9 +317,17 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
   const question = questionLines.reverse().join(" ").trim();
   if (question === "") return null;
 
-  // 5. Tab bar & Top rule
+  // 5. Tab bar & Top rule. Input mode uses one help row for both shapes, so the tab bar
+  // decides. A one-question editor stays raw — the phone does not type that card.
   let topRule = -1;
   let steps: WizardStepChip[] = [];
+
+  if (editing) {
+    if (qRow >= 0 && isBlank(texts[qRow]!)) multi = true;
+    else if (qRow >= 0 && RULE.test(texts[qRow]!)) multi = false;
+    else return null;
+    if (!multi) return null;
+  }
 
   if (!multi) {
     if (qRow < 0 || !RULE.test(texts[qRow]!)) return null;
@@ -344,10 +425,18 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
     realOptions.push(opt);
   }
 
+  const otherDiff = n - 1 - p;
+  const openKeys =
+    otherDiff > 0
+      ? [...Array<string>(otherDiff).fill("Down"), "Enter"]
+      : otherDiff < 0
+        ? [...Array<string>(-otherDiff).fill("Up"), "Enter"]
+        : ["Enter"];
+
   const feedback: PromptFeedback = {
     key: String(n),
     focused: p === n - 1,
-    text: "",
+    text: editorText,
     purpose: "free-text",
   };
 
@@ -366,6 +455,10 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
     steps,
     signature,
     coreSignature,
+    openKeys,
+    editing,
+    editorText,
+    otherChosen: parsedOptions[n - 1]!.chosen,
     ...(decision ? { decision } : {}),
   };
 }
@@ -373,8 +466,8 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
 export function detectPiPromptRegion(lines: StyledLine[]): PiPromptRegion | null {
   const parsed = detectPiAsk(lines);
   if (!parsed) return null;
-  // Lifts a 1Q frame, or a multi frame whose feedback.focused is true
-  if (parsed.multi && !parsed.feedback.focused) return null;
+  // Multi frames, including the pointer on `Type something.` and the open editor, are wizards.
+  if (parsed.multi || parsed.editing) return null;
 
   const model: PromptModel = {
     question: parsed.question,
@@ -394,9 +487,7 @@ export function detectPiPromptRegion(lines: StyledLine[]): PiPromptRegion | null
 
 export function detectPiWizardRegion(lines: StyledLine[]): PiWizardRegion | null {
   const parsed = detectPiAsk(lines);
-  if (!parsed) return null;
-  // Lifts a multi frame whose feedback is not focused
-  if (!parsed.multi || parsed.feedback.focused) return null;
+  if (!parsed || !parsed.multi) return null;
 
   const options: WizardOption[] = parsed.options.map((opt) => ({
     label: opt.label,
@@ -413,6 +504,14 @@ export function detectPiWizardRegion(lines: StyledLine[]): PiWizardRegion | null
     question: parsed.question,
     options,
     signature: parsed.signature,
+    feedback: {
+      keys: parsed.openKeys,
+      keyLabel: parsed.feedback.key,
+      focused: parsed.feedback.focused,
+      editing: parsed.editing,
+      text: parsed.editorText,
+      customChosen: parsed.otherChosen,
+    },
   };
 
   return {
