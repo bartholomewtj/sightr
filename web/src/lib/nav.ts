@@ -19,6 +19,11 @@ export function downloadFileUrl(rel: string): string {
 export function filesPath(): string {
   return `/files`;
 }
+
+/** The Local servers destination. */
+export function localPath(): string {
+  return `/local`;
+}
 export function filePath(rel: string): string {
   const encoded = rel.split("/").filter(Boolean).map(encodeURIComponent).join("/");
   return `/files/${encoded}`;

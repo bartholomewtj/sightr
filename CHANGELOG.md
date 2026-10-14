@@ -7,6 +7,7 @@ a build where they disagree.
 ## [Unreleased]
 
 ### Added
+- The Local tab lists the PC's loopback servers and opens them over the tailnet.
 - Pull down at the top of a pane, or of Spaces, to refresh the herd in place. A small mark tracks the pull. The refresh is the same revalidation the app already uses. It does not reload the page, and it does not load older history.
 
 ### Fixed

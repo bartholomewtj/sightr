@@ -39,9 +39,11 @@ import { subscribeRoute, notifyPrefsRoute } from "./notify-routes.ts";
 import { createPaneQueue } from "./pane-queue.ts";
 import { SILENT_CONN, type ConnLog } from "./conn-log.ts";
 import { connRoute } from "./conn-route.ts";
+import { createLocalServersRoute } from "./local-servers.ts";
 import { CONN_PATH } from "../shared/conn.ts";
 
 const MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024;
+const localServersRoute = createLocalServersRoute();
 const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|decision-reply))?$/;
 const TAB_ACTION_ROUTE = /^\/api\/tab\/([^/]+)\/(rename|close)$/;
 const WORKSPACE_ACTION_ROUTE = /^\/api\/workspace\/([^/]+)\/(rename|close)$/;
@@ -238,6 +240,7 @@ export function startServer(opts: {
       if (pathname === "/api/config") return bridgeConfigRoute(req, { cfg, push, operatorCommands, operatorKeys, operatorWheel });
       if (pathname === "/api/subscribe" && req.method === "POST") return subscribeRoute(req, cfg, push);
       if (pathname === "/api/notifications/prefs") return notifyPrefsRoute(req, cfg, notifyPrefs, notifications);
+      if (pathname === "/api/local-servers") return localServersRoute(req, cfg);
       if (pathname === "/api/settings") {
         const denied = guard(req, cfg, req.method === "GET" ? "read" : "write");
         if (denied) return denied;
