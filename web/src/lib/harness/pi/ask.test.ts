@@ -246,6 +246,54 @@ describe("pi ask detector", () => {
       expect(last.wizard.submitKeys).toEqual(["Enter"]);
     });
 
+    it("a toggled multiSelect row keeps the chooser and marks that option", () => {
+      const synthetic = [
+        baseRule,
+        " ←  ■ Phone   □ Agent   ✓ Submit  →",
+        "",
+        " Pick any",
+        "",
+        "> 1. Thumb reach ✓",
+        "  2. Mis-tap",
+        "  3. Type something.",
+        "",
+        " Tab/←→ navigate • ↑↓ select • Enter confirm • Esc cancel",
+        baseRule,
+        footerPwd,
+        footerStats,
+      ].map(textLine);
+      const region = detectPiWizardRegion(synthetic);
+      expect(region?.model.phase).toBe("question");
+      if (region?.model.phase !== "question") return;
+      expect(region.model.options.map((o) => o.label)).toEqual(["Thumb reach", "Mis-tap"]);
+      expect(region.model.options.map((o) => o.chosen)).toEqual([true, false]);
+      expect(region.model.options[1]!.keys).toEqual(["Down", "Enter"]);
+      expect(region.model.steps[0]).toMatchObject({ label: "Phone", answered: true, current: false });
+    });
+
+    it("a checked Type something row still lifts", () => {
+      const synthetic = [
+        baseRule,
+        " ←  ■ Phone   □ Agent   ✓ Submit  →",
+        "",
+        " Pick any",
+        "",
+        "  1. Thumb reach ✓",
+        "  2. Mis-tap",
+        "> 3. Type something. ✓",
+        "",
+        " Tab/←→ navigate • ↑↓ select • Enter confirm • Esc cancel",
+        baseRule,
+        footerPwd,
+        footerStats,
+      ].map(textLine);
+      const region = detectPiWizardRegion(synthetic);
+      expect(region).toBeNull();
+      const prompt = detectPiPromptRegion(synthetic);
+      expect(prompt).not.toBeNull();
+      expect(prompt!.model.options.map((o) => o.label)).toEqual(["Thumb reach", "Mis-tap"]);
+    });
+
     it("a multi-question help row wrapped after Esc still lifts", () => {
       const synthetic = [
         baseRule,
