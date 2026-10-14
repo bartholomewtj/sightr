@@ -7,6 +7,7 @@ import { splitLines, type StyledLine } from "../../blocks";
 import { piBuildBlocks } from "./index";
 import { detectPiAsk, detectPiPromptRegion, detectPiReviewRegion, detectPiWizardRegion } from "./ask";
 import { promptsEqual } from "../prompt-model";
+import { wizardsEqual, wizardsSameIdentity } from "../wizard-model";
 import { submitPromptOption } from "../../actions";
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
@@ -107,6 +108,14 @@ describe("pi ask detector", () => {
       ["Down", "Down", "Enter"],
     ]);
     expect(w.options.every((o) => o.chosen === false && o.escape === false)).toBe(true);
+    expect(w.feedback).toEqual({
+      keys: ["Down", "Down", "Down", "Enter"],
+      keyLabel: "4",
+      focused: false,
+      editing: false,
+      text: "",
+      customChosen: false,
+    });
 
     expect(blocks.some((b) => b.kind === "prompt-select")).toBe(false);
   });
@@ -127,15 +136,27 @@ describe("pi ask detector", () => {
     expect(w.options.map((o) => o.label)).toEqual(["Small", "Medium", "Large"]);
   });
 
-  it("6. pi--ask-wizard-other-focused.txt falls back to prompt-select with focused feedback and no wizard block", () => {
+  it("6. pi--ask-wizard-other-focused.txt stays a wizard with the pointer on Type something", () => {
     const lines = load("pi--ask-wizard-other-focused.txt");
     const blocks = piBuildBlocks(lines);
-
-    expect(blocks.some((b) => b.kind === "wizard")).toBe(false);
-    const prompt = blocks.find((b) => b.kind === "prompt-select");
-    expect(prompt).toBeDefined();
-    if (prompt?.kind !== "prompt-select") throw new Error("expected prompt-select");
-    expect(prompt.prompt.feedback?.focused).toBe(true);
+    const wizardBlock = blocks.find((b) => b.kind === "wizard");
+    expect(wizardBlock).toBeDefined();
+    if (wizardBlock?.kind !== "wizard" || wizardBlock.wizard.phase !== "question") {
+      throw new Error("expected wizard question");
+    }
+    expect(blocks.some((b) => b.kind === "prompt-select")).toBe(false);
+    expect(wizardBlock.wizard.feedback).toMatchObject({
+      keys: ["Enter"],
+      keyLabel: "4",
+      focused: true,
+      editing: false,
+      text: "",
+      customChosen: false,
+    });
+    expect(wizardBlock.wizard.options.map((o) => o.label)).toEqual(["Red", "Green", "Blue"]);
+    const q1 = detectPiWizardRegion(load("pi--ask-wizard-q1.txt"))!.model;
+    expect(wizardsSameIdentity(q1, wizardBlock.wizard)).toBe(true);
+    expect(wizardsEqual(q1, wizardBlock.wizard)).toBe(false);
   });
 
   // The Submit tab used to stay raw, which left a phone no way to finish a multi-question ask
@@ -193,6 +214,7 @@ describe("pi ask detector", () => {
           expect(k).not.toMatch(/^\d+$/);
         }
       }
+      for (const k of parsed!.openKeys) expect(k).not.toMatch(/^\d+$/);
     }
   });
 
@@ -217,6 +239,58 @@ describe("pi ask detector", () => {
         footerStats,
       ].map(textLine);
       expect(piBuildBlocks(synthetic).every((b) => b.kind === "raw")).toBe(true);
+    });
+
+    it("a multi-question editor lifts as the same wizard and reads the typed text", () => {
+      const idle = [
+        baseRule,
+        " ←  □ Color   □ Size   ✓ Submit  →",
+        "",
+        " Which color?",
+        "",
+        "> 1. Red",
+        "  2. Blue",
+        "  3. Type something.",
+        "",
+        " Tab/←→ navigate • ↑↓ select • Enter confirm • Esc cancel",
+        baseRule,
+        footerPwd,
+        footerStats,
+      ].map(textLine);
+      const editing = [
+        baseRule,
+        " ←  □ Color   □ Size   ✓ Submit  →",
+        "",
+        " Which color?",
+        "",
+        "  1. Red",
+        "  2. Blue",
+        "> 3. Type something. ✎",
+        "",
+        " Your answer:",
+        " ────────",
+        " hello w",
+        " orld",
+        " ────────",
+        "",
+        " Enter to submit • Esc to cancel",
+        baseRule,
+        footerPwd,
+        footerStats,
+      ].map(textLine);
+      const before = detectPiWizardRegion(idle);
+      const after = detectPiWizardRegion(editing);
+      expect(before?.model.phase).toBe("question");
+      expect(after?.model.phase).toBe("question");
+      if (before?.model.phase !== "question" || after?.model.phase !== "question") return;
+      expect(after.model.feedback).toMatchObject({
+        editing: true,
+        focused: true,
+        text: "hello world",
+        keys: ["Enter"],
+      });
+      expect(wizardsSameIdentity(before.model, after.model)).toBe(true);
+      expect(wizardsEqual(before.model, after.model)).toBe(false);
     });
 
     it("a wrapped Submit-tab help row still lifts as review", () => {
@@ -288,10 +362,16 @@ describe("pi ask detector", () => {
         footerStats,
       ].map(textLine);
       const region = detectPiWizardRegion(synthetic);
-      expect(region).toBeNull();
-      const prompt = detectPiPromptRegion(synthetic);
-      expect(prompt).not.toBeNull();
-      expect(prompt!.model.options.map((o) => o.label)).toEqual(["Thumb reach", "Mis-tap"]);
+      expect(region?.model.phase).toBe("question");
+      if (region?.model.phase !== "question") return;
+      expect(region.model.feedback).toMatchObject({
+        focused: true,
+        editing: false,
+        customChosen: true,
+        keys: ["Enter"],
+      });
+      expect(region.model.options.map((o) => o.label)).toEqual(["Thumb reach", "Mis-tap"]);
+      expect(detectPiPromptRegion(synthetic)).toBeNull();
     });
 
     it("a multi-question help row wrapped after Esc still lifts", () => {

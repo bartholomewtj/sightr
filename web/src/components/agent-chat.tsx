@@ -187,6 +187,7 @@ export function AgentChat({
     onSent,
     handlePromptAction,
     handleWizardAction,
+    handleWizardFeedback,
     handlePreviewAction,
     handleMultiSelectAction,
     handleMenuAction,
@@ -449,6 +450,7 @@ export function AgentChat({
                   rawDump={prefs.rawTerminal}
                   onPromptAction={handlePromptAction}
                   onWizardAction={handleWizardAction}
+                  onWizardFeedback={handleWizardFeedback}
                   onPreviewAction={handlePreviewAction}
                   onMultiSelectAction={handleMultiSelectAction}
                   onMenuAction={handleMenuAction}
@@ -464,6 +466,7 @@ export function AgentChat({
                   hideRaw
                   onPromptAction={handlePromptAction}
                   onWizardAction={handleWizardAction}
+                  onWizardFeedback={handleWizardFeedback}
                   onPreviewAction={handlePreviewAction}
                   onMultiSelectAction={handleMultiSelectAction}
                   onMenuAction={handleMenuAction}

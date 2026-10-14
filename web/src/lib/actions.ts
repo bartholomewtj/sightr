@@ -2,7 +2,7 @@
 // use the same guard. One module per job (spec 12); this barrel keeps every existing import site.
 
 export { menusEqual, menusSameIdentity } from "./harness/menu-model";
-export { wizardsEqual } from "./harness/wizard-model";
+export { wizardsEqual, wizardsSameIdentity } from "./harness/wizard-model";
 export { promptsEqual, promptsSameIdentity, sameKeys } from "./harness/prompt-model";
 export { previewsEqual } from "./harness/preview-model";
 export { multiSelectEquals, multiSelectIdentity } from "./harness/multi-select-model";

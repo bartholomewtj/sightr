@@ -37,7 +37,7 @@ import type { AutocompleteModel } from "./harness/autocomplete-model";
 // under verbatimModuleSyntax), so they add no runtime edge into harness/ either — the value
 // dependency stays one-way (harness → blocks).
 export type { PromptModel, PromptOption, PromptFamily, PromptFeedbackPurpose } from "./harness/prompt-model";
-export type { WizardModel, WizardOption, WizardStepChip, WizardAnswer } from "./harness/wizard-model";
+export type { WizardModel, WizardOption, WizardStepChip, WizardAnswer, WizardFeedback } from "./harness/wizard-model";
 export type { PreviewSelectModel, PreviewOption, PreviewNote } from "./harness/preview-model";
 export type {
   MultiSelectModel,

@@ -133,6 +133,70 @@ describe("WizardBlock — question step presentation", () => {
   });
 });
 
+describe("WizardBlock — Pi type-in row", () => {
+  function piWizard(patch: Partial<Extract<WizardModel, { phase: "question" }>["feedback"]> = {}): WizardModel {
+    return {
+      phase: "question",
+      steps: [
+        { label: "Color", answered: false, current: true },
+        { label: "Size", answered: false, current: false },
+      ],
+      question: "Which color?",
+      options: [
+        { label: "Red", keys: ["Enter"], keyLabel: "1", chosen: false, escape: false },
+        { label: "Blue", keys: ["Down", "Enter"], keyLabel: "2", chosen: false, escape: false },
+      ],
+      signature: "sig",
+      feedback: {
+        keys: ["Down", "Down", "Enter"],
+        keyLabel: "3",
+        focused: false,
+        editing: false,
+        text: "",
+        customChosen: false,
+        ...patch,
+      },
+    };
+  }
+
+  it("offers a type-in box and sends the typed text, not a digit", async () => {
+    const onFeedback = vi.fn().mockResolvedValue(true);
+    const user = userEvent.setup();
+    render(<WizardBlock wizard={piWizard()} onAction={vi.fn()} onFeedback={onFeedback} />);
+
+    await user.click(screen.getByRole("button", { name: "Type your answer" }));
+    await user.type(screen.getByRole("textbox", { name: "Feedback text" }), "papaya");
+    await user.click(screen.getByRole("button", { name: "Send answer" }));
+
+    expect(onFeedback).toHaveBeenCalledWith("papaya");
+  });
+
+  it("locks the option buttons while the pointer sits on Type something, and keeps the box", () => {
+    render(
+      <WizardBlock
+        wizard={piWizard({ focused: true, keys: ["Enter"] })}
+        onAction={vi.fn()}
+        onFeedback={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /Red/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Type your answer" })).toBeEnabled();
+  });
+
+  it("hides the box once the terminal editor is open", () => {
+    render(
+      <WizardBlock
+        wizard={piWizard({ focused: true, editing: true, text: "pap", keys: ["Enter"] })}
+        onAction={vi.fn()}
+        onFeedback={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Type your answer" })).toBeNull();
+    expect(screen.getByText(/answer box has the keyboard/)).toBeInTheDocument();
+    expect(screen.getByText(/\(pap\)/)).toBeInTheDocument();
+  });
+});
+
 describe("WizardBlock — review (Submit) step presentation", () => {
   it("lists the echoed answers and offers Submit answers / Cancel", async () => {
     const onAction = vi.fn();

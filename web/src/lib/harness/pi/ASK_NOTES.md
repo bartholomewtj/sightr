@@ -52,14 +52,16 @@ Source: `~/.pi/agent/extensions/ask.ts` (tool implementation) and `@earendil-wor
 - `keyLabel` is set to `String(i + 1)` so the UI displays the option number badge even though arrow keys are transmitted.
 - Digits are NEVER emitted.
 
-## "Type something." Free-Text Lock
-- Option `N. Type something.` is not exposed as a tappable option.
-- When the pointer is on `Type something.`, `feedback.focused` is `true`.
-- Tapping buttons while focused is refused (`submitPromptOption` refuses with `{ status: "changed" }`), preventing invalid keystroke execution while free-text input is active.
+## "Type something." Free-Text
+- The row is not an option button. On a one-question card it stays prompt-select `feedback` and the phone does not type it (its key would be a digit).
+- On a multi-question card it stays on the wizard as `feedback`. The phone walks the pointer with Up/Down, Enter opens the editor, types, and Enter submits. Digits are never sent.
+- `feedback.focused` means the `>` sits on the row. Option buttons lock (Enter would open the editor). The type-in box stays available; its keys are then just `["Enter"]`.
+- `feedback.editing` means the editor is open (`✎`, `Your answer:`). The card stays a wizard. Identity ignores the pointer and the editor text, so neither looks like a committed answer. `customChosen` (`✓`) does.
+- A box that is already open, or already holds text, is refused. Nothing is typed into someone else's sentence.
 
 ## What is NOT Lifted
 - **Submit tab:** The review tab (`Ready to submit`) has no options. It lifts as a wizard `review` whose model carries Pi's own keys: Enter submits (only when every question is answered — otherwise Pi paints `Unanswered: …` and ignores Enter, so Submit is disabled) and Escape cancels. Answers echo as `<chip label>: <answer>`. Live 2026-09-27 (pane `wGK:p2`, fixture `pi--ask-multi-review.txt`): Submit from the phone returned `Large, Coffee`.
-- **Input mode:** When input mode is active (Enter pressed on `Type something.`), the options remain for reference and `Your answer:` / editor appears. The frame stays raw and is not lifted into buttons.
+- **Input mode:** Enter on `Type something.` paints `✎`, `Your answer:`, and the editor. A multi-question frame still lifts as the same wizard with `feedback.editing`. A one-question frame stays raw.
 
 ## Fixture Provenance
 - `web/src/fixtures/panes/pi--ask-*.txt` were generated using Pi's own `createQuestionnaireUI(...).render(94)` via `jiti` import from `C:/Users/you/.pi/agent/extensions/ask.ts`.
@@ -73,4 +75,4 @@ Source: `~/.pi/agent/extensions/ask.ts` (tool implementation) and `@earendil-wor
 - Real terminal theme `selectedBg` RGB values in live environment.
 
 ## Known Limitations
-- After pressing Enter on `Type something.` to enter input mode, the screen remains raw mirror text and the phone composer behaves as an ordinary terminal keyboard.
+- A one-question card's editor stays raw. The phone types only the multi-question wizard's free-text row.
