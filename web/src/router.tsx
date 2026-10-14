@@ -6,8 +6,9 @@ import { SpacesRedirect, SpaceRedirect } from "@/routes/redirects";
 import { DetailRoute } from "@/routes/detail";
 import { SettingsRoute } from "@/routes/settings";
 import { FilesRoute } from "@/routes/files";
+import { LocalRoute } from "@/routes/local";
 import { rememberPath, restoreOnBoot } from "@/lib/last-path";
-import { filesLoader, filesShouldRevalidate, rootLoader, paneLoader, snapshotShouldRevalidate, PANE_ROUTE_ID, ROOT_ROUTE_ID } from "@/lib/loaders";
+import { filesLoader, filesShouldRevalidate, localLoader, rootLoader, paneLoader, snapshotShouldRevalidate, PANE_ROUTE_ID, ROOT_ROUTE_ID } from "@/lib/loaders";
 
 // We don't use view transitions. React Router persists an "applied view transitions" map to
 // sessionStorage ("remix-router-transitions") and replays a phantom same-location transition on every
@@ -44,6 +45,7 @@ export const router = createBrowserRouter([
       { path: "settings", element: <SettingsRoute /> },
       { path: "files", loader: filesLoader, element: <FilesRoute />, shouldRevalidate: filesShouldRevalidate },
       { path: "files/*", loader: filesLoader, element: <FilesRoute />, shouldRevalidate: filesShouldRevalidate },
+      { path: "local", loader: localLoader, element: <LocalRoute /> },
       { id: PANE_ROUTE_ID, path: "pane/:paneId", loader: paneLoader, element: <DetailRoute /> },
     ],
   },

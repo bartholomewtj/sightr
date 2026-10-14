@@ -232,6 +232,13 @@ export function fetchFolderGit(path: string, paneIds: string[], signal?: AbortSi
 export function fetchFiles(path: string, signal?: AbortSignal): Promise<FilesResponse> {
   return req<FilesResponse>(`/api/files?path=${encodeURIComponent(path)}`, { signal });
 }
+
+/** Loopback listeners on the PC, opened over the tailnet. See docs/specs/23-local-servers-tab.md. */
+export interface LocalServer { port: number; name: string; }
+export interface LocalServersResponse { host: string; servers: LocalServer[]; }
+export function fetchLocalServers(signal?: AbortSignal): Promise<LocalServersResponse> {
+  return req<LocalServersResponse>("/api/local-servers", { signal });
+}
 export function searchFiles(q: string, signal?: AbortSignal): Promise<FileSearchResponse> {
   return req<FileSearchResponse>(`/api/files/search?q=${encodeURIComponent(q)}`, { signal });
 }

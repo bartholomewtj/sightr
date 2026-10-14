@@ -13,13 +13,22 @@ describe("BottomNav files", () => {
   it("hides Files when disabled", () => {
     render(<MemoryRouter><BottomNav files={false} /></MemoryRouter>);
     expect(screen.queryByText("Files")).toBeNull();
-    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Spaces", "Settings"]);
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Spaces", "Local", "Settings"]);
   });
   it("shows Files between Spaces and Settings and navigates", async () => {
     render(<MemoryRouter><BottomNav files /><LocationProbe /></MemoryRouter>);
     const labels = screen.getAllByRole("button").map((b) => b.textContent);
-    expect(labels).toEqual(["Spaces", "Files", "Settings"]);
+    expect(labels).toEqual(["Spaces", "Files", "Local", "Settings"]);
     await userEvent.click(screen.getByText("Files"));
     expect(screen.getByTestId("loc").textContent).toBe("/files");
+  });
+  it("renders Local and navigates to /local", async () => {
+    render(<MemoryRouter initialEntries={["/local"]}><BottomNav files /><LocationProbe /></MemoryRouter>);
+    const local = screen.getByRole("button", { name: "Local" });
+    expect(local).toHaveAttribute("aria-current", "page");
+    await userEvent.click(screen.getByText("Spaces"));
+    expect(screen.getByTestId("loc").textContent).toBe("/");
+    await userEvent.click(screen.getByText("Local"));
+    expect(screen.getByTestId("loc").textContent).toBe("/local");
   });
 });

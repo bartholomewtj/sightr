@@ -1,8 +1,8 @@
-import { Folder, LayoutGrid, Settings } from "lucide-react";
+import { Folder, LayoutGrid, Server, Settings } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
 
 import { cn } from "@/lib/utils";
-import { filesPath, homePath, settingsPath } from "@/lib/nav";
+import { filesPath, homePath, localPath, settingsPath } from "@/lib/nav";
 
 interface BottomNavProps {
   /** Show the Files destination when a work root is configured. */
@@ -25,6 +25,7 @@ export function BottomNav({ files }: BottomNavProps) {
       on: pathname === "/",
     },
     ...(files ? [{ key: "files", label: "Files", icon: Folder, to: filesPath(), on: pathname.startsWith("/files") }] : []),
+    { key: "local", label: "Local", icon: Server, to: localPath(), on: pathname.startsWith("/local") },
     { key: "settings", label: "Settings", icon: Settings, to: settingsPath(), on: pathname === "/settings" },
   ];
   return (

@@ -94,3 +94,14 @@ it("keeps the phone bottom bar inside Files, so a file is never a dead end", asy
   expect(screen.getByRole("navigation", { name: "Main" })).toBeInTheDocument();
 });
 
+it("keeps the phone bottom bar on Local", async () => {
+  const router = createMemoryRouter([{
+    id: "root", path: "/", loader: () => filesData, element: <RootLayout />, children: [
+      { path: "local", element: <div>local servers</div> },
+    ],
+  }], { initialEntries: ["/local"] });
+  render(<RouterProvider router={router} />);
+  await waitFor(() => expect(screen.getByText("local servers")).toBeInTheDocument());
+  expect(screen.getByRole("navigation", { name: "Main" })).toBeInTheDocument();
+});
+
