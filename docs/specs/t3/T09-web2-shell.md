@@ -1,6 +1,6 @@
 # T09 — web2 shell: scaffold, adaptive layout, stream client
 
-Status: draft (T3-shape series). Depends on: T05 (`/api/v2/*`), T01 (`shared/v2/contracts.ts`). Read `README.md` in this folder first.
+Status: done on feat/v2-web (2026-10-16). Depends on: T05 (`/api/v2/*`), T01 (`shared/v2/contracts.ts`). Read `README.md` in this folder first.
 
 ## Problem
 
@@ -149,3 +149,65 @@ ship beside v1 so Sightr stays usable every day until cutover (T15). Nothing exi
   1024 px width rule and no user toggle. Do not port `useDesktop`.
 - v1 `command-palette.tsx` is the slash-command sheet, not a `mod+k` palette. T13 builds the palette fresh.
 - `web/src/index.css` already says "House recipe: console" but its status hex (`#f87171` and others) are not tokens.md values. web2 uses tokens.md hex.
+
+## Built
+
+Built on `feat/v2-web` (worktree `sightr-wt-v2web`) beside the bridge track, before T05 existed. The stream and
+command clients follow the shapes in `T05-v2-api.md` and `shared/v2/contracts.ts` and are tested with a fake
+`EventSource` and msw; the live test waits for T05.
+
+- **Stack.** Exact pins from T3's lockfile at `e3b35d1b`: `@base-ui/react` 1.5.0, `@tanstack/react-router` 1.170.10,
+  `@tanstack/router-plugin` 1.168.13, `zustand` 5.0.14, `@legendapp/list` 3.3.5 (unpatched; T3 patches it), React 19.2.6,
+  `lucide-react` ^0.564.0 (T3's, not v1's 1.x). Vite 8, Vitest 4, Tailwind 4 as `web/`. `src/routeTree.gen.ts` is generated
+  by the router plugin and committed (T3 does the same).
+- **Adopted from T3** (`web2/t3-upstream.json`, 30 rows): 22 `components/ui/*` primitives verbatim (alert, badge, button,
+  checkbox, collapsible, dialog, dialog-styles, empty, input, kbd, label, menu, popover, scroll-area, select, separator,
+  sheet, switch, textarea, toggle, toggle-group, tooltip); `lib/utils.ts` adapted (`cn` only); router, routes and
+  `uiStateStore.ts` as patterns. Skipped for now: spinner and skeleton (they animate; tokens.md allows no motion), toast,
+  sidebar, command (they pull T3 runtime). `~/` is kept as an alias for `web2/src` so adopted files need no import edits.
+  Shims: `src/t3/shims/windowControlsOverlay.ts` (tooltip's Electron titlebar hook), wired by `web2/t3-shims.ts` (Vite,
+  Vitest) and `tsconfig.json` paths; a test checks the two agree.
+- **Tokens.** `index.css` defines the tokens.md console names (`--paper`, `--ink`, `--muted`, `--accent`, `--warn`, `--ok`,
+  `--navy` and their soft/fill/chrome steps) and maps the T3/shadcn names onto them in `@theme inline`. tokens.md's `muted`
+  and `accent` mean text and brand colour while shadcn's are quiet surfaces, so `bg-muted` / `bg-accent` map to nav chrome
+  and the raw `--muted` / `--accent` keep the tokens.md meaning. `primary` is ink, so a default T3 button is never a
+  you-step; the signature is `bg-you-soft border-you` (unused until T12). T3's glass utilities exist under their names but
+  flat (no blur). Dark is the default; `public/theme-init.js` adds `.light` only for a pinned Light (v1's key).
+- **Routes.** TanStack file routes as T3 names them: `__root`, `_chat`, `_chat.index`, `_chat.thread.$threadId` (not
+  `_chat.$threadId`, so the URL is `/v2/thread/:id` as this spec says), `_chat.new`, `pane.$paneId`, `archived`, `settings`.
+  The sidebar, archived and new-thread pages are plain placeholders for T10/T14; settings shows only the build id (T18).
+- **Cursor on reconnect.** The client closes a failed `EventSource` and opens a new one, and a browser only sends
+  `Last-Event-ID` on its own retries, so the cursor goes as `?after=<sequence>` (T05 accepts either). Thread streams send
+  `?client=` too.
+- **Frame shapes.** `contracts.ts` has no snapshot, reply or error envelopes yet, so `web2/src/stream/wire.ts` names
+  them (`ShellSnapshot`, `ThreadSnapshot`, `CommandReply`, `V2ErrorBody`, `HistoryPage`) from contract types. Move them
+  into `contracts.ts` when T05 defines them and re-export.
+- **Probe.** After a stream `error` one `fetch` of the same URL: a JSON 503 `herdr-too-old` / `v2-disabled` shows the
+  full-screen state and slows retries to once a minute; `v2-starting` and other 503s are an ordinary reconnect; a lock 401
+  raises the unlock prompt; a 404 stops a thread stream (thread shows "no longer exists") but not the shell stream (an
+  older bridge without v2 keeps being retried).
+- **Bad payloads.** `shared/conn.ts` has no event kind for them and this slice adds none, so a dropped frame bumps
+  `useStreamHealth.dropped` instead of a telemetry note. Only the shell stream records `sse.open` / `sse.drop`, so
+  `/sightr-conn` keeps one SSE family per page; a deliberate reopen (foreground, Retry, `reset`) records no drop.
+- **Banner colours.** tokens.md has no amber: "Reconnecting…" is navy text on nav chrome, "Not connected" is warn.
+  Thresholds come from v1's `connection-health.ts` (imported through `@v1`).
+- **Backoff** resets after any frame, as written. v1 learned (CHANGELOG, "a stream that opens and dies at once") to
+  reset only after 30 s up; worth adopting if the v2 bridge turns out to snapshot-then-drop.
+- **`@v1` and `@/`.** `v1-scope.ts` resolves `@/` by importer for Vite and Vitest (so `@` is not in `resolve.alias`);
+  `tsconfig.json` maps `@/*` to `./src/*` then `../web/src/*`. web2's tsconfig leaves `noUncheckedIndexedAccess` off
+  because v1 lib files are type-checked under it. `push-decision.ts` and `connection-health.ts` are imported through `@v1`
+  besides the files listed above (both leaf files).
+- **SW.** `/v2/sw.js` precaches web2, routes navigations to `/v2/index.html` (deny `/api/`, `/auth`, `/cdn-cgi/`), and
+  copies v1's push handlers; a notification opens `/v2/pane/:paneId` and only reuses a `/v2` tab. PWA update is a plain
+  60 s `registration.update()`; v1's update flow can come with T18.
+- **Bridge.** `serveStatic` takes an optional `dirs` argument (tests pass temp trees); `buildId(dir)` caches per tree;
+  `staticTree()` splits `/v2`. A missing web2 build answers 503 "web2 not built". Tests: `bridge/static-assets.test.ts`.
+- **Version.** `web2/package.json` is 1.2.1; `scripts/bump.ts` and `check-version.ts` do not know about it yet.
+- **CI (for Bart).** `.github/` is off-limits to a slice. Add next to the `web` steps: `cd web2 && bun install`,
+  `bun run typecheck`, `bunx vitest run` (or `bun run test`), `bun run build`.
+- **Tests.** web2: 60 (Vitest, `cd web2 && bun run test`). Root: `bridge/static-assets.test.ts` (10) and
+  `scripts/t3-upstream.test.ts` (6, local fixture repo). v1: `sw-routes.test.ts` gains the `/v2` case.
+- **Live.** Not run against T05 (not on this branch). Checked on a scratch bridge (port 8795, own state dir, SKIP_SERVE):
+  `/v2/`, `/v2/thread/x` serve web2's index, `/v2/sw.js` has `Service-Worker-Allowed: /v2/`, hashed assets are immutable,
+  `/v2/build-info.json` 404s, and the page renders the three-column shell showing "Reconnecting…".
+

@@ -1,0 +1,194 @@
+{
+  "$comment": "Files in web2 taken from or modelled on T3 Code (MIT, THIRD_PARTY.md). mode: verbatim = byte-identical to upstream at commit; adapted = upstream body with local edits (header names the source); pattern = same job and name, Sightr's own code. Check for upstream changes with `bun scripts/t3-upstream.ts`; porting a change bumps the row's commit.",
+  "repo": "https://github.com/pingdotgg/t3code.git",
+  "baseline": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+  "folders": [
+    "apps/web/src/components/",
+    "apps/web/src/components/chat/",
+    "apps/web/src/components/ui/"
+  ],
+  "files": [
+    {
+      "local": "src/components/ui/alert.tsx",
+      "upstream": "apps/web/src/components/ui/alert.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/badge.tsx",
+      "upstream": "apps/web/src/components/ui/badge.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/button.tsx",
+      "upstream": "apps/web/src/components/ui/button.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/checkbox.tsx",
+      "upstream": "apps/web/src/components/ui/checkbox.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/collapsible.tsx",
+      "upstream": "apps/web/src/components/ui/collapsible.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/dialog-styles.ts",
+      "upstream": "apps/web/src/components/ui/dialog-styles.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/dialog.tsx",
+      "upstream": "apps/web/src/components/ui/dialog.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/empty.tsx",
+      "upstream": "apps/web/src/components/ui/empty.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/input.tsx",
+      "upstream": "apps/web/src/components/ui/input.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/kbd.tsx",
+      "upstream": "apps/web/src/components/ui/kbd.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/label.tsx",
+      "upstream": "apps/web/src/components/ui/label.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/menu.tsx",
+      "upstream": "apps/web/src/components/ui/menu.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/popover.tsx",
+      "upstream": "apps/web/src/components/ui/popover.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/scroll-area.tsx",
+      "upstream": "apps/web/src/components/ui/scroll-area.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/select.tsx",
+      "upstream": "apps/web/src/components/ui/select.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/separator.tsx",
+      "upstream": "apps/web/src/components/ui/separator.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/sheet.tsx",
+      "upstream": "apps/web/src/components/ui/sheet.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/switch.tsx",
+      "upstream": "apps/web/src/components/ui/switch.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/textarea.tsx",
+      "upstream": "apps/web/src/components/ui/textarea.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/toggle-group.tsx",
+      "upstream": "apps/web/src/components/ui/toggle-group.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/toggle.tsx",
+      "upstream": "apps/web/src/components/ui/toggle.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/tooltip.tsx",
+      "upstream": "apps/web/src/components/ui/tooltip.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/lib/utils.ts",
+      "upstream": "apps/web/src/lib/utils.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "cn() only"
+    },
+    {
+      "local": "src/t3/shims/windowControlsOverlay.ts",
+      "upstream": "apps/web/src/lib/windowControlsOverlay.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "shim: useNativeTitlebarHeight() = 0"
+    },
+    {
+      "local": "src/router.ts",
+      "upstream": "apps/web/src/router.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/routes/__root.tsx",
+      "upstream": "apps/web/src/routes/__root.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/routes/_chat.tsx",
+      "upstream": "apps/web/src/routes/_chat.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/routes/_chat.index.tsx",
+      "upstream": "apps/web/src/routes/_chat.index.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/routes/_chat.new.tsx",
+      "upstream": "apps/web/src/routes/_chat.new.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/uiStateStore.ts",
+      "upstream": "apps/web/src/uiStateStore.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    }
+  ]
+}

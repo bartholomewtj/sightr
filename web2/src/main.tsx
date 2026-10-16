@@ -1,0 +1,24 @@
+import { RouterProvider } from "@tanstack/react-router";
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+
+import { startConnTelemetry } from "@v1/lib/conn-telemetry";
+
+import "./index.css";
+// Registers the /v2/ service worker (precache, install, push). No-op over plain HTTP.
+import "./lib/pwa";
+import { getRouter } from "./router";
+
+const root = document.getElementById("root");
+if (!root) throw new Error("missing #root");
+
+// Connection telemetry for `sightr-ctl conn`, the same recorder as v1 (timings only).
+startConnTelemetry();
+
+const router = getRouter();
+
+createRoot(root).render(
+  <StrictMode>
+    <RouterProvider router={router} />
+  </StrictMode>,
+);

@@ -1,0 +1,222 @@
+@import "tailwindcss";
+
+/* ── Look ─────────────────────────────────────────────────────────────────────────────────────────
+   Workspace tokens from C:\claudeOS\style\tokens.md: recipe `console`, dark by default, light as a mode
+   (not a fifth palette). Type is Tool: Segoe UI for text, Consolas for numbers, logs and code. Radius
+   12 px. No webfont, no glass, no motion beyond the working pulse (T10).
+
+   Two layers, so T3 Code components render in this look with their class names unchanged:
+   1. House tokens, named as tokens.md names them (--paper, --ink, --muted, --accent, --warn, --ok,
+      --navy and their soft/fill/chrome steps). Locked hex; edit tokens.md first, never here alone.
+   2. T3/shadcn semantic names (`background`, `foreground`, `muted-foreground`, `primary`, ...) mapped
+      onto layer 1 in `@theme inline`. tokens.md's `muted` and `accent` mean text and the brand colour,
+      while shadcn's `muted` and `accent` are quiet surfaces, so those two are mapped at the Tailwind
+      layer only (`bg-muted` = nav chrome, `bg-accent` = nav hover) and the raw --muted / --accent keep
+      the tokens.md meaning.
+
+   Signature "you": the one control or row that needs the operator gets `bg-you-soft border-you`.
+   Nothing else does. `primary` is ink, not accent, so a default button is never a you-step. */
+
+/* Dark unless the operator pinned light (public/theme-init.js adds `.light`). */
+@custom-variant dark (&:where(:root:not(.light), :root:not(.light) *));
+@custom-variant light (&:where(:root.light, :root.light *));
+
+:root {
+  color-scheme: dark;
+
+  /* 1. House tokens: console recipe, light-dark(<light>, <dark>). */
+  --paper: light-dark(#f4f5f6, #171b21);
+  --ink: light-dark(#1c2128, #e8eef4);
+  --muted: light-dark(#5b646d, #8a929b);
+  --accent: light-dark(#2a588d, #6c9bd0);
+  --warn: light-dark(#97352b, #d17e75);
+  --ok: light-dark(#317245, #66b77f);
+  --navy: light-dark(#3a4a88, #8996c8);
+  --chip-ink: #ffffff;
+  --accent-soft: light-dark(#e0e5ec, #232d3a);
+  --accent-fill: light-dark(#2a588d, #3b516a);
+  --warn-soft: light-dark(#ebe2e2, #31292d);
+  --ok-soft: light-dark(#e0e8e4, #22312e);
+  --ok-fill: light-dark(#317245, #385d48);
+  --navy-soft: light-dark(#e1e4eb, #272c38);
+  --navy-fill: light-dark(#3a4a88, #474f67);
+  --card: light-dark(#fcfcfc, #212730);
+  --cage: light-dark(#eaebed, #14181d);
+  --nav: light-dark(#eaebed, #14171c);
+  --nav-hover: light-dark(#e1e2e3, #282f39);
+  --line: light-dark(#d1d3d5, #3d4147);
+  --boxline: light-dark(#bcbec0, #52565c);
+
+  /* Type and shape. */
+  --radius: 0.75rem;
+  --control-radius: 0.625rem;
+
+  /* 2a. Raw shadcn/T3 names some T3 class strings and utilities read directly (`var(--background)`). */
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --popover: var(--card);
+  --contrast-foreground: var(--ink);
+  --contrast-muted-foreground: var(--muted);
+  --contrast-sidebar-muted-foreground: var(--muted);
+  --contrast-border: var(--line);
+  --contrast-input: var(--boxline);
+
+  /* T3 geometry the adopted primitives use. */
+  --z-sheet: 46;
+  --thread-details-panel-width: 17.5rem;
+  --app-scrollbar-width: 6px;
+  --app-scrollbar-thumb: var(--boxline);
+  --app-scrollbar-thumb-hover: var(--muted);
+
+  /* Sightr shell geometry. */
+  --sidebar-width: 18rem;
+}
+
+:root.light {
+  color-scheme: light;
+}
+
+@theme {
+  --font-sans: "Segoe UI", system-ui, sans-serif;
+  --font-mono: Consolas, ui-monospace, monospace;
+}
+
+@theme inline {
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: calc(1 / 0.6875);
+  --text-3xs: 0.625rem;
+  --text-3xs--line-height: calc(0.875 / 0.625);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  /* House names as utilities (bg-paper, text-ink, border-line, ...). */
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-house-muted: var(--muted);
+  --color-house-accent: var(--accent);
+  --color-warn: var(--warn);
+  --color-ok: var(--ok);
+  --color-navy: var(--navy);
+  --color-line: var(--line);
+  --color-boxline: var(--boxline);
+  --color-nav: var(--nav);
+  --color-cage: var(--cage);
+
+  /* The signature. */
+  --color-you: var(--accent);
+  --color-you-soft: var(--accent-soft);
+  --color-you-foreground: var(--ink);
+
+  /* 2b. T3/shadcn semantic colours, mapped to the house. */
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-card: var(--card);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--card);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--ink);
+  --color-primary-foreground: var(--paper);
+  --color-secondary: var(--nav-hover);
+  --color-secondary-foreground: var(--ink);
+  --color-secondary-label: var(--muted);
+  --color-muted: var(--nav);
+  --color-muted-foreground: var(--muted);
+  --color-placeholder: var(--muted);
+  --color-icon-muted: var(--muted);
+  --color-accent: var(--nav-hover);
+  --color-accent-foreground: var(--ink);
+  --color-border: var(--line);
+  --color-input: var(--boxline);
+  --color-ring: var(--accent);
+  --color-destructive: var(--warn);
+  --color-destructive-foreground: var(--warn);
+  --color-error: var(--warn);
+  --color-error-foreground: var(--warn);
+  --color-error-surface: var(--warn-soft);
+  --color-warning: var(--warn);
+  --color-warning-foreground: var(--warn);
+  --color-warning-surface: var(--warn-soft);
+  --color-success: var(--ok);
+  --color-success-foreground: var(--ok);
+  --color-info: var(--navy);
+  --color-info-foreground: var(--navy);
+  --color-sidebar: var(--nav);
+  --color-sidebar-foreground: var(--ink);
+  --color-sidebar-muted-foreground: var(--muted);
+  --color-sidebar-border: var(--line);
+  --color-sidebar-control-surface: var(--card);
+  --color-sidebar-row-hover: var(--nav-hover);
+  --color-sidebar-row-active: var(--accent-soft);
+  --color-code: var(--cage);
+  --color-code-foreground: var(--ink);
+}
+
+/* T3's surface utilities under their T3 names, flat: tokens.md rules out glassmorphism and blur. */
+@utility surface-glass {
+  background: var(--paper);
+}
+@utility dialog-glass {
+  background: var(--card);
+  border-color: var(--line);
+}
+@utility dialog-backdrop {
+  background: color-mix(in srgb, var(--paper) 70%, transparent);
+}
+@utility dropdown-glass {
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+@utility alert-glass {
+  background: var(--card) !important;
+}
+@utility pt-safe {
+  padding-top: max(env(safe-area-inset-top), 0px);
+}
+@utility pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+@utility pl-safe {
+  padding-left: max(env(safe-area-inset-left), 0px);
+}
+@utility pr-safe {
+  padding-right: max(env(safe-area-inset-right), 0px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body {
+    background-color: var(--paper);
+    /* The app owns the viewport: the shell is a 100dvh column (routes/__root.tsx). */
+    overscroll-behavior: none;
+  }
+  body {
+    @apply font-sans text-foreground;
+  }
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-mono);
+  }
+}
+
+::-webkit-scrollbar {
+  width: var(--app-scrollbar-width);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--app-scrollbar-thumb);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--app-scrollbar-thumb-hover);
+}

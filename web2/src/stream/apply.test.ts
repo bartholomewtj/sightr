@@ -1,0 +1,189 @@
+import { describe, expect, it, vi } from "vitest";
+
+import type { ThreadEvent } from "@shared/v2/contracts";
+
+import { itemEvent, project, renamed, shellSnapshot, thread, threadSnapshot, userItem } from "@/test/fixtures";
+
+import { applyShellEvent, applyThreadEvent, emptyThread, shellFromSnapshot, threadFromSnapshot } from "./apply";
+
+describe("applyShellEvent", () => {
+  const base = shellFromSnapshot(shellSnapshot(10));
+
+  it("applies events in order and advances the sequence", () => {
+    const a = applyShellEvent(base, renamed(11, "t1", "one"));
+    const b = applyShellEvent(a, renamed(12, "t1", "two"));
+    expect(b.threads.t1?.title).toBe("two");
+    expect(b.sequence).toBe(12);
+    expect(b.threads.t1?.updatedAt).toBe(2_012);
+  });
+
+  it("accepts a gap in sequences", () => {
+    const next = applyShellEvent(base, renamed(40, "t1", "later"));
+    expect(next.sequence).toBe(40);
+    expect(next.threads.t1?.title).toBe("later");
+  });
+
+  it("ignores a duplicate or stale sequence and returns the same object", () => {
+    const a = applyShellEvent(base, renamed(11, "t1", "one"));
+    const onDrop = vi.fn();
+    expect(applyShellEvent(a, renamed(11, "t1", "dup"), onDrop)).toBe(a);
+    expect(applyShellEvent(a, renamed(3, "t1", "old"), onDrop)).toBe(a);
+    expect(a.threads.t1?.title).toBe("one");
+    expect(onDrop).toHaveBeenCalledTimes(2);
+    expect(onDrop.mock.calls[0]?.[0]).toBe("stale");
+  });
+
+  it("ignores an unknown event type", () => {
+    const onDrop = vi.fn();
+    const next = applyShellEvent(base, { sequence: 11, type: "thread.teleported", payload: {}, ts: 1 }, onDrop);
+    expect(next).toBe(base);
+    expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it("drops a malformed payload without throwing", () => {
+    const onDrop = vi.fn();
+    for (const bad of [
+      null,
+      "x",
+      { type: "thread.updated" },
+      { sequence: 11, type: "thread.updated", payload: null },
+      { sequence: 11, type: "thread.updated", threadId: "t1", payload: { patch: "nope", at: 1 } },
+      { sequence: 11, type: "project.upserted", payload: { project: {} } },
+      { sequence: 11, type: "queue.updated", threadId: "t1", payload: { messages: [1] } },
+    ]) {
+      expect(applyShellEvent(base, bad, onDrop)).toBe(base);
+    }
+    expect(onDrop).toHaveBeenCalledTimes(7);
+    expect(onDrop.mock.calls.every(([reason]) => reason === "malformed")).toBe(true);
+  });
+
+  it("returns the same object for an event the shell does not keep", () => {
+    expect(applyShellEvent(base, itemEvent(11, userItem("i1", "t1", "hi")))).toBe(base);
+  });
+
+  it("projects shelf changes like the bridge store", () => {
+    const pinned = applyShellEvent(base, {
+      sequence: 11,
+      threadId: "t1",
+      type: "thread.shelf-changed",
+      payload: { shelf: "pinned", pinOrder: 2, at: 5_000 },
+      ts: 5_000,
+    } satisfies ThreadEvent);
+    expect(pinned.threads.t1).toMatchObject({ shelf: "pinned", pinnedAt: 5_000, pinOrder: 2 });
+    const archived = applyShellEvent(pinned, {
+      sequence: 12,
+      threadId: "t1",
+      type: "thread.archived",
+      payload: { reason: "user", at: 6_000 },
+      ts: 6_000,
+    } satisfies ThreadEvent);
+    expect(archived.threads.t1).toMatchObject({ shelf: "archived", archivedAt: 6_000, archiveReason: "user" });
+    expect(archived.threads.t1?.pinnedAt).toBeUndefined();
+  });
+
+  it("adds projects and threads, and keeps request summaries without options", () => {
+    const withProject = applyShellEvent(base, {
+      sequence: 11,
+      type: "project.upserted",
+      payload: { project: project("w2", { label: "Two" }) },
+      ts: 1,
+    } satisfies ThreadEvent);
+    const withThread = applyShellEvent(withProject, {
+      sequence: 12,
+      threadId: "t2",
+      type: "thread.created",
+      payload: { thread: thread("t2", { projectId: "w2" }) },
+      ts: 1,
+    } satisfies ThreadEvent);
+    const withRequest = applyShellEvent(withThread, {
+      sequence: 13,
+      threadId: "t2",
+      type: "runtime-request.updated",
+      payload: {
+        request: {
+          id: "r1",
+          threadId: "t2",
+          kind: "permission",
+          prompt: "Run ls?",
+          options: [{ label: "Yes", keys: ["1"] }],
+          status: "pending",
+          bindingHash: "h",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      },
+      ts: 1,
+    } satisfies ThreadEvent);
+    expect(withRequest.projects.w2?.label).toBe("Two");
+    expect(withRequest.threads.t2?.projectId).toBe("w2");
+    expect(withRequest.requests.r1).toMatchObject({ prompt: "Run ls?", status: "pending" });
+    expect(withRequest.requests.r1).not.toHaveProperty("options");
+  });
+});
+
+describe("applyThreadEvent", () => {
+  const t1 = thread("t1");
+  const base = threadFromSnapshot(threadSnapshot(10, t1, [userItem("i1", "t1", "hello", 0)]), false);
+
+  it("upserts turn items in order", () => {
+    const a = applyThreadEvent(base, itemEvent(11, userItem("i2", "t1", "second", 1)));
+    const b = applyThreadEvent(a, itemEvent(12, { ...userItem("i2", "t1", "second, edited", 1) }));
+    expect(Object.keys(b.items)).toEqual(["i1", "i2"]);
+    expect(b.items.i2).toMatchObject({ type: "user_message", text: "second, edited" });
+    expect(b.sequence).toBe(12);
+  });
+
+  it("ignores duplicate and stale sequences", () => {
+    const a = applyThreadEvent(base, itemEvent(11, userItem("i2", "t1", "x", 1)));
+    expect(applyThreadEvent(a, itemEvent(11, userItem("i2", "t1", "dup", 1)))).toBe(a);
+    expect(applyThreadEvent(a, itemEvent(9, userItem("i3", "t1", "old", 2)))).toBe(a);
+  });
+
+  it("ignores unknown types and events of another thread", () => {
+    expect(applyThreadEvent(base, { sequence: 11, type: "turn-item.exploded", payload: {} })).toBe(base);
+    expect(applyThreadEvent(base, renamed(11, "t2", "not mine"))).toBe(base);
+  });
+
+  it("drops a malformed payload", () => {
+    const onDrop = vi.fn();
+    expect(applyThreadEvent(base, { sequence: 11, type: "turn-item.updated", threadId: "t1", payload: { item: { id: "x" } } }, onDrop)).toBe(base);
+    expect(onDrop).toHaveBeenCalledWith("malformed", expect.anything());
+  });
+
+  it("tracks runs and the queue", () => {
+    const started = applyThreadEvent(emptyThread("t1"), {
+      sequence: 1,
+      threadId: "t1",
+      type: "run.started",
+      payload: { run: { id: "r1", threadId: "t1", ordinal: 0, status: "running", startedAt: 1 } },
+      ts: 1,
+    } satisfies ThreadEvent);
+    const ended = applyThreadEvent(started, {
+      sequence: 2,
+      threadId: "t1",
+      type: "run.ended",
+      payload: { runId: "r1", status: "completed", completedAt: 9 },
+      ts: 9,
+    } satisfies ThreadEvent);
+    expect(ended.runs.r1).toMatchObject({ status: "completed", completedAt: 9 });
+    const queued = applyThreadEvent(ended, {
+      sequence: 3,
+      threadId: "t1",
+      type: "queue.updated",
+      payload: {
+        messages: [
+          { id: "q2", threadId: "t1", text: "b", attachments: [], position: 2, mode: "queue", state: "queued", createdAt: 1 },
+          { id: "q1", threadId: "t1", text: "a", attachments: [], position: 1, mode: "queue", state: "queued", createdAt: 1 },
+        ],
+      },
+      ts: 9,
+    } satisfies ThreadEvent);
+    expect(queued.queue.map((m) => m.id)).toEqual(["q1", "q2"]);
+  });
+
+  it("fills a missing ordinal with the next one", () => {
+    const { ordinal: _o, ...noOrdinal } = userItem("i9", "t1", "late", 0);
+    const next = applyThreadEvent(base, { sequence: 11, threadId: "t1", type: "turn-item.updated", payload: { item: noOrdinal }, ts: 1 });
+    expect(next.items.i9?.ordinal).toBe(1);
+  });
+});

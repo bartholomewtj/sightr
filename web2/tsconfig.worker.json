@@ -1,0 +1,10 @@
+{
+  // src/sw.ts runs in a service-worker context: WebWorker lib instead of DOM (as web/tsconfig.worker.json).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "WebWorker"],
+    "types": []
+  },
+  "include": ["src/sw.ts"],
+  "exclude": []
+}

@@ -8,22 +8,43 @@ export { BUILD_HEADER };
 // The built PWA lives in web/dist (Vite output). If it's missing, the bridge still runs the API
 // — only the static UI 503s with a hint to build.
 const WEB_DIR = join(import.meta.dir, "..", "web", "dist");
-// Build id of the bundle currently on disk (written by the Vite build to dist/build-info.json).
-// Surfaced via the X-Sightr-Build header and /api/config so a stale, service-worker-cached client
+// The v2 app (docs/specs/t3/T09-web2-shell.md), served at /v2/ beside v1 until cutover (T15).
+const WEB2_DIR = join(import.meta.dir, "..", "web2", "dist");
+
+/** The two built trees `serveStatic` reads. Tests pass their own. */
+export interface StaticDirs {
+  web: string;
+  web2: string;
+}
+const DEFAULT_DIRS: StaticDirs = { web: WEB_DIR, web2: WEB2_DIR };
+
+// Build id of the bundle currently on disk (written by the Vite build to dist/build-info.json), per
+// tree. Surfaced via the X-Sightr-Build header and /api/config so a stale, service-worker-cached client
 // can tell it's behind. Cached by file mtime so a frontend rebuild (live, no restart) is picked up.
-let buildCache: { id: string; mtime: number } | null = null;
-export async function buildId(): Promise<string> {
+const buildCache = new Map<string, { id: string; mtime: number }>();
+export async function buildId(dir: string = WEB_DIR): Promise<string> {
   try {
-    const f = Bun.file(join(WEB_DIR, "build-info.json"));
+    const f = Bun.file(join(dir, "build-info.json"));
     const mtime = f.lastModified;
-    if (!buildCache || buildCache.mtime !== mtime) {
+    let cached = buildCache.get(dir);
+    if (!cached || cached.mtime !== mtime) {
       const data = (await f.json()) as { id?: string };
-      buildCache = { id: data.id ?? "unknown", mtime };
+      cached = { id: data.id ?? "unknown", mtime };
+      buildCache.set(dir, cached);
     }
-    return buildCache.id;
+    return cached.id;
   } catch {
     return "unknown";
   }
+}
+
+/**
+ * Which tree a request path belongs to. `/v2` and `/v2/...` are web2's, with the prefix stripped;
+ * everything else is v1's. Pure + exported for tests.
+ */
+export function staticTree(pathname: string): { v2: boolean; pathname: string } {
+  if (pathname === "/v2" || pathname.startsWith("/v2/")) return { v2: true, pathname: pathname.slice(3) || "/" };
+  return { v2: false, pathname };
 }
 
 // The response header carrying the on-disk bundle's build id. A polling client reads it off every
@@ -113,7 +134,12 @@ behind your own reverse proxy</em> in the README.</p>
   );
 }
 
-export async function serveStatic(pathname: string, host: string, cfg: Config): Promise<Response> {
+export async function serveStatic(
+  pathname: string,
+  host: string,
+  cfg: Config,
+  dirs: StaticDirs = DEFAULT_DIRS,
+): Promise<Response> {
   // The Host allowlist, which every /api/* route gets via guard() → checkAccess. The static route
   // was the last one that skipped it, so with SIGHTR_PUBLIC_HOSTS set a rebound DNS name was still
   // served the app shell, build-info.json, and the X-Sightr-Build header on every asset — the same
@@ -123,7 +149,11 @@ export async function serveStatic(pathname: string, host: string, cfg: Config): 
   // rebound host cannot tell 403/404/503 apart by probing paths.
   if (cfg.publicHosts.length > 0 && !isHostAllowed(host, cfg)) return text("host not allowed", 403);
 
-  const resolved = resolveStaticPath(pathname);
+  // `/v2/...` is web2's tree (prefix stripped), everything else v1's. Each tree has its own SPA
+  // fallback, build id and service-worker scope.
+  const tree = staticTree(pathname);
+  const dir = tree.v2 ? dirs.web2 : dirs.web;
+  const resolved = resolveStaticPath(tree.pathname, dir);
   if (!resolved) return text("forbidden", 403);
   let { rel, full } = resolved;
 
@@ -135,10 +165,13 @@ export async function serveStatic(pathname: string, host: string, cfg: Config): 
     // SPA fallback: extension-less paths fall back to index.html; missing assets 404.
     if (extname(rel) === "") {
       rel = "index.html";
-      full = join(WEB_DIR, "index.html");
+      full = join(dir, "index.html");
       file = Bun.file(full);
       if (!(await file.exists())) {
-        return text("frontend not built — run `bun run build` in web/", 503);
+        return text(
+          tree.v2 ? "web2 not built — run `bun run build:web2`" : "frontend not built — run `bun run build` in web/",
+          503,
+        );
       }
     } else {
       return text("not found", 404);
@@ -148,11 +181,11 @@ export async function serveStatic(pathname: string, host: string, cfg: Config): 
   const ext = extname(full);
   const headers: Record<string, string> = {
     "content-type": CONTENT_TYPES[ext] ?? "application/octet-stream",
-    [BUILD_HEADER]: await buildId(), // which bundle the server is serving (vs the client's stamp)
+    [BUILD_HEADER]: await buildId(dir), // which bundle the server is serving (vs the client's stamp)
     "cache-control": cacheControlFor(rel),
   };
   if (ext === ".html") headers["content-security-policy"] = CSP;
-  if (rel === "sw.js") headers["service-worker-allowed"] = "/";
+  if (rel === "sw.js") headers["service-worker-allowed"] = tree.v2 ? "/v2/" : "/";
   return secure(new Response(file, { headers }));
 }
 

@@ -8,9 +8,11 @@
   "scripts": {
     "start": "bun run bridge/index.ts",
     "dev": "bun --watch bridge/index.ts",
-    "build": "bun run typecheck && cd web && bun install && bun run typecheck && bun run build",
+    "build": "bun run typecheck && cd web && bun install && bun run typecheck && bun run build && cd ../web2 && bun install && bun run typecheck && bun run build",
     "build:web": "cd web && bun run build",
+    "build:web2": "cd web2 && bun run build",
     "web:dev": "cd web && bun run dev",
+    "web2:dev": "cd web2 && bun run dev",
     "test": "bun run typecheck && bun test ./bridge ./scripts",
     "test:ctl": "bun test scripts/ctl",
     "typecheck": "bunx tsc --noEmit"

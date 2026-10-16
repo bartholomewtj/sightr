@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    // As T3 Code's apps/web, so adopted files compile unchanged.
+    "verbatimModuleSyntax": false,
+    "erasableSyntaxOnly": false,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    "strict": true,
+    // No noUncheckedIndexedAccess: v1 lib files imported through `@v1` are checked under this config
+    // and were not written for it (web/tsconfig.json leaves it off too).
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+
+    // `@/*` tries web2 first, then v1: a v1 lib file imported through `@v1` that says `@/lib/x` finds
+    // its own sibling (v1-scope.ts does the same for Vite). The `~/lib/...` shim entries mirror
+    // t3-shims.ts; `~/*` is T3's own root alias, kept so adopted files need no import edits.
+    "paths": {
+      "@/*": ["./src/*", "../web/src/*"],
+      "@shared/*": ["../shared/*"],
+      "@v1/*": ["../web/src/*"],
+      "~/lib/windowControlsOverlay": ["./src/t3/shims/windowControlsOverlay.ts"],
+      "~/*": ["./src/*"]
+    }
+  },
+  // src/sw.ts runs in a service-worker context; tsconfig.worker.json checks it.
+  "include": ["src", "../shared", "*.ts"],
+  "exclude": ["src/sw.ts"]
+}
