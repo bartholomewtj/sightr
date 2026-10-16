@@ -518,7 +518,13 @@ export interface EventPayloads {
   /** The thread's whole queue after the change. */
   "queue.updated": { messages: QueuedMessage[]; change?: QueueChange; reason?: string };
   "command.rejected": { reason: string; code?: string; shown?: string };
-  "dispatch.failed": { reason: string; textDelivered?: boolean; queuedId?: string };
+  /**
+   * A dispatched message was not sent (T06). `reason`: `blocked` | `stalled` | `error` (the send
+   * guard's outcome), `pane-gone`, `busy`, `interrupt-failed` or `interrupt-timeout`; `message` is the
+   * guard's own words for the operator. `queuedId`: the queue row it concerns, which is kept (held)
+   * unless `textDelivered` (the text is in the box, unsubmitted; the row is gone).
+   */
+  "dispatch.failed": { reason: string; message?: string; textDelivered?: boolean; queuedId?: string };
   "thread.create.failed": { threadId: string; stage: "pane" | "prompt" | "agent"; message: string };
 }
 

@@ -1,6 +1,6 @@
 # T06 — Dispatch, queue and steer
 
-Status: draft (T3-shape series). Depends on: T01 (store, receipts), T02 (threads, status, interim capability table), T03 (run boundaries), T04 (runtime requests), T05 (command endpoint, events).
+Status: done on feat/v2 (2026-10-16). Depends on: T01 (store, receipts), T02 (threads, status, interim capability table), T03 (run boundaries), T04 (runtime requests), T05 (command endpoint, events).
 
 ## Problem
 
@@ -158,3 +158,63 @@ Claude; interrupt on Cursor. Record the other harnesses as not live-tested if no
   pane.
 - T3's README row says "Steer = interrupt key, wait idle, send". Wait time is not specified there; `STEER_WAIT_MS` is
   proposed.
+
+## Built
+
+Files: `bridge/threads/dispatch.ts` (handlers for `message.dispatch`, `run.interrupt`, `queued.reorder|edit|cancel`,
+`queue.resume`, registered as T05 effects in `index.ts`), `bridge/threads/queue-drain.ts` (`createQueueDrainer`),
+`createGuardedSender` in `bridge/guarded-send-route.ts` (the v1 route now calls it; `guarded-send.test.ts` unchanged
+and green), `INTERRUPT_TABLE` in `bridge/threads/capabilities.ts`, store reads `listQueued(threadId?)` and
+`getQueued(id)`. Tests: `dispatch.test.ts`, `queue-drain.test.ts` (the hold test drives a real `StateEngine` and herd
+ingest).
+
+Deviations and additions:
+
+- **Refusals** keep T05's codes; the spec's names are the `error` text: `409 conflict` with `thread-busy`,
+  `needs-response`, `thread-archived`, `pane-gone`, `already-sending`, `queue-changed`, `not-working`,
+  `already-interrupting`; `409 unsupported` with `queue-unsupported` / `interrupt-unsupported`; pane busy `503 busy`
+  (no receipt). A start whose send was refused by the guard (`blocked`, `stalled`, `error`) still answers
+  `200 {sequence}` with a receipt; the outcome is the `dispatch.failed` event.
+- **`dispatch.failed`** gained an optional `message` (the guard's own words). `reason` is `blocked` | `stalled` |
+  `error` | `pane-gone` | `busy` | `interrupt-failed` | `interrupt-timeout`.
+- **Retry timer.** The drainer backs off on a status event as specified, and also retries a backed-off thread after
+  `DRAIN_RETRY_MS` (5 s) while it stays settled. Without it a composer that was briefly covered (a picker the operator
+  closed) or a stalled send on a pane that stays idle would wait forever. Only `blocked`/`stalled`/`error` count toward
+  the three strikes; composer not on screen and pane busy do not. A held row is never retried.
+- **One message per settle** is tracked from just before the send (a `working` seen while the send is still
+  verifying counts) until the status goes `working` and back. A run too fast for a poll to see releases the next row
+  after `RUN_WAIT_MS` (20 s). A late `run.ended` of an older run does not release it.
+- **`textDelivered`** deletes the row and schedules no retry: the next row waits for a status change, so the drainer
+  never sweeps the operator's half-sent text.
+- **Closed pane.** When a thread is archived its rows are held with `heldReason: "pane-closed"` (T12's "Not sent: pane
+  closed"); rows never leave the table on their own.
+- **Restart** holds `queued` rows too, with `heldReason: "restart"`, not only `sending` ones (T12 shows one Resume).
+- **Steer.** The row's insert commits with the receipt and the reply returns at once; interrupt, wait and send run in
+  the background. A steer whose send fails is held at position 0 with the outcome as its reason (not retried). A
+  resumed steer row drains like a queue row.
+- **Double interrupt.** Live, two `run.interrupt` 140 ms apart sent two Escapes and Claude opened its rewind menu.
+  After a press, further presses are refused with `already-interrupting` until the status leaves `working` (or
+  `INTERRUPT_REPEAT_MS`, 15 s). A steer in that window waits for the stop without pressing again.
+- **`canInterrupt`** ships for Claude only (live-checked). Pi, Grok, Cursor, Agy and Codex keep their keys in
+  `INTERRUPT_TABLE` with `verified: false`; not live-tested.
+- **No-journal threads** get a `user_message` item (`id dispatch:<uuid>`, `inputIntent` `turn_start` |
+  `queued_turn` | `steer`) on `sent`; T03 adopts it into the run. For journal threads nothing extra was needed:
+  T03 already links the run to the logged message.
+- The drainer's composer check is `GuardedSender.composerReady` (one read in its own queue turn). It parses with
+  `web/src/lib/blocks.ts`'s `parseLines`, a new direct bridge import of a file already in the guard's closure.
+
+Live (16 Oct 2026, scratch workspace `v2-test-T06`, Claude Code 2.1.301 on Haiku, test bridge on port 8796):
+
+| Case | Result |
+|---|---|
+| start on idle | sent (0.2–5 s; the first send waited for Claude's box) |
+| queue two while working | rows held in order; ALPHA sent when the run ended, BRAVO after ALPHA's run ended |
+| steer mid-output | one Escape, run ended `interrupted`, text sent 4 s later (the engine's 3 s hold), answered |
+| steer 0.3 s into a run | Claude put the interrupted prompt back in the box (118 chars); the sweep is capped at 96 keys, so the box kept a tail and the steer stalled, was held at position 0 with `stalled`, nothing submitted |
+| run.interrupt | one Escape, run ended `interrupted`; a second press 140 ms later refused `already-interrupting` (after the fix) |
+| restart with a queued row | row loaded `held` / `restart`, nothing sent; `queue.resume` sent it |
+| queued.cancel | removed a held steer row |
+
+Open: a steer that lands before the agent has output anything leaves a long restored prompt in Claude's box that
+the 96-key sweep cannot clear; the guard holds the steer safely, but a future slice may want a per-harness clear
+(Claude's input) or a larger cap for that case.
