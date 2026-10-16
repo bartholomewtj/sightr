@@ -157,6 +157,8 @@ interface SpawnJob {
   workspaceId: string;
   /** This command created the workspace (`newProject`). */
   workspaceCreated: boolean;
+  /** The harness id, for the operator's words. */
+  harness: string;
   kind: string;
   args: string[];
   agentName: string;
@@ -177,8 +179,15 @@ export function createSpawner(deps: SpawnDeps): Spawner {
   const settleMs = deps.settleMs ?? SETTLE_MS;
   const background = new Set<Promise<void>>();
 
-  const track = (work: Promise<void>) => {
-    const p = work.catch((err) => log(`[threads] spawn: ${(err as Error).message}`));
+  const track = (work: Promise<void>, onError?: (err: unknown) => void) => {
+    const p = work.catch((err) => {
+      log(`[threads] spawn: ${(err as Error).message}`);
+      try {
+        onError?.(err);
+      } catch (inner) {
+        log(`[threads] spawn: ${(inner as Error).message}`);
+      }
+    });
     background.add(p);
     void p.then(() => background.delete(p));
   };
@@ -368,19 +377,20 @@ export function createSpawner(deps: SpawnDeps): Spawner {
       });
 
       const agentName = (given ? agentNameFrom(given, harness) : "") || agentNameFrom(display, harness) || defaultName(harness, pid);
-      track(
-        finish({
-          commandId: ctx.commandId,
-          threadId,
-          paneId: created.paneId,
-          terminalId: created.terminalId ?? "",
-          workspaceId: pid,
-          workspaceCreated: newProject !== null,
-          kind: launch.kind,
-          args: built.args,
-          agentName,
-        }),
-      );
+      const job: SpawnJob = {
+        commandId: ctx.commandId,
+        threadId,
+        paneId: created.paneId,
+        terminalId: created.terminalId ?? "",
+        workspaceId: pid,
+        workspaceCreated: newProject !== null,
+        harness,
+        kind: launch.kind,
+        args: built.args,
+        agentName,
+      };
+      // Whatever goes wrong in the background, the thread does not stay `starting`.
+      track(finish(job), (err) => giveUp(job, `spawn-failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300)));
       return { ok: true, sequence: last, threadId };
     });
   };
@@ -485,6 +495,23 @@ export function createSpawner(deps: SpawnDeps): Spawner {
     append(job, events);
   };
 
+  /**
+   * The agent never became ready (a timeout, or a background error): say so and mark the thread
+   * `failed` so it does not read `starting` forever. The pane stays; it is the operator's to close.
+   */
+  const giveUp = (job: SpawnJob, message: string): void => {
+    const thread = store.getThread(job.threadId);
+    if (!thread) return;
+    const events: EventDraft[] = [
+      { type: "thread.create.failed", threadId: job.threadId, payload: { threadId: job.threadId, stage: "agent", message } },
+      notice(job, message),
+    ];
+    if (thread.shelf !== "archived" && thread.status === "starting") {
+      events.push({ type: "thread.updated", threadId: job.threadId, payload: { patch: { status: "failed" }, at: store.now() } });
+    }
+    append(job, events);
+  };
+
   /** 7. The engine's snapshot shows the agent (the herd ingest has then updated the thread), or the wait ran out. */
   const waitForAgent = (paneId: string): Promise<void> =>
     new Promise<void>((resolve) => {
@@ -531,13 +558,11 @@ export function createSpawner(deps: SpawnDeps): Spawner {
           continue;
         }
         if (code === "timeout") {
-          // 9. A slow cold start is common: the pane stays and the thread stays `starting` until the herd
-          // ingest sees the agent or the operator archives it.
-          const message = `The agent did not start in ${Math.round(startTimeoutMs / 1000)} s`;
-          append(job, [
-            { type: "thread.create.failed", threadId: job.threadId, payload: { threadId: job.threadId, stage: "agent", message } },
-            notice(job, message),
-          ]);
+          // 9. One last look: a slow cold start may have come up just after the deadline.
+          const pane = await herdr.getPane(job.paneId).catch(() => null);
+          if (pane && (job.terminalId === "" || pane.terminalId === job.terminalId) && pane.agent !== null) break;
+          // It did not (often the harness is not installed): the thread fails, the pane stays.
+          giveUp(job, `${job.harness} did not start within ${Math.round(startTimeoutMs / 1000)} s; is it installed?`);
           return;
         }
         log(`[threads] spawn: agent.start in ${job.paneId} failed: ${text}`);

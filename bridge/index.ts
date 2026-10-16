@@ -30,6 +30,7 @@ import { respondEffect } from "./threads/v2-routes.ts";
 import { createGuardedSender } from "./guarded-send-route.ts";
 import { createDispatcher } from "./threads/dispatch.ts";
 import { createSpawner } from "./threads/spawn.ts";
+import { createLiveModes } from "./threads/live-modes.ts";
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
 // loadConfig throws on a config that would be unsafe to serve (a non-loopback bind). Print the
@@ -176,10 +177,11 @@ const requestIngestor = threadStore
 // v2 dispatch (T06): message.dispatch start/queue/steer, the server-held queue and run.interrupt. The
 // start path is the same guarded send as v1's /api/pane/:id/send, on the same pane write queue. The
 // drainer holds every queued row at start; nothing is sent after a restart until the operator resumes.
+const guardedSender = createGuardedSender(herdr, cfg, engine, paneWrites);
 const dispatcher = threadStore
   ? createDispatcher({
       store: threadStore,
-      sender: createGuardedSender(herdr, cfg, engine, paneWrites),
+      sender: guardedSender,
       herdr,
       engine,
       queue: paneWrites,
@@ -192,6 +194,12 @@ const dispatcher = threadStore
 // with herdr agent.start; project.create makes a workspace.
 const spawner = threadStore
   ? createSpawner({ store: threadStore, herdr, engine, queue: paneWrites, journals, audit })
+  : null;
+
+// v2 live modes (T08): thread.permissionMode.set cycles the harness's mode key and reads its footer;
+// thread.model.set types the harness's model command through the same guarded send.
+const liveModes = threadStore
+  ? createLiveModes({ store: threadStore, sender: guardedSender, herdr, drainer: dispatcher?.drainer ?? null, audit })
   : null;
 
 // v2 needs herdr >= 0.9.0 (T05). The version is asked once: right after the start-up ping below, or,
@@ -265,6 +273,7 @@ const server = startServer({
       ...(requestIngestor ? { "runtime-request.respond": respondEffect(requestIngestor.respond) } : {}),
       ...(dispatcher?.effects ?? {}),
       ...(spawner?.effects ?? {}),
+      ...(liveModes?.effects ?? {}),
     },
     watchers: threadWatchers,
     herdIngestor,

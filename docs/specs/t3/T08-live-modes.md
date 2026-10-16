@@ -1,6 +1,6 @@
 # T08 — Capability flags and live mode switches
 
-Status: draft (T3-shape series). Depends on: T01, T02 (interim capability table), T04 (open requests), T05, T06 (guarded sender, interrupt rows), T07 (`launch` in `shared/agents.ts`).
+Status: done on feat/v2 (2026-10-17). Depends on: T01, T02 (interim capability table), T04 (open requests), T05, T06 (guarded sender, interrupt rows), T07 (`launch` in `shared/agents.ts`).
 
 ## Problem
 
@@ -138,3 +138,63 @@ emits it as a runtime request; the user answers it there.
   appear produce `mode-not-reached`; the UI should list only modes seen as launchable.
 - Pi's `/model` takes no argument in the catalog, so Pi has `canSwitchModel: false` even though a picker exists.
 - `cursor-agent` and `codex` were not runnable from the drafting shell, so their rows rest on code and catalogs only.
+
+## Built
+
+`AgentDescriptor.capabilities` and `capabilitiesFor(id)` in `shared/agents.ts`; `bridge/threads/capabilities.ts`
+now reads the table (it keeps `capabilitiesFor(harness, journals)`, `SHELL_HARNESS` and `INTERRUPT_TABLE`);
+`permissionModeOf` in `claude/chrome.ts`, `grok/chrome.ts`, `cursor/chrome.ts`, on the three adapters and in
+`composer-kit.ts`; `bridge/threads/live-modes.ts` (`createLiveModes`: both commands as T05 effects, wired in
+`bridge/index.ts`); `GuardedSender.withPane` in `guarded-send-route.ts`; `scripts/web2-harness-ids.ts` (the lint).
+Fixtures `claude--mode-{auto,manual,accept-edits,plan}.txt` captured live.
+
+Deviations and findings:
+
+- Live, Claude Code 2.1.301 (16 Oct 2026): the cycle is auto → manual → accept edits → plan → auto, and every
+  mode, `manual` included, is named on the hint row (`⏸ manual mode on`, `⏵⏵ accept edits on`, `⏸ plan mode on`,
+  `⏵⏵ auto mode on`; `⏵⏵ bypass permissions on` from older captures). So Claude has no `defaultModeId`: a row
+  with no mode is `unknown-mode`, not `manual`. `dontAsk` is not in the cycle and its footer was not captured, so
+  Claude's `permissionModes` is `manual, acceptEdits, plan, auto, bypassPermissions`. Bypass in the cycle
+  (`--allow-dangerously-skip-permissions`) was not exercised here.
+- `/model <alias>` works live, but Claude also saves the choice as the default for new sessions ("Set model to
+  Sonnet 5.5 and saved as your default for new sessions" — it writes `model` in the user's `settings.json`). The
+  UI should say so next to the control. The journal records that line, a later source for `thread.model`.
+- `/effort <level>` takes the level live; mid-conversation Claude asks to confirm (a dialog, so a runtime
+  request). `canSetEffortLive` is true for Claude; no command sends it (as specified).
+- `permissionModeOf` takes parsed lines (`StyledLine[]`), like every other kit function, not raw text.
+- Grok's reader maps `· auto` → `auto` and `· always-approve` → `bypassPermissions` (safe side: it stops the
+  loop); `· plan approval` is a dialog, not a mode. Cursor's reader returns the lowercased word of its
+  "(shift+tab to cycle)" line. Both flags stay false (cycle unverified; Cursor and Grok not live-tested). Pi, Agy,
+  Codex: no reader.
+- Refusal names are T05 codes with the spec's names in `error`: `unsupported` (409, `permission-mode-unsupported`
+  / `model-unsupported`), `invalid-mode`, `invalid-model`, `bypass-needs-confirm` (400), `thread-busy`,
+  `needs-response`, `blocked`, `unknown-mode` (409, nothing sent, no receipt), `mode-not-reached` and
+  `bypass-reached` (409 after keys went out: `afterWork`, so `command.rejected {reason, code, shown}` with a
+  receipt). `EffectOutcome` and `V2ErrorBody` gained `shown`. A stop also records the mode the footer showed as
+  `thread.updated {permissionMode}`; "already there" corrects a stale `permissionMode` without a key.
+- A dialog that appears mid-cycle stops the loop (`blocked`, after work). A harness whose flag is on but whose
+  pane has no reader (or no `composerReady`) gets no key.
+- `thread.model.set` uses `MODEL_PATTERN` from T07 (first character a letter or digit) rather than the spec's
+  looser pattern. It calls the guarded sender directly (not T06's dispatch, which would write a user message for
+  a harness with no journal); both commands take T06's `drainer.beginSend` so a queued row cannot interleave.
+  `blocked` refuses with no receipt; `stalled` and a delivered-but-unsubmitted error refuse after work.
+- `capabilitiesFor` in shared returns the all-false record for an unknown id (spec). The bridge wrapper keeps
+  T06's rule that an agent the table does not know (`gemini`) can still drain a queue, and still ANDs
+  `hasJournal` with the journals this bridge actually tails (none when transcripts are off). `launchModes` is
+  derived from the launch table (any model, effort or mode flag), like `hasJournal`. Unverified interrupt keys
+  stay on the descriptor (`interruptKeys`) but reach a thread only with `canInterrupt`.
+- The lint test scans `web2/src/**/*.{ts,tsx}` (tests and `src/test/` excluded, `components/AgentIcon.tsx`
+  allowed) and skips while `web2/` is absent from this branch. Checked against `feat/v2-web` (git archive): clean.
+- Pre-existing, not fixed: Claude's dim empty-box hint (`Try "edit <filepath> to..."`) reads as a draft, so a
+  guarded send to an idle Claude sweeps it first (pinned in `chrome.test.ts`).
+- T07 gap fixed here: a spawn whose `agent.start` times out takes one more look at the pane (an agent that came up
+  just late counts as started); otherwise it emits `thread.create.failed {stage: "agent"}` and a failed
+  `system_notice` ("<harness> did not start within 45 s; is it installed?"), sets the thread `failed`, and keeps
+  the pane. Any unexpected error in the background start does the same with `spawn-failed: <message>`. The herd
+  ingest then shows the pane as a shell thread and keeps `failed` until a run starts.
+- Live check (scratch workspace `v2-test-T08`, scratch bridge on 8793): a Haiku thread made by `thread.create`;
+  `thread.permissionMode.set` auto → plan (3 presses, ~1 s) and back to auto, "already auto" sent nothing, a
+  confirmed bypass target not in the cycle gave `mode-not-reached` with `shown: acceptEdits` after 6 presses
+  (the footer agreed), `dontAsk` gave `invalid-mode`; `thread.model.set` sonnet then haiku (the banner and the
+  journal both said "Set model to …"). A Codex spawn (not installed) turned `failed` with the note after 45 s and
+  its pane stayed. Cursor `/model` was not live-tested (flag stays off).

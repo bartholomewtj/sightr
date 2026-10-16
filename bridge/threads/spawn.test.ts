@@ -260,7 +260,7 @@ afterEach(() => {
 
 let seq = 0;
 
-function rig(opts: { clockStep?: number } = {}): Rig {
+function rig(opts: { clockStep?: number; pokeNow?: () => void } = {}): Rig {
   let n = 0;
   const clock = { now: T0 };
   const store = openThreadStore(":memory:", { now: () => clock.now, newId: () => `id${++n}`, log: () => {} });
@@ -273,7 +273,7 @@ function rig(opts: { clockStep?: number } = {}): Rig {
   const spawner = createSpawner({
     store,
     herdr,
-    engine: { current: () => snap, pokeNow: () => {}, onUpdate: () => () => {} },
+    engine: { current: () => snap, pokeNow: opts.pokeNow ?? (() => {}), onUpdate: () => () => {} },
     queue: createPaneQueue(),
     journals,
     // Each sleep moves the clock, so the prompt wait and the busy retries run out in fake time.
@@ -419,20 +419,46 @@ describe("thread.create", () => {
     }
   });
 
-  test("startAgent timeout leaves the pane and the thread starting", async () => {
+  test("startAgent timeout keeps the pane and fails the thread, saying what happened", async () => {
     const r = rig();
     r.herdr.start = async () => {
       throw new Error("herdr agent.start: timeout: timed out waiting for agent startup");
     };
+    await r.run({ type: "thread.create", projectId: "w1", harness: "codex", placement: "tab" });
+    await r.spawner.settled();
+    // No pane.close: the pane is ours and stays for the operator to close.
+    expect(r.herdr.methods()).toEqual(["tab.create", "agent.start"]);
+    const id = created(r).payload.thread.id;
+    expect(r.store.getThread(id)).toMatchObject({ shelf: "active", status: "failed" });
+    const message = "codex did not start within 45 s; is it installed?";
+    expect(r.events.find((e) => e.type === "thread.create.failed")!.payload).toMatchObject({ stage: "agent", message });
+    expect(r.store.getTurnItem(`spawn:${id}`)).toMatchObject({ type: "system_notice", status: "failed", message });
+  });
+
+  test("an agent that comes up just after the timeout is taken as started", async () => {
+    const r = rig();
+    r.herdr.start = async (opts) => {
+      r.herdr.panes.get(opts.paneId)!.agent = "claude";
+      throw new Error("herdr agent.start: timeout: timed out waiting for agent startup");
+    };
     await r.run({ type: "thread.create", projectId: "w1", harness: "claude", placement: "tab" });
     await r.spawner.settled();
-    expect(r.herdr.methods()).toEqual(["tab.create", "agent.start"]);
-    const t = r.store.getThread(created(r).payload.thread.id)!;
-    expect(t).toMatchObject({ shelf: "active", status: "starting" });
-    expect(r.events.find((e) => e.type === "thread.create.failed")!.payload).toMatchObject({
-      stage: "agent",
-      message: "The agent did not start in 45 s",
+    const id = created(r).payload.thread.id;
+    expect(r.store.getThread(id)?.status).toBe("idle");
+    expect(r.types()).not.toContain("thread.create.failed");
+  });
+
+  test("an unexpected error in the background start fails the thread instead of leaving it starting", async () => {
+    const r = rig({
+      pokeNow: () => {
+        throw new Error("engine stopped");
+      },
     });
+    await r.run({ type: "thread.create", projectId: "w1", harness: "claude", placement: "tab" });
+    await r.spawner.settled();
+    const id = created(r).payload.thread.id;
+    expect(r.store.getThread(id)?.status).toBe("failed");
+    expect(r.store.getTurnItem(`spawn:${id}`)).toMatchObject({ type: "system_notice", message: "spawn-failed: engine stopped" });
   });
 
   test("a pane not at its prompt yet is retried, then gives up", async () => {

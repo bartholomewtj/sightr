@@ -189,6 +189,27 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
   return sliced.segments.length === 0 ? [] : [sliced];
 }
 
+// The permission-mode word Grok paints after its status in the composer's bottom border (T08), from
+// captures: `Grok 4.6 (high) · auto`, `· always-approve` (Ctrl+o on a permission card: "don't ask again
+// for anything"), and `· plan approval` on the plan-approval screen (a dialog, not a mode, so not read).
+// The cycle order behind Shift+Tab is unverified, so the switch flag stays off.
+const GROK_MODES: Record<string, string> = {
+  auto: "auto",
+  plan: "plan",
+  "always-approve": "bypassPermissions",
+};
+
+/** The permission mode in the composer's status, as a launch-table id, or null when none is shown. */
+export function permissionModeOf(lines: StyledLine[]): string | null {
+  const box = locateComposer(lines);
+  if (box === null) return null;
+  const status = composerStatus(lineText(lines[box.bottom]!));
+  if (status === null) return null;
+  const parts = status.split(" · ");
+  if (parts.length < 2) return null;
+  return GROK_MODES[parts[parts.length - 1]!.trim()] ?? null;
+}
+
 /**
  * Row text with Grok's ghost-completion tail removed. Ghosts paint italic (`ESC[3m`) after the
  * cursor — live 2026-09-07, pane w9C:p2, gray `38;2;128;128;128` "continue" on an empty box, hint

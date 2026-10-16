@@ -10,16 +10,26 @@
 
 import type { StyledLine } from "../blocks";
 import { extractInputDraft as agyDraft, hasInputBox as agyReady, scrolledDraftCarriesSend } from "./agy/chrome";
-import { extractInputDraft as claudeDraft, hasInputBox as claudeReady } from "./claude/chrome";
+import {
+  extractInputDraft as claudeDraft,
+  hasInputBox as claudeReady,
+  permissionModeOf as claudeMode,
+} from "./claude/chrome";
 import { pasteCarriesSend as claudePaste } from "./claude/paste";
 import {
   composerPrompt as cursorPrompt,
   composerReady as cursorReady,
   extractInputDraft as cursorDraft,
+  permissionModeOf as cursorMode,
   unbindableComposer as cursorUnbindable,
 } from "./cursor/chrome";
 import { pasteCarriesSend as cursorPaste } from "./cursor/paste";
-import { composerPrompt as grokPrompt, composerReady as grokReady, extractInputDraft as grokDraft } from "./grok/chrome";
+import {
+  composerPrompt as grokPrompt,
+  composerReady as grokReady,
+  extractInputDraft as grokDraft,
+  permissionModeOf as grokMode,
+} from "./grok/chrome";
 import { chipCarriesSend } from "./grok/chips";
 
 /** The slice of a HarnessAdapter the reply guard uses. Same names and meanings (harness/types.ts). */
@@ -32,6 +42,9 @@ export interface ComposerKit {
   submitKeys?: string[];
   bracketedPaste?: boolean;
   replyOneShot?: boolean;
+  /** The footer's permission mode (T08); see harness/types.ts. */
+  permissionModeOf?(lines: StyledLine[]): string | null;
+  defaultModeId?: string;
 }
 
 /** Pi's input box is not captured (replyOneShot); the adapter uses this too, so the two are one. */
@@ -45,8 +58,19 @@ const AGY: ComposerKit = {
 };
 
 const KITS: Record<string, ComposerKit> = {
-  claude: { extractInputDraft: claudeDraft, composerReady: claudeReady, draftCarriesSend: claudePaste },
-  grok: { extractInputDraft: grokDraft, composerReady: grokReady, composerPrompt: grokPrompt, draftCarriesSend: chipCarriesSend },
+  claude: {
+    extractInputDraft: claudeDraft,
+    composerReady: claudeReady,
+    draftCarriesSend: claudePaste,
+    permissionModeOf: claudeMode,
+  },
+  grok: {
+    extractInputDraft: grokDraft,
+    composerReady: grokReady,
+    composerPrompt: grokPrompt,
+    draftCarriesSend: chipCarriesSend,
+    permissionModeOf: grokMode,
+  },
   agy: AGY,
   antigravity: AGY,
   cursor: {
@@ -56,6 +80,7 @@ const KITS: Record<string, ComposerKit> = {
     unbindableComposer: cursorUnbindable,
     draftCarriesSend: cursorPaste,
     submitKeys: ["Right", "Enter"],
+    permissionModeOf: cursorMode,
   },
   pi: { extractInputDraft: noInputDraft, replyOneShot: true },
 };

@@ -9,7 +9,8 @@ import { effectiveSettings } from "./runtime-settings.ts";
 import type { AgentView, StateEngine } from "./state-engine.ts";
 import { parseLines } from "../web/src/lib/blocks.ts";
 import { runGuardedSend, type GuardedSendIo, type ReplyOutcome, type WriteResult } from "../web/src/lib/guarded-send.ts";
-import { composerFor } from "../web/src/lib/harness/composer-kit.ts";
+import { composerFor, type ComposerKit } from "../web/src/lib/harness/composer-kit.ts";
+import type { StyledLine } from "../web/src/lib/blocks.ts";
 
 // POST /api/pane/:id/send — the free-text reply, guarded, in one request (spec 24).
 //
@@ -72,7 +73,23 @@ export interface GuardedSender {
    * harness has no `composerReady` (nothing can tell; the send's own guard decides). Null: no pane.
    */
   composerReady(target: GuardedSendTarget): Promise<boolean | null>;
+  /**
+   * Run `fn` in the pane's write-queue turn with the same ANSI read the guard uses and the harness's
+   * composer kit (T08's mode switch reads, presses and re-reads inside one turn).
+   */
+  withPane<T>(target: GuardedSendTarget, fn: (pane: PaneSession) => Promise<T>): Promise<PaneTurn<T>>;
 }
+
+/** One pane, inside its write-queue turn. */
+export interface PaneSession {
+  paneId: string;
+  /** The harness's composer kit; undefined for a shell or a harness with no adapter. */
+  kit: ComposerKit | undefined;
+  /** One fresh read of the pane, parsed (the guard's read: same source, lines and `ansi` format). */
+  read(): Promise<StyledLine[]>;
+}
+
+export type PaneTurn<T> = { kind: "no-pane" } | { kind: "busy" } | { kind: "done"; value: T };
 
 function findPane(engine: Pick<StateEngine, "current">, target: GuardedSendTarget): AgentView | null {
   const { agents, shellPanes } = engine.current();
@@ -152,6 +169,22 @@ export function createGuardedSender(
       if (outcome.status === "error" && outcome.textDelivered) detail.textDelivered = true;
       (opts.audit ?? SILENT_AUDIT).record({ action: "send", paneId, detail });
       return { kind: "done", outcome, swept };
+    },
+
+    async withPane(target, fn) {
+      const pane = findPane(engine, target);
+      if (!pane) return { kind: "no-pane" };
+      const kit = pane.kind === "shell" ? undefined : composerFor(pane.agent);
+      const read = readerFor(pane);
+      try {
+        const value = await queue.run(paneKey(pane.paneId), () =>
+          fn({ paneId: pane.paneId, kit, read: async () => parseLines(await read()) }),
+        );
+        return { kind: "done", value };
+      } catch (err) {
+        if (err instanceof PaneBusyError) return { kind: "busy" };
+        throw err;
+      }
     },
 
     async composerReady(target) {

@@ -88,6 +88,8 @@ export type EffectOutcome =
       /** The refusal came after work started: the route records `command.rejected` with a receipt. */
       afterWork?: boolean;
       threadId?: string;
+      /** What the screen showed when the work stopped (T08: the permission mode), for the operator. */
+      shown?: string;
     };
 
 /**
@@ -403,6 +405,7 @@ export function createV2Routes(deps: V2RoutesDeps): V2Routes {
     const raced = fromReceipt(s, command.commandId, command.type, hash);
     if (raced) return raced;
     const reply = refuse(outcome.status, outcome.code, outcome.error);
+    if (outcome.shown !== undefined) (reply.body as V2ErrorBody).shown = outcome.shown;
     if (outcome.afterWork) {
       // Work started before the refusal: record it, so a retry of this id gets the same answer.
       const threadId = outcome.threadId ?? ("threadId" in command ? command.threadId : undefined);
@@ -411,7 +414,7 @@ export function createV2Routes(deps: V2RoutesDeps): V2Routes {
           {
             type: "command.rejected",
             ...(threadId !== undefined ? { threadId } : {}),
-            payload: { reason: outcome.error, code: outcome.code },
+            payload: { reason: outcome.error, code: outcome.code, ...(outcome.shown !== undefined ? { shown: outcome.shown } : {}) },
           },
         ],
         {

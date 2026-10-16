@@ -762,6 +762,12 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "wizard-preview-wrapped-label", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-q1", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-q1-revisit", statusRows: 0, draft: null, stripped: 0 },
+    // T08's permission-mode captures (2.1.301): no statusline configured, so the run is the hint row
+    // alone. The dim `Try "…"` hint in an empty box reads as a draft here (not in INPUT_PLACEHOLDERS).
+    { fixture: "mode-accept-edits", statusRows: 1, draft: 'Try "edit <filepath> to..."', stripped: 4 },
+    { fixture: "mode-auto", statusRows: 1, draft: 'Try "edit <filepath> to..."', stripped: 4 },
+    { fixture: "mode-manual", statusRows: 1, draft: 'Try "edit <filepath> to..."', stripped: 4 },
+    { fixture: "mode-plan", statusRows: 1, draft: 'Try "edit <filepath> to..."', stripped: 8 },
     { fixture: "wizard-q2", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-submit", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-submit-unanswered", statusRows: 0, draft: null, stripped: 3 },

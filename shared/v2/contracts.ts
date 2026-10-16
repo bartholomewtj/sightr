@@ -640,6 +640,8 @@ export interface V2ErrorBody {
   error?: string;
   have?: string;
   need?: string;
+  /** What the screen showed when a command stopped after work started (T08: the permission mode). */
+  shown?: string;
 }
 
 /** `GET /api/v2/thread/:id/history?before=&limit=`: older runs, oldest first. */

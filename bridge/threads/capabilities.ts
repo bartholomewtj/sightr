@@ -1,43 +1,35 @@
-import { NO_CAPABILITIES, type ThreadCapabilities } from "../../shared/v2/contracts.ts";
+import { AGENTS, capabilitiesFor as agentCapabilities, SHELL_CAPABILITIES } from "../../shared/agents.ts";
+import type { ThreadCapabilities } from "../../shared/v2/contracts.ts";
 import { adapterFor } from "../journal/registry.ts";
 import type { JournalAdapter } from "../journal/types.ts";
 
-// Interim capability table for the herd ingest (T02) and dispatch (T06). Known flags: whether the
-// harness has a journal Sightr can tail, whether a queued message can be drained into it (any agent;
-// a bare shell has no idle prompt to drain into), and how a run is interrupted. T08 moves the table
-// into `shared/agents.ts` and this file becomes a re-export.
+// The capability table lives in `shared/agents.ts` (T08). This file adds the two facts only the
+// running bridge knows: whether this bridge actually tails a journal for the harness (a registry
+// built from its roots, or none when transcripts are off), and that a harness Sightr has no
+// descriptor for still has a prompt a queued message can drain into.
 
 /** The harness name a bare shell pane gets. */
 export const SHELL_HARNESS = "shell";
 
 /**
- * The key that stops a run, per harness, sent once (`run.interrupt`, steer). `verified` is true only
- * for a harness whose key passed a live check through Sightr's send path; only those get
- * `canInterrupt`. The rest keep their key here so the check is one flag flip.
+ * The interrupt key per harness and whether it passed a live check, read from the descriptors (the
+ * rows T06 kept here). Only verified rows give `canInterrupt` and `interruptKeys`.
  */
-export const INTERRUPT_TABLE: Readonly<Record<string, { keys: string[]; verified: boolean }>> = {
-  // Live 16 Oct 2026 (Claude Code 2.1.301, scratch workspace): one Escape stops the turn. A second
-  // Escape while it stops opens the rewind menu, so dispatch never repeats it (dispatch.ts).
-  claude: { keys: ["Escape"], verified: true },
-  pi: { keys: ["Escape"], verified: false },
-  // `ctrl+c` may quit Grok, so Escape is the candidate.
-  grok: { keys: ["Escape"], verified: false },
-  // Its composer shows "ctrl+c to stop"; a second press may exit, so it is sent once.
-  cursor: { keys: ["ctrl+c"], verified: false },
-  agy: { keys: ["Escape"], verified: false },
-  codex: { keys: ["Escape"], verified: false },
-};
+export const INTERRUPT_TABLE: Readonly<Record<string, { keys: string[]; verified: boolean }>> = Object.fromEntries(
+  AGENTS.map((agent) => [
+    agent.id,
+    { keys: [...(agent.capabilities.interruptKeys ?? [])], verified: agent.capabilities.canInterrupt },
+  ]),
+);
 
-export function capabilitiesFor(
-  harness: string,
-  journals: Record<string, JournalAdapter> | null,
-): ThreadCapabilities {
-  const interrupt = Object.hasOwn(INTERRUPT_TABLE, harness) ? INTERRUPT_TABLE[harness] : undefined;
+/** What a thread of `harness` can do on this bridge. */
+export function capabilitiesFor(harness: string, journals: Record<string, JournalAdapter> | null): ThreadCapabilities {
+  if (harness === SHELL_HARNESS) return { ...SHELL_CAPABILITIES };
+  const caps = agentCapabilities(harness);
   return {
-    ...NO_CAPABILITIES,
-    hasJournal: harness !== SHELL_HARNESS && adapterFor(journals ?? {}, harness) !== undefined,
-    canQueueDrain: harness !== SHELL_HARNESS,
-    canInterrupt: interrupt?.verified === true,
-    ...(interrupt?.verified ? { interruptKeys: [...interrupt.keys] } : {}),
+    ...caps,
+    hasJournal: caps.hasJournal && adapterFor(journals ?? {}, harness) !== undefined,
+    // An agent the table does not know is still an agent at a prompt (T06).
+    canQueueDrain: caps.canQueueDrain || AGENTS.every((agent) => agent.id !== harness),
   };
 }

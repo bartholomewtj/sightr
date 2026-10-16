@@ -48,6 +48,12 @@ const NEUTRAL = [
   // negative control for the generic menu grammar — its statusline is `·`-separated like a key-hint
   // footer, and the input-box gate is the only thing that keeps it raw.
   "claude--menu-model-picker-dismissed.txt",
+  // One capture per permission mode (T08, Claude Code 2.1.301): an idle input box with the mode hint
+  // row under it. Composer chrome, never a dialog.
+  "claude--mode-accept-edits.txt",
+  "claude--mode-auto.txt",
+  "claude--mode-manual.txt",
+  "claude--mode-plan.txt",
 ];
 
 const allClaudeFixtures = readdirSync(PANES_DIR)
