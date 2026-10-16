@@ -50,7 +50,7 @@ All in `web2/src/components/timeline/` and `web2/src/state/timeline.ts`, filling
 
 ### Virtualization and scrolling
 
-- Hand-written windowing, no new dependency: `useWindowedList` renders rows within one viewport above and below, measures each row with `ResizeObserver`, keeps a height cache by row id, and uses spacer elements. Rows are keyed by item id (stable, T03) so an update replaces in place.
+- Virtualize with `@legendapp/list`, as T3's `MessagesTimeline.tsx` does (README "Adapting T3 components"). Build the row model in `components/chat/MessagesTimeline.logic.ts` with T3's row kinds where they apply (`message`, `work`, `work-toggle`, `working`, `thinking`, `event`), adopting T3's pure logic file as far as our item shapes allow and recording it in `web2/t3-upstream.json`. Rows are keyed by item id (stable, T03), so an update replaces a row in place.
 - **Follow mode.** Stick to the bottom while the user is within 80 px of it. A scroll up leaves follow mode and shows a "Jump to latest" pill with a count of new items. New items from this client's own send always follow. Reuse the approach (not the file) of `web/src/hooks/use-auto-scroll.ts`.
 - **History paging upward.** The thread snapshot carries `historyCursor`. When the top spacer enters view, call `GET /api/v2/thread/:id/history?before=<cursor>`, prepend the page, and keep the visible row anchored (adjust `scrollTop` by the added height). One request in flight; a page with no cursor sets `exhausted` and shows "Start of thread". A failure shows a retry row, not a toast loop.
 - On `snapshot` replacement (resume after a gap) keep the scroll anchor by the nearest row id if it still exists, else go to the bottom.

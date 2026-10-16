@@ -13,9 +13,28 @@ ship beside v1 so Sightr stays usable every day until cutover (T15). Nothing exi
 ### Scaffold `web2/`
 
 - **`web2/package.json`, `vite.config.ts`, `vitest.config.ts`, `tsconfig.json`, `index.html`** (new). Copy the shape of
-  `web/`: Vite, React 19, react-router 7, Tailwind 4, `class-variance-authority`, `clsx`, `tailwind-merge`,
-  `lucide-react`, `vite-plugin-pwa` (`injectManifest`), Vitest + jsdom + Testing Library + msw. Add `zustand`. No
-  Effect, TanStack or Tiptap. `base: "/v2/"`. Same `__BUILD_INFO__` stamp and `build-info.json` plugin as `web/vite.config.ts`.
+  `web/` for build and test (Vite, React 19, Tailwind 4, `class-variance-authority`, `clsx`, `tailwind-merge`,
+  `lucide-react`, `vite-plugin-pwa` (`injectManifest`), Vitest + jsdom + Testing Library + msw), but take **T3's UI
+  stack** so T3 components port (README "Adapting T3 components"): `@tanstack/react-router` + `@tanstack/router-plugin`
+  (file routes under `web2/src/routes/`, `basepath: "/v2"`), `@base-ui/react` behind `components/ui/*`, `zustand`,
+  `@legendapp/list`. Pin the versions T3's `apps/web/package.json` uses at the recorded commit where they build under
+  our Vite. No Effect, Tiptap, Clerk. `base: "/v2/"`. Same `__BUILD_INFO__` stamp and `build-info.json` plugin as `web/vite.config.ts`.
+- **T3 adaptability scaffolding** (README "Adapting T3 components"):
+  - `web2/src/t3/shims/` (empty index with a comment saying what goes there), `web2/t3-upstream.json` (rows
+    `{local, upstream, commit, mode}`; seeded with any file this slice adopts, e.g. `components/ui/*` primitives taken
+    from T3), `web2/THIRD_PARTY.md` with T3's MIT notice.
+  - Semantic Tailwind tokens with T3/shadcn names (`background`, `foreground`, `card`, `popover`, `muted`,
+    `muted-foreground`, `accent`, `border`, `input`, `ring`, `primary`, `destructive`, plus any T3 adds that the
+    adopted primitives use) defined in `index.css` and mapped to the ClaudeOS tokens below.
+  - `scripts/t3-upstream.ts` (root `scripts/`, bun): `--ref <tag|sha>` (default: latest tag on
+    `github.com/pingdotgg/t3code`, else `main`), shallow-clones or fetches into `%LOCALAPPDATA%/sightr/t3-upstream`
+    (never inside the repo), and for each manifest row prints `unchanged | changed | removed` since `commit`, with the
+    upstream diff for `changed` (`--diff`). It also lists new files under the mirrored upstream folders
+    (`apps/web/src/components/`, `components/chat/`, `components/ui/`) not in the manifest. Exit 0 always; report only.
+    A test runs it against a tiny local fixture git repo, not the network.
+- **Layout mirrors T3's `apps/web/src`** where a file has the same job (README list). Routes are TanStack file routes:
+  `__root.tsx`, `_chat.tsx` (shell layout), `_chat.index.tsx`, `_chat.$threadId.tsx`, `_chat.new.tsx`, `archived.tsx`,
+  `settings.tsx`. Where later sections of this spec say react-router, read TanStack Router.
 - **Aliases.** `@` is `web2/src`, `@shared` is `../shared` (so `shared/v2/contracts.ts` is `@shared/v2/contracts`),
   and `@v1` is `../web/src`. `@v1` is for leaf files only: `@v1/lib/harness/*`, `@v1/lib/blocks`, `@v1/lib/ansi`,
   `@v1/lib/markdown`, `@v1/lib/key-queue`, `@v1/lib/transcript-fold`. Those files import each other by relative path (the
@@ -59,7 +78,7 @@ ship beside v1 so Sightr stays usable every day until cutover (T15). Nothing exi
 
 ### App shell and layout
 
-- **Router.** `createBrowserRouter` with `basename: "/v2"`. Routes: `/` (home: sidebar list on phone, "Pick a thread" on desktop),
+- **Router.** TanStack Router (`createRouter`, `basepath: "/v2"`, file routes above). Routes: `/` (home: sidebar list on phone, "Pick a thread" on desktop),
   `/thread/:threadId`, `/pane/:paneId` (redirect, above), `/new` (T14), `/archived`, `/settings` (an empty page until T18). `RootLayout` owns the stream client and the lock gate.
 - **Adaptive layout** (`web2/src/components/shell/`). One hook, `useLayout()`, from `matchMedia("(min-width: 1024px)")`; no
   user override in this slice.
