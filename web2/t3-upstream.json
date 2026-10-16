@@ -403,7 +403,7 @@
       "upstream": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "labelled Send/Queue/Steer/Update pill + T3's Stop and Ctrl/⌘-click alternate; no plan/resume/compact/pending-question states"
+      "note": "labelled Send/Queue/Steer/Update pill + T3's Stop and Ctrl/\u2318-click alternate; no plan/resume/compact/pending-question states"
     },
     {
       "local": "src/components/chat/ComposerPendingApprovalPanel.tsx",
@@ -601,6 +601,77 @@
     {
       "local": "src/routes/settings.tsx",
       "upstream": "apps/web/src/routes/settings.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/chat/threadFind.ts",
+      "upstream": "apps/web/src/components/chat/threadFind.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "T19: T3's match shape, step and count helpers kept; in-memory search of the thread's items with v1's matcher and a fold/group reveal plan replace the server search"
+    },
+    {
+      "local": "src/components/chat/ThreadFindBar.tsx",
+      "upstream": "apps/web/src/components/chat/ThreadFindBar.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "T19: v1's find bar (web/src/components/find-bar.tsx) under T3's name and count text; also used over the Terminal mirror"
+    },
+    {
+      "local": "src/components/chat/threadFindHighlights.ts",
+      "upstream": "apps/web/src/components/chat/threadFindHighlights.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "T19: ranges over mounted rows painted with CSS Custom Highlights, MutationObserver repaint; row scope minus [data-thread-find-ignore]; active row marked with data-thread-find-active"
+    },
+    {
+      "local": "src/components/chat/useThreadFind.ts",
+      "upstream": "apps/web/src/components/chat/useThreadFind.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "T19: a small store for the open bar, query and focused match; matches computed in memory from the loaded items"
+    },
+    {
+      "local": "src/components/chat/useThreadFindNavigation.ts",
+      "upstream": "apps/web/src/components/chat/useThreadFindNavigation.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "T19: open the hit's fold and tool group, then scrollToIndex; never pages history"
+    },
+    {
+      "local": "src/components/chat/DraftHeroHeadline.tsx",
+      "upstream": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/chat/ProviderModelPicker.tsx",
+      "upstream": "apps/web/src/components/chat/ProviderModelPicker.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/chat/ModelPickerContent.tsx",
+      "upstream": "apps/web/src/components/chat/ModelPickerContent.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/chat/TraitsPicker.tsx",
+      "upstream": "apps/web/src/components/chat/TraitsPicker.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/BranchToolbar.tsx",
+      "upstream": "apps/web/src/components/BranchToolbar.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/BranchToolbarEnvModeSelector.tsx",
+      "upstream": "apps/web/src/components/BranchToolbarEnvModeSelector.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "pattern"
     }

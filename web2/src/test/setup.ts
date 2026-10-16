@@ -21,6 +21,7 @@ import { __resetPasteHold } from "@/lib/paste-hold";
 import { __resetServerBuild } from "@/lib/server-build";
 import { __resetRightPanelStore } from "@/rightPanelStore";
 import { __resetComposerState } from "@/state/composer";
+import { __resetDraftThread } from "@/state/draft-thread";
 import { __resetSidebarState } from "@/state/sidebar";
 import { __resetTimelineState } from "@/state/timeline";
 import { __resetShellStream } from "@/stream/shell-stream";
@@ -70,6 +71,7 @@ beforeEach(() => {
   __resetSidebarState();
   __resetTimelineState();
   __resetComposerState();
+  __resetDraftThread();
   __resetDraftPrune();
   __resetOperatorCommands();
   __resetToasts();

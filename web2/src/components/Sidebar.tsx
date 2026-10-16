@@ -21,7 +21,7 @@ import {
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Link, useParams } from "@tanstack/react-router";
-import { ChevronDown, ChevronRight, Command, GitBranch, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Command, GitBranch, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import type { Thread } from "@shared/v2/contracts";
@@ -55,6 +55,7 @@ const SECTION_LABEL: Record<SidebarSection, string> = { pinned: "Pinned", active
 export function Sidebar() {
   const desktop = useLayout() === "desktop";
   const paletteKey = desktop ? shortcutLabelForCommand(KEYBINDINGS, "commandPalette.toggle") : null;
+  const newKey = desktop ? shortcutLabelForCommand(KEYBINDINGS, "chat.new") : null;
   const loaded = useShell((s) => s.loaded);
   const projects = useShell((s) => s.projects);
   const threads = useSidebarThreads();
@@ -119,6 +120,15 @@ export function Sidebar() {
       >
         <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
           <span className="flex-1 font-semibold">Sightr</span>
+          {/* T14: start a thread (mod+n, the palette and each project row's "+" too). */}
+          <Link
+            to="/new"
+            aria-label="New thread"
+            title={newKey ? `New thread (${newKey})` : "New thread"}
+            className="-m-1 rounded-md p-1 text-muted-foreground hover:bg-sidebar-row-hover hover:text-foreground"
+          >
+            <Plus className="size-4" aria-hidden />
+          </Link>
           {/* T13: the command palette (mod+k on desktop; the only way in on a phone). */}
           <button
             type="button"
@@ -256,19 +266,33 @@ function ProjectBlock({ node, desktop }: { node: SidebarProjectNode; desktop: bo
   const hasPins = node.shelves.pinned.length > 0;
   return (
     <section aria-label={project.label} data-project-id={project.id} className={cn(node.nested && "ml-3 border-l border-line/60")}>
-      <button
-        type="button"
-        data-project-row=""
-        aria-expanded={!collapsed}
-        onClick={() => toggle(project.id)}
-        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      >
-        {collapsed ? <ChevronRight className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
-        {node.nested ? <GitBranch className="size-3.5" role="img" aria-label="Worktree" /> : null}
-        <span className="min-w-0 flex-1 truncate">{project.label}</span>
-        <span className="font-mono text-2xs tabular-nums">{project.number}</span>
-        {node.rollUp ? <ThreadStatusDot status={node.rollUp} showElapsed={false} /> : null}
-      </button>
+      <div className="group/project flex items-center pr-2">
+        <button
+          type="button"
+          data-project-row=""
+          aria-expanded={!collapsed}
+          onClick={() => toggle(project.id)}
+          className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pl-3 text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          {collapsed ? <ChevronRight className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
+          {node.nested ? <GitBranch className="size-3.5" role="img" aria-label="Worktree" /> : null}
+          <span className="min-w-0 flex-1 truncate">{project.label}</span>
+          <span className="font-mono text-2xs tabular-nums">{project.number}</span>
+          {node.rollUp ? <ThreadStatusDot status={node.rollUp} showElapsed={false} /> : null}
+        </button>
+        {/* T14: a new thread in this project. */}
+        <Link
+          to="/new"
+          search={{ project: project.id }}
+          aria-label={`New thread in ${project.label}`}
+          className={cn(
+            "ml-1 rounded-sm p-0.5 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+            desktop && "opacity-0 group-hover/project:opacity-100 focus-visible:opacity-100",
+          )}
+        >
+          <Plus className="size-3.5" aria-hidden />
+        </Link>
+      </div>
       {collapsed ? null : (
         <>
           {hasPins || dragging ? <ShelfList node={node} section="pinned" desktop={desktop} showLabel /> : null}

@@ -12,6 +12,7 @@ import { SESSION_ID } from "@v1/lib/conn-telemetry";
 import { applyShellEvent, shellFromSnapshot } from "./apply";
 import { browserDeps, createConnection, type Connection, type ConnectionDeps } from "./connection";
 import { CONNECTION_LOST_MS } from "./health";
+import { emitShellEvent } from "./shell-events";
 import { clearBlocked, noteDevice, noteDropped, noteHerdr, setBlocked, useShell, useStreamHealth } from "./stores";
 import { isBlockingCode, V2_SHELL_PATH, type ShellSnapshot } from "./wire";
 
@@ -64,7 +65,9 @@ export function createShellStream(deps: ConnectionDeps = browserDeps()): ShellSt
         },
         event: (data) => {
           useShell.setState((s) => applyShellEvent(s, data, (reason) => reason === "malformed" && noteDropped()), true);
+          const fresh = seqOf(data) > cursor;
           cursor = Math.max(cursor, seqOf(data));
+          if (fresh) emitShellEvent(data);
         },
         synchronized: (data) => {
           cursor = Math.max(cursor, seqOf(data));

@@ -95,13 +95,14 @@ describe("pane git", () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  // Real git processes: under a loaded full run these have passed 5 s, so they get their own budget.
   test("reads a real git repository without leaking hidden content", async () => {
     const probe = Bun.spawn(["git", "--version"], { stdout: "ignore", stderr: "ignore" });
     if (await probe.exited !== 0) { console.warn("skipping real-git test: git is unavailable"); return; }
     const work = await rootTemp("sightr-git-real-"); const repo = join(work, "repo"); await mkdir(repo, { recursive: true });
     const git = async (args: string[]) => { const p = Bun.spawn(["git", ...args], { cwd: repo, stdout: "pipe", stderr: "pipe" }); await p.exited; return p; };
     try { await git(["init", "-q"]); await writeFile(join(repo, "a.txt"), "before\n"); await git(["add", "a.txt"]); await git(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "init"]); await writeFile(join(repo, "a.txt"), "after\n"); await writeFile(join(repo, ".env"), "SECRET=1\n"); await git(["add", "-A"]); const response = await createFolderGit(work, spawnGit).inspect(repo); expect(response).toMatchObject({ available: true, hidden: 1, panes: [] }); expect(JSON.stringify(response)).toContain("a.txt"); expect(JSON.stringify(response)).not.toContain(work); expect(JSON.stringify(response)).not.toContain(".env"); expect((response as any).diff).not.toContain("SECRET"); } finally { await rm(work, { recursive: true, force: true }); }
-  });
+  }, 30_000);
 });
 
 describe("autocrlf passthrough", () => {
@@ -109,6 +110,7 @@ describe("autocrlf passthrough", () => {
     expect(autocrlfArgs("true\n")).toEqual(["-c", "core.autocrlf=true"]); expect(autocrlfArgs("Input")).toEqual(["-c", "core.autocrlf=input"]); expect(autocrlfArgs("false")).toEqual(["-c", "core.autocrlf=false"]);
     expect(autocrlfArgs(undefined)).toEqual([]); expect(autocrlfArgs("")).toEqual([]); expect(autocrlfArgs("yes; rm -rf /")).toEqual([]);
   });
+  // Real git processes: under a loaded full run these have passed 5 s, so they get their own budget.
   test("an LF-committed file that git checked out with CRLF is clean only when autocrlf=true is passed through", async () => {
     const work = await mkdtemp(join(tmpdir(), "sightr-git-crlf-")); const repo = join(work, "repo"); await mkdir(repo);
     const git = (args: string[]) => spawnGit(args, repo);
@@ -117,5 +119,5 @@ describe("autocrlf passthrough", () => {
       const withCrlf = await createFolderGit(work, (args, cwd) => spawnGit(["-c", "core.autocrlf=true", ...args], cwd)).inspect(repo); expect(withCrlf).toMatchObject({ available: true, clean: true, diff: "" });
       const without = await createFolderGit(work, (args, cwd) => spawnGit(["-c", "core.autocrlf=false", ...args], cwd)).inspect(repo); expect(without).toMatchObject({ available: true, clean: false });
     } finally { await rm(work, { recursive: true, force: true }); }
-  });
+  }, 30_000);
 });

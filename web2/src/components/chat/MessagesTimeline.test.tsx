@@ -271,12 +271,13 @@ describe("MessagesTimeline: virtualization", () => {
     return Array.from({ length: n }, (_, i) => (i % 2 === 0 ? user(`u${i}:0`, `question ${i}`) : assistant(`a${i}:0`, `answer ${i}`)));
   }
 
+  // 5,000 items is the point of the test, and deriving their rows is slow under a loaded full run: an
+  // explicit budget, and every wait is on the result (T19 hardening).
   it("mounts fewer than 80 rows for 5,000 items, and scrolling mounts the new window", async () => {
     await show(many(5000));
     const mounted = () => [...document.querySelectorAll("[data-timeline-row-id]")].map((e) => e.getAttribute("data-timeline-row-id"));
-    expect(mounted().length).toBeGreaterThan(0);
+    await waitFor(() => expect(mounted()).toContain("a4999:0"), { timeout: 10_000 });
     expect(mounted().length).toBeLessThan(80);
-    expect(mounted()).toContain("a4999:0");
     const scroller = document.querySelector("[data-timeline] div[style*='overflow']") as HTMLElement;
     await act(async () => {
       scroller.scrollTop = 0;
@@ -284,9 +285,9 @@ describe("MessagesTimeline: virtualization", () => {
       await new Promise((r) => setTimeout(r, 200));
     });
     // Under a loaded test run the list can take longer than 200 ms to mount the new window.
-    await waitFor(() => expect(mounted()).toContain("u0:0"));
+    await waitFor(() => expect(mounted()).toContain("u0:0"), { timeout: 10_000 });
     expect(mounted().length).toBeLessThan(80);
-  });
+  }, 30_000);
 });
 
 describe("MessagesTimeline: resume and updates", () => {

@@ -1,6 +1,6 @@
 # T19 — Parity ports: gesture wheel, find, statusline, whistlr cards
 
-Status: draft (T3-shape series). Depends on: T04 (`via: "whistlr"` and `decision` on requests), T11 (timeline), T12 (composer and `RequestPanel`), T13 (Terminal tab, `chat.find` binding), T18 (Settings slot for the wheel picker). Read `README.md` in this folder first.
+Status: done on feat/v2-web (2026-10-17). Depends on: T04 (`via: "whistlr"` and `decision` on requests), T11 (timeline), T12 (composer and `RequestPanel`), T13 (Terminal tab, `chat.find` binding), T18 (Settings slot for the wheel picker). Read `README.md` in this folder first.
 
 ## Problem
 
@@ -74,3 +74,43 @@ wheel, find (in the chat and over the mirror), the harness statusline, and draft
 
 - The four parts are independent. If the run is long, ship whistlr cards first: until they land, a marked card has no
   answer in web2 except the desk.
+
+## Built
+
+On `feat/v2-web` (T01–T14, T16, T17; T18 is on `feat/v2`, not merged here yet).
+
+- **Whistlr cards.** `components/chat/ComposerDecisionPanel.tsx` takes the request panel's place when `via === "whistlr"`;
+  `state/decision-reply.ts` posts v1's `POST /api/pane/:paneId/decision-reply` (`decisionReply` in `lib/api.ts`) with
+  `{ decision, option: { label, keyLabel: "<1-based index>" }, question }`. `keyLabel` is the on-screen number, as v1's
+  prompt-action sends it (the bridge's payload answer prefers it); the v2 request carries no key label, so the index
+  stands in. The option stays busy (`responding`) until the request leaves `pending`; a refusal shows
+  "whistlr reply failed: <error>" and frees the card. The old "Answer with whistlr reply." text in
+  `ComposerPendingApprovalPanel` is now unreachable (left in place).
+- **Find.** T3 has a thread find (server-searched); its file names are used as the pattern: `threadFind.ts` (T3's
+  match shape and step/count helpers, plus Sightr's in-memory search and reveal plan), `ThreadFindBar.tsx` (v1's
+  find bar), `threadFindHighlights.ts` (T3's CSS Custom Highlight painter, adapted), `useThreadFind.ts` (a small
+  store), `useThreadFindNavigation.ts`. The bar sits over the timeline in the thread route, with a search button in
+  the header; the route registers `chat.find`. A hit's fold and tool group are opened by deriving the rows with
+  everything open (`EverythingSet`), then `scrollToIndex`. Follow mode pauses while the bar is open. The active row
+  also gets `data-thread-find-active` (a ring; the only mark where the browser lacks `CSS.highlights`). Timestamps,
+  meta and the run banner carry `data-thread-find-ignore`. Search covers each item's text, command input/output,
+  tool names and titles, so a hit can be in text that a collapsed tool row does not show (its row is still marked).
+  The Terminal tab's find is v1's (`TerminalMirror` takes `query`/`currentMatch`); it opens from its search button
+  or mod+f while the mirror has focus (the table's `chat.find` is off under `terminalFocus`).
+- **Statusline.** `TerminalStatusLines` under the Terminal tab's header, from `adapterFor(thread.harness)
+  .extractStatusLines` over the mirror's own read (copy of v1's `PaneStatusLines`).
+- **Gesture wheel.** `components/keys/gesture-wheel.tsx` and `hooks/use-wheel-prefs.ts` copied (same localStorage key
+  as v1, so a phone keeps its picks); beside Send on the phone layout. Key slices and the Keys pad share one sender
+  (`sendDockKeys`). Type opens the Terminal tab and arms direct typing (`requestDirectTyping`). The wheel is not
+  rendered while a request is pending. The picker is `components/settings/WheelPrefsControl.tsx`; T18's
+  `GestureWheelSettingsSlot` (on `feat/v2`) should return `<WheelPrefsControl />` at merge. Until then it is not
+  mounted anywhere on this branch.
+- **Tests.** The harness-id lint is the root suite's `scripts/web2-harness-ids.test.ts` (it scans web2/src; vitest
+  cannot import the Bun script). Hardened slow-under-load tests: herd-ingest "reconcile is idempotent" (30 s),
+  store "retention" (first case in memory, both 30 s), workdir-git real-git cases and workdir "routes folder git"
+  (30 s), activity flush timing (shorter/wider debounce windows, no tight ceiling, 20 s), web2 MessagesTimeline
+  virtualization (waits on results, 30 s) and its re-follow test (the same change T18 made, so the merge is clean).
+- **Live** (scratch workspace `v2-test-T19`, Claude Haiku, bridge on 8793): Ctrl+F found a word in the folded run
+  and opened the fold and tool group with the hit highlighted; Terminal find highlighted the mirror; the Claude
+  statusline showed; on a 390 px phone emulation the wheel fanned, released on Esc (audit: `keys ["Escape"]`) and
+  Type opened the Terminal sheet armed. Whistlr cards were not checked live (no marked draftr card to hand).

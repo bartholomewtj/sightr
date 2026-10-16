@@ -97,6 +97,9 @@ import { ScreenTimelineRow } from "./ScreenTimelineRow";
 import { TimelineSystemDivider } from "./TimelineSystemDivider";
 import { ToolItemDetail, toolItemHasDetail } from "./ToolItemDetail";
 import { useTimelineFollow } from "./useTimelineFollow";
+import { EverythingSet } from "./threadFind";
+import { useThreadFind } from "./useThreadFind";
+import { useThreadFindNavigation } from "./useThreadFindNavigation";
 import { WorkLogBlock, WorkLogButton, WorkLogDetails, WorkLogList, WorkLogRow } from "./WorkLog";
 
 type TimelineRow = MessagesTimelineRow;
@@ -202,6 +205,32 @@ export function MessagesTimeline({ threadId }: MessagesTimelineProps) {
     followRequest,
   });
 
+  // ── Find (T19): reveal and highlight the focused hit; the bar itself is the thread route's ──
+  const find = useThreadFind(threadId);
+  const [timelineEl, setTimelineEl] = useState<HTMLDivElement | null>(null);
+  useThreadFindNavigation({
+    threadId,
+    container: timelineEl,
+    query: find.isOpen ? find.query : "",
+    match: find.match,
+    navigationId: find.navigationId,
+    rows,
+    deriveAllOpenRows: () =>
+      deriveMessagesTimelineRows({
+        timelineEntries: entries,
+        latestRun: latest
+          ? { runId: latest.id, status: latest.status, startedAt: latest.startedAt, completedAt: latest.completedAt }
+          : null,
+        runningRunId: runningRun?.id ?? null,
+        runs,
+        expandedRunIds: new EverythingSet(),
+        expandedWorkGroupIds: new EverythingSet(),
+        isWorking,
+        activeTurnStartedAt: runningRun?.startedAt ?? null,
+      }),
+    listRef,
+  });
+
   // ── History ──────────────────────────────────────────────────────────────────────────────────
   const historyCursor = state?.historyCursor ?? null;
   const synchronized = state !== null && !state.syncing;
@@ -250,7 +279,7 @@ export function MessagesTimeline({ threadId }: MessagesTimelineProps) {
   return (
     <TimelineRowCtx value={sharedState}>
       <TimelineRowActivityCtx value={activityState}>
-        <div className="relative h-full min-h-0" data-timeline="true">
+        <div ref={setTimelineEl} className="relative h-full min-h-0" data-timeline="true">
           <LegendList<MessagesTimelineRow>
             ref={listRef}
             data={rows}
@@ -261,7 +290,7 @@ export function MessagesTimeline({ threadId }: MessagesTimelineProps) {
             estimatedItemSize={90}
             recycleItems={false}
             initialScrollAtEnd
-            maintainScrollAtEnd={following ? TIMELINE_MAINTAIN_SCROLL_AT_END : false}
+            maintainScrollAtEnd={following && !find.isOpen ? TIMELINE_MAINTAIN_SCROLL_AT_END : false}
             maintainScrollAtEndThreshold={0.1}
             maintainVisibleContentPosition={MAINTAIN_VISIBLE_CONTENT_POSITION}
             onScroll={handleScroll}
@@ -445,6 +474,7 @@ function TimelineRowTimestamp({
       <TooltipTrigger
         render={
           <span
+            data-thread-find-ignore=""
             className={cn(
               "pointer-events-none absolute me-1 shrink-0 whitespace-nowrap rounded-md font-mono text-muted-foreground text-xs tabular-nums opacity-0 group-hover/timeline-row:pointer-events-auto group-hover/timeline-row:static group-hover/timeline-row:opacity-100 group-focus-within/timeline-row:pointer-events-auto group-focus-within/timeline-row:static group-focus-within/timeline-row:opacity-100",
               alwaysVisible && "pointer-events-auto static opacity-100",
@@ -560,7 +590,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           </span>
         </div>
       ) : null}
-      <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
+      <div data-thread-find-ignore="" className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
         <div className="flex shrink-0 items-center gap-2">
           <Tooltip>
             <TooltipTrigger render={<p className="font-mono text-muted-foreground text-xs tabular-nums" />}>
@@ -650,6 +680,7 @@ function AssistantMessageMeta({
   const status = row.projectedItem?.status;
   return (
     <div
+      data-thread-find-ignore=""
       className={cn(
         "flex items-center gap-2 text-xs tabular-nums transition-opacity duration-200",
         alwaysVisible
@@ -694,7 +725,7 @@ function EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event" }
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   const { awaitingUser, queuedCount } = use(TimelineRowActivityCtx);
   return (
-    <div className="border-b border-border/60 pb-2 pt-1" data-run-banner="true">
+    <div className="border-b border-border/60 pb-2 pt-1" data-run-banner="true" data-thread-find-ignore="">
       <div className="flex h-6 min-w-0 items-baseline gap-2 px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">
         <span
           aria-hidden

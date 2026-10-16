@@ -1,14 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-// T14 builds the new-thread draft (project, harness, model, mode).
+import { NewThreadView } from "@/components/new-thread/NewThreadView";
+
+type NewThreadSearch = { project?: string };
+
+// The new-thread draft (T14). Same path as T3 Code's apps/web/src/routes/_chat.new.tsx; Sightr keeps one
+// draft at a time, so there is no `/draft/$draftId`. `?project=` preselects a project (a sidebar row's
+// "+", the palette's "New thread in …").
 export const Route = createFileRoute("/_chat/new")({
-  component: NewThread,
+  validateSearch: (search: Record<string, unknown>): NewThreadSearch =>
+    typeof search.project === "string" && search.project !== "" ? { project: search.project } : {},
+  component: NewThreadRoute,
 });
 
-function NewThread() {
-  return (
-    <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
-      Starting a thread from Sightr v2 is not ready yet.
-    </div>
-  );
+function NewThreadRoute() {
+  const { project } = Route.useSearch();
+  return <NewThreadView {...(project ? { projectId: project } : {})} />;
 }

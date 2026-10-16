@@ -435,3 +435,19 @@
   border-radius: 0;
   background: transparent;
 }
+
+/* Find over the timeline (T19): every hit a soft wash, the focused one solid, its row ringed. The
+   ring is also the only mark where the browser has no CSS Custom Highlight API. */
+::highlight(sightr-thread-find) {
+  background-color: color-mix(in srgb, #facc15 35%, transparent);
+  color: inherit;
+}
+::highlight(sightr-thread-find-active) {
+  background-color: #facc15;
+  color: #000;
+}
+[data-thread-find-active] {
+  border-radius: 0.5rem;
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
+}

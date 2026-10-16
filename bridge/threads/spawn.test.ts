@@ -337,6 +337,23 @@ describe("thread.create", () => {
     expect(r.events.every((e) => e.commandId === r.events[0]!.commandId)).toBe(true);
   });
 
+  test("a plain shell (T14 Terminal only) makes the pane and starts no agent", async () => {
+    const r = rig();
+    const out = await r.run({ type: "thread.create", projectId: "w1", harness: "shell", placement: "tab" });
+    expect(out).toMatchObject({ ok: true });
+    await r.spawner.settled();
+    expect(r.herdr.methods()).toEqual(["tab.create"]);
+    expect(created(r).payload.thread).toMatchObject({ harness: "shell", status: "idle", capabilities: capabilitiesFor("shell", journals) });
+    expect(r.types()).toEqual(["thread.created"]);
+  });
+
+  test("a plain shell takes no launch options", async () => {
+    const r = rig();
+    const out = await r.run({ type: "thread.create", projectId: "w1", harness: "shell", model: "haiku", placement: "tab" });
+    expect(out).toMatchObject({ ok: false, status: 400, error: "invalid-launch: shell-takes-no-options" });
+    expect(r.herdr.methods()).toEqual([]);
+  });
+
   test("a given name titles the thread (user) and is slugged for herdr", async () => {
     const r = rig();
     await r.run({ type: "thread.create", projectId: "w1", harness: "pi", placement: "tab", name: "Fix Login" });
@@ -555,7 +572,7 @@ describe("thread.create", () => {
   test("bad launch values are refused before any pane exists", async () => {
     const r = rig();
     for (const bad of [
-      { harness: "shell" },
+      { harness: "gemini" },
       { harness: "claude", model: "--evil" },
       { harness: "claude", effort: "ultra" },
       { harness: "pi", permissionMode: "plan" },

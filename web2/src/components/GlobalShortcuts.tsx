@@ -71,7 +71,7 @@ export function GlobalShortcuts() {
         store.requestDirectTyping(id);
       }),
       registerShortcutHandler("chat.new", () => go("/new")),
-      // Find in the timeline is T19's; until then the browser's own find keeps the key.
+      // Find in the timeline (T19): the thread route registers over this; elsewhere the browser keeps the key.
       registerShortcutHandler("chat.find", () => false),
       registerShortcutHandler("thread.previous", () => traverse("previous")),
       registerShortcutHandler("thread.next", () => traverse("next")),
