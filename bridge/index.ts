@@ -18,6 +18,7 @@ import { engineCadence, StateEngine } from "./state-engine.ts";
 import { beaconReader } from "./beacon-io.ts";
 import { buildId } from "./static-assets.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
+import { openThreadStore, STORE_FILE, StoreTooNewError, type ThreadStore } from "./threads/store.ts";
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
 // loadConfig throws on a config that would be unsafe to serve (a non-loopback bind). Print the
@@ -35,6 +36,31 @@ try {
 const migratedFrom = await migrateLegacyState(cfg.stateDir);
 if (migratedFrom) console.log(`state: copied pre-1.0 Sighter state from ${migratedFrom}`);
 await mkdir(cfg.stateDir, { recursive: true, mode: 0o700 });
+
+// ── v2 thread store ─────────────────────────────────────────────────────────────────────────────
+// One SQLite file in the state dir holds the v2 events and their projection. SIGHTR_V2=0 skips it.
+// A database a newer bridge wrote (or any other open failure) leaves v2 off; v1 is unaffected.
+// T02 and T05 take the store from here.
+let threadStore: ThreadStore | null = null;
+if (process.env.SIGHTR_V2?.trim() !== "0") {
+  try {
+    threadStore = openThreadStore(join(cfg.stateDir, STORE_FILE));
+    threadStore.prune(Date.now());
+  } catch (err) {
+    const why = err instanceof StoreTooNewError ? err.message : `could not open it: ${(err as Error).message}`;
+    console.warn(`[threads] v2 is off: ${why}`);
+    threadStore = null;
+  }
+}
+const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+const pruneTimer = setInterval(() => {
+  try {
+    threadStore?.prune(Date.now());
+  } catch (err) {
+    console.warn(`[threads] prune failed: ${(err as Error).message}`);
+  }
+}, PRUNE_INTERVAL_MS);
+pruneTimer.unref();
 
 const audit = createAuditLog({ stateDir: cfg.stateDir, enabled: cfg.audit, content: cfg.auditContent });
 // Connection telemetry (`sightr-ctl conn` reads it back). A start line marks every restart, so the
@@ -167,6 +193,8 @@ const shutdown = async () => {
   activity.stop();
   await activity.flush();
   clearInterval(sweepTimer);
+  clearInterval(pruneTimer);
+  threadStore?.close();
   process.exit(0);
 };
 for (const signal of ["SIGINT", "SIGTERM", "SIGBREAK", "SIGHUP"] as const) {

@@ -1,6 +1,6 @@
 # T01 — The v2 contracts and the event store
 
-Status: draft (T3-shape series). Depends on: nothing. Read `README.md` in this folder first (Domain, Commands).
+Status: done on feat/v2 (2026-10-16). Depends on: nothing. Read `README.md` in this folder first (Domain, Commands).
 
 ## Problem
 
@@ -131,3 +131,42 @@ Temp directory per test (`mkdtemp`), or `:memory:` where the file does not matte
 - `Thread.sessionRef` is narrowed to id refs on the wire (README lists it unqualified). Say so if that is wrong.
 - `bun:sqlite` needs no dependency, but `bun test` for `./bridge` must run on a Bun with it. Bun is already
   the runtime, so this holds.
+
+## Built
+
+Files: `shared/v2/contracts.ts`, `bridge/threads/{events,store,decide}.ts` with tests beside them,
+`bridge/test/thread-fixtures.ts`, the store opened and closed in `bridge/index.ts`.
+
+Deviations from the draft:
+
+- **Turn items mirror T3** (Bart, 16 Oct): `TurnItem` follows T3's `OrchestrationV2TurnItem` (upstream
+  `e3b35d1b`) instead of `tool_call {toolKind}`. Base `{ id, threadId, runId: string|null, ordinal, status, title,
+  startedAt, completedAt, createdAt, updatedAt, truncated? }`, `status` is T3's `TurnItemStatus` (tool items use it
+  for running/completed/failed). Kinds: `user_message`, `assistant_message`, `reasoning`, `command_execution`,
+  `file_change`, `file_search`, `web_search`, `dynamic_tool`, `approval_request`, `user_input_request`,
+  `system_notice {message}`, `error {failure, retry?}`, plus Sightr's `session {from, to}` and
+  `screen {text, capturedAt}`. T3 kinds with no terminal source (plans, checkpoints, handoffs, forks, subagents,
+  notifications, secrets) are left out. T03 maps tool names to the kinds: shell → `command_execution`, edit/write →
+  `file_change`, grep/glob → `file_search`, web → `web_search`, anything else (read included) → `dynamic_tool`.
+- **Times** are epoch ms everywhere (T3 sends ISO strings).
+- **Thread names follow T3** where cheap: `snoozedUntil` (not `snoozeUntil`), plus `pinnedAt`, `settledAt`,
+  `updatedAt`, `titleSource`. `shelf` and a numeric `pinOrder` stay Sightr's. `thread.shelf-changed` is
+  `{shelf, snoozedUntil?, pinOrder?, at}`; it is also how a thread leaves `archived` (unarchive), and it clears the
+  previous shelf's fields. `Run` uses `completedAt` (not `endedAt`).
+- **Project** gains `status` (the roll-up T02 emits) and `labelSource` (`project.rename` sets `user`; T02 must not
+  overwrite a user label).
+- **`archiveReason: "user"`** added for `thread.archive`.
+- Every event payload carries the time it needs (`at`, `closedAt`, `completedAt`), so replay never reads `ts`.
+  `turn-item.updated` may omit `ordinal`; the store gives a new item the next one and writes it into the stored event.
+- **Server vs wire.** `bridge/threads/events.ts` holds the server forms (`ServerThread` with path refs,
+  `boundText` on `runtime-request.updated`). `eventsAfter`, `onCommitted` and both snapshots return the wire form
+  (`toWireEvent`); `storedEventsAfter` returns the server form for replay only.
+- **Extra reads** for T02/T05: `getThread`, `getProject`, `listThreads`, `listProjects`, `maxPinOrder`;
+  `append(..., { offsets })` saves journal offsets in the same transaction (T03). `DecideState` has
+  `maxPinOrder` so `thread.pin` stays pure.
+- `decide()`: a command that is already true (pin a pinned thread, archive an archived one) is `ok` with no
+  events. Rename, pin, snooze and settle on an archived thread are `conflict: archived`.
+- `minSequence()` is 0 until a prune deletes something. `prune` is called once at open and hourly from
+  `bridge/index.ts`. `SIGHTR_V2=0` is read in `bridge/index.ts`, not `Config`.
+- Foreign keys: threads → projects; runs, items, requests, queue and offsets → threads with cascade, so pruning a
+  thread removes its rows.

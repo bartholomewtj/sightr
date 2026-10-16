@@ -7,6 +7,7 @@ a build where they disagree.
 ## [Unreleased]
 
 ### Added
+- The bridge keeps a v2 thread store, `threads.sqlite`, in the state directory. Nothing reads it yet; it is the base for the v2 app. Events older than seven days are pruned hourly (the newest 50,000 always stay). If the file cannot be read it is moved aside as `threads.sqlite.corrupt-<time>` and a new one starts. `SIGHTR_V2=0` turns it off.
 - The Local tab lists the PC's loopback servers and opens them over the tailnet.
 - Pull down at the top of a pane, or of Spaces, to refresh the herd in place. A small mark tracks the pull. The refresh is the same revalidation the app already uses. It does not reload the page, and it does not load older history.
 

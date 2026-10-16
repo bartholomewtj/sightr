@@ -190,6 +190,7 @@ keep theirs.
 | `SIGHTR_DEVICE_HEADER`, `SIGHTR_DEVICE_ALLOWLIST` | unset | Optional per-device write authorisation. Unknown devices become read-only |
 | `SIGHTR_AUDIT`, `SIGHTR_AUDIT_CONTENT` | `1`, `preview` | Audit trail on/off and `preview` or `none` |
 | `SIGHTR_CONN_LOG` | on | Connection telemetry to `<state-dir>/conn.log` (see Connection telemetry) |
+| `SIGHTR_V2` | on | The v2 thread store, `<state-dir>/threads.sqlite`. `0` skips opening it |
 | `SIGHTR_POLL_MS`, `SIGHTR_POLL_IDLE_MS` | `1500`, `12000` | Poll cadence (min 250), and the relaxed cadence (min 1000) while the Herdr event stream is healthy and every agent is resting |
 | `SIGHTR_NOTIFY_DELAY_MS` | `30000` | Wait before a blocked or finished agent pushes a notification |
 | `SIGHTR_READ_LINES` | `200` | Terminal lines for a pane read that names no count, and the floor for the read that checks a prompt before a send. The phone asks for its own count (600 agent, 120 shell) |
