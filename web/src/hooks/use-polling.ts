@@ -5,6 +5,7 @@ import { applySnapshot, setSnapshotPushMode } from "@/lib/loaders";
 import { openSnapshotStream } from "@/lib/api";
 import { noteConn } from "@/lib/conn-telemetry";
 import type { HomeData } from "@/lib/loaders";
+import { SSE_KEEPALIVE_MS } from "@shared/limits";
 
 // Adaptive polling, the React Router way: a timer that calls `revalidator.revalidate()`, which
 // re-runs every active loader (snapshot + the open pane) — our equivalent of a refetch interval.
@@ -27,6 +28,16 @@ const COLD_MS = 4000;
 // "superseded"). We compare against wall-clock (Date.now), not a timer, precisely because timers can
 // stop advancing during sleep — the age we care about is real elapsed time since the load began.
 export const SUPERSEDE_MS = 12_000;
+
+// The snapshot stream's lifecycle. Silent for SSE_STALE_MS (two keep-alives and some slack) means
+// dead. A drop reconnects after a backoff that starts over only once a stream has stayed up for
+// SSE_STABLE_MS, so a stream that opens and dies at once backs off instead of reconnecting every
+// second (the bridge's EventPoker does the same on its side).
+export const SSE_STALE_MS = 2 * SSE_KEEPALIVE_MS + 5_000;
+export const SSE_STABLE_MS = 30_000;
+const SSE_RETRY_MIN_MS = 1_000;
+export const SSE_RETRY_MAX_MS = 30_000;
+const SSE_WATCHDOG_TICK_MS = 5_000;
 
 /**
  * Pure cadence resolver — exported so it can be unit-tested in isolation.
@@ -57,40 +68,77 @@ export function usePolling(data: HomeData | undefined, paneId?: string | null): 
 
   // SSE is opportunistic: an older bridge, a proxy that does not stream, or a dropped connection
   // simply returns to the polling path. A snapshot event always revalidates (home and open pane)
-  // so the tree, header, and dump stay on the same poke.
+  // so the tree, header, and dump stay on the same poke. One stream serves the whole app: it carries
+  // the herd, not the open pane, so opening a pane does not reconnect it.
   useEffect(() => {
     let source: EventSource | undefined;
     let stopped = false;
-    let delay = 1000;
+    let delay = SSE_RETRY_MIN_MS;
+    // When the current stream opened (null until it does), and when the bridge last wrote to it.
+    let openedAt: number | null = null;
+    let lastBeat = 0;
+    const cancelRetry = () => {
+      if (retry.current !== undefined) { clearTimeout(retry.current); retry.current = undefined; }
+    };
+    const close = () => {
+      source?.close(); source = undefined; openedAt = null;
+      setSnapshotPushMode(false); setPushConnected(false);
+    };
+    // Connection telemetry: how long the stream lived before it dropped, and whether it went silent.
+    const drop = (stale: boolean) => {
+      const upMs = openedAt === null ? 0 : Date.now() - openedAt;
+      noteConn({ kind: "sse.drop", upMs, opened: openedAt !== null, ...(stale ? { stale: true as const } : {}) });
+      if (upMs >= SSE_STABLE_MS) delay = SSE_RETRY_MIN_MS;
+      close();
+      if (stopped) return;
+      // The screen may already be a whole silence old, so fetch now rather than at the next tick.
+      if (ref.current.state === "idle") ref.current.revalidate();
+      retry.current = window.setTimeout(open, delay);
+      delay = Math.min(delay * 2, SSE_RETRY_MAX_MS);
+    };
     const open = () => {
+      cancelRetry();
+      close();
       if (stopped || document.hidden || typeof EventSource !== "function") return;
-      // Connection telemetry: how long the stream took to open, and how long it lived before an error.
       const dialedAt = Date.now();
-      let openedAt: number | null = null;
-      source = openSnapshotStream((snapshot) => {
+      // Callbacks check they still belong to the current stream: a late error from one already
+      // replaced must not close its successor.
+      const s = openSnapshotStream((snapshot) => {
         applySnapshot(snapshot);
         if (ref.current.state === "idle") ref.current.revalidate();
-      }, () => {
-        noteConn({ kind: "sse.drop", upMs: openedAt === null ? 0 : Date.now() - openedAt, opened: openedAt !== null });
-        setSnapshotPushMode(false);
-        setPushConnected(false);
-        source?.close(); source = undefined;
-        if (!stopped) { retry.current = window.setTimeout(open, delay); delay = Math.min(delay * 2, 30_000); }
-      });
-      source.addEventListener("open", () => {
-        openedAt = Date.now();
+      }, () => { if (source === s) drop(false); }, () => { if (source === s) lastBeat = Date.now(); });
+      source = s;
+      s.addEventListener("open", () => {
+        if (source !== s) return;
+        openedAt = lastBeat = Date.now();
         noteConn({ kind: "sse.open", connectMs: openedAt - dialedAt });
-        delay = 1000; setSnapshotPushMode(true); setPushConnected(true);
+        setSnapshotPushMode(true); setPushConnected(true);
       });
     };
+    // While the stream is open the home screen stops polling, so a stream that dies without an error
+    // (a 4G NAT or a tailnet route dropping the flow, which a receive-only socket never notices) would
+    // leave a stale herd on screen with nothing saying so. The bridge writes at least every
+    // SSE_KEEPALIVE_MS; a stream silent for SSE_STALE_MS is treated as dropped.
+    const watchdog = window.setInterval(() => {
+      if (openedAt !== null && !document.hidden && Date.now() - lastBeat > SSE_STALE_MS) drop(true);
+    }, SSE_WATCHDOG_TICK_MS);
     const visibility = () => {
-      source?.close(); source = undefined; setSnapshotPushMode(false); setPushConnected(false);
-      if (!document.hidden) open();
+      if (document.hidden) { cancelRetry(); close(); } else open();
     };
+    // The network is back: reconnect now instead of waiting out a backoff of up to SSE_RETRY_MAX_MS.
+    const online = () => { if (openedAt === null) open(); };
     open();
     document.addEventListener("visibilitychange", visibility);
-    return () => { stopped = true; source?.close(); setSnapshotPushMode(false); if (retry.current) clearTimeout(retry.current); setPushConnected(false); document.removeEventListener("visibilitychange", visibility); };
-  }, [paneId]);
+    window.addEventListener("online", online);
+    return () => {
+      stopped = true;
+      cancelRetry();
+      clearInterval(watchdog);
+      close();
+      document.removeEventListener("visibilitychange", visibility);
+      window.removeEventListener("online", online);
+    };
+  }, []);
   // Hold the revalidator in a ref so the effect only re-subscribes when the cadence changes,
   // not on every revalidation (its identity flips each cycle).
   const ref = useRef(revalidator);

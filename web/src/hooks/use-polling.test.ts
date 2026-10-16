@@ -7,7 +7,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   fetchSnapshot: vi.fn(),
 }));
 
-import { SUPERSEDE_MS, intervalFor, usePolling } from "./use-polling";
+import { SSE_RETRY_MAX_MS, SSE_STABLE_MS, SSE_STALE_MS, SUPERSEDE_MS, intervalFor, usePolling } from "./use-polling";
 import { rootLoader, setSnapshotPushMode } from "@/lib/loaders";
 import type { HomeData } from "@/lib/loaders";
 import type { AgentView } from "@/lib/types";
@@ -170,6 +170,102 @@ describe("usePolling — SSE mode", () => {
     act(() => error?.());
     vi.advanceTimersByTime(COLD);
     expect(rr.revalidate).toHaveBeenCalled();
+  });
+
+  // A stream the test drives: `fire` delivers an event the hook listens for; `beat`/`fail` are the
+  // callbacks the hook handed openSnapshotStream.
+  function liveStreams() {
+    const streams: Array<{ close: ReturnType<typeof vi.fn>; beat: () => void; fail: () => void }> = [];
+    push.open.mockImplementation((_onSnapshot: unknown, onError: () => void, onBeat: () => void) => {
+      const s = { addEventListener: vi.fn((name: string, fn: () => void) => { if (name === "open") fn(); }), close: vi.fn() };
+      streams.push({ close: s.close, beat: onBeat, fail: onError });
+      return s;
+    });
+    return streams;
+  }
+
+  it("keeps one stream when the open pane changes", () => {
+    const streams = liveStreams();
+    const { rerender } = renderHook(({ paneId }) => usePolling(makeData([makeAgent("w1:p1", "idle"), makeAgent("w1:p2", "idle")]), paneId), {
+      initialProps: { paneId: null as string | null },
+    });
+    rerender({ paneId: "w1:p1" });
+    rerender({ paneId: "w1:p2" });
+    rerender({ paneId: null });
+    expect(streams.length).toBe(1);
+    expect(streams[0]!.close).not.toHaveBeenCalled();
+  });
+
+  it("a stream the bridge keeps writing to stays open", () => {
+    const streams = liveStreams();
+    renderHook(() => usePolling(makeData([makeAgent("w1:p1", "idle")])));
+    for (let t = 0; t < 120_000; t += 15_000) {
+      act(() => { vi.advanceTimersByTime(15_000); });
+      streams[0]!.beat();
+    }
+    expect(streams.length).toBe(1);
+    expect(rr.revalidate).not.toHaveBeenCalled();
+  });
+
+  it("a stream that goes silent is dropped, polled past and reopened", () => {
+    const streams = liveStreams();
+    renderHook(() => usePolling(makeData([makeAgent("w1:p1", "idle")])));
+    act(() => { vi.advanceTimersByTime(SSE_STALE_MS - 5_000); });
+    expect(streams[0]!.close).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(10_000); });
+    expect(streams[0]!.close).toHaveBeenCalled();
+    expect(rr.revalidate).toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(1_000); });
+    expect(streams.length).toBe(2);
+  });
+
+  it("a stream that keeps dying at once backs off, and one that lived starts over", () => {
+    const streams = liveStreams();
+    renderHook(() => usePolling(makeData([makeAgent("w1:p1", "idle")])));
+    // Opens and dies three times: the reconnects wait 1 s, then 2 s, then 4 s.
+    act(() => streams[0]!.fail());
+    act(() => { vi.advanceTimersByTime(1_000); });
+    expect(streams.length).toBe(2);
+    act(() => streams[1]!.fail());
+    act(() => { vi.advanceTimersByTime(1_999); });
+    expect(streams.length).toBe(2);
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(streams.length).toBe(3);
+    // This one stays up past SSE_STABLE_MS, so its drop reconnects after 1 s again.
+    for (let t = 0; t < SSE_STABLE_MS; t += 10_000) {
+      act(() => { vi.advanceTimersByTime(10_000); });
+      streams[2]!.beat();
+    }
+    act(() => streams[2]!.fail());
+    act(() => { vi.advanceTimersByTime(1_000); });
+    expect(streams.length).toBe(4);
+  });
+
+  it("reconnects as soon as the network comes back", () => {
+    const streams = liveStreams();
+    renderHook(() => usePolling(makeData([makeAgent("w1:p1", "idle")])));
+    for (let i = 0; i < 5; i++) {
+      act(() => streams[streams.length - 1]!.fail());
+      act(() => { vi.advanceTimersByTime(SSE_RETRY_MAX_MS); });
+    }
+    act(() => streams[streams.length - 1]!.fail());
+    const before = streams.length;
+    act(() => { window.dispatchEvent(new Event("online")); });
+    expect(streams.length).toBe(before + 1);
+    // An open stream is left alone.
+    act(() => { window.dispatchEvent(new Event("online")); });
+    expect(streams.length).toBe(before + 1);
+  });
+
+  it("a late error from a replaced stream leaves the new one alone", () => {
+    const streams = liveStreams();
+    renderHook(() => usePolling(makeData([makeAgent("w1:p1", "idle")])));
+    act(() => streams[0]!.fail());
+    act(() => { vi.advanceTimersByTime(1_000); });
+    act(() => streams[0]!.fail());
+    expect(streams[1]!.close).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(SSE_RETRY_MAX_MS); });
+    expect(streams.length).toBe(2);
   });
 
   it("renders a pushed snapshot without fetching it again", async () => {

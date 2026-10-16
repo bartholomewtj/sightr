@@ -57,6 +57,13 @@ describe("normalizePhoneEvent", () => {
     expect(e).toEqual({ ...base, kind: "boot", platform: "other", standalone: true });
   });
 
+  test("a stream drop keeps `stale` only when it is exactly true", () => {
+    expect(normalizePhoneEvent({ ...base, kind: "sse.drop", upMs: 40_000, opened: true, stale: true }))
+      .toEqual({ ...base, kind: "sse.drop", upMs: 40_000, opened: true, stale: true });
+    expect(normalizePhoneEvent({ ...base, kind: "sse.drop", upMs: 300, opened: true, stale: "yes" }))
+      .toEqual({ ...base, kind: "sse.drop", upMs: 300, opened: true });
+  });
+
   test("window stats are rebuilt per known class", () => {
     const e = normalizePhoneEvent({
       ...base, kind: "window", visibleMs: 60_000,

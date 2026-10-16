@@ -172,6 +172,14 @@ describe("analyseConn", () => {
     expect(r.findings[0]!.suggest).toContain("EVENT_KEEPALIVE_MS");
   });
 
+  test("streams that went silent are counted and named", () => {
+    const drops = Array.from({ length: 3 }, (_, i) => phone(T0 + (i + 1) * 60 * MIN, { kind: "sse.drop", upMs: (i + 2) * 600_000, opened: true, stale: true }));
+    const r = run([...usage(), ...drops]);
+    expect(r.sse.stale).toBe(3);
+    expect(r.findings.map((f) => f.id)).toContain("sse-silent");
+    expect(formatConnReport(r)).toContain("3 went silent");
+  });
+
   test("slow wakes and timeouts are named with the knob to turn", () => {
     const wakes = Array.from({ length: 10 }, (_, i) => phone(T0 + (i + 1) * 20 * MIN, { kind: "wake", hiddenMs: 600_000, liveMs: i < 4 ? 6_000 : 900 }));
     const timeouts = phone(T0 + 400 * MIN, { kind: "window", visibleMs: 0, stats: { pane: stats(400, 90, { ok: 100, timeout: 300 }) } });

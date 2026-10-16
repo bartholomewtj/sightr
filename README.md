@@ -330,7 +330,10 @@ checks every source reference in the map against the current commit.
 **How a request travels.** The phone loads the PWA from `web/dist`, served by the bridge. The app
 listens on `GET /api/events` (server-sent events) and polls `GET /api/snapshot` only when that stream
 is down. While EventSource is open, a snapshot event applies the herd without another GET, including
-on an open pane; the open-pane interval still refreshes `GET /api/pane/...` for the live TUI. The
+on an open pane; the open-pane interval still refreshes `GET /api/pane/...` for the live TUI. One
+stream serves the whole app, so opening a pane does not reconnect it. The bridge writes to it at
+least every 15 s. A stream silent for 35 s is treated as dropped: the app polls at once and
+reconnects, because a mobile network can drop the flow without either end hearing an error. The
 journal newest page refreshes from those snapshot events, a status flip, or the tab becoming visible
 — not a 1.5s 160-turn timer. The bridge keeps its own `events.subscribe` stream open to Herdr and
 pokes the SSE clients when Herdr reports a change. On the host, the snapshot poll stays the source of
