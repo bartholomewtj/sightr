@@ -18,7 +18,7 @@ Phone/desktop PWA for one operator’s [Herdr](https://herdr.dev) herd. Bun brid
 ## Standing rules
 
 - Windows only. Bun is the runtime. Herdr method names stay in `bridge/herdr-client.ts`.
-- The bridge imports `web/src/lib/harness/dialog-sniff.ts` at runtime. Keep that file's import closure free of `react` and `@shared` (the root typecheck runs before the web install in CI). Why: `DECISIONS.md`.
+- The bridge imports `web/src/lib/harness/dialog-sniff.ts`, `web/src/lib/harness/composer-kit.ts` and `web/src/lib/guarded-send.ts` at runtime. Keep their import closures free of `react` and `@shared`; reach `shared/` by relative path (the root typecheck runs before the web install in CI). A new adapter field the reply guard uses goes in `composer-kit.ts` too; its test pins the two. Why: `DECISIONS.md`, spec 24.
 - Live phone tests run in a scratch herdr workspace you create; never close or type into panes you did not create (other sessions run draftr work in `claudeOS`).
 - Keep GitHub topic `herdr-plugin` and a parseable `herdr-plugin.toml` on `main`. That is the marketplace listing; do not drop the topic.
 - One spec per run. Do not implement a sibling spec in the same run. Do not implement row 4 from `docs/specs/`.
