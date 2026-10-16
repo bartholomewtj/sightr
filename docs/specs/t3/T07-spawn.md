@@ -1,6 +1,6 @@
 # T07 — Spawn a thread
 
-Status: draft (T3-shape series). Depends on: T01, T02 (thread ingest, interim capability table), T05 (command endpoint; owns the herdr >= 0.9.0 start-up check and the 503). T08 lands after this slice and adds `capabilities` beside `launch` in `shared/agents.ts`.
+Status: done on feat/v2 (2026-10-16). Depends on: T01, T02 (thread ingest, interim capability table), T05 (command endpoint; owns the herdr >= 0.9.0 start-up check and the 503). T08 lands after this slice and adds `capabilities` beside `launch` in `shared/agents.ts`.
 
 ## Problem
 
@@ -159,3 +159,49 @@ are unique per herd (unverified); on a name clash, append ` 2`, ` 3`.
 - The `pane.split` reply shape and the `agent.start` error codes are unverified; the schema gives request params only.
 - Herdr's kind list also holds `gemini`, `opencode`, etc. The table covers only the six Sightr has adapters for.
 - T3 README line "herdr too old → refuse" is handled once, by T05's gate; this spec has no separate path.
+
+## Built
+
+`bridge/threads/spawn.ts` (`createSpawner`: `thread.create` and `project.create` as T05 effects, wired in
+`bridge/index.ts`), the launch table and `buildLaunchArgs` in `shared/agents.ts`, `splitPane` / `startAgent` /
+`getPane` in `bridge/herdr-client.ts`. Tests: `bridge/threads/spawn.test.ts`, `bridge/herdr-client.test.ts`.
+Live on 16 Oct 2026 (herdr 0.9.0-preview.2026-09-16) in a scratch workspace made by `project.create`: Claude
+(Haiku) in a tab and pi (thinking low) as a split both started; Grok, Agy and Cursor were not live-tested.
+
+Deviations:
+
+- `agent.start` over the socket does not wait. It types the launch command and answers at once; the herdr CLI
+  does the waiting by polling `agent.get` (`src/cli/agent.rs`). `HerdrClient.startAgent` does the same: ready is
+  `idle`/`done` with `interactive_ready`; a `blocked` agent (a start-up dialog such as folder trust) counts as
+  started, because T04 answers those (the CLI calls that "not ready"). Wait failures use the CLI's codes:
+  `timeout`, `agent_start_failed`, `agent_kind_mismatch`, `agent_name_not_found`.
+- Known codes (from the herdr source): `agent_pane_busy` (not at a prompt; retried 3 times, 1 s apart),
+  `agent_name_taken` (retried with `-2`, `-3`, …), `invalid_agent_name`, `unsupported_agent_kind`,
+  `invalid_agent_argument`, `agent_pane_not_found`, `agent_pane_unavailable`. The operator sees a sentence per
+  code; an unknown code reads `spawn-failed: <herdr message>`.
+- herdr agent names must match `[a-z][a-z0-9_-]{0,31}`, so the default name is `<harness>-<n>` (not
+  `<harness> <n>`), and a given `name` is slugged for herdr while the thread keeps it as a `user` title.
+- herdr returns `terminal_id` on every created pane (`tab.create`, `workspace.create`, and `pane.split`, whose reply
+  is `{type: "pane_info", pane}`), so `thread.created` carries the terminal at once. If the herd ingest listed the
+  pane first, the spawn takes that thread over with `thread.updated` instead of creating a second one.
+- A failure to make the pane is the command's own error (502 `failed`, no receipt): no thread exists yet, so
+  there is no `thread.create.failed {stage: "pane"}`.
+- After a hard failure the thread is archived (`spawn-failed`) only when its pane was closed or is gone. A pane
+  left in place (it holds an agent, or its terminal changed) keeps a live thread, set back to `idle` for the herd
+  ingest; archiving it would hide that pane from v2, since the ingest never revives a `spawn-failed` thread.
+- On success the spawn pokes the engine and waits up to 3 s for the snapshot to show the agent; it sets `idle`
+  only if the thread is still `starting`. Live, herdr marks the pane as an agent as soon as `agent.start` types
+  the command, so the herd ingest ends `starting` about 1 s after the pane appears, before the agent is ready.
+- The prompt wait reads `visible` (not `recent`) 20 lines: a visible read never scrolls a pane.
+- `project.create` checks that `cwd` is an absolute, existing local directory (real path, no UNC). There is no
+  root to contain it in (v1's `createWorkspace` does no check), so `containment.ts` is not used.
+- `newProject` uses the new workspace's root pane; `placement` is ignored. A split takes its project from
+  `splitFrom`; `projectId` is optional there.
+- Herd ingest (T02): a `starting` thread whose pane is still a bare shell keeps its status, harness, title and
+  capabilities; the missing-pane grace now covers any `starting` thread, not only one with no terminal yet.
+- `buildLaunchArgs` returns `{ok, args, destructive}` or `{ok: false, reason}`. A free-text model must also start
+  with a letter or digit, so it cannot read as a flag. Grok's `--effort` is left out: its help lists no levels.
+  Codex joins `AGENTS` with `catalog: []` (the web tables need it) and no journal.
+- Live notes: `codex` is not installed here; its spawn timed out after 45 s with the pane left and the thread
+  `starting` (step 9). pi with an unknown model was reported ready by herdr, then exited; the thread became a
+  shell thread with no failure event. The hard-failure clean-up is covered by tests only.

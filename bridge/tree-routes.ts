@@ -239,7 +239,7 @@ export async function createTab(
     });
     return json({
       ok: true,
-      pane: { ...created, workspaceLabel: label },
+      pane: { paneId: created.paneId, workspaceId: created.workspaceId, workspaceLabel: label, tabId: created.tabId, cwd: created.cwd },
     } satisfies CreateResponse, ae);
   } catch (err) {
     return json({ ok: false, error: failureText("create tab", err) } satisfies CreateResponse, ae);

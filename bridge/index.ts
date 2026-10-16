@@ -29,6 +29,7 @@ import { createV2Gate } from "./threads/herdr-floor.ts";
 import { respondEffect } from "./threads/v2-routes.ts";
 import { createGuardedSender } from "./guarded-send-route.ts";
 import { createDispatcher } from "./threads/dispatch.ts";
+import { createSpawner } from "./threads/spawn.ts";
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
 // loadConfig throws on a config that would be unsafe to serve (a non-loopback bind). Print the
@@ -187,6 +188,12 @@ const dispatcher = threadStore
     })
   : null;
 
+// v2 spawn (T07): thread.create makes a tab, a split or a new workspace and starts the harness in it
+// with herdr agent.start; project.create makes a workspace.
+const spawner = threadStore
+  ? createSpawner({ store: threadStore, herdr, engine, queue: paneWrites, journals, audit })
+  : null;
+
 // v2 needs herdr >= 0.9.0 (T05). The version is asked once: right after the start-up ping below, or,
 // if herdr is not answering then, when the link first comes up. Below the floor nothing ingests and
 // every /api/v2/* route answers 503 with the reason; v1 is unaffected. A restart re-checks.
@@ -257,6 +264,7 @@ const server = startServer({
     effects: {
       ...(requestIngestor ? { "runtime-request.respond": respondEffect(requestIngestor.respond) } : {}),
       ...(dispatcher?.effects ?? {}),
+      ...(spawner?.effects ?? {}),
     },
     watchers: threadWatchers,
     herdIngestor,
