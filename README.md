@@ -5,9 +5,9 @@ the Windows host next to Herdr, and your phone opens it over Tailscale. You see 
 you, read its chat, and answer with buttons or an ordinary text box, so phone dictation works.
 
 - **One operator, one tailnet.** Sightr is not a multi-tenant service.
-- **Harnesses:** Claude Code, pi, Grok Build, Antigravity CLI, Cursor CLI. The bridge reads the
-  session log of Claude Code, pi, Grok and Cursor for chat history (Antigravity shows its live
-  terminal), and every harness gets its detected prompts, permission cards and ask-cards as phone
+- **Harnesses:** Claude Code, pi, Grok Build, Antigravity CLI, Cursor CLI, Codex CLI. The bridge
+  reads the session log of Claude Code, pi, Grok, Cursor and Codex for chat history (Antigravity
+  shows its live terminal), and every harness gets its detected prompts, permission cards and ask-cards as phone
   buttons.
 - **Windows only.** The supervisor is Task Scheduler, the launcher is PowerShell, and Herdr's control
   socket is a named pipe.
@@ -196,7 +196,7 @@ keep theirs.
 | `SIGHTR_READ_LINES` | `200` | Terminal lines for a pane read that names no count, and the floor for the read that checks a prompt before a send. The phone asks for its own count (600 agent, 120 shell) |
 | `SIGHTR_SUBMIT_KEYS` | `Enter` | Key sequence that submits a reply |
 | `SIGHTR_TRANSCRIPT` | on | Read chat history from the harness's own session log |
-| `SIGHTR_CLAUDE_ROOT`, `SIGHTR_PI_ROOT`, `SIGHTR_GROK_ROOT`, `SIGHTR_CURSOR_ROOT` | harness default | Where each harness keeps session logs, comma separated, searched in order. The pi and Grok defaults follow `PI_CODING_AGENT_DIR` and `GROK_HOME` |
+| `SIGHTR_CLAUDE_ROOT`, `SIGHTR_PI_ROOT`, `SIGHTR_GROK_ROOT`, `SIGHTR_CURSOR_ROOT`, `SIGHTR_CODEX_ROOT` | harness default | Where each harness keeps session logs, comma separated, searched in order. The pi, Grok and Codex defaults follow `PI_CODING_AGENT_DIR`, `GROK_HOME` and `CODEX_HOME` |
 | `SIGHTR_BEACONS` | on | Read the identity files Claude's hooks write |
 | `SIGHTR_WORK_ROOT` | unset | Root of the Files tab, readable and writable from every device. Keep it narrow. Unset hides the tab and its routes |
 | `SIGHTR_VAPID_PUBLIC`, `SIGHTR_VAPID_PRIVATE`, `SIGHTR_VAPID_SUBJECT` | unset, unset, `mailto:admin@example.com` | Web Push keys. `push-keys` writes them. Push turns on with the public and private keys |

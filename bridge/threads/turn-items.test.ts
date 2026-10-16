@@ -144,6 +144,13 @@ describe("toolItemType", () => {
     ["Shell", "command_execution"], // cursor.test.ts
     ["read_file", "dynamic_tool"], // grok.test.ts
     ["ask_user_question", "dynamic_tool"], // grok.test.ts
+    ["shell_command", "command_execution"], // fixtures/codex-basic.jsonl
+    ["apply_patch", "file_change"], // fixtures/codex-basic.jsonl
+    ["exec_command", "command_execution"], // fixtures/codex-basic.jsonl
+    ["web_search", "web_search"], // fixtures/codex-basic.jsonl
+    ["shell", "command_execution"], // fixtures/codex-basic.jsonl, codex-paginated.jsonl (local_shell_call)
+    ["write_stdin", "command_execution"], // codex.test.ts
+    ["update_plan", "dynamic_tool"], // codex.test.ts
   ];
   test.each(FIXTURE_NAMES)("%s → %s", (name, kind) => {
     expect(toolItemType(name)).toBe(kind);
