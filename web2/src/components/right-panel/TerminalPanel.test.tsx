@@ -35,6 +35,17 @@ describe("TerminalPanel", () => {
     expect(await screen.findByText(/\$ ready/)).toBeInTheDocument();
   });
 
+  it("says the pane was closed, and reads nothing, for a thread archived with its pane", async () => {
+    let reads = 0;
+    server.use(http.get("/api/pane/:id", () => { reads++; return HttpResponse.json({ text: "x" }); }));
+    const gone = thread("t1", { harness: "shell", shelf: "archived", archiveReason: "pane-closed" });
+    act(() => useThreadStore.setState({ current: threadFromSnapshot(threadSnapshot(3, gone), false), missing: null }));
+    render(<TerminalPanel threadId="t1" />);
+    expect(screen.getByText(/pane was closed/)).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(reads).toBe(0);
+  });
+
   it("arming shows the strip; keys post to the pane's key route (typed); blur disarms on desktop", async () => {
     setViewportWidth(1200);
     render(<TerminalPanel threadId="t1" />);

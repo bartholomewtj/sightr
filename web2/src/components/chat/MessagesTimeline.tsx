@@ -633,7 +633,10 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
   return (
     <div className="relative min-w-0 px-1 py-0.5">
       <MessageAuthorHeading>{harnessLabel(ctx.harness)}</MessageAuthorHeading>
-      <ChatMarkdown text={messageText} isStreaming={row.message.streaming} headingLevelOffset={MESSAGE_HEADING_LEVEL} />
+      {/* Sightr divergence from T3 (which keeps line breaks only for "★ Insight" blocks): every assistant
+          message keeps its single newlines, as the harness's own terminal shows them. A list typed one
+          item per line must not collapse into one line. */}
+      <ChatMarkdown text={messageText} isStreaming={row.message.streaming} headingLevelOffset={MESSAGE_HEADING_LEVEL} lineBreaks />
       {row.projectedItem?.truncated ? (
         <p className="mt-1 text-2xs text-muted-foreground">The journal cut this message short.</p>
       ) : null}

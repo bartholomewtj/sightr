@@ -87,6 +87,12 @@ describe("MessagesTimeline: states", () => {
     expect(screen.getByText("hello agent")).toBeInTheDocument();
     expect(screen.getByText("hi").tagName).toBe("STRONG");
   });
+
+  it("keeps an assistant message's single newlines, as the terminal shows them", async () => {
+    await show([user("u:0", "count"), assistant("a:0", "one\ntwo\nthree")]);
+    const para = screen.getByText(/one/).closest("p");
+    expect(para?.querySelectorAll("br")).toHaveLength(2);
+  });
 });
 
 describe("MessagesTimeline: tool groups", () => {

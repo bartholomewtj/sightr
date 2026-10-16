@@ -61,7 +61,9 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
   const state = useThread(threadId);
   const shellThread = useSidebarThread(threadId);
   const thread = state?.thread ?? shellThread ?? null;
-  const paneId = thread?.paneId || null;
+  // A thread archived because its pane went away has no terminal left to read: say so, and stop reading.
+  const paneGone = thread?.shelf === "archived" && thread.archiveReason !== undefined && thread.archiveReason !== "user";
+  const paneId = paneGone ? null : thread?.paneId || null;
   const readOnly = useBridgeInfo((s) => s.readOnly);
   const linkLost = useStreamHealth((s) => s.status === "lost");
   const desktop = useLayout() === "desktop";
@@ -175,7 +177,9 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
   };
 
   if (!thread) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
-  if (!paneId) return <p className="p-4 text-sm text-muted-foreground">This thread has no pane yet.</p>;
+  if (!paneId) {
+    return <p className="p-4 text-sm text-muted-foreground">{paneGone ? "This thread's pane was closed, so its terminal is gone." : "This thread has no pane yet."}</p>;
+  }
 
   // Older lines may exist only when the read filled the window it asked for (a shell pane, or a
   // short scrollback, comes back shorter; no harness check needed).
