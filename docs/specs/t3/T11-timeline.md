@@ -1,6 +1,6 @@
 # T11 — Timeline: turn items, work log, thinking, run banner
 
-Status: draft (T3-shape series). Depends on: T09 (thread store), T03 (turn items and runs), T05 (history paging). Read `README.md` in this folder first.
+Status: done on feat/v2-web (2026-10-16). Depends on: T09 (thread store), T03 (turn items and runs), T05 (history paging). Read `README.md` in this folder first.
 
 ## Problem
 
@@ -84,3 +84,51 @@ All in `web2/src/components/timeline/` and `web2/src/state/timeline.ts`, filling
 - **Resume:** a second `snapshot` with the same ids does not remount rows; an item update (`tool_call` completes) changes in place.
 - **Markdown:** `<script>` in a message renders as text; links get `rel`; code block copy.
 - **Screen item:** renders ANSI colour spans; capped with "Show all".
+
+## Built
+
+On `feat/v2-web`. The timeline adopts T3 Code's timeline (e3b35d1b) rather than the row model above, so later T3 releases
+can be diffed in. Files follow T3's layout and are listed in `web2/t3-upstream.json`:
+
+- `components/chat/MessagesTimeline.logic.ts` (adapted): T3's row kinds `message`, `work` (one entry, or a group's
+  details), `work-toggle` (group header), `work-live` (the running tool), `working` (header of the active turn), `thinking`
+  (live tail), `turn-fold` ("Worked for 1m 3s" over a settled run's work), `assistant-meta`, `event`; plus Sightr's `day`.
+  Left out: worktree setup, superseded attempts, subagents, plans, MCP apps, HTML renders, compaction, diffs, minimap.
+- `session-logic.ts` (adapted): turn items → T3 timeline/work-log entries. Sightr adds the run-end notices and reasoning
+  durations. `t3/client-runtime/work-log/presentation.ts`, `t3/shared/toolActivity.ts`, `t3/shared/orchestrationTiming.ts`
+  (adapted) and `t3/shims/{commandLabel,toolOutput}.ts` sit behind `@t3tools/...` aliases in `t3-shims.ts` and tsconfig.
+- `components/chat/MessagesTimeline.tsx` (adapted), `WorkLog.tsx` and `TimelineSystemDivider.tsx` (verbatim),
+  `MessageCopyButton.tsx` and `components/ChatMarkdown.tsx` (adapted), `ToolItemDetail.tsx` (pattern of V2ItemInspector),
+  `ScreenTimelineRow.tsx`, `useTimelineFollow.ts`, `state/timeline.ts` (folds, groups, history paging, `followTimeline()`),
+  `stream/apply.ts` `mergeHistoryPage`.
+- `@legendapp/list` 3.3.5 (T3's pin; T3's patch only touches the React Native keyboard files). Markdown is
+  `react-markdown` 10.1.0 + `remark-gfm` 4.0.1 + `remark-breaks` 4.0.0 (T3's versions).
+
+Deviations from the text above:
+- Files live in `components/chat/` and `components/ChatMarkdown.tsx` (T3 names), not `components/timeline/`; there is
+  no `buildRows`; `deriveMessagesTimelineRows` is the pure function and its tests cover the listed cases.
+- Tool kinds are T3's (`command_execution`, `file_change`, `file_search`, `web_search`, `dynamic_tool`), not `toolKind`.
+  Group labels are T3's `summarizeToolGroup`: the two leading actions, then "performed N other actions"
+  ("Ran 2 commands, changed 1 file, and performed 3 other actions"), and "changed" rather than "edited".
+- Reasoning is not its own row kind: as in T3 it is an entry in the work log, so a thought groups with the tools around
+  it. Its label carries the spec's duration ("Thought for 12s", "Thought briefly", "Thought"), with a preview of the text;
+  a live thought reads "Thinking…" with a ticking time. Thinking time uses the item's start/end, else the gap to the next
+  item in the run (under 10 min, not a user message, not a sibling part of the same journal entry).
+- Groups follow T3: collapsed by default and opened by the operator (state per thread, kept across updates). While a
+  run works its running tool is the `work-live` row (never folded) instead of an auto-expanded group. A failed tool
+  entry opens itself and uses warn tokens, and its group header turns warn; the group itself is not auto-opened.
+- The run banner is T3's `working` row, at the top of the active turn ("Working for 1m 24s", plus "· 2 queued" or
+  "Waiting for you"), with T3's "Thinking" tail at the bottom; not a last row. Stopped and failed runs get a synthetic
+  notice item (`run-end:<runId>`); a run has no reason field, so the failed notice points at the Terminal tab.
+- Markdown is T3's `ChatMarkdown` structure on react-markdown, not `@v1/lib/markdown`. Left out: Shiki highlighting,
+  Mermaid, raw HTML (shown as text instead of sanitized), file links/chips, images (an image becomes a link), citations,
+  skill chips, GitHub alerts, task-list toggling. Only http(s) and mailto links are links.
+- An expanded tool group is a bounded scrolling list, not T3's nested LegendList. Tool output is cut at 200 lines with
+  a note; a journal-truncated item says so. A tool with nothing beyond its label (no output recorded) has no toggle.
+- Follow mode re-arms within 80 px (T3 uses 40). The anchor on history prepend and snapshot replacement is LegendList's
+  `maintainVisibleContentPosition` (rows are keyed by item id); tests check rows are not remounted, not pixel offsets.
+- The screen item shows its last 40 lines (the tail of a screen is the useful part), with "Show all".
+- Live check: a scratch bridge (port 8790) against the herd; the coordinator's Claude thread rendered messages, grouped
+  tool calls with output, thinking rows, "Start of thread", the working header and the Jump-to-latest pill. That thread's
+  window held 50 items and no user message (T03's first read keeps the last 50 entries).
+

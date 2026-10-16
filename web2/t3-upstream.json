@@ -261,6 +261,109 @@
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
       "note": "one undo at a time (new replaces old), no claims or Effect results"
+    },
+    {
+      "local": "src/components/chat/MessagesTimeline.logic.ts",
+      "upstream": "apps/web/src/components/chat/MessagesTimeline.logic.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "T11: T3 row model (message, work, work-toggle, work-live, working, thinking, turn-fold, assistant-meta, event) on Sightr items; epoch ms; + day dividers; no attempts/subagents/plans/MCP/compaction/minimap"
+    },
+    {
+      "local": "src/components/chat/MessagesTimeline.tsx",
+      "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list"
+    },
+    {
+      "local": "src/components/chat/WorkLog.tsx",
+      "upstream": "apps/web/src/components/chat/WorkLog.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/chat/WorkLog.test.tsx",
+      "upstream": "apps/web/src/components/chat/WorkLog.test.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "imports vitest instead of vite-plus/test"
+    },
+    {
+      "local": "src/components/chat/TimelineSystemDivider.tsx",
+      "upstream": "apps/web/src/components/chat/TimelineSystemDivider.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/chat/MessageCopyButton.tsx",
+      "upstream": "apps/web/src/components/chat/MessageCopyButton.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "lucide-react icons; try/catch clipboard with a status line instead of the anchored toast"
+    },
+    {
+      "local": "src/components/chat/ToolItemDetail.tsx",
+      "upstream": "apps/web/src/components/chat/V2ItemInspector.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "an open tool row's call and output; inline output, 200-line cap"
+    },
+    {
+      "local": "src/components/ChatMarkdown.tsx",
+      "upstream": "apps/web/src/components/ChatMarkdown.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "react-markdown + remark-gfm (+ remark-breaks); no Shiki, Mermaid, raw HTML, file links, images, citations"
+    },
+    {
+      "local": "src/session-logic.ts",
+      "upstream": "apps/web/src/session-logic.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "turn items -> timeline entries / work-log entries; Sightr run-end notices and reasoning durations"
+    },
+    {
+      "local": "src/t3/client-runtime/work-log/presentation.ts",
+      "upstream": "packages/client-runtime/src/work-log/presentation.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "group actions, summaries, failure rules; no T3 MCP tools or tool sources"
+    },
+    {
+      "local": "src/t3/shared/toolActivity.ts",
+      "upstream": "packages/shared/src/toolActivity.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "classifier, read/search labels, path collection"
+    },
+    {
+      "local": "src/t3/shared/orchestrationTiming.ts",
+      "upstream": "packages/shared/src/orchestrationTiming.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "formatDuration only"
+    },
+    {
+      "local": "src/t3/shims/toolOutput.ts",
+      "upstream": "packages/shared/src/toolOutput.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "shim: toolOutputIndicatesFailure only"
+    },
+    {
+      "local": "src/t3/shims/commandLabel.ts",
+      "upstream": "packages/client-runtime/src/work-log/commandLabel.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "shim: first-word program name, no shell tokenizer"
+    },
+    {
+      "local": "src/index.css",
+      "upstream": "apps/web/src/index.css",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "T11 block: chat lane, user-message surface, chat-markdown rules on house tokens"
     }
   ]
 }

@@ -10,6 +10,7 @@ import { __resetToasts } from "@/components/toast";
 import { __resetThreadUndoNotice } from "@/hooks/showThreadUndoNotice";
 import { clearLockRequired } from "@/lib/lock";
 import { __resetSidebarState } from "@/state/sidebar";
+import { __resetTimelineState } from "@/state/timeline";
 import { __resetShellStream } from "@/stream/shell-stream";
 import { __resetStreamStores } from "@/stream/stores";
 import { __resetThreadStream } from "@/stream/thread-stream";
@@ -45,6 +46,7 @@ beforeEach(() => {
   __resetStreamStores();
   __resetUiState();
   __resetSidebarState();
+  __resetTimelineState();
   __resetToasts();
   __resetThreadUndoNotice();
   clearLockRequired();

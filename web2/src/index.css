@@ -258,3 +258,155 @@
     animation: none;
   }
 }
+
+/* ── Timeline (T11) ───────────────────────────────────────────────────────────────────────────────
+   Adapted from T3 Code apps/web/src/index.css @ e3b35d1b ("Chat markdown rendering", the chat lane,
+   the user-message surface). T3's `--muted` is a surface; the house `--muted` is text, so the surface
+   rules below use `--nav` / `--cage` instead. Links use the info colour (`--navy`). */
+:root {
+  --chat-content-max-width: 48rem;
+}
+
+@theme inline {
+  --color-message: var(--accent-soft);
+  --color-message-foreground: var(--ink);
+}
+
+@layer components {
+  .chat-content-lane {
+    margin-inline: auto;
+    width: 100%;
+    min-width: 0;
+    max-width: var(--chat-content-max-width);
+  }
+}
+
+.chat-markdown > :first-child {
+  margin-top: 0;
+}
+.chat-markdown > :last-child {
+  margin-bottom: 0;
+}
+.chat-markdown p,
+.chat-markdown ul,
+.chat-markdown ol,
+.chat-markdown blockquote,
+.chat-markdown pre,
+.chat-markdown .chat-markdown-table-container {
+  margin: 0.65rem 0;
+}
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3,
+.chat-markdown h4,
+.chat-markdown h5,
+.chat-markdown h6 {
+  margin: 1.25rem 0 0.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--contrast-foreground);
+}
+.chat-markdown h1 {
+  font-size: 1.25rem;
+}
+.chat-markdown h2 {
+  font-size: 1.125rem;
+}
+.chat-markdown h3 {
+  font-size: 1rem;
+}
+.chat-markdown h4,
+.chat-markdown h5,
+.chat-markdown h6 {
+  font-size: 0.875rem;
+}
+.chat-markdown h6 {
+  color: var(--contrast-muted-foreground);
+}
+.chat-markdown ul {
+  padding-left: 1.25rem;
+  list-style-type: disc;
+}
+.chat-markdown ol {
+  padding-left: 1.25rem;
+  list-style-type: decimal;
+}
+.chat-markdown ol > li::marker {
+  font-variant-numeric: tabular-nums;
+}
+.chat-markdown ul ul {
+  list-style-type: circle;
+}
+.chat-markdown ul ul ul {
+  list-style-type: square;
+}
+.chat-markdown ol ol {
+  list-style-type: lower-alpha;
+}
+.chat-markdown li + li {
+  margin-top: 0.25rem;
+}
+.chat-markdown li.task-list-item {
+  list-style-type: none;
+}
+.chat-markdown li.task-list-item input[type="checkbox"] {
+  margin: 0 0.35em 0.15em -1.25rem;
+  vertical-align: middle;
+}
+.chat-markdown a {
+  color: var(--navy);
+  text-decoration: none;
+}
+.chat-markdown a:hover,
+.chat-markdown a:focus-visible {
+  text-decoration: underline;
+}
+.chat-markdown blockquote {
+  border-left: 2px solid var(--contrast-border);
+  padding-left: 0.8rem;
+  color: var(--contrast-muted-foreground);
+}
+.chat-markdown table {
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+.chat-markdown th,
+.chat-markdown td {
+  border: 1px solid var(--contrast-border);
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+}
+.chat-markdown :not(pre) > code {
+  border: 1px solid var(--contrast-border);
+  border-radius: 0.375rem;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  background: var(--nav);
+  padding: 0.1rem 0.35rem;
+  color: var(--contrast-foreground);
+  font-size: 0.75rem;
+}
+.chat-markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--contrast-border);
+  border-radius: 0.75rem;
+  background: var(--cage);
+  padding: 0.8rem 0.9rem;
+  font-size: 0.75rem;
+  scrollbar-width: thin;
+}
+.chat-markdown pre code {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+.chat-markdown .chat-markdown-codeblock-header {
+  color: color-mix(in srgb, var(--contrast-foreground) 72%, transparent);
+}
+.chat-markdown .chat-markdown-codeblock pre {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}

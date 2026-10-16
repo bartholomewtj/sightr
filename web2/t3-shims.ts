@@ -8,6 +8,12 @@ import { resolve } from "node:path";
  */
 export const T3_SHIMS: Record<string, string> = {
   "~/lib/windowControlsOverlay": "src/t3/shims/windowControlsOverlay.ts",
+  // T11: T3 package modules the adopted timeline logic imports (adapted ports or stand-ins).
+  "@t3tools/client-runtime/work-log/presentation": "src/t3/client-runtime/work-log/presentation.ts",
+  "@t3tools/client-runtime/work-log/command-label": "src/t3/shims/commandLabel.ts",
+  "@t3tools/shared/orchestrationTiming": "src/t3/shared/orchestrationTiming.ts",
+  "@t3tools/shared/toolActivity": "src/t3/shared/toolActivity.ts",
+  "@t3tools/shared/toolOutput": "src/t3/shims/toolOutput.ts",
 };
 
 /** Vite `resolve.alias` entries: every shim first, then T3's own `~/` root (which is web2's `src`). */

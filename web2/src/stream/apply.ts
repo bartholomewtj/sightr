@@ -23,7 +23,7 @@ import type {
   TurnItem,
 } from "@shared/v2/contracts";
 
-import type { ShellSnapshot, ThreadSnapshot } from "./wire";
+import type { HistoryPage, ShellSnapshot, ThreadSnapshot } from "./wire";
 
 export type DropReason = "malformed" | "stale";
 export type OnDrop = (reason: DropReason, event: unknown) => void;
@@ -286,4 +286,24 @@ export function applyThreadEvent(state: ThreadState, raw: unknown, onDrop?: OnDr
       // Notices (command.rejected, dispatch.failed, thread.create.failed) are surfaced by T12/T14.
       return state;
   }
+}
+
+// ── History (T11) ───────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Prepend an older page (`GET /api/v2/thread/:id/history`) to the open thread. Items and runs the
+ * state already has win (they are newer: a live event may have updated them), so a page never
+ * duplicates or rolls back a row. The cursor moves to the page's `nextCursor`; null means the start of
+ * the thread. The sequence is untouched: history is not part of the event stream.
+ */
+export function mergeHistoryPage(state: ThreadState, page: HistoryPage): ThreadState {
+  const runs = { ...state.runs };
+  const items = { ...state.items };
+  for (const { run, items: runItems } of page.runs) {
+    if (run.threadId !== state.threadId) continue;
+    runs[run.id] ??= run;
+    for (const item of runItems) if (item.threadId === state.threadId) items[item.id] ??= item;
+  }
+  for (const item of page.loose) if (item.threadId === state.threadId) items[item.id] ??= item;
+  return { ...state, runs, items, historyCursor: page.nextCursor };
 }

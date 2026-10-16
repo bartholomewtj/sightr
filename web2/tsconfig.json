@@ -31,6 +31,11 @@
       "@shared/*": ["../shared/*"],
       "@v1/*": ["../web/src/*"],
       "~/lib/windowControlsOverlay": ["./src/t3/shims/windowControlsOverlay.ts"],
+      "@t3tools/client-runtime/work-log/presentation": ["./src/t3/client-runtime/work-log/presentation.ts"],
+      "@t3tools/client-runtime/work-log/command-label": ["./src/t3/shims/commandLabel.ts"],
+      "@t3tools/shared/orchestrationTiming": ["./src/t3/shared/orchestrationTiming.ts"],
+      "@t3tools/shared/toolActivity": ["./src/t3/shared/toolActivity.ts"],
+      "@t3tools/shared/toolOutput": ["./src/t3/shims/toolOutput.ts"],
       "~/*": ["./src/*"]
     }
   },

@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
 import { useEffect, useRef } from "react";
 
+import { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { Button } from "~/components/ui/button";
 import { useLayout } from "@/hooks/useLayout";
 import { useThreadStream } from "@/hooks/useThreadStream";
@@ -54,8 +55,9 @@ function ThreadRouteView() {
         <p className="p-4 text-sm text-muted-foreground">This thread no longer exists on the bridge.</p>
       ) : (
         <>
-          {/* T11 (timeline) fills this region. */}
-          <div data-region="timeline" className="min-h-0 flex-1 overflow-y-auto" />
+          <div data-region="timeline" className="relative min-h-0 flex-1">
+            <MessagesTimeline threadId={threadId} />
+          </div>
           {archived ? (
             // Read-only: the composer (T12) is replaced.
             <div data-region="composer" className="flex items-center gap-3 border-t px-4 py-3 text-sm text-muted-foreground">
