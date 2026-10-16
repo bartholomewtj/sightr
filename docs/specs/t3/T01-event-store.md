@@ -1,0 +1,133 @@
+# T01 — The v2 contracts and the event store
+
+Status: draft (T3-shape series). Depends on: nothing. Read `README.md` in this folder first (Domain, Commands).
+
+## Problem
+
+Sightr v1 has no store. The bridge holds the herd in memory (`StateEngine`) and a few JSON files
+(`activity.json`, `pane-claims.json`). Everything the v2 series needs — shelves, pins, snooze, queued
+messages, runs, turn items, command receipts, a sequence number a client can resume from — must survive a
+bridge restart and be written atomically with the event that caused it. This slice builds that store and the
+shared types. It ingests nothing and serves nothing.
+
+## Change
+
+- **`shared/v2/contracts.ts`** (new). Types only, plus tiny pure helpers. No Node or Bun API, no imports
+  outside `shared/`, so `web2/` and the bridge both load it.
+  - Every type in the README "Domain" section: `Project`, `Thread`, `ThreadStatus`, `Shelf`, `Run`,
+    `TurnItem` (a discriminated union on `type`), `RuntimeRequest`, `QueuedMessage`, `ThreadEvent`.
+  - `THREAD_STATUS_RANK: Record<ThreadStatus, number>` (`approval` 0 … `idle` 5, then `starting` 6: T07 sets it on a pane it is spawning, and it never
+    outranks a real status) and `worstStatus(list)`.
+  - `ThreadCapabilities`, the final set (names owned by T08):
+    `{ hasJournal, canQueueDrain, canInterrupt, interruptKeys?, canSwitchPermissionMode, permissionModes?,
+    canSwitchModel, modelCommand?, canSetEffortLive, effortCommand?, resumeBySession, launchModes }`.
+    The `can*`/`has*` fields and `resumeBySession`, `launchModes` are booleans; the optional ones are string
+    lists or a slash command. There is no steer flag: steer needs `canInterrupt && canQueueDrain`. T02 fills it
+    from an interim table, T06 adds the interrupt rows, T08 moves the table into `shared/agents.ts`.
+  - `Command`, a union on `type` with the README command list, each with `commandId: string`. Additions from
+    later slices, listed here so the union is complete: `queue.resume {threadId}` (T06); the `thread.create`
+    fields in T07; `project.create {cwd, label?}` (T07); `thread.permissionMode.set {threadId, mode, confirmBypass?}`
+    and `thread.model.set {threadId, model}` (T08); `optionIndices?` on `runtime-request.respond` (T17).
+  - `ThreadEventType` and one payload type per event, below.
+  - `Thread.sessionRef` on the wire is `{ kind: "id"; value: string }` only. A `path` ref stays server-side
+    (the rule `toPaneWire` already keeps in `bridge/snapshot-route.ts`). The full ref lives in the
+    `threads.session_ref_json` column.
+  - Additions to the README shapes, all optional unless noted: `Project.closedAt?` (a workspace that closed while
+    archived threads still point at it); `Thread.archiveReason?` (`pane-closed`, `terminal-replaced`,
+    `closed-while-down`, `spawn-failed`); `Thread.permissionMode?` and `Thread.model?` (T08, last confirmed
+    value); `RuntimeRequest.via?: "whistlr"` and `RuntimeRequest.decision?: { thread, run }` (T04);
+    `RuntimeRequest.options[].description?`, `steps?`, `preview?`, `multiSelect?`, `answers?` (T17);
+    `QueuedMessage.state` (`queued | sending | held`, required) and `heldReason?` (T06). The shell snapshot's
+    request summary has no `options`.
+- **Events.** Names fixed here so T02–T05 agree: `project.upserted`, `project.closed`,
+  `thread.created`, `thread.updated` (a patch of title, harness, status, unreadDone, lastActivityAt,
+  capabilities, sessionRef, terminalId, permissionMode, model), `thread.shelf-changed {shelf, snoozeUntil?, pinOrder?}`, `thread.archived`,
+  `run.started`, `run.ended`, `turn-item.updated` (upsert by id), `runtime-request.updated`,
+  `queue.updated {messages}`, `command.rejected {reason}`. Later slices use these names, extend one and add two:
+  `queue.updated` also carries `change` (`added | sent | held | resumed | reordered | edited | cancelled`) and
+  `reason?` (T06); `dispatch.failed {reason, textDelivered?, queuedId?}` (T06);
+  `thread.create.failed {threadId, stage, message}` (T07). A permission-mode or model change is a
+  `thread.updated` patch (T08), and an interrupted run is `run.ended` with `status: "interrupted"` (T03).
+- **`bridge/threads/store.ts`** (new). `bun:sqlite`, one file at `join(cfg.stateDir, "threads.sqlite")`.
+  - `openThreadStore(path, opts?: { now?, newId? })`. `":memory:"` is allowed for tests.
+  - Pragmas on open: `journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON`, `busy_timeout=2000`.
+  - **Tables** (all created by migration 1): `meta(key, value)`; `events(sequence INTEGER PRIMARY KEY
+    AUTOINCREMENT, thread_id, command_id, type, payload_json, ts)` with an index on `(thread_id, sequence)`;
+    `projects`; `threads` (the Thread fields, plus `terminal_id`, `title_source` `herd|user`,
+    `session_ref_json`, unique on `(pane_id, terminal_id)`); `runs`; `turn_items(id PRIMARY KEY, thread_id,
+    run_id, position, type, body_json, updated_sequence)` with an index on `(thread_id, position)`;
+    `runtime_requests` (adds `bound_text`, never sent to clients); `queued_messages(id, thread_id, text,
+    attachments_json, position, mode, state, held_reason, created_at)` (T06 uses it);
+    `command_receipts(command_id PRIMARY KEY, type, sequence, result_json, ts)`;
+    `journal_offsets(thread_id PRIMARY KEY, path, offset, size, mtime_ms, session_key)`.
+  - **Migrations.** `migrations(version, applied_at)`. An ordered array of `{ version, up(db) }`, each run in
+    its own transaction. A database whose highest version is newer than the code's refuses to open
+    (`StoreTooNewError`); the bridge then leaves v2 off and says why. `PRAGMA user_version` mirrors it.
+  - **Corrupt file.** If open or `PRAGMA quick_check` fails, rename to `threads.sqlite.corrupt-<ts>`, start
+    empty, and log once. The projection is rebuilt from the herd by T02; history and shelves are lost, which
+    is the accepted cost.
+  - **Append API.** `store.append(drafts: EventDraft[], opts?: { commandId?, receipt? }): { first: number; last: number }`.
+    One `BEGIN IMMEDIATE` transaction: insert each event, apply its projection with `applyEvent(tx, event)`
+    (a switch on `type`, the only code that writes projection tables), write the receipt row when given,
+    commit. All or none. After commit, call the `onCommitted(events)` listeners (T05 fans out from this).
+    A throw in a listener never rolls anything back.
+  - **Reads.** `snapshotShell()`, `snapshotThread(id, { runs })`, `eventsAfter(sequence, { threadId?, limit })`,
+    `receipt(commandId)`, `lastSequence()`, `minSequence()`, `offsets.get/set`. Plain objects, no ORM.
+  - **Retention** (`store.prune(now)`, called hourly by the bridge and once at open): keep events newer than
+    7 days or the newest 50 000, whichever is more; `meta.min_sequence` records the oldest kept sequence so a
+    replay request below it is answered with a snapshot. Delete receipts older than 7 days. Cap `turn_items`
+    at 5 000 per thread (oldest first, never an item of an open run). Delete threads archived over 90 days
+    ago, with their items and runs. Run `PRAGMA wal_checkpoint(TRUNCATE)` after a prune. If the main file
+    passes 256 MB after pruning, log a warning; nothing else changes.
+- **`bridge/threads/decide.ts`** (new). `decide(state: DecideState, command: Command, ctx: { now: number; newId: () => string }): Decision`.
+  Pure: no I/O, no clock, no random. `DecideState` is what the command needs (the thread row, the project
+  row, `paneAlive`). `Decision` is `{ ok: true; events: EventDraft[]; result?: unknown } | { ok: false; reason: string; code: "not_found" | "invalid" | "conflict" }`.
+  This slice implements the commands that only change the projection: `thread.rename` (sets
+  `title_source = user`), `pin`/`unpin`, `snooze` (rejects a past time), `settle`/`unsettle`,
+  `archive`/`unarchive` (unarchive is refused when `paneAlive` is false), `markRead`/`markUnread`,
+  `project.rename`. Every other command type returns `{ ok: false, code: "invalid", reason: "unsupported" }`
+  here; T05 routes those to their effect handlers (T06–T08).
+- **State directory.** Reuse `Config.stateDir` (`resolveStateDir` in `bridge/beacon/paths.ts`:
+  `HERDR_PLUGIN_STATE_DIR`, then `SIGHTR_STATE_DIR`, then `~/.local/state/sightr`). `bridge/index.ts` already
+  creates the directory at mode 0700 before anything opens; the new file is created by SQLite, so chmod it to
+  0600 after open on platforms where that is meaningful and ignore the error on Windows.
+- **`bridge/index.ts`.** Open the store after `mkdir(cfg.stateDir)`, close it in `shutdown`. `SIGHTR_V2=0`
+  skips opening. T02 and T05 take the store from here; nothing else in this slice reads it.
+
+## Invariants
+
+- The sequence is global, strictly increasing, and never reused (AUTOINCREMENT). Gaps are allowed.
+- An event and its projection change commit together or not at all. No code outside `applyEvent` writes a
+  projection table.
+- Replaying every event from an empty database reaches the same projection (a test pins this for the
+  event types this slice defines).
+- `decide()` never reads a clock, a random source or the database.
+- `bound_text` and full session refs never appear in any `snapshot*` return value.
+- The store file never leaves `cfg.stateDir`; no path comes from a request.
+
+## Tests
+
+Temp directory per test (`mkdtemp`), or `:memory:` where the file does not matter.
+
+- **Migrations:** a fresh open reaches the latest version; reopening is a no-op; a database stamped with a
+  higher version throws `StoreTooNewError`; a truncated file is renamed aside and replaced.
+- **Append:** a batch gets consecutive sequences; a failing projection (a forced constraint error) leaves no
+  event row; a duplicate `commandId` receipt makes the second append throw and write nothing.
+- **Replay equivalence:** append a scripted event list, dump the projection, rebuild into a second store from
+  `eventsAfter(0)`, compare.
+- **Reads:** `eventsAfter` honours `threadId` and `limit`; `minSequence` moves after `prune`.
+- **Retention:** with fake `now`, old events, receipts, items over the cap and 90-day archived threads go;
+  an open run's items stay.
+- **decide():** table-driven, one row per command including each rejection; a test calls it twice with the
+  same input and compares deep equal.
+- **Contracts:** `worstStatus` order; the `Command` and `ThreadEventType` unions list every name in this spec
+  (a compile-time exhaustiveness check).
+- **Typecheck:** `shared/v2/contracts.ts` imports nothing, so the root typecheck passes before the web install.
+
+## Notes for the planner
+
+- Pruning and the 256 MB warning are the cuttable part. If the run is long, ship migrations, append, reads
+  and `decide()`, and leave `prune` as a follow-up; nothing in T02–T05 needs it to work.
+- `Thread.sessionRef` is narrowed to id refs on the wire (README lists it unqualified). Say so if that is wrong.
+- `bun:sqlite` needs no dependency, but `bun test` for `./bridge` must run on a Bun with it. Bun is already
+  the runtime, so this holds.
