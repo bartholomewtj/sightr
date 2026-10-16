@@ -538,7 +538,7 @@ describe("ingestor", () => {
     expect(store.getThread(t1.id)?.shelf).toBe("active");
 
     const events = poll(snap([agent("w1:p2")]));
-    expect(types(events)).toEqual(["project.upserted", "run.ended", "runtime-request.updated", "thread.archived"]);
+    expect(types(events)).toEqual(["project.upserted", "run.ended", "runtime-request.updated", "turn-item.updated", "thread.archived"]);
     expect(store.getThread(t1.id)).toMatchObject({ shelf: "archived", archiveReason: "pane-closed" });
     expect(store.openRuns()).toEqual([]);
     expect(store.pendingRequests()).toEqual([]);

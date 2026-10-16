@@ -16,6 +16,7 @@ import type { AgentView, EngineSnapshot, StateEngine } from "../state-engine.ts"
 import { capabilitiesFor, SHELL_HARNESS } from "./capabilities.ts";
 import { MAX_TITLE_LENGTH } from "./decide.ts";
 import type { EventDraft, ServerThread, ServerThreadPatch } from "./events.ts";
+import { requestEvents } from "./request-items.ts";
 import type { ThreadStore } from "./store.ts";
 
 // Herd ingest (T02): herdr workspaces become projects, panes become threads. The engine's snapshot
@@ -190,11 +191,7 @@ export function diffHerd(snap: EngineSnapshot, projection: HerdProjection, ctx: 
     }
     for (const request of projection.pendingRequests) {
       if (request.threadId !== thread.id) continue;
-      threadEvents.push({
-        type: "runtime-request.updated",
-        threadId: thread.id,
-        payload: { request: { ...request, status: "expired", updatedAt: at } },
-      });
+      threadEvents.push(...requestEvents({ ...request, status: "expired", updatedAt: at }));
     }
     threadEvents.push({ type: "thread.archived", threadId: thread.id, payload: { reason, at } });
     next.set(thread.id, { ...next.get(thread.id)!, shelf: "archived", archivedAt: at, archiveReason: reason, updatedAt: at });

@@ -25,6 +25,12 @@ export interface PermissionRegion {
 const QUESTION = /Run this command\?/i;
 const RUN_ONCE = /Run \(once\)/i;
 const SKIP = /Skip\b/i;
+
+/** The card's deny row ("Skip"), by label. dialog-kit marks it destructive. */
+export function isSkipLabel(label: string): boolean {
+  return SKIP.test(label);
+}
+
 /** Right-aligned footer Cursor paints under the card when the session has dirty files. */
 const REVIEW_HINT = /ctrl\+r to review changed files/i;
 const MAX_LOOKBACK = 16;

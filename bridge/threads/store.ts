@@ -2,14 +2,17 @@ import { Database } from "bun:sqlite";
 import { chmodSync, existsSync, renameSync, statSync } from "node:fs";
 
 import type {
+  HistoryPage,
   Project,
   QueuedMessage,
   Run,
   RuntimeRequest,
   RuntimeRequestSummary,
+  ShellSnapshot,
   Thread,
   ThreadEvent,
   ThreadEventType,
+  ThreadSnapshot,
   TurnItem,
 } from "../../shared/v2/contracts.ts";
 import type { AgentSessionRef } from "../journal/types.ts";
@@ -631,23 +634,31 @@ export interface AppendOptions {
   offsets?: JournalOffset[];
 }
 
-export interface ShellSnapshot {
-  sequence: number;
-  projects: Project[];
-  threads: Thread[];
-  /** Pending requests only, without options. */
-  requests: RuntimeRequestSummary[];
+export interface EventsAfterOptions {
+  threadId?: string;
+  /** Only these event types. */
+  types?: readonly ThreadEventType[];
+  limit?: number;
 }
 
-export interface ThreadSnapshot {
-  sequence: number;
-  thread: Thread;
-  runs: Run[];
-  items: TurnItem[];
-  requests: RuntimeRequest[];
-  queue: QueuedMessage[];
-  /** Opaque cursor for older items (base64 of the oldest returned item's ordinal), or null. */
-  historyCursor: string | null;
+/** How many loose items (no run) one history page holds when no run is older than the cursor. */
+export const LOOSE_PAGE_ITEMS = 200;
+
+/** The opaque history cursor: base64 of an item position. */
+export function encodeHistoryCursor(position: number): string {
+  return btoa(String(position));
+}
+
+/** The position a history cursor names, or null for anything this bridge did not make. */
+export function decodeHistoryCursor(cursor: string): number | null {
+  let raw: string;
+  try {
+    raw = atob(cursor);
+  } catch {
+    return null;
+  }
+  if (!/^\d{1,15}$/.test(raw)) return null;
+  return Number(raw);
 }
 
 export interface PruneResult {
@@ -675,9 +686,9 @@ export interface ThreadStore {
   snapshotShell(): ShellSnapshot;
   snapshotThread(id: string, opts?: { runs?: number }): ThreadSnapshot | null;
   /** Client-form events after `sequence`, oldest first. */
-  eventsAfter(sequence: number, opts?: { threadId?: string; limit?: number }): ThreadEvent[];
+  eventsAfter(sequence: number, opts?: EventsAfterOptions): ThreadEvent[];
   /** Server-form events (bound text, path refs) for replay and tests. Never send these to a client. */
-  storedEventsAfter(sequence: number, opts?: { threadId?: string; limit?: number }): StoredEvent[];
+  storedEventsAfter(sequence: number, opts?: EventsAfterOptions): StoredEvent[];
   receipt(commandId: string): CommandReceipt | null;
   lastSequence(): number;
   /** The oldest sequence `prune` kept, or 0 when nothing has been pruned. */
@@ -692,6 +703,10 @@ export interface ThreadStore {
   openRuns(): Run[];
   /** Every `pending` runtime request, with options (T02 reads the kind and expires them). */
   pendingRequests(): RuntimeRequest[];
+  /** One runtime request by id, with options (T04 respond). */
+  getRequest(id: string): RuntimeRequest | null;
+  /** The screen text a request was bound to. Server-side only; never send it to a client. */
+  requestBoundText(id: string): string | null;
   getRun(id: string): Run | null;
   /** A thread's newest `limit` runs (default all), oldest first. */
   listRuns(threadId: string, limit?: number): Run[];
@@ -702,6 +717,13 @@ export interface ThreadStore {
   recentItems(threadId: string, limit: number): TurnItem[];
   /** The items attributed to `runId`, in position order. */
   itemsForRun(runId: string): TurnItem[];
+  /**
+   * One page of a thread's older history: the newest `limit` runs with items before position
+   * `before` (all positions when null), every item from the first of those on, and the cursor for the
+   * page before it. Once no older item belongs to a run, the page also takes the loose items below it
+   * (`LOOSE_PAGE_ITEMS` at a time).
+   */
+  historyPage(threadId: string, before: number | null, limit: number): HistoryPage;
   offsets: {
     get(threadId: string): JournalOffset | null;
     set(offset: JournalOffset): void;
@@ -795,19 +817,23 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
     return written;
   });
 
-  const selectEvents = (sequence: number, o: { threadId?: string; limit?: number } = {}): StoredEvent[] => {
-    const limit = o.limit ?? -1;
-    const rows =
-      o.threadId === undefined
-        ? db
-            .query<EventRow, [number, number]>("SELECT * FROM events WHERE sequence > ? ORDER BY sequence LIMIT ?")
-            .all(sequence, limit)
-        : db
-            .query<EventRow, [string, number, number]>(
-              "SELECT * FROM events WHERE thread_id = ? AND sequence > ? ORDER BY sequence LIMIT ?",
-            )
-            .all(o.threadId, sequence, limit);
-    return rows.map(eventFromRow);
+  const selectEvents = (sequence: number, o: EventsAfterOptions = {}): StoredEvent[] => {
+    const where = ["sequence > ?"];
+    const params: (string | number)[] = [sequence];
+    if (o.threadId !== undefined) {
+      where.push("thread_id = ?");
+      params.push(o.threadId);
+    }
+    if (o.types !== undefined) {
+      if (o.types.length === 0) return [];
+      where.push(`type IN (${o.types.map(() => "?").join(", ")})`);
+      params.push(...o.types);
+    }
+    params.push(o.limit ?? -1);
+    return db
+      .query<EventRow, (string | number)[]>(`SELECT * FROM events WHERE ${where.join(" AND ")} ORDER BY sequence LIMIT ?`)
+      .all(...params)
+      .map(eventFromRow);
   };
 
   const requestsFor = (threadId: string, pendingOnly: boolean): RuntimeRequest[] =>
@@ -899,7 +925,7 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
             .query<QueuedRow, [string]>("SELECT * FROM queued_messages WHERE thread_id = ? ORDER BY position")
             .all(id)
             .map(queuedFromRow),
-          historyCursor: (older?.n ?? 0) > 0 ? btoa(String(from)) : null,
+          historyCursor: (older?.n ?? 0) > 0 ? encodeHistoryCursor(from) : null,
         };
       })();
     },
@@ -969,6 +995,18 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
         .map((r) => JSON.parse(r.body_json) as RuntimeRequest);
     },
 
+    getRequest(id) {
+      const row = db.query<{ body_json: string }, [string]>("SELECT body_json FROM runtime_requests WHERE id = ?").get(id);
+      return row ? (JSON.parse(row.body_json) as RuntimeRequest) : null;
+    },
+
+    requestBoundText(id) {
+      return (
+        db.query<{ bound_text: string | null }, [string]>("SELECT bound_text FROM runtime_requests WHERE id = ?").get(id)
+          ?.bound_text ?? null
+      );
+    },
+
     getRun(id) {
       const row = db.query<RunRow, [string]>("SELECT * FROM runs WHERE id = ?").get(id);
       return row ? runFromRow(row) : null;
@@ -1009,6 +1047,67 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
         .query<{ body_json: string }, [string]>("SELECT body_json FROM turn_items WHERE run_id = ? ORDER BY position")
         .all(runId)
         .map((r) => JSON.parse(r.body_json) as TurnItem);
+    },
+
+    historyPage(threadId, before, limit) {
+      return db.transaction((): HistoryPage => {
+        const below = before ?? Number.MAX_SAFE_INTEGER;
+        const runIds = db
+          .query<{ run_id: string }, [string, number, number]>(
+            `SELECT run_id FROM turn_items WHERE thread_id = ? AND position < ? AND run_id IS NOT NULL
+             GROUP BY run_id ORDER BY max(position) DESC LIMIT ?`,
+          )
+          .all(threadId, below, limit)
+          .map((r) => r.run_id);
+        let from =
+          runIds.length > 0
+            ? (db
+                .query<{ p: number | null }, (string | number)[]>(
+                  `SELECT min(position) AS p FROM turn_items WHERE position < ? AND run_id IN (${runIds.map(() => "?").join(", ")})`,
+                )
+                .get(below, ...runIds)?.p ?? below)
+            : below;
+        const olderRunItem = db
+          .query<{ n: number }, [string, number]>(
+            "SELECT count(*) AS n FROM turn_items WHERE thread_id = ? AND position < ? AND run_id IS NOT NULL",
+          )
+          .get(threadId, from);
+        if ((olderRunItem?.n ?? 0) === 0) {
+          // Nothing but loose items is older: take them into this page (the newest LOOSE_PAGE_ITEMS).
+          from =
+            db
+              .query<{ p: number | null }, [string, number, number]>(
+                `SELECT min(position) AS p FROM (SELECT position FROM turn_items WHERE thread_id = ? AND position < ?
+                 ORDER BY position DESC LIMIT ?)`,
+              )
+              .get(threadId, from, LOOSE_PAGE_ITEMS)?.p ?? from;
+        }
+        const items = db
+          .query<{ body_json: string; run_id: string | null }, [string, number, number]>(
+            "SELECT body_json, run_id FROM turn_items WHERE thread_id = ? AND position >= ? AND position < ? ORDER BY position",
+          )
+          .all(threadId, from, below);
+        const byRun = new Map<string, TurnItem[]>();
+        const loose: TurnItem[] = [];
+        for (const row of items) {
+          const item = JSON.parse(row.body_json) as TurnItem;
+          const run = row.run_id === null ? null : store.getRun(row.run_id);
+          if (!run) {
+            loose.push(item);
+            continue;
+          }
+          const list = byRun.get(run.id);
+          if (list) list.push(item);
+          else byRun.set(run.id, [item]);
+        }
+        const runs = [...byRun.entries()]
+          .map(([id, list]) => ({ run: store.getRun(id)!, items: list }))
+          .sort((a, b) => a.run.ordinal - b.run.ordinal);
+        const older = db
+          .query<{ n: number }, [string, number]>("SELECT count(*) AS n FROM turn_items WHERE thread_id = ? AND position < ?")
+          .get(threadId, from);
+        return { runs, loose, nextCursor: (older?.n ?? 0) > 0 ? encodeHistoryCursor(from) : null };
+      })();
     },
 
     offsets: {
@@ -1091,4 +1190,4 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
   return store;
 }
 
-export type { EventDraft, ServerEventPayloads, StoredEvent };
+export type { EventDraft, ServerEventPayloads, ShellSnapshot, StoredEvent, ThreadSnapshot };

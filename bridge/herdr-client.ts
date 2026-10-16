@@ -322,6 +322,21 @@ export class HerdrClient {
   }
 
   /**
+   * The server's version string (`0.9.0-preview…`), read from `session.snapshot`: herdr 0.9.0 has no
+   * lighter call that names it. A server that predates `session.snapshot` rejects it as an "unknown
+   * variant"; that is reported as `"<0.7"`, below any floor. Any other failure (unreachable, timeout)
+   * throws, so the caller can tell "too old" from "not answering".
+   */
+  async serverVersion(): Promise<string> {
+    try {
+      return (await this.sessionSnapshot()).version;
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("unknown variant")) return "<0.7";
+      throw err;
+    }
+  }
+
+  /**
    * Open a LONG-LIVED `events.subscribe` stream. Unlike every other method here (one-shot), this
    * connection stays open: after the ack, each line is an event. It exists ONLY to poke re-polls —
    * callers must not treat events as state. `onDown` fires exactly once when the stream ends for any

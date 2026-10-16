@@ -23,6 +23,10 @@ import { createHerdIngestor } from "./threads/herd-ingest.ts";
 import { buildJournalRegistry } from "./journal/registry.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import { createJournalIngestor, createThreadWatchers } from "./threads/journal-ingest.ts";
+import { createRequestIngestor } from "./threads/request-ingest.ts";
+import { createPaneQueue } from "./pane-queue.ts";
+import { createV2Gate } from "./threads/herdr-floor.ts";
+import { respondEffect } from "./threads/v2-routes.ts";
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
 // loadConfig throws on a config that would be unsafe to serve (a non-loopback bind). Print the
@@ -46,6 +50,7 @@ await mkdir(cfg.stateDir, { recursive: true, mode: 0o700 });
 // A database a newer bridge wrote (or any other open failure) leaves v2 off; v1 is unaffected.
 // T02 and T05 take the store from here.
 let threadStore: ThreadStore | null = null;
+let v2DisabledReason = "v2 is off on this bridge (SIGHTR_V2=0)";
 if (process.env.SIGHTR_V2?.trim() !== "0") {
   try {
     threadStore = openThreadStore(join(cfg.stateDir, STORE_FILE));
@@ -53,6 +58,7 @@ if (process.env.SIGHTR_V2?.trim() !== "0") {
   } catch (err) {
     const why = err instanceof StoreTooNewError ? err.message : `could not open it: ${(err as Error).message}`;
     console.warn(`[threads] v2 is off: ${why}`);
+    v2DisabledReason = `v2 is off on this bridge: ${err instanceof StoreTooNewError ? err.message : "the thread store could not be opened"}`;
     threadStore = null;
   }
 }
@@ -144,7 +150,6 @@ const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots, cfg.sta
 // v2 herd ingest: workspaces → projects, panes → threads. Subscribed after the activity bookkeeping
 // above, so the ledger already holds this poll's transitions and first sightings when it reads them.
 const herdIngestor = threadStore ? createHerdIngestor({ store: threadStore, engine, activity, journals }) : null;
-herdIngestor?.start();
 
 // v2 journal ingest: harness logs → turn items, herdr status → runs. It reads a thread's log only
 // while the thread is working or a client watches it (T05 adds and removes watchers).
@@ -153,7 +158,33 @@ const threadWatchers = createThreadWatchers();
 const journalIngestor = threadStore
   ? createJournalIngestor({ store: threadStore, engine, herdr, journals, transcripts, watchers: threadWatchers })
   : null;
-journalIngestor?.start();
+
+// One pane write queue for the process: the routes' writes, the v2 request reads and the v2 respond
+// all take turns on it, so a read never lands between a reply's steps.
+const paneWrites = createPaneQueue();
+
+// v2 request ingest: a waiting pane's dialog becomes a runtime request, answered by its bound keys.
+// Subscribed after the herd ingest, so it reads each poll's statuses. T05 routes
+// `runtime-request.respond` to `requestIngestor.respond`.
+const requestIngestor = threadStore
+  ? createRequestIngestor({ store: threadStore, engine, herdr, queue: paneWrites, cfg, audit })
+  : null;
+
+// v2 needs herdr >= 0.9.0 (T05). The version is asked once: right after the start-up ping below, or,
+// if herdr is not answering then, when the link first comes up. Below the floor nothing ingests and
+// every /api/v2/* route answers 503 with the reason; v1 is unaffected. A restart re-checks.
+const v2Gate = createV2Gate();
+if (threadStore) {
+  v2Gate.whenOk(() => {
+    console.log(`[threads] v2 on (herdr ${v2Gate.version()})`);
+    herdIngestor?.start();
+    journalIngestor?.start();
+    requestIngestor?.start();
+  });
+  engine.onLink((status) => {
+    if (status === "connected" && v2Gate.state() === "pending") void v2Gate.check(herdr);
+  });
+}
 
 // Background notifications on lifecycle transitions (foreground toasts are computed client-side by
 // diffing snapshots). The whole herd shares one notification slot (HERD_TAG).
@@ -177,6 +208,8 @@ if (!(await herdr.ping())) {
     `[bridge] cannot reach Herdr socket at ${cfg.socketPath} yet — ` +
       `will keep retrying on the poll loop. Is the Herdr server running?`,
   );
+} else if (threadStore) {
+  await v2Gate.check(herdr);
 }
 
 // Prune uploaded images past their TTL: once at startup, then on an interval. Uploads are single-use
@@ -198,6 +231,15 @@ const server = startServer({
   onEvents: (events) => { snapshotEvents = events; },
   journals,
   transcripts,
+  paneWrites,
+  v2: {
+    store: threadStore,
+    disabledReason: v2DisabledReason,
+    gate: v2Gate,
+    effects: requestIngestor ? { "runtime-request.respond": respondEffect(requestIngestor.respond) } : {},
+    watchers: threadWatchers,
+    herdIngestor,
+  },
 });
 
 let stopping = false;
@@ -211,6 +253,7 @@ const shutdown = async () => {
   engine.stop();
   herdIngestor?.stop();
   journalIngestor?.stop();
+  requestIngestor?.stop();
   poker.stop();
   // Retract anything still on the lock screen — nothing live stands behind it once we exit.
   notifications.clearAll();
