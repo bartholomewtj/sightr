@@ -191,12 +191,13 @@ const CLAUDE_CAPABILITIES: AgentCapabilities = {
   // it allowed (seen in captures, not cycled here). `dontAsk` is not in the cycle.
   canSwitchPermissionMode: true,
   permissionModes: ["manual", "acceptEdits", "plan", "auto", "bypassPermissions"],
-  // Live 16 Oct 2026: `/model <alias>` switches with no picker.
-  canSwitchModel: true,
+  // Off by Bart's call (17 Oct 2026). Live 16 Oct 2026 (2.1.301): `/model <alias>` switches with no picker,
+  // but it also writes the choice to the user's settings.json as the default for every new Claude
+  // session. Pick the model at spawn instead (`--model` does not persist).
+  canSwitchModel: false,
   modelCommand: "/model",
-  // Live 16 Oct 2026: `/effort <level>` takes the level (mid-conversation it asks to confirm, which
-  // arrives as a runtime request). No command sends it yet; the flag is reserved.
-  canSetEffortLive: true,
+  // Off for the same reason: `/effort` may persist like `/model`. No command sends it yet.
+  canSetEffortLive: false,
   effortCommand: "/effort",
   resumeBySession: true,
 };

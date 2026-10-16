@@ -13,7 +13,7 @@ type Row = Pick<
 >;
 
 const TABLE: Record<string, Row> = {
-  claude: { canInterrupt: true, canSwitchPermissionMode: true, canSwitchModel: true, canSetEffortLive: true, hasJournal: true, resumeBySession: true, launchModes: true },
+  claude: { canInterrupt: true, canSwitchPermissionMode: true, canSwitchModel: false, canSetEffortLive: false, hasJournal: true, resumeBySession: true, launchModes: true },
   pi: { canInterrupt: false, canSwitchPermissionMode: false, canSwitchModel: false, canSetEffortLive: false, hasJournal: true, resumeBySession: true, launchModes: true },
   grok: { canInterrupt: false, canSwitchPermissionMode: false, canSwitchModel: false, canSetEffortLive: false, hasJournal: true, resumeBySession: true, launchModes: true },
   cursor: { canInterrupt: false, canSwitchPermissionMode: false, canSwitchModel: false, canSetEffortLive: false, hasJournal: true, resumeBySession: false, launchModes: false },

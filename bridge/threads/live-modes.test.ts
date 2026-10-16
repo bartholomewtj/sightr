@@ -317,9 +317,20 @@ describe("thread.permissionMode.set", () => {
 
 // ── thread.model.set ─────────────────────────────────────────────────────────────────────────────
 
+// Claude's live switch is off (`/model` also rewrites the user's global default), so the mechanism is
+// exercised with a harness that has it on.
+const MODEL_CAPS = { ...CLAUDE_CAPS, canSwitchModel: true };
+const modelRig = (o: Parameters<typeof rig>[0] = {}) => rig({ caps: MODEL_CAPS, ...o });
+
 describe("thread.model.set", () => {
-  test("types `/model <id>` through the guarded send and submits it", async () => {
+  test("is off for Claude: refused with nothing typed", async () => {
     const r = rig();
+    expect(await r.run(setModel("sonnet"))).toMatchObject({ ok: false, code: "unsupported", error: "model-unsupported" });
+    expect(r.pane.submitted).toEqual([]);
+  });
+
+  test("types `/model <id>` through the guarded send and submits it", async () => {
+    const r = modelRig();
     expect(await r.run(setModel("sonnet"))).toMatchObject({ ok: true });
     expect(r.pane.submitted).toEqual(["/model sonnet"]);
     // Requested only: the model field waits for a later source.
@@ -328,7 +339,7 @@ describe("thread.model.set", () => {
   });
 
   test("refuses a bad id", async () => {
-    const r = rig();
+    const r = modelRig();
     for (const bad of ["", "-rf", "a b", "x;y", "a".repeat(81), "/model"]) {
       expect(await r.run(setModel(bad))).toMatchObject({ ok: false, status: 400, error: "invalid-model" });
     }
@@ -341,13 +352,13 @@ describe("thread.model.set", () => {
   });
 
   test("refuses a busy thread", async () => {
-    const r = rig({ status: "working" });
+    const r = modelRig({ status: "working" });
     expect(await r.run(setModel("sonnet"))).toMatchObject({ ok: false, error: "thread-busy" });
     expect(r.pane.submitted).toEqual([]);
   });
 
   test("the guard applies: no composer, nothing typed", async () => {
-    const r = rig();
+    const r = modelRig();
     r.pane.dialog = true;
     expect(await r.run(setModel("sonnet"))).toMatchObject({ ok: false, error: "blocked" });
     expect(r.pane.submitted).toEqual([]);
