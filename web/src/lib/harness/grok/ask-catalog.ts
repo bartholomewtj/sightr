@@ -4,7 +4,7 @@
 // they are not in the Herdr buffer and a screen parse cannot invent them. The journal still has the
 // full question. This module decides whether that payload is THIS card. It does not read the pane.
 
-import type { TranscriptAsk, TranscriptAskQuestion, TranscriptEntry } from "@shared/wire";
+import type { TranscriptAsk, TranscriptAskQuestion, TranscriptEntry } from "../../../../../shared/wire";
 
 export interface AskVisibleOption {
   /** 1-based ordinal. Radio key `1` is 1, `a` is 10. */

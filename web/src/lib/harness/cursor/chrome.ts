@@ -3,7 +3,7 @@
 // paints under ask cards, but typing is refused so phone sends never type `s` or `k`); detectors in
 // those modules must win before stripChrome peels anything. Live-probed 2026-09-12.
 
-import { PROMPT_TAIL_LINES } from "@shared/limits";
+import { PROMPT_TAIL_LINES } from "../../../../../shared/limits";
 import type { StyledLine } from "../../blocks";
 import { lastNonBlankIndex, rstrip } from "../scan";
 import { findAutocompleteRun } from "./autocomplete";

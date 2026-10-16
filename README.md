@@ -343,10 +343,13 @@ pokes the SSE clients when Herdr reports a change. On the host, the snapshot pol
 truth: the bridge only relaxes to `SIGHTR_POLL_IDLE_MS` while that stream is healthy and every agent
 is resting. A missed poke costs one host poll interval. For Cursor and Antigravity, whose panes Herdr
 calls done while a dialog waits, each poll also reads the visible screen of resting panes and
-publishes `blocked` when a dialog is there. A reply is
-`POST /api/pane/...`: the access layer checks peer address, Host, Origin, the Tailscale identity
-header and the device allowlist, the write is queued per pane, sent over the Herdr socket as
-`pane.send_text` plus the submit keys, and appended to the audit log.
+publishes `blocked` when a dialog is there. A reply is one
+`POST /api/pane/.../send`: the access layer checks peer address, Host, Origin, the Tailscale identity
+header and the device allowlist. The bridge then runs the reply guard inside the pane's write queue
+(`web/src/lib/guarded-send.ts`, spec 24). It reads the pane, clears a stranded draft, types with
+`pane.send_text`, reads until the text shows, sends the submit keys, and reads until the box clears.
+Nothing is typed into a screen with no input box, and Enter goes only after the text is seen. The
+outcome is appended to the audit log.
 
 **Where things live.**
 

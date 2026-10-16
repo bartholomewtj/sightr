@@ -1,5 +1,5 @@
 import * as api from "@/lib/api";
-import { sendGuardedReply } from "@/lib/actions";
+import { sendReplyOnBridge } from "@/lib/actions";
 const TUI_SETTLE_MS = 350;
 interface SendResult {
   ok: boolean;
@@ -21,7 +21,7 @@ interface SendDeps {
   onStart: () => void;
   onKeysSent: () => void;
   isDraft: boolean;
-  sendReply?: typeof sendGuardedReply;
+  sendReply?: typeof sendReplyOnBridge;
   sendKeys?: typeof api.sendKeys;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -87,7 +87,7 @@ export async function runComposerSend(
     onStart,
     onKeysSent,
   } = deps;
-  const sendReply = deps.sendReply ?? sendGuardedReply;
+  const sendReply = deps.sendReply ?? sendReplyOnBridge;
   const sendKeys = deps.sendKeys ?? api.sendKeys;
   const sleep =
     deps.sleep ??

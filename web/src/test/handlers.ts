@@ -153,6 +153,10 @@ export const handlers = [
     return HttpResponse.json({ ok: true });
   }),
   http.post(/\/api\/pane\/[^/]+\/keys$/, () => HttpResponse.json({ ok: true })),
+  // The bridge-side guarded send (spec 24) answers 404 here, as an older bridge does, so composer
+  // tests keep exercising the guard step by step through the browser fallback. Tests of the bridge
+  // path override this.
+  http.post(/\/api\/pane\/[^/]+\/send$/, () => new HttpResponse("not found", { status: 404 })),
   http.post(/\/api\/pane\/[^/]+\/close$/, () => HttpResponse.json({ ok: true })),
   http.post(/\/api\/pane\/[^/]+\/rename$/, () => HttpResponse.json({ ok: true })),
   http.post("/api/tab", () =>

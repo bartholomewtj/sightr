@@ -7,7 +7,7 @@ import { rstrip } from "../scan";
 // status inside it as separate styled segments — probed on `pane.read format:ansi`, 2026-08-21).
 // Pure functions, no I/O, no React.
 
-import { GROK_BOXED_PROMPT } from "@shared/grok-prompt";
+import { GROK_BOXED_PROMPT } from "../../../../../shared/grok-prompt";
 import { isBlank, lineText } from "../../blocks";
 
 // `lineText` / `isBlank` are properties of a StyledLine, not of any grammar, so they live in the
