@@ -40,20 +40,27 @@ These are not "later" items. Raise one only as a deliberate design change, in `s
 ## The loop
 
 ```
-weekly check ──► one GitHub issue ──► /t3-sync triage ──► sync slice spec (PR) ──► build (one run) ──► release
-   (cloud)        label t3-sync        report + gate       docs/specs/t3/Tnn         ledger bumped
+weekly review ──► one GitHub issue ──► /t3-sync confirm ──► sync slice spec (PR) ──► build (one run) ──► release
+ (cloud, Opus)    review + recs         gate on the PC       docs/specs/t3/Tnn         ledger bumped
 ```
 
-1. **Check (weekly, automatic).** Each Monday at 8:00 the cloud routine "sightr t3-sync weekly" runs
-   `bun scripts/t3-upstream.ts --ref main` on Sightr's `main`.
+1. **Review (weekly, automatic, cloud credits).** Each Monday at 8:00 Brisbane the cloud routine "sightr t3-sync weekly review" (Opus) runs
+   `bun scripts/t3-upstream.ts --ref main` on Sightr's `main`, then reviews every change against this document. It also diffs T3's `orchestrationV2.ts` until T20 lands.
    - **Why `main`.** The ledger records commits from T3's `main`. T3's stable tags are behind it (`v0.1.0` is 78 commits older than the baseline `e3b35d1b`), and its preview and nightly tags branch off it. A tag would report changes backwards.
    - **Guard.** The routine checks that the ledger `baseline` is an ancestor of the sha it compares against.
-   - **Output.** When anything changed, it opens a GitHub issue on `bartholomewtj/sightr` labelled `t3-sync` and titled `T3 upstream: main @ <sha>`. The issue lists changed rows, removed rows, new upstream files in the mirrored folders, and contract changes.
+   - **Output.** When anything changed, it opens a GitHub issue on `bartholomewtj/sightr` labelled `t3-sync` and titled `T3 review: main @ <sha7> (<N> changes, <K> recommended)`. The issue is the full review, so `/t3-sync` starts from it instead of redoing the work:
+     - a summary and the top 3–7 recommendations, contracts first, each with effort, risk and files;
+     - proposed sync slices with the next free `Tnn` numbers;
+     - the contract impact on `shared/v2/contracts.ts` and the bridge;
+     - per-bucket tables: every item with a verdict (take now, defer, skip), effort and a reason;
+     - the ledger `decisions` rows to record;
+     - risks and watch items.
+
+     It keeps the body under GitHub's limit and puts long tables in follow-up comments.
    - **One open issue at a time.** A later week comments on the open issue and moves its title to the new sha.
    - **Quiet weeks** produce nothing. The routine never edits the repo, and sends a phone push when it files an issue or fails to.
    - **Login.** The routine authenticates `gh` from a `GH_TOKEN` set on its cloud environment: a fine-grained token, sightr only, Issues read and write.
-2. **Triage (`/t3-sync`, on the PC).** The ClaudeOS skill reads the open `t3-sync` issue, or runs the
-   checker itself with `--diff`. It sorts each change into one bucket:
+2. **Confirm (`/t3-sync`, on the PC).** The ClaudeOS skill reads the open `t3-sync` review and spot-checks its verdicts against the code. Where no review exists, it runs the checker itself with `--diff` and does the triage. The buckets both use:
 
    | Bucket | Meaning | Default action |
    |---|---|---|
@@ -64,7 +71,7 @@ weekly check ──► one GitHub issue ──► /t3-sync triage ──► sync
    | new feature | A new upstream file, or a change that needs bridge data | Decide adopt, defer or skip, with a reason |
    | skip | Outside "What we never take", or not worth the cost | Record it in the ledger's `decisions` |
 
-   It writes a dated report to the skill's `log/` and asks Bart which buckets to take now.
+   It writes a dated report to the skill's `log/`, noting where it disagrees with the cloud review, and asks Bart which recommendations to take now.
 3. **Spec.** For the accepted buckets, `/t3-sync` drafts one sync slice, `docs/specs/t3/Tnn-sync-<sha7>.md`,
    in the series' house style: Problem, Change (named files), Invariants, Tests. It also adds a row to the
    series table and opens a docs PR. A batch that needs both bridge and web2 work becomes two slices,
@@ -104,5 +111,5 @@ weekly check ──► one GitHub issue ──► /t3-sync triage ──► sync
 | Shims | `web2/src/t3/shims/` |
 | Licence notice | `web2/THIRD_PARTY.md` |
 | Triage skill | ClaudeOS `config\skills\t3-sync` (`/t3-sync`) |
-| Weekly routine | Claude scheduled routine "sightr t3-sync weekly" (`trig_01WWDrDv1S5JrxK1C2VULVt9`, Mondays 8:00 Brisbane; claude.ai/code/routines) |
+| Weekly review | Claude scheduled routine "sightr t3-sync weekly review" (Opus, cloud credits; `trig_01WWDrDv1S5JrxK1C2VULVt9`, Mondays 8:00 Brisbane; claude.ai/code/routines) |
 | Queue | GitHub issues labelled `t3-sync` |
