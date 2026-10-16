@@ -242,6 +242,22 @@ export class ActivityLedger {
     return true;
   }
 
+  /**
+   * The v2 `thread.markUnread` command: the pane reads as active since you last looked. Like any
+   * unread mark it shows only while the pane's agent is `done` (the v1 rule). Returns whether the
+   * entry changed.
+   */
+  noteUnseen(session: string, paneId: string): boolean {
+    const panes = this.panesFor(session);
+    const prev = panes.get(paneId);
+    const t = this.now();
+    if (prev && prev.activeAt > prev.seenAt) return false;
+    const activeAt = prev?.activeAt ?? t;
+    panes.set(paneId, { activeAt, seenAt: activeAt - 1 });
+    this.markDirty();
+    return true;
+  }
+
   get(session: string, paneId: string): PaneActivity | undefined {
     return this.bySession.get(session)?.get(paneId);
   }

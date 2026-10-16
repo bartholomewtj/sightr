@@ -457,3 +457,20 @@ describe("ActivityLedger — persistence", () => {
     at(0);
   });
 });
+
+describe("noteUnseen (v2 thread.markUnread)", () => {
+  test("makes a seen pane read as active since it was seen, once", () => {
+    const { l, advance } = ledger();
+    l.ensure("s", "p1");
+    advance(5_000);
+    expect(l.noteUnseen("s", "p1")).toBe(true);
+    const a = l.get("s", "p1")!;
+    expect(a.activeAt).toBeGreaterThan(a.seenAt);
+    expect(l.noteUnseen("s", "p1")).toBe(false);
+    // Looking at it again clears it, even inside the seen-refresh window.
+    expect(l.noteSeen("s", "p1")).toBe(true);
+    const b = l.get("s", "p1")!;
+    expect(b.seenAt).toBeGreaterThanOrEqual(b.activeAt);
+    l.stop();
+  });
+});

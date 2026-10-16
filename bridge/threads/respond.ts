@@ -37,7 +37,13 @@ export interface RespondDeps {
   onResolved?: (request: RuntimeRequest) => void;
 }
 
-export type RespondHandler = (command: RespondCommand, opts?: { commandId?: string }) => Promise<RespondResult>;
+export interface RespondOptions {
+  commandId?: string;
+  /** What the success receipt stores (T05 keeps the command's body hash there). */
+  receiptResult?: unknown;
+}
+
+export type RespondHandler = (command: RespondCommand, opts?: RespondOptions) => Promise<RespondResult>;
 
 const fail = (code: RespondCode, reason: string): RespondResult => ({ ok: false, code, reason });
 
@@ -102,7 +108,13 @@ export function createRespondHandler(deps: RespondDeps): RespondHandler {
         const resolved: RuntimeRequest = { ...current, status: "resolved", optionIndex, updatedAt: now() };
         const { last } = store.append(requestEvents(resolved), {
           ...(opts.commandId !== undefined
-            ? { commandId: opts.commandId, receipt: { type: "runtime-request.respond", result: { requestId: request.id, optionIndex } } }
+            ? {
+                commandId: opts.commandId,
+                receipt: {
+                  type: "runtime-request.respond",
+                  result: opts.receiptResult !== undefined ? opts.receiptResult : { requestId: request.id, optionIndex },
+                },
+              }
             : {}),
         });
         deps.onResolved?.(resolved);

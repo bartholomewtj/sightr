@@ -543,3 +543,120 @@ export type ThreadEventOf<T extends ThreadEventType> = {
 };
 
 export type ThreadEvent = { [K in ThreadEventType]: ThreadEventOf<K> }[ThreadEventType];
+
+// ── The v2 API envelopes (T05) ───────────────────────────────────────────────────────────────────
+//
+// What `bridge/threads/v2-routes.ts` sends and `web2/src/stream/*` reads. Every stream frame is an SSE
+// message: `id: <sequence>` (except heartbeats), `event: <name>`, `data: <json>`.
+
+export const V2_SHELL_PATH = "/api/v2/shell";
+export const V2_COMMAND_PATH = "/api/v2/command";
+export const v2ThreadPath = (threadId: string): string => `/api/v2/thread/${encodeURIComponent(threadId)}`;
+export const v2HistoryPath = (threadId: string): string => `${v2ThreadPath(threadId)}/history`;
+
+/** A resume longer than this many events gets a snapshot instead of a replay. */
+export const V2_REPLAY_LIMIT = 128;
+
+/**
+ * The events the shell stream carries: what the sidebar shows (projects, threads, request summaries)
+ * plus the notices a client may toast anywhere. Runs, turn items and queues go to thread streams only.
+ */
+export const SHELL_EVENT_TYPES = [
+  "project.upserted",
+  "project.closed",
+  "thread.created",
+  "thread.updated",
+  "thread.shelf-changed",
+  "thread.archived",
+  "runtime-request.updated",
+  "command.rejected",
+  "dispatch.failed",
+  "thread.create.failed",
+] as const satisfies readonly ThreadEventType[];
+
+/** `event: snapshot` on the shell stream. `requests` are the pending ones, without options. */
+export interface ShellSnapshot {
+  sequence: number;
+  projects: Project[];
+  threads: Thread[];
+  requests: RuntimeRequestSummary[];
+}
+
+/** `event: snapshot` on a thread stream (the cursor was too old, too far behind, or absent). */
+export interface ThreadSnapshot {
+  sequence: number;
+  thread: Thread;
+  /** The last 10 runs, oldest first. */
+  runs: Run[];
+  /** Every item from the first item of those runs on (loose items in that range too), by ordinal. */
+  items: TurnItem[];
+  /** Pending requests, with options. */
+  requests: RuntimeRequest[];
+  queue: QueuedMessage[];
+  /** The `before` cursor for `GET /api/v2/thread/:id/history`; null when nothing is older. */
+  historyCursor: string | null;
+}
+
+/** `event: synchronized` (the catch-up is over) and `event: ping` (heartbeat). */
+export interface SequenceFrame {
+  sequence: number;
+}
+
+/** The frame names a v2 stream sends. `event` carries one `ThreadEvent`; `build` the UI build id; `reset` precedes a close. */
+export type V2StreamFrame = "snapshot" | "event" | "synchronized" | "ping" | "build" | "reset";
+
+/** `POST /api/v2/command` success: the intent committed (not that the work finished). */
+export interface CommandReply {
+  ok: true;
+  sequence: number;
+}
+
+/**
+ * Every code a `/api/v2/*` refusal carries. `herdr-too-old`, `v2-disabled` and `v2-starting` come on a
+ * 503 from any v2 route; the rest from the command endpoint (`not_found` also from the thread routes).
+ */
+export type V2ErrorCode =
+  | "herdr-too-old"
+  | "v2-disabled"
+  | "v2-starting"
+  | "not_found"
+  | "invalid"
+  | "conflict"
+  | "prompt-changed"
+  | "unsupported"
+  | "busy"
+  | "failed";
+
+/** Any `/api/v2/*` refusal. `have`/`need` come with `herdr-too-old`. Clients must tolerate unknown codes. */
+export interface V2ErrorBody {
+  ok: false;
+  code: string;
+  error?: string;
+  have?: string;
+  need?: string;
+}
+
+/** `GET /api/v2/thread/:id/history?before=&limit=`: older runs, oldest first. */
+export interface HistoryPage {
+  runs: { run: Run; items: TurnItem[] }[];
+  /** Items with no run in the page's ordinal range. */
+  loose: TurnItem[];
+  nextCursor: string | null;
+}
+
+/** The codes that make v2 unusable on this host until something changes there (full-screen state). */
+export const BLOCKING_CODES = ["herdr-too-old", "v2-disabled"] as const;
+export type BlockingCode = (typeof BLOCKING_CODES)[number];
+
+export function isBlockingCode(code: unknown): code is BlockingCode {
+  return typeof code === "string" && (BLOCKING_CODES as readonly string[]).includes(code);
+}
+
+export function isV2ErrorBody(value: unknown): value is V2ErrorBody {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { ok?: unknown }).ok === false &&
+    typeof (value as { code?: unknown }).code === "string"
+  );
+}

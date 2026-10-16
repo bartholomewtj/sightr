@@ -1,6 +1,6 @@
 # T05 — The v2 API: commands, shell stream, thread stream, history
 
-Status: draft (T3-shape series). Depends on: T01, T02, T03, T04.
+Status: done on feat/v2 (2026-10-16). Depends on: T01, T02, T03, T04.
 
 ## Problem
 
@@ -130,3 +130,42 @@ Temp sqlite, a fake Herdr whose `serverVersion` is settable, a fake engine, `Req
   are wired in this slice.
 - `RuntimeRequest` needs additions the README does not list: `via?: "whistlr"` and `decision?` (T04) and, on
   the summary shape in the shell snapshot, no `options`. T01's `contracts.ts` lists them.
+
+## Built
+
+Files: `bridge/threads/v2-routes.ts` (+ test), `bridge/threads/herdr-floor.ts` (+ test), `HerdrClient.serverVersion()`,
+the route line in `bridge/server.ts` (`startServer` option `v2`), the gate and `whenOk` ingestor start in `bridge/index.ts`,
+and the API envelopes in `shared/v2/contracts.ts`. Deviations:
+
+- **Wire shapes in `shared/v2/contracts.ts`.** `ShellSnapshot`, `ThreadSnapshot` (moved from `store.ts`, re-exported there),
+  `SequenceFrame`, `CommandReply`, `V2ErrorBody`, `V2ErrorCode`, `HistoryPage`, `V2StreamFrame`, `SHELL_EVENT_TYPES`,
+  `V2_REPLAY_LIMIT`, the path helpers and `BLOCKING_CODES` / `isBlockingCode` / `isV2ErrorBody`, matching web2's
+  provisional `web2/src/stream/wire.ts` field for field (web2 can re-export them).
+- **The shell stream carries shell events only** (`SHELL_EVENT_TYPES`: project, thread, runtime-request and the three
+  notices). Runs, turn items and queues go to thread streams. The 128-event replay bound counts shell events, and
+  `synchronized` reports the global last sequence, so a client's cursor never stalls behind thread-only events.
+- **Cursor:** the larger of `?after=` and `Last-Event-ID` (web2 sends `?after=`; a browser's own retry sends the header).
+  Frames `snapshot`, `event` and `synchronized` carry `id:`; `ping` (`{"sequence":N}`), `build` and `reset` do not.
+- **Effects take their own pane-queue turn.** The route runs pure commands inside `queue.run(key, …)`; an effect handler
+  is not wrapped, because T04's respond already holds the pane's turn across its read and keys, and nesting the same
+  key would wait on itself. T06–T08 handlers should do the same (`EffectHandler`, `EffectContext.receipt`).
+- **Receipts** store `{ hash }` (sha256 of the body without `commandId`, keys sorted); a refusal after work started
+  (`prompt-changed`) stores `{ hash, reply }` beside a `command.rejected` event, so a retry gets the same 409.
+  `respond.ts` gained `opts.receiptResult` for this. A duplicate `commandId` in flight waits for the first.
+  `failed` (key send error) answers 502 and `busy` 503 `{code:"busy"}`, neither with a receipt.
+- **Seen.** `thread.markRead` also stamps `activity.json` (`noteSeen`) and `thread.markUnread` calls a new
+  `ActivityLedger.noteUnseen`, before the herd reconcile, since the herd ingest derives `unreadDone` from the ledger.
+  So mark-unread only sticks while the pane is `done` (the v1 unread rule). Thread-stream attach marks seen when the
+  request has `x-sightr-seen` **or** `Sec-Fetch-Site: same-origin` (`access.ts` `streamMarksSeen`): an `EventSource`
+  cannot set the custom header, and page script cannot forge `Sec-Fetch-Site`.
+- **Telemetry** (`sse.attach` / `sse.detach`) is fed by the shell stream only, as web2 only reports the shell stream.
+  Same-`client` replacement is per stream kind (web2 uses one id for both streams). A `reset` close logs `why: "cancel"`.
+- **Backpressure** counts bytes queued after the catch-up (the catch-up itself never trips it), so a large thread
+  snapshot cannot loop into reset.
+- **History:** `store.historyPage()`; `before` absent means "newest". Once no older item belongs to a run, a page also
+  takes the loose items below it (up to 200), so the last page is not a loose-only extra round trip.
+- **Audit:** `v2-command` records `{ type, threadId }`; `type` and `threadId` were added to the audit metadata allowlist.
+- `herdr` is not a `createV2Routes` dep (nothing in the routes calls it); index.ts passes it to `gate.check`.
+- **Live check** was read-only against the live herd (scratch state dir, port 8790): real shell and thread snapshots,
+  a replay with `?after=`, live `runtime-request.updated` / `turn-item.updated` events, `ping` at 15 s, a 404, a 501,
+  and a store-only `thread.pin` seen on the shell stream with its idempotent retry. No scratch herdr workspace was made.

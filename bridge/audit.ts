@@ -53,12 +53,15 @@ const METADATA_KEYS: ReadonlySet<string> = new Set([
   "submitted",
   "tabId",
   "textDelivered",
+  "threadId",
+  // The v2 command name (`v2-command` records): an enum from shared/v2/contracts.ts, never a body.
+  "type",
   "workspaceId",
 ]);
 
 /** One write-level action worth recording. `ts` is stamped by {@link formatAuditLine}, not here. */
 export interface AuditEntry {
-  /** The action performed, e.g. "reply" / "keys" / "upload" / "tab.create" / "pane.close". */
+  /** The action performed, e.g. "reply" / "keys" / "upload" / "tab.create" / "pane.close" / "v2-command". */
   action: string;
   /** Target pane, when the action is pane-scoped. */
   paneId?: string;
