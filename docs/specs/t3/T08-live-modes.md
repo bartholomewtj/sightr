@@ -198,3 +198,10 @@ Deviations and findings:
   (the footer agreed), `dontAsk` gave `invalid-mode`; `thread.model.set` sonnet then haiku (the banner and the
   journal both said "Set model to …"). A Codex spawn (not installed) turned `failed` with the note after 45 s and
   its pane stayed. Cursor `/model` was not live-tested (flag stays off).
+
+### Changed after the build (17 Oct 2026, Bart's call)
+
+Claude's `canSwitchModel` and `canSetEffortLive` are off. Claude Code 2.1.301's `/model` also saves the
+choice as the default for every new Claude session (`"model"` in the user's `settings.json`); the live test
+left it at `haiku`. Claude's model is picked at spawn (`--model` does not persist). The `thread.model.set`
+mechanism stays, tested with a harness that has the flag on.
