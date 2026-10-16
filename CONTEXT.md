@@ -10,7 +10,7 @@ Phone/desktop PWA for one operator’s [Herdr](https://herdr.dev) herd. Bun brid
 | Now / what’s next | `STATE.md` (local, gitignored; if missing, GitHub issues) |
 | Implement a council slice | `docs/specs/README.md`, then one `docs/specs/NN-*.md` |
 | The v2 thread app (T3-shaped; `/` since T15) | `docs/specs/t3/README.md`, then one `docs/specs/t3/Tnn-*.md` |
-| Port a T3 Code component into `web2/` | `docs/specs/t3/README.md` § Adapting T3 components; `web2/t3-upstream.json`; `bun scripts/t3-upstream.ts` |
+| Keep up with T3 Code / port a T3 component into `web2/` | `docs/T3_ADAPTATION.md` (the loop, rules, ledger); `web2/t3-upstream.json`; `bun scripts/t3-upstream.ts` |
 | Marked draftr prompt-select → whistlr | `docs/whistlr-31f-sightr.md` (row 4 wizard/multi-select is out) |
 | Why not the other road | `DECISIONS.md` (short chose-X-not-Y rows), then `docs/adr/` |
 | Herdr socket facts | `docs/HERDR_API.md` |

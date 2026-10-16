@@ -2,7 +2,7 @@
 
 Draft. Nothing here is approved or built. It is the plan for making Sightr work the way
 [T3 Code](https://github.com/pingdotgg/t3code) works (MIT, studied at `e3b35d1b`, 16 Oct 2026), but for a
-herdr herd instead of agents T3 spawns itself. Sightr v2 replaces `Projects\tools\herdr-acp`, which
+herdr herd instead of agents T3 spawns itself. Sightr v2 replaced `Projects\tools\herdr-acp` (retired and deleted 17 Oct 2026), which
 put herdr agents inside T3 as one ACP "model" picker.
 
 One spec = one run. Do not implement a sibling spec in the same run. The rules at the end of
@@ -91,6 +91,7 @@ This replaces the whole-snapshot push and the per-pane `GET /api/pane/:id` polli
   - **Seams, not forks.** T3 imports we don't have (Effect atoms, client-runtime, router hooks) go through small shims in `web2/src/t3/shims/*`, never by editing the adopted body more than needed.
   - **Provenance.** `web2/t3-upstream.json` lists every adopted or adapted file: `{ local, upstream, commit, mode: "verbatim" | "adapted" | "pattern" }`. Adapted files carry a one-line header naming the upstream path and commit, plus T3's MIT notice in `web2/THIRD_PARTY.md`.
   - **Upstream check.** `bun scripts/t3-upstream.ts [--ref <tag|sha>]` clones or updates T3 into a cache outside the repo. For each manifest row it prints whether upstream changed since the recorded commit, with the upstream diff. It also lists new T3 component files under the mirrored folders. Report only; porting stays a deliberate change that bumps the row's `commit`.
+  - **Keeping up.** The weekly check, `/t3-sync` triage, sync slices and porting rules are in [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md). New T3 work reaches Sightr as `Tnn-sync-<tag>` slices in this folder.
 - **Reuse:** the harness parsers under `web/src/lib/harness/` (import them; they are leaf files), the markdown and tool-row renderers where they fit, `conn-telemetry`, the keys pad, the attach upload and the lock screen.
 - **Layout (adaptive, like T3's iPad mode):**
   - ≥ 1024 px: sidebar | chat | right panel (Terminal / Files / Git), with `mod+k` palette and `when`-clause keybindings.
@@ -121,6 +122,7 @@ Order matters: T01→T05 make the bridge serve v2 with no UI; T09 can start once
 | T17 | [T17-dialog-parity.md](T17-dialog-parity.md) | bridge + web2 | Multi-select, wizard and preview-select as runtime requests; bridge-side closed-loop recipes |
 | T18 | [T18-settings-push-lock.md](T18-settings-push-lock.md) | web2 | Settings route: theme, display, push, lock devices, bridge settings, connection info |
 | T19 | [T19-parity-ports.md](T19-parity-ports.md) | web2 | Gesture wheel, find (timeline and mirror), statusline, whistlr decision cards |
+| T20 | [T20-upstream-sync.md](T20-upstream-sync.md) | scripts | Upstream check covers the contracts, answers in JSON, remembers skip/defer decisions |
 
 ## Not in this series
 
