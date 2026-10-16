@@ -22,6 +22,7 @@ import type { NotificationCoordinator } from "./notifications.ts";
 import type { StateEngine } from "./state-engine.ts";
 import { createWorkdir } from "./workdir.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
+import type { JournalAdapter } from "./journal/types.ts";
 import { TranscriptStore } from "./journal/store.ts";
 
 import { isLoopbackPeer, marksPaneSeen, guard, startupWarnings, deviceAuth } from "./access.ts";
@@ -63,6 +64,8 @@ export function startServer(opts: {
   audit: AuditLog;
   conn?: ConnLog;
   onEvents?: (events: SnapshotEvents) => void;
+  /** The journal registry, when the caller built it (index.ts shares it with the v2 ingest). */
+  journals?: Record<string, JournalAdapter> | null;
 }) {
   const { cfg, herdr, engine, notifications, push, notifyPrefs, settings, activity, lock, audit } = opts;
   const conn = opts.conn ?? SILENT_CONN;
@@ -80,7 +83,8 @@ export function startServer(opts: {
   const operatorCommands = createOperatorCommands(cfg.commandsFile);
   const operatorKeys = createOperatorKeys(cfg.keysFile);
   const operatorWheel = createOperatorWheel(cfg.keysFile);
-  const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots, cfg.stateDir) : null;
+  const journals =
+    opts.journals !== undefined ? opts.journals : cfg.transcript ? buildJournalRegistry(cfg.journalRoots, cfg.stateDir) : null;
   const transcripts = cfg.transcript ? new TranscriptStore() : null;
   // Grok (and any future cwd-keyed harness) can offer history without Herdr naming a session.
   const offerHistory = (agent: string, hasSessionRef: boolean) => {

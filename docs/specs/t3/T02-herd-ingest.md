@@ -1,6 +1,6 @@
 # T02 — Herd ingest: workspaces to projects, panes to threads
 
-Status: draft (T3-shape series). Depends on: T01.
+Status: done on feat/v2 (2026-10-16). Depends on: T01.
 
 ## Problem
 
@@ -120,3 +120,40 @@ Fake engine (a stub with `onUpdate`/`onRemove`/`onTransition` and a settable sna
   (agents only) if the sidebar would be too noisy. T10 can also filter on harness.
 - An agent exiting inside a living pane keeps the thread (status `idle`, harness `shell`). The README only
   says a closed pane archives; this is the reading chosen here.
+
+## Built
+
+Files: `bridge/threads/herd-ingest.ts` (pure `diffHerd` + `createHerdIngestor`), `bridge/threads/capabilities.ts`,
+tests beside them; `terminalId` on `AgentView` (`bridge/state-engine.ts`), stripped in `toPaneWire`; the ingestor
+started in `bridge/index.ts` after the activity bookkeeping and stopped on shutdown.
+
+Deviations from the draft:
+
+- **Store reads added** (`bridge/threads/store.ts`): `openRuns()` and `pendingRequests()`, so a closing pane can end
+  its run and expire its requests and `blocked` can read the pending request kind. T04 needs nothing more for
+  `approval`: a pending `permission`/`trust` request already turns `blocked` into `approval`.
+- **Journal registry built once in `bridge/index.ts`** and passed to `startServer` (new optional `journals`
+  option), so the routes and the ingest share one registry (Grok's claim file has one owner). T03 can take it from
+  there too.
+- **`onRemove` is not subscribed.** The diff covers agent and shell panes alike, so the hint changed nothing.
+- **`unreadDone` at creation comes from the ledger**, not a literal `false`. A new pane is read anyway (the ledger's
+  `ensure` seeds it as seen); this keeps reconcile idempotent when the store is new but `activity.json` already
+  holds an unread pane.
+- **Projects get the same two-poll grace** before `project.closed` (immediate on the first reconcile). A closed
+  project that comes back is upserted without `closedAt`. A closed project's roll-up still updates as its threads
+  archive.
+- **A pane that comes back** with the same `(paneId, terminalId)` after its thread was archived `pane-closed` or
+  `closed-while-down` revives that thread (`thread.shelf-changed` → `active`); `UNIQUE (pane_id, terminal_id)`
+  rules out a second row. A thread the operator archived stays archived, and no twin is made.
+- **Archives by the ingest** (`pane-closed`, `terminal-replaced`, `closed-while-down`) all end the open run
+  `interrupted` and expire pending requests.
+- **`starting` threads** (T07, empty `terminalId`) missing from the herd are not counted missing for
+  `STARTING_GRACE_MS` (60 s) after their last update, except on the first reconcile after a restart.
+- **"Finishes work"** is read as: the thread was `working` and is now anything else. A snoozed or settled thread
+  then returns to `active`. Pinned threads are untouched.
+- A resting pane keeps a `failed` status (T03 sets it); `working` or `blocked` replace it.
+- `lastActivityAt` is the ingestor's own transition stamp, else the ledger's `activeAt`. `markUnread` (a
+  `noteActive`) can therefore move it when no transition was seen since start.
+- Title fallback when no cwd basename or tab label exists is the harness name alone.
+- Event order in one batch: project upserts for live workspaces, then thread events, then closing projects.
+

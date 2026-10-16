@@ -670,6 +670,10 @@ export interface ThreadStore {
   listProjects(): Project[];
   /** The highest `pinOrder` among pinned threads, or 0. */
   maxPinOrder(): number;
+  /** Every run still `running`, oldest first (T02 ends them when a pane goes). */
+  openRuns(): Run[];
+  /** Every `pending` runtime request, with options (T02 reads the kind and expires them). */
+  pendingRequests(): RuntimeRequest[];
   offsets: {
     get(threadId: string): JournalOffset | null;
     set(offset: JournalOffset): void;
@@ -921,6 +925,20 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
 
     maxPinOrder() {
       return db.query<{ m: number | null }, []>("SELECT max(pin_order) AS m FROM threads WHERE shelf = 'pinned'").get()?.m ?? 0;
+    },
+
+    openRuns() {
+      return db
+        .query<RunRow, []>("SELECT * FROM runs WHERE status = 'running' ORDER BY started_at, id")
+        .all()
+        .map(runFromRow);
+    },
+
+    pendingRequests() {
+      return db
+        .query<{ body_json: string }, []>("SELECT body_json FROM runtime_requests WHERE status = 'pending' ORDER BY updated_sequence")
+        .all()
+        .map((r) => JSON.parse(r.body_json) as RuntimeRequest);
     },
 
     offsets: {

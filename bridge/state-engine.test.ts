@@ -12,6 +12,7 @@ import {
   type EngineSnapshot,
 } from "./state-engine.ts";
 import type { HerdrClient, WireAgent } from "./herdr-client.ts";
+import { toPaneWire } from "./snapshot-route.ts";
 import type { AgentStatus } from "../shared/wire.ts";
 
 // The state engine polls Herdr, shapes the snapshot, and fires status transitions (which drive push
@@ -311,6 +312,26 @@ describe("StateEngine — snapshot shaping", () => {
     expect(snap.shellPanes.map((a) => a.paneId)).toEqual(["w1:p2"]);
     expect(snap.shellPanes[0]!.agent).toBe("shell");
     expect(snap.bridge).toBe("connected");
+  });
+
+  test("carries herdr's terminal id onto agent and shell views, but not onto the v1 wire", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude"), { ...pane("w1:p2", "w1", "unknown", null), terminal_id: "term-2" }];
+    await poll();
+    const snap = engine.current();
+    expect(snap.agents[0]!.terminalId).toBe("term");
+    expect(snap.shellPanes[0]!.terminalId).toBe("term-2");
+    const wire = toPaneWire(snap.agents[0]!, () => true);
+    expect("terminalId" in wire).toBe(false);
+    expect(wire.hasSession).toBe(true);
+    expect("terminalId" in toPaneWire(snap.shellPanes[0]!, () => false)).toBe(false);
+  });
+
+  test("leaves terminalId absent when herdr reports none", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    herdr.panes = [{ ...pane("w1:p1", "w1", "idle", "claude"), terminal_id: "" }];
+    await poll();
+    expect("terminalId" in engine.current().agents[0]!).toBe(false);
   });
 
   test("threads a pane label through to the view when set, on agents and shells alike", async () => {

@@ -19,6 +19,8 @@ import { beaconReader } from "./beacon-io.ts";
 import { buildId } from "./static-assets.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
 import { openThreadStore, STORE_FILE, StoreTooNewError, type ThreadStore } from "./threads/store.ts";
+import { createHerdIngestor } from "./threads/herd-ingest.ts";
+import { buildJournalRegistry } from "./journal/registry.ts";
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
 // loadConfig throws on a config that would be unsafe to serve (a non-loopback bind). Print the
@@ -133,6 +135,15 @@ engine.onUpdate((s) =>
   activity.reconcile(ACTIVITY_KEY, [...s.agents, ...s.shellPanes].map((p) => p.paneId)),
 );
 
+// One journal registry for the process: the routes read transcripts from it, and the v2 herd ingest
+// asks it which harnesses have a journal.
+const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots, cfg.stateDir) : null;
+
+// v2 herd ingest: workspaces → projects, panes → threads. Subscribed after the activity bookkeeping
+// above, so the ledger already holds this poll's transitions and first sightings when it reads them.
+const herdIngestor = threadStore ? createHerdIngestor({ store: threadStore, engine, activity, journals }) : null;
+herdIngestor?.start();
+
 // Background notifications on lifecycle transitions (foreground toasts are computed client-side by
 // diffing snapshots). The whole herd shares one notification slot (HERD_TAG).
 const clock: NotifyClock<ReturnType<typeof setTimeout>> = {
@@ -174,6 +185,7 @@ sweepTimer.unref();
 const server = startServer({
   cfg, herdr, engine, notifications, push, notifyPrefs, settings, activity, lock, audit, conn,
   onEvents: (events) => { snapshotEvents = events; },
+  journals,
 });
 
 let stopping = false;
@@ -185,6 +197,7 @@ const shutdown = async () => {
   // before we tear down the poll loops and exit.
   await server.stop();
   engine.stop();
+  herdIngestor?.stop();
   poker.stop();
   // Retract anything still on the lock screen — nothing live stands behind it once we exit.
   notifications.clearAll();

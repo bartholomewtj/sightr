@@ -15,7 +15,7 @@ import type { BridgeConfig } from "../shared/wire.ts";
 import type * as Wire from "../shared/wire.ts";
 export type PaneWire = Wire.WirePane;
 export type SnapshotResponse = Omit<Wire.SnapshotResponse, "agents" | "shellPanes"> & { agents: PaneWire[]; shellPanes: PaneWire[] };
-export function toPaneWire(pane: AgentView, offerHistory: (agent: string, hasSessionRef: boolean) => boolean): PaneWire { const { agentSession, ...rest } = pane; return offerHistory(pane.agent, Boolean(agentSession)) ? { ...rest, hasSession: true } : rest; }
+export function toPaneWire(pane: AgentView, offerHistory: (agent: string, hasSessionRef: boolean) => boolean): PaneWire { const { agentSession, terminalId: _terminalId, ...rest } = pane; return offerHistory(pane.agent, Boolean(agentSession)) ? { ...rest, hasSession: true } : rest; }
 
 export interface SnapshotDeps {
   cfg: Config; engine: StateEngine; activity: ActivityLedger;

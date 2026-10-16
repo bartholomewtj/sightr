@@ -317,6 +317,32 @@ describe("reads", () => {
     expect(snap.historyCursor).toBe(btoa("1"));
   });
 
+  test("openRuns and pendingRequests list only the live ones", () => {
+    const store = open();
+    store.append([createProject(), createThread()]);
+    const request = (id: string, status: "pending" | "resolved") => ({
+      id,
+      threadId: "t1",
+      kind: "permission" as const,
+      prompt: "Allow?",
+      options: [{ label: "Yes", keys: ["1"] }],
+      status,
+      bindingHash: "h",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    store.append([
+      { type: "run.started", threadId: "t1", payload: { run: { id: "r1", threadId: "t1", ordinal: 1, status: "running", startedAt: 1 } } },
+      { type: "run.ended", threadId: "t1", payload: { runId: "r1", status: "completed", completedAt: 2 } },
+      { type: "run.started", threadId: "t1", payload: { run: { id: "r2", threadId: "t1", ordinal: 2, status: "running", startedAt: 3 } } },
+      { type: "runtime-request.updated", threadId: "t1", payload: { request: request("q1", "resolved") } },
+      { type: "runtime-request.updated", threadId: "t1", payload: { request: request("q2", "pending") } },
+    ]);
+    expect(store.openRuns().map((r) => r.id)).toEqual(["r2"]);
+    expect(store.pendingRequests().map((r) => r.id)).toEqual(["q2"]);
+    expect(store.pendingRequests()[0]!.options).toHaveLength(1);
+  });
+
   test("shelf changes clear the previous shelf's fields; unarchive clears the archive", () => {
     const store = open();
     store.append([createProject(), createThread()]);
