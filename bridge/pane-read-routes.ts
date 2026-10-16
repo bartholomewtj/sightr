@@ -2,7 +2,7 @@ import type { Config } from "./config.ts";
 import type { HerdrClient, PaneRead } from "./herdr-client.ts";
 import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
 import { adapterFor } from "./journal/registry.ts";
-import type { JournalAdapter } from "./journal/types.ts";
+import type { AgentSessionRef, JournalAdapter } from "./journal/types.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { PaneHistoryResponse, PaneReadResponse } from "../shared/wire.ts";
 import type { AgentView } from "./state-engine.ts";
@@ -161,7 +161,7 @@ export function panePeersAtCwd(
  * `visible` + `text` — never `recent`. A `recent` read of a pane on the alt screen can scroll the
  * operator's terminal (HERDR_API.md); history is on-demand but still must not move their screen.
  */
-async function paneHistoryHint(herdr: HerdrClient, pane: AgentView): Promise<string | undefined> {
+async function paneHistoryHint(herdr: Pick<HerdrClient, "readPane">, pane: AgentView): Promise<string | undefined> {
   const parts: string[] = [];
   if (pane.terminalTitle) parts.push(pane.terminalTitle);
   if (typeof herdr.readPane !== "function") {
@@ -179,6 +179,45 @@ async function paneHistoryHint(herdr: HerdrClient, pane: AgentView): Promise<str
     // Best-effort: title / a remembered bind still work if the read fails.
   }
   return parts.length > 0 ? parts.join("\n") : undefined;
+}
+
+/**
+ * The session log a pane is on, as a ref its adapter resolves. Shared by the history route and the
+ * v2 journal ingest (threads/journal-ingest.ts), so both read the same log for the same pane.
+ *
+ * WHO DECIDES WHICH LOG THIS PANE IS ON.
+ *
+ * A harness that reports its own session id (claude, pi) is trusted: the agent itself is telling
+ * Herdr what it opened. A cwd-keyed harness is not, because nobody authoritative is speaking for
+ * it. Herdr's grok integration DOES report an `agent_session`, but it names the session the pane
+ * STARTED with and never follows a new session opened later in that same pane — on 2026-09-08 it
+ * was still naming a conversation that had been dead 2.4 hours while the pane was live on
+ * another. Trusting it unconditionally is what put the wrong chat on screen.
+ *
+ * So for a cwd-keyed harness the reported id is handed to the adapter as one input, ranked above
+ * a blind guess and below anything the pane itself is showing (journal/grok.ts). It stays the
+ * fallback if the adapter can reach no conclusion at all.
+ */
+export async function resolveSessionRef(
+  engine: Pick<StateEngine, "current">,
+  herdr: Pick<HerdrClient, "readPane">,
+  adapter: JournalAdapter,
+  pane: AgentView,
+): Promise<AgentSessionRef | null> {
+  const reportedSessionId = pane.agentSession?.kind === "id" ? pane.agentSession.value : undefined;
+  if (adapter.inferFromCwd === undefined || !pane.cwd) return pane.agentSession ?? null;
+  const { agents, shellPanes } = engine.current();
+  return (
+    (await adapter.inferFromCwd({
+      cwd: pane.cwd,
+      paneId: pane.paneId,
+      hint: await paneHistoryHint(herdr, pane),
+      peerPaneIds: panePeersAtCwd(agents, shellPanes, pane),
+      ...(reportedSessionId !== undefined ? { reportedSessionId } : {}),
+    })) ??
+    pane.agentSession ??
+    null
+  );
 }
 
 /**
@@ -214,30 +253,7 @@ export async function paneHistory(
   // harness isn't supported" from "this pane never started one"; both mean there's nothing to show.
   const adapter = adapterFor(journals, pane.agent);
   if (adapter === undefined) return unavailable("no-session");
-  // WHO DECIDES WHICH LOG THIS PANE IS ON.
-  //
-  // A harness that reports its own session id (claude, pi) is trusted: the agent itself is telling
-  // Herdr what it opened. A cwd-keyed harness is not, because nobody authoritative is speaking for
-  // it. Herdr's grok integration DOES report an `agent_session`, but it names the session the pane
-  // STARTED with and never follows a new session opened later in that same pane — on 2026-09-08 it
-  // was still naming a conversation that had been dead 2.4 hours while the pane was live on
-  // another. Trusting it unconditionally is what put the wrong chat on screen.
-  //
-  // So for a cwd-keyed harness the reported id is handed to the adapter as one input, ranked above
-  // a blind guess and below anything the pane itself is showing (journal/grok.ts). It stays the
-  // fallback if the adapter can reach no conclusion at all.
-  const reportedSessionId =
-    pane.agentSession?.kind === "id" ? pane.agentSession.value : undefined;
-  const session =
-    adapter.inferFromCwd !== undefined && pane.cwd
-      ? ((await adapter.inferFromCwd({
-          cwd: pane.cwd,
-          paneId,
-          hint: await paneHistoryHint(herdr, pane),
-          peerPaneIds: panePeersAtCwd(agents, shellPanes, pane),
-          ...(reportedSessionId !== undefined ? { reportedSessionId } : {}),
-        })) ?? pane.agentSession ?? null)
-      : (pane.agentSession ?? null);
+  const session = await resolveSessionRef(engine, herdr, adapter, pane);
   if (!session) return unavailable("no-session");
 
   try {

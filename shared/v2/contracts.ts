@@ -497,6 +497,8 @@ export interface EventPayloads {
   "thread.archived": { reason: ArchiveReason; at: number };
   "run.started": { run: Run };
   "run.ended": { runId: string; status: Exclude<RunStatus, "running">; completedAt: number };
+  /** The whole run after a change that is not its end (T03 sets `userItemId` once the message is read). T3's name. */
+  "run.updated": { run: Run };
   /** Upsert by `item.id`. A new item gets the next `ordinal` when it comes without one. */
   "turn-item.updated": { item: TurnItem };
   "runtime-request.updated": { request: RuntimeRequest };
@@ -519,6 +521,7 @@ export const THREAD_EVENT_TYPES = [
   "thread.archived",
   "run.started",
   "run.ended",
+  "run.updated",
   "turn-item.updated",
   "runtime-request.updated",
   "queue.updated",

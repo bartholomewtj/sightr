@@ -63,7 +63,7 @@ describe("contracts", () => {
     expect<string[]>([...THREAD_EVENT_TYPES].sort()).toEqual(
       [
         "project.upserted", "project.closed", "thread.created", "thread.updated", "thread.shelf-changed",
-        "thread.archived", "run.started", "run.ended", "turn-item.updated", "runtime-request.updated",
+        "thread.archived", "run.started", "run.ended", "run.updated", "turn-item.updated", "runtime-request.updated",
         "queue.updated", "command.rejected", "dispatch.failed", "thread.create.failed",
       ].sort(),
     );

@@ -79,8 +79,19 @@ describe("parseCursorTranscript", () => {
   test("synthesises uuids when rows omit id", () => {
     const entries = parseCursorTranscript(row("user", "hello"));
     expect(entries).toHaveLength(1);
-    expect(entries[0]!.uuid).toBe("cursor-0");
+    expect(entries[0]!.uuid).toMatch(/^cursor-[0-9a-z]+$/);
     expect(entries[0]!.parts).toEqual([{ kind: "text", text: "hello" }]);
+  });
+
+  test("a synthesised uuid is the same whichever window the row is parsed in", () => {
+    const first = row("user", "first");
+    const second = row("assistant", [{ type: "text", text: "second" }]);
+    const whole = parseCursorTranscript([first, second].join("\n"));
+    const alone = parseCursorTranscript(second);
+    expect(alone[0]!.uuid).toBe(whole[1]!.uuid);
+    // A repeated identical row still gets its own id.
+    const twice = parseCursorTranscript([first, first].join("\n"));
+    expect(new Set(twice.map((e) => e.uuid)).size).toBe(2);
   });
 });
 

@@ -14,7 +14,7 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { containedRealpath, exists, loadTail, rootList, statFile } from "./files.ts";
+import { containedRealpath, exists, loadTail, readRange as readLogRange, rootList, statFile } from "./files.ts";
 import { clamp, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
   AgentSessionRef,
@@ -64,9 +64,23 @@ interface RawRow {
  *
  * PURE — no fs, no clock. Unparseable lines are skipped (live append / mid-line tail reads).
  */
+/**
+ * A row's cursor when Cursor wrote no id: a hash of the row's bytes, so it is the same whichever
+ * window the row is parsed in (the v2 ingest reads a log in pieces; a running count was not). A
+ * repeated identical row gets `-1`, `-2`, … in the order it appears.
+ */
+export function cursorRowId(line: string, seen: Map<string, number>): string {
+  let hash = 5381;
+  for (let i = 0; i < line.length; i++) hash = ((hash << 5) + hash + line.charCodeAt(i)) | 0;
+  const key = (hash >>> 0).toString(36);
+  const n = seen.get(key) ?? 0;
+  seen.set(key, n + 1);
+  return n === 0 ? `cursor-${key}` : `cursor-${key}-${n}`;
+}
+
 export function parseCursorTranscript(text: string): TranscriptEntry[] {
   const entries: TranscriptEntry[] = [];
-  let seq = 0;
+  const seen = new Map<string, number>();
 
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
@@ -83,11 +97,7 @@ export function parseCursorTranscript(text: string): TranscriptEntry[] {
     const message = row.message;
     if (message === null || typeof message !== "object") continue;
     const content = (message as { content?: unknown }).content;
-    const uuid =
-      typeof row.id === "string" && row.id !== ""
-        ? row.id
-        : `cursor-${seq}`;
-    seq += 1;
+    const uuid = typeof row.id === "string" && row.id !== "" ? row.id : cursorRowId(line, seen);
     const parts: TranscriptPart[] = [];
 
     if (typeof content === "string") {
@@ -177,6 +187,8 @@ export class CursorTranscriptSource implements TranscriptSource {
   stat = statFile;
 
   load = loadTail;
+
+  readRange = readLogRange;
 }
 
 /** Cursor's journal adapter. `agent` matches Herdr's `agent` string (`cursor`). */
