@@ -44,12 +44,14 @@ weekly check ──► one GitHub issue ──► /t3-sync triage ──► sync
    (cloud)        label t3-sync        report + gate       docs/specs/t3/Tnn         ledger bumped
 ```
 
-1. **Check (weekly, automatic).** A scheduled cloud routine runs
-   `bun scripts/t3-upstream.ts --ref <newest T3 tag>` against `main`. When anything changed, it opens a
-   GitHub issue on `bartholomewtj/sightr` labelled `t3-sync` and titled `T3 upstream: <tag>`. The issue
-   lists changed rows, removed rows, new upstream files in the mirrored folders, and contract changes.
-   If the newest tag already has an open issue, the routine adds a comment to it instead.
-   Quiet weeks produce nothing. The routine never edits the repo.
+1. **Check (weekly, automatic).** Each Monday at 8:00 the cloud routine "sightr t3-sync weekly" runs
+   `bun scripts/t3-upstream.ts --ref main` on Sightr's `main`.
+   - **Why `main`.** The ledger records commits from T3's `main`. T3's stable tags are behind it (`v0.1.0` is 78 commits older than the baseline `e3b35d1b`), and its preview and nightly tags branch off it. A tag would report changes backwards.
+   - **Guard.** The routine checks that the ledger `baseline` is an ancestor of the sha it compares against.
+   - **Output.** When anything changed, it opens a GitHub issue on `bartholomewtj/sightr` labelled `t3-sync` and titled `T3 upstream: main @ <sha>`. The issue lists changed rows, removed rows, new upstream files in the mirrored folders, and contract changes.
+   - **One open issue at a time.** A later week comments on the open issue and moves its title to the new sha.
+   - **Quiet weeks** produce nothing. The routine never edits the repo, and sends a phone push when it files an issue or fails to.
+   - **Login.** The routine authenticates `gh` from a `GH_TOKEN` set on its cloud environment: a fine-grained token, sightr only, Issues read and write.
 2. **Triage (`/t3-sync`, on the PC).** The ClaudeOS skill reads the open `t3-sync` issue, or runs the
    checker itself with `--diff`. It sorts each change into one bucket:
 
@@ -63,7 +65,7 @@ weekly check ──► one GitHub issue ──► /t3-sync triage ──► sync
    | skip | Outside "What we never take", or not worth the cost | Record it in the ledger's `decisions` |
 
    It writes a dated report to the skill's `log/` and asks Bart which buckets to take now.
-3. **Spec.** For the accepted buckets, `/t3-sync` drafts one sync slice, `docs/specs/t3/Tnn-sync-<tag>.md`,
+3. **Spec.** For the accepted buckets, `/t3-sync` drafts one sync slice, `docs/specs/t3/Tnn-sync-<sha7>.md`,
    in the series' house style: Problem, Change (named files), Invariants, Tests. It also adds a row to the
    series table and opens a docs PR. A batch that needs both bridge and web2 work becomes two slices,
    bridge first.
@@ -79,7 +81,7 @@ weekly check ──► one GitHub issue ──► /t3-sync triage ──► sync
 
 ## Porting rules
 
-- **One upstream ref per sync.** Every row ported in a slice moves to the same `commit`.
+- **One upstream commit per sync.** Every row ported in a slice moves to the same T3 `main` commit, and the ledger `baseline` moves with the last full sync.
 - **Verbatim stays verbatim.** If a verbatim file needs any local edit, demote the row to `adapted` and add the header line. Don't edit it silently.
 - **Seams over edits.** When an upstream file grows a new import we lack, add or extend a shim in `web2/src/t3/shims/` before editing the body.
 - **Contracts are additive.** Add T3's new fields and item types to `shared/v2/contracts.ts`, and the bridge fills them when it can. Never rename a Sightr field away from T3's name. When T3 renames, follow it, and migrate the event store if stored payloads carry the old name.
@@ -98,9 +100,9 @@ weekly check ──► one GitHub issue ──► /t3-sync triage ──► sync
 |---|---|
 | Design of v2 and the series | `docs/specs/t3/README.md` |
 | Ledger | `web2/t3-upstream.json` |
-| Checker | `bun scripts/t3-upstream.ts [--ref] [--diff]` (cache `%LOCALAPPDATA%\sightr\t3-upstream`) |
+| Checker | `bun scripts/t3-upstream.ts --ref main [--diff]` (cache `%LOCALAPPDATA%\sightr\t3-upstream`) |
 | Shims | `web2/src/t3/shims/` |
 | Licence notice | `web2/THIRD_PARTY.md` |
 | Triage skill | ClaudeOS `config\skills\t3-sync` (`/t3-sync`) |
-| Weekly routine | Claude scheduled routine "sightr t3-sync weekly" |
+| Weekly routine | Claude scheduled routine "sightr t3-sync weekly" (`trig_01WWDrDv1S5JrxK1C2VULVt9`, Mondays 8:00 Brisbane; claude.ai/code/routines) |
 | Queue | GitHub issues labelled `t3-sync` |
