@@ -331,13 +331,13 @@ checks every source reference in the map against the current commit.
 listens on `GET /api/events` (server-sent events) and polls `GET /api/snapshot` only when that stream
 is down. While EventSource is open, a snapshot event applies the herd without another GET, including
 on an open pane; the open-pane interval still refreshes `GET /api/pane/...` for the live TUI, every
-1.5 s, or every 0.75 s while you type and for 5 s after. One stream serves the whole app, so opening
+1.5 s, every 0.75 s while its agent works, or every 0.4 s while you type and for 5 s after. One stream serves the whole app, so opening
 a pane does not reconnect it. The bridge pushes a snapshot only when it changed, and writes to the
 stream at least every 15 s. A stream silent for 35 s is treated as dropped: the app polls at once and
 reconnects, because a mobile network can drop the flow without either end hearing an error.
 Identical Herdr pane reads in flight at the same moment share one round-trip; a write to the pane
 ends the sharing, so a read after a keystroke sees it. The journal newest page refreshes from
-snapshot events, a status flip, the pane's screen moving (at most every 1.5 s), or the tab becoming
+snapshot events, a status flip, the pane's screen moving (at most every 0.75 s), or the tab becoming
 visible — not a 1.5s 160-turn timer. The bridge keeps its own `events.subscribe` stream open to Herdr and
 pokes the SSE clients when Herdr reports a change. On the host, the snapshot poll stays the source of
 truth: the bridge only relaxes to `SIGHTR_POLL_IDLE_MS` while that stream is healthy and every agent

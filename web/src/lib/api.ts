@@ -440,10 +440,16 @@ export function sendReply(
   );
 }
 
+/**
+ * Send keys to a pane. `typed` marks keystrokes the operator typed (direct typing): the bridge then
+ * writes runs of plain characters in one go instead of one paced key at a time. Leave it off for a
+ * recipe or a menu key, which must stay one input event per key.
+ */
 export function sendKeys(
   paneId: string,
   keys: string[],
   expectedPrompt?: string,
+  typed?: boolean,
 ): Promise<ActionResponse> {
   noteTyping();
   return req<ActionResponse>(
@@ -453,6 +459,7 @@ export function sendKeys(
       body: JSON.stringify({
         keys,
         ...(expectedPrompt !== undefined ? { expected_prompt: expectedPrompt } : {}),
+        ...(typed ? { typed: true } : {}),
       }),
     },
     recoverPromptChanged,
