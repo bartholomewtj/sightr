@@ -15,7 +15,15 @@ type TimerApi = {
   clearInterval: (id: ReturnType<typeof setInterval>) => void;
 };
 
-type Client = { id: string; send: (chunk: string) => void; close: () => void; lastSent: number; render?: () => Promise<string> };
+type Client = { id: string; send: (chunk: string) => void; close: () => void; lastSent: number; lastKey?: string; render?: () => Promise<string> };
+
+/**
+ * A snapshot body without its `ts`, the one field that changes on every render. renderSnapshot writes
+ * `ts` last. If that ever moves, this returns the body unchanged and every push goes out, as before.
+ */
+export function snapshotKey(body: string): string {
+  return body.replace(/,"ts":\d+\}$/, "}");
+}
 
 /** Fan-out for snapshot SSE streams. State mutations call notify; the state engine calls update. */
 export function createSnapshotEvents(
@@ -33,9 +41,15 @@ export function createSnapshotEvents(
     let built: string | undefined;
     for (const client of [...clients]) {
       const body = await (client.render?.() ?? (shared ??= snapshot()));
+      built ??= JSON.stringify(await builtId);
+      // Every host poll notifies, and most polls change nothing but `ts` (29 of 31 in a 45 s live
+      // sample). Each push makes every phone re-read its open pane and journal, so skip one that
+      // carries nothing new. A quiet stream still gets the keep-alive ping, which keeps it live.
+      const key = `${snapshotKey(body)}\0${built}`;
+      if (key === client.lastKey) continue;
+      client.lastKey = key;
       client.send(`event: snapshot\ndata: ${body}\n\n`);
       client.lastSent = now();
-      built ??= JSON.stringify(await builtId);
       client.send(`event: build\ndata: ${built}\n\n`);
     }
   };

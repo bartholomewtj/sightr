@@ -6,6 +6,7 @@ import { noteLockRequired } from "./lock";
 import { markLive } from "./connection-health";
 import { fetchClassOf, SESSION_ID, timedFetch } from "./conn-telemetry";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
+import { noteTyping } from "./typing";
 import { SEEN_HEADER } from "@shared/limits";
 import { EVENTS_PATH } from "./sw-routes";
 import type {
@@ -422,6 +423,7 @@ export function sendReply(
   submitKeys?: string[],
   paste?: boolean,
 ): Promise<ActionResponse> {
+  noteTyping();
   return req<ActionResponse>(
     `/api/pane/${encodeURIComponent(paneId)}/reply`,
     {
@@ -443,6 +445,7 @@ export function sendKeys(
   keys: string[],
   expectedPrompt?: string,
 ): Promise<ActionResponse> {
+  noteTyping();
   return req<ActionResponse>(
     `/api/pane/${encodeURIComponent(paneId)}/keys`,
     {

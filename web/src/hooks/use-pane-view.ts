@@ -267,6 +267,7 @@ export function usePaneView(args: PaneViewArgs) {
     paneId,
     enabled: historyAvailable,
     status: agent?.status,
+    screen: text,
     getScrollElement,
   });
   // History arrives after the first paint. The pending ask is what fills options the card

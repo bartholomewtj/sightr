@@ -18,9 +18,11 @@ export { mergeNewest };
 // agent writes after open used to be invisible — scrolling up went from the 50-row live viewport
 // straight into a snapshot from open time (and after `/clear`, into the previous session entirely).
 // A status transition still refetches immediately, an SSE snapshot (or the fallback poll's apply)
-// refreshes the page, and a visibility change catches up after the tab was hidden. There is no
-// 1.5s 160-turn gulp. Several harnesses keep the composer on screen, so Herdr reports idle/done
-// during a turn; gating only on Working left jsonl writes unseen. The fresh page is spliced in by
+// refreshes the page, the pane's screen moving refreshes it (at most every INLINE_SCREEN_REFRESH_MS),
+// and a visibility change catches up after the tab was hidden. There is no 1.5s 160-turn gulp.
+// Several harnesses keep the composer on screen, so Herdr reports idle/done during a turn; gating
+// only on Working left jsonl writes unseen. The bridge pushes a snapshot only when the herd changed,
+// so the screen is what keeps a long turn's chat live. The fresh page is spliced in by
 // uuid: overlap replaces (a tool call picks up its result), the rest appends; no overlap at all
 // means a different session, so the fresh page replaces the lot.
 
@@ -33,6 +35,8 @@ export const INLINE_GROW_THRESHOLD = 800;
 /** Extra refetch after working → idle/done, so the last turn is in the journal. Claude writes the
  *  jsonl line as the turn completes; the status flip can beat that write by a beat. */
 export const INLINE_IDLE_RETRY_MS = 2000;
+/** Fewest ms between two refreshes driven by the screen moving. */
+export const INLINE_SCREEN_REFRESH_MS = 1500;
 
 export type InlineHistoryUnavailable = "disabled" | "no-session" | "no-log" | "error";
 
@@ -44,12 +48,15 @@ export function useInlineHistory({
   paneId,
   enabled,
   status,
+  screen,
   getScrollElement,
 }: {
   paneId: string;
   enabled: boolean;
   /** The pane's agent status; a change means new turns may exist and the newest page is refetched. */
   status?: string;
+  /** The pane's live screen text. When it moves, the agent may have written turns. */
+  screen?: string;
   getScrollElement: () => HTMLElement | null;
 }) {
   const [entries, setEntries] = useState<TranscriptEntry[]>([]);
@@ -195,6 +202,26 @@ export function useInlineHistory({
       if (retry) clearTimeout(retry);
     };
   }, [enabled, status, refreshNewest]);
+
+  // The screen moved, so the newest page may have too. Throttled: an open pane re-reads its screen up
+  // to every 750 ms while the operator types, and the journal does not need that pace.
+  const lastScreen = useRef(screen);
+  const lastScreenRefreshAt = useRef(0);
+  useEffect(() => {
+    if (!enabled || screen === undefined || screen === lastScreen.current) return;
+    lastScreen.current = screen;
+    const run = () => {
+      lastScreenRefreshAt.current = Date.now();
+      void refreshNewest();
+    };
+    const wait = lastScreenRefreshAt.current + INLINE_SCREEN_REFRESH_MS - Date.now();
+    if (wait <= 0) {
+      run();
+      return;
+    }
+    const t = setTimeout(run, wait);
+    return () => clearTimeout(t);
+  }, [enabled, screen, refreshNewest]);
 
   useEffect(() => {
     if (!enabled) return;

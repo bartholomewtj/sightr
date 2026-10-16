@@ -7,7 +7,8 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   fetchSnapshot: vi.fn(),
 }));
 
-import { SSE_RETRY_MAX_MS, SSE_STABLE_MS, SSE_STALE_MS, SUPERSEDE_MS, intervalFor, usePolling } from "./use-polling";
+import { SSE_RETRY_MAX_MS, SSE_STABLE_MS, SSE_STALE_MS, SUPERSEDE_MS, TYPING_MS, intervalFor, usePolling } from "./use-polling";
+import { __resetTyping, noteTyping } from "@/lib/typing";
 import { rootLoader, setSnapshotPushMode } from "@/lib/loaders";
 import type { HomeData } from "@/lib/loaders";
 import type { AgentView } from "@/lib/types";
@@ -118,6 +119,15 @@ describe("intervalFor", () => {
     const data = makeData([makeAgent("w1:p1", "working")]);
     expect(intervalFor(data, undefined)).toBe(HOT);
   });
+
+  it("returns TYPING_MS while typing into an open pane, and nowhere else", () => {
+    const data = makeData([makeAgent("w1:p1", "idle")], [makeShell("w1:s1")]);
+    expect(intervalFor(data, "w1:p1", true)).toBe(TYPING_MS);
+    expect(intervalFor(data, "w1:s1", true)).toBe(TYPING_MS);
+    expect(intervalFor(data, null, true)).toBe(COLD);
+    expect(intervalFor(data, "w99:gone", true)).toBe(COLD);
+    expect(TYPING_MS).toBeLessThan(HOT);
+  });
 });
 
 // The self-heal: a revalidation wedged in "loading" (a black-holed fetch) would otherwise no-op
@@ -146,6 +156,20 @@ describe("usePolling — SSE mode", () => {
     renderHook(() => usePolling(makeData([makeAgent("w1:p1", "idle")]), "w1:p1"));
     vi.advanceTimersByTime(HOT);
     expect(rr.revalidate).toHaveBeenCalled();
+  });
+
+  it("refreshes the open pane faster while the operator types, then falls back", () => {
+    __resetTyping();
+    renderHook(() => usePolling(makeData([makeAgent("w1:p1", "idle")]), "w1:p1"));
+    act(() => noteTyping());
+    const t0 = Date.now();
+    const ticks: number[] = [];
+    rr.revalidate.mockImplementation(() => { ticks.push(Date.now() - t0); });
+    for (let i = 0; i < 80; i++) act(() => { vi.advanceTimersByTime(100); });
+    // Every 750 ms for the 5 s typing window, then the normal 1.5 s from when it ended.
+    expect(ticks).toEqual([750, 1500, 2250, 3000, 3750, 4500, 5000 + HOT, 5000 + 2 * HOT]);
+    rr.revalidate.mockReset();
+    __resetTyping();
   });
 
   it("revalidates from a pushed snapshot while a pane is open", () => {
