@@ -2,6 +2,8 @@
 
 Status: done — #73, `b0e11aa`. Not a council slice. One run.
 
+Amended after #73: the tab no longer polls. Each poll tick re-ran the loader, and every read shells out to PowerShell on the PC, so the tab cost a process spawn every 1.5–4 s while open. The list is now read only when the operator taps **Scan**; the route has no loader (`web/src/lib/local-scan.ts`), and the last scan is kept in the phone's local storage. The Web and Tests sections below describe the original build.
+
 ## What the operator gets
 
 A fourth destination in the phone's bottom bar, **Local**, between Files and Settings. It lists the servers currently listening on this PC's loopback and opens each one in a new browser tab.
