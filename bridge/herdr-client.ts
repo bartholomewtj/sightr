@@ -1,3 +1,4 @@
+import { canonicalAgent } from "../shared/agents.ts";
 import type { AgentStatus } from "../shared/wire.ts";
 import { dialHerdr, type SockHandle } from "./dial.ts";
 import { decodeReplyLine, decodeStreamLine } from "./wire.ts";
@@ -159,13 +160,75 @@ export interface WireSnapshot {
   agents?: WireAgent[];
 }
 
-/** The freshly-created shell pane returned by tab.create / workspace.create (`root_pane`). */
+/** The freshly-created shell pane returned by tab.create / workspace.create (`root_pane`) / pane.split (`pane`). */
 export interface CreatedShell {
   paneId: string;
   workspaceId: string;
   workspaceLabel?: string;
+  /** The new workspace's number (workspace.create only). */
+  workspaceNumber?: number;
   tabId: string;
   cwd: string;
+  /** The pane's terminal (herdr 0.9.0 sends it on every created pane; live-checked 16 Oct 2026). */
+  terminalId?: string;
+}
+
+/** One pane as `pane.get` reports it, cut to what Sightr reads. `agent` is null on a bare shell. */
+export interface PaneInfo {
+  paneId: string;
+  terminalId: string;
+  workspaceId: string;
+  tabId: string;
+  agent: string | null;
+}
+
+/** An agent `agent.start` started and found ready (or waiting on a dialog: `blocked`). */
+export interface StartedAgent {
+  name: string;
+  paneId: string;
+  terminalId: string;
+  /** The kind herdr detected, when it reported one. */
+  agent?: string;
+  status: AgentStatus;
+}
+
+/** `agent.start`'s schema bounds for `timeout_ms`: above 3000, at most 300000. */
+export const AGENT_START_MIN_TIMEOUT_MS = 3_001;
+export const AGENT_START_MAX_TIMEOUT_MS = 300_000;
+export const AGENT_START_DEFAULT_TIMEOUT_MS = 30_000;
+/** How often the start wait asks `agent.get` (the herdr CLI polls every 100 ms; this is gentler). */
+export const AGENT_START_POLL_MS = 250;
+
+/** Raw `AgentInfo` from `agent.start` / `agent.get`, as far as the start wait reads it. */
+interface WireAgentInfo {
+  terminal_id: string;
+  pane_id: string;
+  name?: string | null;
+  agent?: string | null;
+  agent_status: AgentStatus;
+  launch_pending?: boolean;
+  interactive_ready?: boolean;
+}
+
+export interface StartAgentClock {
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+}
+
+/** A thrown error in the same `herdr <method>: <code>: <message>` shape a reply error has, so `herdrErrorCode` reads it. */
+function startError(code: string, message: string): Error {
+  return new Error(`herdr agent.start: ${code}: ${message}`);
+}
+
+function toCreatedShell(p: WirePane, workspace?: WireWorkspace): CreatedShell {
+  return {
+    paneId: p.pane_id,
+    workspaceId: p.workspace_id,
+    tabId: p.tab_id,
+    cwd: p.cwd,
+    ...(p.terminal_id ? { terminalId: p.terminal_id } : {}),
+    ...(workspace ? { workspaceLabel: workspace.label, workspaceNumber: workspace.number } : {}),
+  };
 }
 
 export interface PaneRead {
@@ -463,8 +526,118 @@ export class HerdrClient {
     if (opts.label) params.label = opts.label;
     if (opts.cwd) params.cwd = opts.cwd;
     const r = await this.request<{ root_pane: WirePane }>("tab.create", params);
-    const p = r.root_pane;
-    return { paneId: p.pane_id, workspaceId: p.workspace_id, tabId: p.tab_id, cwd: p.cwd };
+    return toCreatedShell(r.root_pane);
+  }
+
+  /**
+   * Split a pane, opening a fresh shell beside (`right`) or below (`down`) it. `focus:false` always.
+   * With no `targetPaneId`, herdr splits the workspace's focused pane. The reply is `{type:"pane_info",
+   * pane}` (live-checked 16 Oct 2026, herdr 0.9.0-preview); `root_pane` is read too in case that changes.
+   */
+  async splitPane(opts: {
+    targetPaneId?: string;
+    workspaceId?: string;
+    direction: "right" | "down";
+    cwd?: string;
+  }): Promise<CreatedShell> {
+    const params: Record<string, unknown> = { direction: opts.direction, focus: false };
+    if (opts.targetPaneId) params.target_pane_id = opts.targetPaneId;
+    if (opts.workspaceId) params.workspace_id = opts.workspaceId;
+    if (opts.cwd) params.cwd = opts.cwd;
+    const r = await this.request<{ pane?: WirePane; root_pane?: WirePane }>("pane.split", params);
+    const p = r.pane ?? r.root_pane;
+    if (!p?.pane_id) throw new Error("herdr pane.split: unexpected reply shape");
+    return toCreatedShell(p);
+  }
+
+  /** One pane by id, or null when herdr no longer has it (`pane_not_found`). */
+  async getPane(paneId: string): Promise<PaneInfo | null> {
+    try {
+      const r = await this.request<{ pane: WirePane }>("pane.get", { pane_id: paneId });
+      const p = r.pane;
+      return {
+        paneId: p.pane_id,
+        terminalId: p.terminal_id,
+        workspaceId: p.workspace_id,
+        tabId: p.tab_id,
+        agent: typeof p.agent === "string" && p.agent !== "" ? p.agent : null,
+      };
+    } catch (err) {
+      if (herdrErrorCode(err) === "pane_not_found") return null;
+      throw err;
+    }
+  }
+
+  /**
+   * Start a supported agent in a pane that sits at its shell prompt, and wait until it is ready.
+   *
+   * `agent.start` itself only types the launch command and answers at once; the herdr CLI then polls
+   * `agent.get` until the named agent is ready (herdr `src/cli/agent.rs`). This does the same: ready is
+   * `idle`/`done` with `interactive_ready`, or `blocked` (a start-up dialog such as Claude's folder
+   * trust; Sightr answers those as runtime requests, where the CLI calls it "not ready"). Failures throw
+   * in herdr's error shape: the server's own codes (`agent_pane_busy`, `agent_name_taken`,
+   * `invalid_agent_name`, …) and the CLI's wait codes `timeout`, `agent_start_failed`,
+   * `agent_kind_mismatch`, `agent_name_not_found`. `timeoutMs` is clamped to the schema's bounds.
+   */
+  async startAgent(
+    opts: { paneId: string; name: string; kind: string; args: readonly string[]; timeoutMs?: number },
+    clock: StartAgentClock = {},
+  ): Promise<StartedAgent> {
+    const sleep = clock.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+    const now = clock.now ?? Date.now;
+    const timeoutMs = Math.min(
+      AGENT_START_MAX_TIMEOUT_MS,
+      Math.max(AGENT_START_MIN_TIMEOUT_MS, Math.round(opts.timeoutMs ?? AGENT_START_DEFAULT_TIMEOUT_MS)),
+    );
+    const started = await this.write(opts.paneId, () =>
+      this.request<{ agent: WireAgentInfo; argv?: string[] }>("agent.start", {
+        name: opts.name,
+        kind: opts.kind,
+        pane_id: opts.paneId,
+        args: [...opts.args],
+        timeout_ms: timeoutMs,
+      }),
+    );
+    const terminalId = started.agent?.terminal_id;
+    if (!terminalId) throw startError("agent_start_failed", "agent start response did not include terminal_id");
+
+    const deadline = now() + timeoutMs;
+    const get = async (target: string): Promise<WireAgentInfo | null> => {
+      try {
+        return (await this.request<{ agent: WireAgentInfo }>("agent.get", { target })).agent;
+      } catch {
+        return null;
+      }
+    };
+    for (;;) {
+      if (now() >= deadline) {
+        // One more look lets herdr reconcile its own start deadline, so the name is free again.
+        await get(opts.name);
+        throw startError("timeout", "timed out waiting for agent startup");
+      }
+      const agent = (await get(opts.name)) ?? (await get(opts.paneId));
+      if (agent) {
+        if (agent.terminal_id !== terminalId || (agent.name ?? undefined) !== opts.name) {
+          throw startError("agent_name_not_found", `named agent ${opts.name} no longer owns the target terminal`);
+        }
+        if (agent.agent && canonicalAgent(agent.agent) !== canonicalAgent(opts.kind)) {
+          throw startError("agent_kind_mismatch", `expected ${opts.kind}, detected ${agent.agent}`);
+        }
+        const ready: StartedAgent = {
+          name: opts.name,
+          paneId: agent.pane_id,
+          terminalId,
+          ...(agent.agent ? { agent: agent.agent } : {}),
+          status: agent.agent_status,
+        };
+        if (agent.agent_status === "blocked") return ready;
+        if ((agent.agent_status === "idle" || agent.agent_status === "done") && agent.interactive_ready === true) return ready;
+        if ((agent.agent_status === "idle" || agent.agent_status === "done") && agent.launch_pending !== true) {
+          throw startError("agent_start_failed", "agent process exited before becoming interactive");
+        }
+      }
+      await sleep(AGENT_START_POLL_MS);
+    }
   }
 
   /**
@@ -478,14 +651,7 @@ export class HerdrClient {
       workspace: WireWorkspace;
       root_pane: WirePane;
     }>("workspace.create", params);
-    const p = r.root_pane;
-    return {
-      paneId: p.pane_id,
-      workspaceId: p.workspace_id,
-      workspaceLabel: r.workspace.label,
-      tabId: p.tab_id,
-      cwd: p.cwd,
-    };
+    return toCreatedShell(r.root_pane, r.workspace);
   }
 
   /**

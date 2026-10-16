@@ -23,6 +23,7 @@ import {
   unbindableComposer,
   extractInputDraft,
   extractStatusLines,
+  permissionModeOf,
   stripChrome,
 } from "./chrome";
 import { detectAskRegion, detectMultiAskRegion } from "./ask";
@@ -88,4 +89,5 @@ export const cursorAdapter: HarnessAdapter = {
   // after the typed text flushes that burst without submitting; Enter then submits on its own
   // write. Grok cannot use this — its footer binds → to accept a ghost suggestion.
   submitKeys: ["Right", "Enter"],
+  permissionModeOf,
 };

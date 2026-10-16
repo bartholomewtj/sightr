@@ -166,6 +166,34 @@ export function hasInputBox(lines: StyledLine[]): boolean {
   return locateInputBox(texts, end) !== null;
 }
 
+// The permission-mode hint row under the input box (T08). Live 16 Oct 2026, Claude Code 2.1.301:
+//   "⏸ manual mode on · ? for shortcuts"           "⏵⏵ accept edits on (shift+tab to cycle)"
+//   "⏸ plan mode on (shift+tab to cycle)"          "⏵⏵ auto mode on (shift+tab to cycle)"
+// and from earlier captures "⏵⏵ bypass permissions on (shift+tab to cycle)". Each may be followed by
+// "· esc to interrupt", "· ← 1 agent" and the like. Older builds painted nothing in the default mode;
+// a row with no mode is not taken as `manual` (no `defaultModeId`), so an unknown footer refuses.
+const MODE_HINT = /(?:⏵⏵|⏸)\s*(manual mode|accept edits|plan mode|auto mode|bypass permissions) on\b/;
+const MODE_IDS: Record<string, string> = {
+  "manual mode": "manual",
+  "accept edits": "acceptEdits",
+  "plan mode": "plan",
+  "auto mode": "auto",
+  "bypass permissions": "bypassPermissions",
+};
+
+/**
+ * The permission mode the hint row under the input box names, as a launch-table id (`manual`,
+ * `acceptEdits`, `plan`, `auto`, `bypassPermissions`), or null when there is no input box or the row
+ * names no mode. Read by position, like extractStatusLines: only rows under the box's bottom border.
+ */
+export function permissionModeOf(lines: StyledLine[]): string | null {
+  for (const row of extractStatusLines(lines)) {
+    const m = MODE_HINT.exec(row.segments.map((s) => s.text).join(""));
+    if (m) return MODE_IDS[m[1]!] ?? null;
+  }
+  return null;
+}
+
 interface InputBox {
   /** Index of the TOP border — the exclusive bound of everything ABOVE the box (stripChrome uses it). */
   top: number;

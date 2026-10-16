@@ -9,6 +9,7 @@ import type { PaneActivity } from "../activity.ts";
 import type { JournalAdapter } from "../journal/types.ts";
 import type { AgentView, EngineSnapshot } from "../state-engine.ts";
 import { createProject, createThread, project, thread } from "../test/thread-fixtures.ts";
+import { capabilitiesFor as sharedCapabilities } from "../../shared/agents.ts";
 import { capabilitiesFor, INTERRUPT_TABLE } from "./capabilities.ts";
 import type { EventDraft, ServerThread } from "./events.ts";
 import {
@@ -128,8 +129,9 @@ describe("diffHerd", () => {
       lastActivityAt: 5_000,
       createdAt: 5_000,
       updatedAt: 5_000,
-      capabilities: { ...NO_CAPABILITIES, hasJournal: true, canQueueDrain: true, canInterrupt: true, interruptKeys: ["Escape"] },
+      capabilities: capabilitiesFor("claude", journals),
     });
+    expect(created.capabilities.canSwitchPermissionMode).toBe(true);
   });
 
   test("an unchanged snapshot gives nothing", () => {
@@ -630,12 +632,15 @@ describe("ingestor", () => {
 });
 
 describe("capabilitiesFor", () => {
-  test("journal from the registry, queue drain for agents only", () => {
-    const claudeInterrupt = { canInterrupt: true, interruptKeys: ["Escape"] };
-    expect(capabilitiesFor("claude", journals)).toEqual({ ...NO_CAPABILITIES, hasJournal: true, canQueueDrain: true, ...claudeInterrupt });
-    expect(capabilitiesFor("agy", journals)).toEqual({ ...NO_CAPABILITIES, canQueueDrain: true });
-    expect(capabilitiesFor("claude", null)).toEqual({ ...NO_CAPABILITIES, canQueueDrain: true, ...claudeInterrupt });
+  test("the shared table, with the journal this bridge actually tails", () => {
+    expect(capabilitiesFor("claude", journals)).toEqual(sharedCapabilities("claude"));
+    expect(capabilitiesFor("claude", null)).toEqual({ ...sharedCapabilities("claude"), hasJournal: false });
+    expect(capabilitiesFor("agy", journals)).toEqual(sharedCapabilities("agy"));
     expect(capabilitiesFor("shell", journals)).toEqual(NO_CAPABILITIES);
+  });
+
+  test("an agent the table does not know can still take a queued message", () => {
+    expect(capabilitiesFor("gemini", journals)).toEqual({ ...NO_CAPABILITIES, canQueueDrain: true });
   });
 
   test("interrupt only where the key passed a live check (T06)", () => {

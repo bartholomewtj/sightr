@@ -136,3 +136,4 @@ Order matters: T01→T05 make the bridge serve v2 with no UI; T09 can start once
 - **v1 at cutover:** v1 moves to `/v1/` and keeps its routes (snapshot SSE, pane polling) for one release. The next release removes both.
 - **Launch pickers:** each harness gets a short list of suggested models plus free text. Flags come only from T07's table, never from the client. Cursor and Codex flags stay empty until someone checks them on a machine that has those CLIs.
 - **Bypass modes** (`bypassPermissions` and the like) are offered on the phone too, behind two confirmations. The bridge refuses them without `confirmBypass: true`.
+- **No live model switch for Claude** (17 Oct 2026): `/model` also rewrites the user's global default model, so Claude's model is chosen at spawn only.

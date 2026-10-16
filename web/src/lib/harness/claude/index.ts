@@ -17,7 +17,7 @@ import { detectMultiSelectRegion } from "./multi-select";
 import { detectPromptSelectRegion } from "./prompt-select";
 import { detectMenuRegion } from "./menu";
 import { detectAutocompleteRegion } from "./autocomplete";
-import { stripChrome, extractStatusLines, extractInputDraft, hasInputBox } from "./chrome";
+import { stripChrome, extractStatusLines, extractInputDraft, hasInputBox, permissionModeOf } from "./chrome";
 import { isBlank, isHorizontalRule, isInputBoxTopBorder, lineText } from "./markers";
 import { isPastePlaceholderOnly, pasteCarriesSend } from "./paste";
 
@@ -132,4 +132,6 @@ export const claudeAdapter: HarnessAdapter = {
   // "this isn't the user's text" for the stranded-draft preview's Take over.
   draftCarriesSend: pasteCarriesSend,
   draftIsOpaque: isPastePlaceholderOnly,
+  // The live permission-mode switch (T08) reads the hint row under the box.
+  permissionModeOf,
 };

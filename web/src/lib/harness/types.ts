@@ -113,4 +113,13 @@ export interface HarnessAdapter {
   /** The adapter lifts dialogs but cannot read its composer (no captured input box). Replies keep the
    *  legacy one-shot send instead of type-then-verify, which would stall forever on a null draft. */
   replyOneShot?: boolean;
+  /**
+   * The permission mode the harness's footer shows, as an id from the thread's `permissionModes`
+   * (T08), or null when it cannot tell. OPTIONAL; absence means the harness's mode cannot be read, and
+   * the bridge refuses a live mode switch.
+   */
+  permissionModeOf?(lines: StyledLine[]): string | null;
+  /** The mode a `null` from `permissionModeOf` means while the composer is on screen, when the
+   *  harness prints nothing in its default mode. Absent: null stays unknown. */
+  defaultModeId?: string;
 }

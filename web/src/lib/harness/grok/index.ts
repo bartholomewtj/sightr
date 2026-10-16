@@ -43,6 +43,7 @@ import {
   composerReady,
   extractInputDraft,
   extractStatusLines,
+  permissionModeOf,
   stripCanvasBackground,
   stripChrome,
 } from "./chrome";
@@ -114,4 +115,5 @@ export const grokAdapter: HarnessAdapter = {
   // extractInputDraft instead.
   draftCarriesSend: chipCarriesSend,
   draftIsOpaque: isImageChipOnly,
+  permissionModeOf,
 };

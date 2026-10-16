@@ -24,7 +24,7 @@ import type { ThreadStore } from "./store.ts";
 // `store.append`. Nothing here talks to Herdr, and the activity ledger is only read: "seen" stays in
 // activity.json (ADR 0003), so v1 and v2 agree on what is unread.
 
-/** How long a T07 thread (`starting`, no terminal yet) may be missing from the herd before it counts as gone. */
+/** How long a T07 thread (`starting`) may be missing from the herd before it counts as gone. */
 export const STARTING_GRACE_MS = 60_000;
 
 /** A thread's identity: `(paneId, terminalId)`. A pane with no terminal id (old herdr) keys on "". */
@@ -258,14 +258,19 @@ export function diffHerd(snap: EngineSnapshot, projection: HerdProjection, ctx: 
     const current = next.get(thread.id)!;
     const p: ServerThreadPatch = {};
     if (adopted) p.terminalId = terminalId;
-    if (current.harness !== harness) p.harness = harness;
-    if (!sameCapabilities(current.capabilities, capabilities)) p.capabilities = capabilities;
-    if (current.titleSource === "herd") {
-      const title = herdTitle(pane, harness);
-      if (current.title !== title) p.title = title;
+    // T07 is starting an agent in this pane and herdr still sees the bare shell: the thread keeps the
+    // harness, title and `starting` status the spawn gave it until the agent shows up (or T07 gives up).
+    const spawning = current.status === "starting" && pane.kind === "shell";
+    if (!spawning) {
+      if (current.harness !== harness) p.harness = harness;
+      if (!sameCapabilities(current.capabilities, capabilities)) p.capabilities = capabilities;
+      if (current.titleSource === "herd") {
+        const title = herdTitle(pane, harness);
+        if (current.title !== title) p.title = title;
+      }
+      if (current.unreadDone !== unreadDone) p.unreadDone = unreadDone;
     }
-    if (current.unreadDone !== unreadDone) p.unreadDone = unreadDone;
-    const status = threadStatusFor(pane.status, unreadDone, kinds.get(thread.id), current.status);
+    const status = spawning ? current.status : threadStatusFor(pane.status, unreadDone, kinds.get(thread.id), current.status);
     if (current.status !== status) p.status = status;
     if (lastActivityAt !== undefined && current.lastActivityAt !== lastActivityAt) p.lastActivityAt = lastActivityAt;
     if (!sameRef(current.sessionRef, pane.agentSession)) p.sessionRef = pane.agentSession ?? null;
@@ -287,7 +292,7 @@ export function diffHerd(snap: EngineSnapshot, projection: HerdProjection, ctx: 
       continue;
     }
     // T07 is spawning this pane and herdr may not list it yet.
-    if (thread.status === "starting" && thread.terminalId === "" && at - thread.updatedAt < STARTING_GRACE_MS) continue;
+    if (thread.status === "starting" && at - thread.updatedAt < STARTING_GRACE_MS) continue;
     if (ctx.missingThreads.has(thread.id)) archive(thread, "pane-closed");
     else missingThreads.add(thread.id);
   }
