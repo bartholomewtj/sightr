@@ -79,9 +79,10 @@ product since. It does not track collie.
   device that can reach the bridge. Point it at the narrowest folder you need, never at a home
   directory, and leave it unset to hide the tab.
 - The Local tab lists whatever is listening on this machine's loopback and links each one at
-  `http://<tailscale-host>:<port>/`. Reaching those ports from a phone takes a forwarder on the
-  host — the bridge only serves the list. It never publishes a port itself, and it never touches
-  port 443, which `tailscale serve` owns.
+  `http://<tailscale-host>:<port>/`. The list is read only when you tap Scan, never on a timer, and
+  a server is contacted only when you tap its row. Reaching those ports from a phone takes a
+  forwarder on the host — the bridge only serves the list. It never publishes a port itself, and it
+  never touches port 443, which `tailscale serve` owns.
 
 ## Requirements
 
@@ -368,6 +369,7 @@ outcome is appended to the audit log.
 | `shared/agents.ts`, `shared/catalog/` | The harness descriptor table and per-harness slash catalogs |
 | `shared/wire.ts`, `shared/limits.ts` | Types and limits both sides agree on |
 | `bridge/local-servers.ts` | `GET /api/local-servers`: loopback listeners and this machine's Tailscale name, for the Local tab |
+| `web/src/lib/local-scan.ts` | The Local tab's one-shot scan and the last scan kept on the phone; the tab has no loader |
 | `web/src/routes/` | Spaces tree, pane view, files, local, settings |
 | `web/src/lib/harness/` | Screen parsers per harness: prompts, ask-cards, permission cards |
 | `web/src/lib/`, `web/src/hooks/`, `web/src/components/` | API client, ANSI parsing, transcript folding, UI |
