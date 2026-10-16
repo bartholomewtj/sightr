@@ -23,6 +23,8 @@ import { createHerdIngestor } from "./threads/herd-ingest.ts";
 import { buildJournalRegistry } from "./journal/registry.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import { createJournalIngestor, createThreadWatchers } from "./threads/journal-ingest.ts";
+import { createRequestIngestor } from "./threads/request-ingest.ts";
+import { createPaneQueue } from "./pane-queue.ts";
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
 // loadConfig throws on a config that would be unsafe to serve (a non-loopback bind). Print the
@@ -155,6 +157,18 @@ const journalIngestor = threadStore
   : null;
 journalIngestor?.start();
 
+// One pane write queue for the process: the routes' writes, the v2 request reads and the v2 respond
+// all take turns on it, so a read never lands between a reply's steps.
+const paneWrites = createPaneQueue();
+
+// v2 request ingest: a waiting pane's dialog becomes a runtime request, answered by its bound keys.
+// Subscribed after the herd ingest, so it reads each poll's statuses. T05 routes
+// `runtime-request.respond` to `requestIngestor.respond`.
+const requestIngestor = threadStore
+  ? createRequestIngestor({ store: threadStore, engine, herdr, queue: paneWrites, cfg, audit })
+  : null;
+requestIngestor?.start();
+
 // Background notifications on lifecycle transitions (foreground toasts are computed client-side by
 // diffing snapshots). The whole herd shares one notification slot (HERD_TAG).
 const clock: NotifyClock<ReturnType<typeof setTimeout>> = {
@@ -198,6 +212,7 @@ const server = startServer({
   onEvents: (events) => { snapshotEvents = events; },
   journals,
   transcripts,
+  paneWrites,
 });
 
 let stopping = false;
@@ -211,6 +226,7 @@ const shutdown = async () => {
   engine.stop();
   herdIngestor?.stop();
   journalIngestor?.stop();
+  requestIngestor?.stop();
   poker.stop();
   // Retract anything still on the lock screen — nothing live stands behind it once we exit.
   notifications.clearAll();

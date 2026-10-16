@@ -682,6 +682,10 @@ export interface ThreadStore {
   openRuns(): Run[];
   /** Every `pending` runtime request, with options (T02 reads the kind and expires them). */
   pendingRequests(): RuntimeRequest[];
+  /** One runtime request by id, with options (T04 respond). */
+  getRequest(id: string): RuntimeRequest | null;
+  /** The screen text a request was bound to. Server-side only; never send it to a client. */
+  requestBoundText(id: string): string | null;
   getRun(id: string): Run | null;
   /** A thread's newest `limit` runs (default all), oldest first. */
   listRuns(threadId: string, limit?: number): Run[];
@@ -957,6 +961,18 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
         .query<{ body_json: string }, []>("SELECT body_json FROM runtime_requests WHERE status = 'pending' ORDER BY updated_sequence")
         .all()
         .map((r) => JSON.parse(r.body_json) as RuntimeRequest);
+    },
+
+    getRequest(id) {
+      const row = db.query<{ body_json: string }, [string]>("SELECT body_json FROM runtime_requests WHERE id = ?").get(id);
+      return row ? (JSON.parse(row.body_json) as RuntimeRequest) : null;
+    },
+
+    requestBoundText(id) {
+      return (
+        db.query<{ bound_text: string | null }, [string]>("SELECT bound_text FROM runtime_requests WHERE id = ?").get(id)
+          ?.bound_text ?? null
+      );
     },
 
     getRun(id) {

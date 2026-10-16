@@ -347,6 +347,8 @@ export interface RuntimeRequest {
   bindingHash: string;
   createdAt: number;
   updatedAt: number;
+  /** The run that was open when the dialog appeared; its `approval_request` / `user_input_request` item belongs to it. */
+  runId?: string;
   /** The chosen option, once resolved from Sightr (T04, T17). */
   optionIndex?: number;
   optionIndices?: number[];

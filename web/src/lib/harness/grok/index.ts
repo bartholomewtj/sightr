@@ -37,7 +37,7 @@ import { type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
 import { liftRegion } from "../scan";
 import { currentAskCatalog } from "../ask-pane";
-import type { TranscriptAsk } from "@shared/wire";
+import type { TranscriptAsk } from "../../../../../shared/wire";
 import {
   composerPrompt,
   composerReady,

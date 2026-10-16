@@ -38,7 +38,7 @@ import { createWorktreeIndex } from "./worktrees.ts";
 import { snapshotRoute, sharedSnapshot, bridgeConfigRoute } from "./snapshot-route.ts";
 import { createSnapshotEvents, eventsRoute, type SnapshotEvents } from "./events-route.ts";
 import { subscribeRoute, notifyPrefsRoute } from "./notify-routes.ts";
-import { createPaneQueue } from "./pane-queue.ts";
+import { createPaneQueue, type PaneQueue } from "./pane-queue.ts";
 import { SILENT_CONN, type ConnLog } from "./conn-log.ts";
 import { connRoute } from "./conn-route.ts";
 import { createLocalServersRoute } from "./local-servers.ts";
@@ -68,6 +68,8 @@ export function startServer(opts: {
   journals?: Record<string, JournalAdapter> | null;
   /** The transcript store, when the caller built it (index.ts shares it with the v2 journal ingest). */
   transcripts?: TranscriptStore | null;
+  /** The pane write queue, when the caller built it (index.ts shares it with the v2 request ingest). */
+  paneWrites?: PaneQueue;
 }) {
   const { cfg, herdr, engine, notifications, push, notifyPrefs, settings, activity, lock, audit } = opts;
   const conn = opts.conn ?? SILENT_CONN;
@@ -77,7 +79,7 @@ export function startServer(opts: {
   opts.onEvents?.(events);
   const challenges = createChallenges();
   // One per-pane write queue for the whole process: two panes never wait on each other.
-  const paneWrites = createPaneQueue();
+  const paneWrites = opts.paneWrites ?? createPaneQueue();
   // One journal registry + store for the process. The store's cache is keyed by absolute path, so
   // sharing it across harnesses is correct. Which harnesses have journals at all is decided in
   // journal/registry.ts, never here.

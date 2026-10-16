@@ -1,6 +1,6 @@
 # T04 — Runtime requests: dialogs as answerable cards
 
-Status: draft (T3-shape series). Depends on: T01, T02 (T03 for Grok question cards).
+Status: done on feat/v2 (2026-10-16). Depends on: T01, T02 (T03 for Grok question cards).
 
 ## Problem
 
@@ -104,3 +104,47 @@ Fake Herdr (scripted `readPane` per call, records `sendPaneKeys`), temp sqlite, 
 - `bindingHash` is only identity for the client; the authority is `boundText` verified by the bridge.
 - The 12-line `boundText` is a guess at "enough of the dialog, inside the 6-line tail". Tune against the
   fixtures; a dialog taller than 12 lines may need a harness-specific window.
+
+## Built
+
+Files: `web/src/lib/harness/dialog-kit.ts` (+ test), `bridge/threads/request-ingest.ts` (`createRequestIngestor`,
+`bindingHash`, `requestingStatus`), `bridge/threads/respond.ts` (`createRespondHandler`), `bridge/threads/request-items.ts`
+(the request's timeline item), `bridge/threads/request-ingest.test.ts`. Wired in `bridge/index.ts`: one pane write queue is
+now built there and passed to `startServer` (new `paneWrites` option), and the request ingestor starts after the herd and
+journal ingests. T05 routes `runtime-request.respond` to `requestIngestor.respond(command, { commandId })`.
+
+Deviations from the draft:
+
+- **The kit holds each adapter's own `buildBlocks`**, not a re-wired list of leaf detectors. After three import rewrites
+  (`claude/prompt-select.ts` and `pi/ask.ts` reached `@shared/decision-marker`, `grok/index.ts` reached `@shared/wire` as a
+  type) every adapter's `index.ts` closure is leaf, so the kit runs the phone's exact arbitration order (Claude: preview,
+  wizard, multi-select, prompt-select, menu). The test pins each entry `===` the adapter's `buildBlocks`, checks every
+  fixture of every agent, and walks the import closure (no package, no `@shared`). Claude's `chrome.ts` was already leaf;
+  Grok and Pi are included, not deferred.
+- **Kinds:** prompt-select family `permission`/`trust` map to themselves; `select` and `plan` (all ask cards and plan
+  approvals) are `question`; a `MenuModel` (Claude's generic menu, Grok's plan menu) is `menu` with its footer actions as
+  options. Wizard, multi-select and preview-select are `question` with no options (T17). A prompt whose free-text row is
+  focused is published with no options (every digit would be typed into the row).
+- **`destructive`:** the only deny lists the adapters have are Cursor's `Skip` and Grok's `No, reject` rows (now exported as
+  `isSkipLabel` / `isRejectLabel`), plus a menu action's own `cancel` flag. Claude and Agy have no list, so their `No` is
+  not marked.
+- **Timeline items (T3 shapes):** every `runtime-request.updated` is written with a `turn-item.updated` in the same batch:
+  `approval_request {requestId, requestKind, prompt, options: [{label}]}` for permission/trust/menu/password,
+  `user_input_request {requestId, questions: [{id: "q1", header: "Question", question, options}]}` for a question. Item id
+  `request:<requestId>`; status `waiting` → `completed` (resolved) or `cancelled` (expired). The herd ingest's archive path
+  now expires the item too.
+- **`RuntimeRequest.runId?`** added to `shared/v2/contracts.ts`: the run open when the dialog appeared, so the item belongs
+  to it and the herd ingest can rebuild the item without a store read.
+- **Store reads added:** `getRequest(id)`, `requestBoundText(id)` (server-side only).
+- **Close:** `resolved` is written by `respond` itself (step 4), so the ingestor only ever expires. After a respond, the
+  same screen does not reopen a request for `RESOLVED_GRACE_MS` (3 s): the read right after the keys can still show the
+  old dialog. A dialog still there past that (the keys did not take) is published again.
+- **The parser is chosen by the pane's raw Herdr `agent`** (exact string, as v1's phone does), not the thread's canonical
+  `harness`.
+- **Respond codes:** `not_found`, `conflict` (not pending, archived, unbound), `invalid` (bad index, `optionIndices`,
+  password, no options, whistlr card), `prompt-changed`, `busy` (pane queue timeout), `failed` (read or key send failed).
+  The receipt (`runtime-request.respond`, result `{requestId, optionIndex}`) is written only on success; a
+  `prompt-changed` expiry carries the `commandId` but no receipt. The request is re-checked inside the queue turn, so one
+  the ingestor expired while respond waited sends nothing.
+- `boundText` is 12 lines as drafted; every fixture's dialog verifies against its own screen with it. Not live-tested
+  against herdr.

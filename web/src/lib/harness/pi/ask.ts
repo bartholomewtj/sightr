@@ -33,7 +33,7 @@ import {
   TAB_BAR,
   YOUR_ANSWER,
 } from "./markers";
-import { parseDecisionMarkerLine } from "@shared/decision-marker";
+import { parseDecisionMarkerLine } from "../../../../../shared/decision-marker";
 
 export interface PiAskOption {
   label: string;
