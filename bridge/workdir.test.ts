@@ -67,6 +67,22 @@ describe("workdir", () => {
       expect(PREVIEW_CAP_BYTES).toBe(512 * 1024);
     } finally { await rm(root, { recursive: true, force: true }); }
   });
+  test("answers a pane's folder as a contained rel path, never the absolute cwd", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sightr-workdir-pane-"));
+    const outside = await mkdtemp(join(tmpdir(), "sightr-workdir-pane-out-"));
+    try {
+      await mkdir(join(root, "proj", "src"), { recursive: true }); await mkdir(join(root, "config"));
+      const cwds: Record<string, string> = { a: join(root, "proj", "src"), b: root, c: outside, d: join(root, "config"), e: join(root, "gone") };
+      const w = createWorkdir(cfg(root), { ...helpers, paneCwd: (id: string) => cwds[id] ?? null });
+      const ask = async (pane: string) => (await (await w.handle(new Request(`http://x/api/files/pane-folder?pane=${pane}`), new URL(`http://x/api/files/pane-folder?pane=${pane}`))).json()) as { path: string | null };
+      expect(await ask("a")).toEqual({ path: "proj/src" });
+      expect(await ask("b")).toEqual({ path: "" });
+      expect(await ask("c")).toEqual({ path: null });
+      expect(await ask("d")).toEqual({ path: null });
+      expect(await ask("e")).toEqual({ path: null });
+      expect(await ask("unknown")).toEqual({ path: null });
+    } finally { await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
+  });
   test("searches names, caps previews, and downloads safely", async () => {
     const root = await mkdtemp(join(tmpdir(), "sightr-workdir-search-"));
     try {

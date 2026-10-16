@@ -66,7 +66,9 @@ describe("adaptive layout", () => {
     await boot("/v2/");
     fireEvent.click(await screen.findByRole("button", { name: "Close the right panel" }));
     expect(region("right-panel")).not.toBeInTheDocument();
-    expect(localStorage.getItem("sightr:v2:right-panel")).toBe("closed");
+    expect(JSON.parse(localStorage.getItem("sightr:v2:right-panel-state:v1") ?? "{}").state).toMatchObject({ isOpen: false });
+    fireEvent.click(await screen.findByRole("button", { name: "Open the right panel" }));
+    expect(region("right-panel")).toBeInTheDocument();
   });
 
   it("resizes the sidebar between 200 and 480 px and stores the width", async () => {

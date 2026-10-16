@@ -14,7 +14,6 @@ import { OpenTerminalButton } from "./ComposerPendingApprovalPanel";
 interface PendingUserInputPanelProps {
   request: RuntimeRequest;
   pendingCount: number;
-  paneId: string;
   respondingIndex: number | null;
   verdict: string | null;
   disabled?: boolean;
@@ -25,7 +24,6 @@ interface PendingUserInputPanelProps {
 export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserInputPanel({
   request,
   pendingCount,
-  paneId,
   respondingIndex,
   verdict,
   disabled = false,
@@ -78,7 +76,7 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
           <>
             <p className="text-sm text-muted-foreground">Answer in the Terminal tab.</p>
             <div>
-              <OpenTerminalButton paneId={paneId} />
+              <OpenTerminalButton threadId={request.threadId} />
             </div>
           </>
         )}

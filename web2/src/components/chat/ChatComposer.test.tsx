@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -11,6 +11,9 @@ import { useBridgeInfo, useStreamHealth, useThreadStore } from "@/stream/stores"
 import { thread as threadFixture } from "@/test/fixtures";
 import { setViewportWidth } from "@/test/media";
 import { server } from "@/test/setup";
+
+import { ShortcutListener } from "@/components/GlobalShortcuts";
+import { useRightPanelStore } from "@/rightPanelStore";
 
 import { ChatComposer } from "./ChatComposer";
 
@@ -71,7 +74,13 @@ function patchThread(fn: (s: NonNullable<ReturnType<typeof useThreadStore.getSta
 
 function show(opts: Setup = {}) {
   setThread(opts);
-  return render(<ChatComposer threadId="t1" />);
+  // T13: the keybinding table's listener, which runs the composer's table commands.
+  return render(
+    <>
+      <ShortcutListener />
+      <ChatComposer threadId="t1" />
+    </>,
+  );
 }
 
 const box = () => screen.getByLabelText("Message") as HTMLTextAreaElement;
@@ -483,7 +492,10 @@ describe("ChatComposer: a pending request replaces the box", () => {
   it("question with no options: the prompt and Open terminal", () => {
     show({ thread: { status: "input" }, requests: [request({ kind: "question", prompt: "Type a name", options: [] })] });
     expect(screen.getByText("Answer in the Terminal tab.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open terminal" })).toHaveAttribute("href", "/pane/p-t1");
+    fireEvent.click(screen.getByRole("button", { name: "Open terminal" }));
+    // T13: the Terminal tab (a sheet here, at the test's phone width), not v1's pane page.
+    expect(useRightPanelStore.getState().sheet ?? useRightPanelStore.getState().activeSurfaceId).toBe("terminal");
+    expect(useRightPanelStore.getState().directTyping).toBeNull();
   });
 
   it("menu: the options in order", async () => {
@@ -501,9 +513,11 @@ describe("ChatComposer: a pending request replaces the box", () => {
     show({ thread: { status: "approval" }, requests: [request({ kind: "password", prompt: "[sudo] password:", options: [] })] });
     const panel = screen.getByRole("region", { name: "The agent is asking" });
     expect(within(panel).queryByRole("textbox")).toBeNull();
-    expect(within(panel).queryByRole("button")).toBeNull();
+    expect(within(panel).getAllByRole("button").map((b) => b.textContent)).toEqual(["Open terminal"]);
     expect(within(panel).getByText(/Sightr does not send it/)).toBeInTheDocument();
-    expect(within(panel).getByRole("link", { name: "Open terminal" })).toBeInTheDocument();
+    // T13: Open terminal opens the Terminal tab and asks it to arm direct typing, naming the prompt.
+    fireEvent.click(within(panel).getByRole("button", { name: "Open terminal" }));
+    expect(useRightPanelStore.getState().directTyping).toMatchObject({ threadId: "t1", prompt: "[sudo] password:" });
   });
 
   it("a whistlr request posts nothing and offers no buttons", () => {
@@ -611,3 +625,26 @@ describe("ChatComposer: banners", () => {
     expect(screen.queryByText("The last run failed.")).toBeNull();
   });
 });
+
+// ── T13: the composer's keys come from the keybinding table ─────────────────────────────────────
+
+describe("ChatComposer: keybinding table", () => {
+  it("mod+enter in the focused box sends the other follow-up while the agent works", async () => {
+    setViewportWidth(1200);
+    show({ thread: { status: "working" } });
+    type("b");
+    box().focus();
+    fireEvent.keyDown(box(), { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(commands("message.dispatch")[0]).toMatchObject({ mode: "steer", text: "b" }));
+  });
+
+  it("mod+shift+enter never types a newline and steers only when it can", () => {
+    show({ thread: { status: "idle" } });
+    box().focus();
+    const event = createEvent.keyDown(box(), { key: "Enter", ctrlKey: true, shiftKey: true });
+    fireEvent(box(), event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(posts).toHaveLength(0);
+  });
+}
+);

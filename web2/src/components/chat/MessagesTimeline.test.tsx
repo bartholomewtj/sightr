@@ -260,7 +260,8 @@ describe("MessagesTimeline: virtualization", () => {
       scroller.dispatchEvent(new Event("scroll"));
       await new Promise((r) => setTimeout(r, 200));
     });
-    expect(mounted()).toContain("u0:0");
+    // Under a loaded test run the list can take longer than 200 ms to mount the new window.
+    await waitFor(() => expect(mounted()).toContain("u0:0"));
     expect(mounted().length).toBeLessThan(80);
   });
 });
@@ -291,7 +292,7 @@ describe("MessagesTimeline: follow mode", () => {
       scroller.dispatchEvent(new Event("scroll"));
       await new Promise((r) => setTimeout(r, 200));
     });
-    expect(document.querySelector("[data-jump-to-latest]")).not.toBeNull();
+    await waitFor(() => expect(document.querySelector("[data-jump-to-latest]")).not.toBeNull());
     act(() => followTimeline());
     await settle();
     expect(document.querySelector("[data-jump-to-latest]")).toBeNull();

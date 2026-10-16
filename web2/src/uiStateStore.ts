@@ -1,6 +1,7 @@
 /**
  * Shell UI state that outlives a route (T3 keeps the same job in apps/web/src/uiStateStore.ts): the
- * desktop sidebar width and whether the right panel is open. Both persist per browser.
+ * desktop sidebar's width and whether it is shown (mod+b). Both persist per browser. The right panel's
+ * state lives in `rightPanelStore.ts` (T13).
  */
 import { create } from "zustand";
 
@@ -8,7 +9,7 @@ export const SIDEBAR_MIN = 200;
 export const SIDEBAR_MAX = 480;
 export const SIDEBAR_DEFAULT = 288;
 const WIDTH_KEY = "sightr:v2:sidebar-width";
-const PANEL_KEY = "sightr:v2:right-panel";
+const SIDEBAR_OPEN_KEY = "sightr:v2:sidebar";
 
 export function clampSidebarWidth(px: number): number {
   if (!Number.isFinite(px)) return SIDEBAR_DEFAULT;
@@ -33,16 +34,16 @@ function write(key: string, value: string): void {
 
 interface UiState {
   sidebarWidth: number;
-  rightPanelOpen: boolean;
+  sidebarOpen: boolean;
   setSidebarWidth(px: number): void;
-  setRightPanelOpen(open: boolean): void;
+  setSidebarOpen(open: boolean): void;
 }
 
-function initial(): Pick<UiState, "sidebarWidth" | "rightPanelOpen"> {
+function initial(): Pick<UiState, "sidebarWidth" | "sidebarOpen"> {
   const stored = read(WIDTH_KEY);
   return {
     sidebarWidth: stored === null ? SIDEBAR_DEFAULT : clampSidebarWidth(Number(stored)),
-    rightPanelOpen: read(PANEL_KEY) !== "closed",
+    sidebarOpen: read(SIDEBAR_OPEN_KEY) !== "closed",
   };
 }
 
@@ -53,9 +54,9 @@ export const useUiState = create<UiState>((set) => ({
     write(WIDTH_KEY, String(sidebarWidth));
     set({ sidebarWidth });
   },
-  setRightPanelOpen(open) {
-    write(PANEL_KEY, open ? "open" : "closed");
-    set({ rightPanelOpen: open });
+  setSidebarOpen(open) {
+    write(SIDEBAR_OPEN_KEY, open ? "open" : "closed");
+    set({ sidebarOpen: open });
   },
 }));
 

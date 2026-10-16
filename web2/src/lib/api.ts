@@ -1,6 +1,19 @@
 // The non-v2 bridge calls web2 needs: the lock endpoints (copied from web/src/lib/api.ts, same
 // `/api/lock/*` routes) and the request headers every web2 call sends.
-import type { ActionResponse, BridgeConfig, LockStatus, UploadResponse } from "@shared/wire";
+import { SEEN_HEADER } from "@shared/limits";
+import type {
+  ActionResponse,
+  BridgeConfig,
+  FileSearchResponse,
+  FilesResponse,
+  FolderGitResponse,
+  LockStatus,
+  PaneFolderResponse,
+  PaneReadResponse,
+  SaveFileResponse,
+  UploadResponse,
+} from "@shared/wire";
+import { fetchClassOf, timedFetch } from "@v1/lib/conn-telemetry";
 
 import { noteLockRequired } from "./lock";
 
@@ -77,11 +90,15 @@ export function fetchConfig(): Promise<BridgeConfig> {
   return req<BridgeConfig>("/api/config");
 }
 
-/** Keys for a pane, through the bridge's key route (the Keys pad). */
-export function sendKeys(paneId: string, keys: string[]): Promise<ActionResponse> {
+/**
+ * Keys for a pane, through the bridge's key route (the Keys pad, and T13's direct typing). `typed`
+ * marks keystrokes the operator typed: the bridge then writes runs of plain characters in one go (as
+ * v1). The reply guard never runs on this route.
+ */
+export function sendKeys(paneId: string, keys: string[], typed?: boolean): Promise<ActionResponse> {
   return req<ActionResponse>(`/api/pane/${encodeURIComponent(paneId)}/keys`, {
     method: "POST",
-    body: JSON.stringify({ keys }),
+    body: JSON.stringify({ keys, ...(typed ? { typed: true } : {}) }),
   });
 }
 
@@ -114,4 +131,177 @@ export async function uploadImage(paneId: string, file: File): Promise<UploadRes
     return { ok: false, error: detail || `Upload failed (${res.status})` };
   }
   return (await res.json()) as UploadResponse;
+}
+
+// ── T13: the right panel's reads (copied from web/src/lib/api.ts, same routes) ─────────────────
+
+/** Short leash on reads, longer on writes, as v1 (`GET_TIMEOUT_MS`, `MUTATION_TIMEOUT_MS`). */
+const GET_TIMEOUT_MS = 10_000;
+const MUTATION_TIMEOUT_MS = 20_000;
+
+function withTimeout(signal: AbortSignal | null | undefined, ms: number): AbortSignal | undefined {
+  if (typeof AbortSignal.timeout !== "function") return signal ?? undefined;
+  const timeoutSignal = AbortSignal.timeout(ms);
+  if (!signal) return timeoutSignal;
+  if (typeof AbortSignal.any !== "function") return signal;
+  return AbortSignal.any([signal, timeoutSignal]);
+}
+
+/** A bridge refusal, with its status (v1's `ApiError`). */
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+async function readJson<T>(path: string, init: RequestInit = {}, recover?: (status: number, detail: string) => T | null): Promise<T> {
+  const method = init.method?.toUpperCase() ?? "GET";
+  const res = await timedFetch(fetchClassOf(path, method), () =>
+    fetch(path, {
+      ...init,
+      signal: withTimeout(init.signal, method === "GET" ? GET_TIMEOUT_MS : MUTATION_TIMEOUT_MS),
+      headers: { "content-type": "application/json", [XHR_HEADER]: XHR_HEADER_VALUE, ...init.headers },
+    }),
+  );
+  if (!res.ok) {
+    let detail = "";
+    try {
+      detail = await res.text();
+    } catch {
+      /* no body */
+    }
+    const recovered = recover?.(res.status, detail);
+    if (recovered !== null && recovered !== undefined) return recovered;
+    noteIfLocked(res);
+    throw new ApiError(`${path} -> ${res.status} ${detail}`, res.status);
+  }
+  return (await res.json()) as T;
+}
+
+// The mirror's ETag cache (v1 `fetchPane`): a 304 hands back the cached body, so an unchanged poll
+// keeps the text. Client-managed; the bridge sends `cache-control: no-store`.
+interface PaneCacheEntry {
+  etag: string;
+  response: PaneReadResponse;
+}
+const paneCache = new Map<string, PaneCacheEntry>();
+const PANE_CACHE_MAX = 20;
+
+/** Drop the cached ETag and body so the next read is unconditional. */
+export function invalidatePaneCache(paneId: string): void {
+  paneCache.delete(paneId);
+}
+
+/** Test helper. */
+export function __resetPaneCache(): void {
+  paneCache.clear();
+}
+
+/**
+ * One read of a pane's screen (`GET /api/pane/:id`, telemetry class `pane`). The only place v2 calls
+ * it is the Terminal tab (T13). `notModified` is set when the bridge answered 304.
+ */
+export async function fetchPane(
+  paneId: string,
+  lines?: number,
+  signal?: AbortSignal,
+): Promise<PaneReadResponse & { notModified?: boolean }> {
+  const url = `/api/pane/${encodeURIComponent(paneId)}${lines ? `?lines=${lines}` : ""}`;
+  const cached = paneCache.get(paneId);
+  const headers: Record<string, string> = { [SEEN_HEADER]: "1", [XHR_HEADER]: XHR_HEADER_VALUE };
+  if (cached) headers["if-none-match"] = cached.etag;
+  const res = await timedFetch(fetchClassOf(url), () => fetch(url, { signal: withTimeout(signal, GET_TIMEOUT_MS), headers }));
+  if (res.status === 304 && cached) return { ...cached.response, notModified: true };
+  if (!res.ok) {
+    noteIfLocked(res);
+    throw new ApiError(`${url} -> ${res.status}`, res.status);
+  }
+  const data = (await res.json()) as PaneReadResponse;
+  const etag = res.headers.get("etag");
+  if (etag) {
+    paneCache.delete(paneId);
+    paneCache.set(paneId, { etag, response: data });
+    if (paneCache.size > PANE_CACHE_MAX) {
+      const oldest = paneCache.keys().next().value;
+      if (oldest !== undefined) paneCache.delete(oldest);
+    }
+  }
+  return data;
+}
+
+/** Where a pane's folder sits in the Files root (`""` is the root); null when it is outside it. */
+export function fetchPaneFolder(paneId: string, signal?: AbortSignal): Promise<PaneFolderResponse> {
+  return readJson<PaneFolderResponse>(`/api/files/pane-folder?pane=${encodeURIComponent(paneId)}`, signal ? { signal } : {});
+}
+
+export function fetchFiles(path: string, signal?: AbortSignal): Promise<FilesResponse> {
+  return readJson<FilesResponse>(`/api/files?path=${encodeURIComponent(path)}`, signal ? { signal } : {});
+}
+
+export function searchFiles(q: string, signal?: AbortSignal): Promise<FileSearchResponse> {
+  return readJson<FileSearchResponse>(`/api/files/search?q=${encodeURIComponent(q)}`, signal ? { signal } : {});
+}
+
+export function downloadFileUrl(path: string): string {
+  return `/api/files/download?path=${encodeURIComponent(path)}`;
+}
+
+/** The sandboxed open URL (ADR 0027): one segment per name so a page's relative links resolve. */
+export function openFileUrl(path: string): string {
+  return `/api/files/open/${path.split("/").filter(Boolean).map(encodeURIComponent).join("/")}`;
+}
+
+function recoverFileBusy(status: number, detail: string): ActionResponse | null {
+  if (status !== 409) return null;
+  try {
+    const body = JSON.parse(detail) as { ok?: unknown; error?: unknown };
+    if (body.ok === false && typeof body.error === "string") return { ok: false, error: body.error };
+  } catch {
+    /* fixed fallback */
+  }
+  return { ok: false, error: "file is in use" };
+}
+
+export function deleteFile(path: string): Promise<ActionResponse> {
+  return readJson<ActionResponse>("/api/files/delete", { method: "POST", body: JSON.stringify({ path }) }, recoverFileBusy);
+}
+
+function recoverFileSave(status: number, detail: string): SaveFileResponse | null {
+  if (status !== 409 && status !== 413) return null;
+  try {
+    const body = JSON.parse(detail) as { error?: unknown };
+    if (typeof body.error === "string") return { ok: false, error: body.error };
+  } catch {
+    /* fallback */
+  }
+  return { ok: false, error: status === 413 ? "file too large" : "not saved" };
+}
+
+export function saveFile(path: string, text: string, mtimeMs: number): Promise<SaveFileResponse> {
+  return readJson<SaveFileResponse>("/api/files/save", { method: "POST", body: JSON.stringify({ path, text, mtimeMs }) }, recoverFileSave);
+}
+
+/** Loopback listeners on the PC, opened over the tailnet (spec 23). */
+export interface LocalServer {
+  port: number;
+  name: string;
+}
+export interface LocalServersResponse {
+  host: string;
+  servers: LocalServer[];
+}
+export function fetchLocalServers(signal?: AbortSignal): Promise<LocalServersResponse> {
+  return readJson<LocalServersResponse>("/api/local-servers", signal ? { signal } : {});
+}
+
+/** Read-only git status and diff for the repo around a Files folder, plus which panes sit in it. */
+const MAX_GIT_PANES = 50;
+export function fetchFolderGit(path: string, paneIds: string[], signal?: AbortSignal): Promise<FolderGitResponse> {
+  const q = new URLSearchParams();
+  q.set("path", path);
+  for (const id of paneIds.slice(0, MAX_GIT_PANES)) q.append("pane", id);
+  return readJson<FolderGitResponse>(`/api/files/git?${q}`, signal ? { signal } : {});
 }

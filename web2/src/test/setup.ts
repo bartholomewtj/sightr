@@ -6,11 +6,17 @@ import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
 
 import { __resetConnTelemetry } from "@v1/lib/conn-telemetry";
 
+import { __resetCommandPalette } from "@/commandPaletteBus";
+import { useShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 import { __resetToasts } from "@/components/toast";
 import { __resetThreadUndoNotice } from "@/hooks/showThreadUndoNotice";
+import { __resetPaneCache } from "@/lib/api";
 import { __resetDraftPrune } from "@/lib/drafts";
+import { __resetFilesTree } from "@/lib/files-tree";
 import { clearLockRequired } from "@/lib/lock";
 import { __resetOperatorCommands } from "@/lib/operator-commands";
+import { __resetPasteHold } from "@/lib/paste-hold";
+import { __resetRightPanelStore } from "@/rightPanelStore";
 import { __resetComposerState } from "@/state/composer";
 import { __resetSidebarState } from "@/state/sidebar";
 import { __resetTimelineState } from "@/state/timeline";
@@ -49,6 +55,12 @@ beforeEach(() => {
   __resetThreadStream();
   __resetStreamStores();
   __resetUiState();
+  __resetRightPanelStore();
+  __resetCommandPalette();
+  useShortcutsDialog.setState({ open: false });
+  __resetPaneCache();
+  __resetFilesTree();
+  __resetPasteHold();
   __resetSidebarState();
   __resetTimelineState();
   __resetComposerState();
