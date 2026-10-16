@@ -7,7 +7,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   fetchSnapshot: vi.fn(),
 }));
 
-import { SSE_RETRY_MAX_MS, SSE_STABLE_MS, SSE_STALE_MS, SUPERSEDE_MS, TYPING_MS, intervalFor, usePolling } from "./use-polling";
+import { SSE_RETRY_MAX_MS, SSE_STABLE_MS, SSE_STALE_MS, SUPERSEDE_MS, TYPING_MS, WORKING_PANE_MS, intervalFor, usePolling } from "./use-polling";
 import { __resetTyping, noteTyping } from "@/lib/typing";
 import { rootLoader, setSnapshotPushMode } from "@/lib/loaders";
 import type { HomeData } from "@/lib/loaders";
@@ -120,6 +120,15 @@ describe("intervalFor", () => {
     expect(intervalFor(data, undefined)).toBe(HOT);
   });
 
+  it("returns WORKING_PANE_MS when the open pane's own agent is working or blocked", () => {
+    const data = makeData([makeAgent("w1:p1", "working"), makeAgent("w1:p2", "blocked"), makeAgent("w1:p3", "idle")]);
+    expect(intervalFor(data, "w1:p1")).toBe(WORKING_PANE_MS);
+    expect(intervalFor(data, "w1:p2")).toBe(WORKING_PANE_MS);
+    expect(intervalFor(data, "w1:p3")).toBe(HOT);
+    expect(intervalFor(data, "w1:p1", true)).toBe(TYPING_MS);
+    expect(WORKING_PANE_MS).toBeLessThan(HOT);
+  });
+
   it("returns TYPING_MS while typing into an open pane, and nowhere else", () => {
     const data = makeData([makeAgent("w1:p1", "idle")], [makeShell("w1:s1")]);
     expect(intervalFor(data, "w1:p1", true)).toBe(TYPING_MS);
@@ -166,8 +175,9 @@ describe("usePolling — SSE mode", () => {
     const ticks: number[] = [];
     rr.revalidate.mockImplementation(() => { ticks.push(Date.now() - t0); });
     for (let i = 0; i < 80; i++) act(() => { vi.advanceTimersByTime(100); });
-    // Every 750 ms for the 5 s typing window, then the normal 1.5 s from when it ended.
-    expect(ticks).toEqual([750, 1500, 2250, 3000, 3750, 4500, 5000 + HOT, 5000 + 2 * HOT]);
+    // Every TYPING_MS for the 5 s typing window, then the normal 1.5 s from when it ended.
+    const typingTicks = Array.from({ length: Math.floor(5_000 / TYPING_MS) }, (_, i) => (i + 1) * TYPING_MS).filter((t) => t < 5_000);
+    expect(ticks).toEqual([...typingTicks, 5000 + HOT, 5000 + 2 * HOT]);
     rr.revalidate.mockReset();
     __resetTyping();
   });

@@ -190,6 +190,54 @@ export async function sendKeysPaced(
   }
 }
 
+/** One step of typed input: a run of literal characters, or one named key. */
+export type TypedSegment = { text: string } | { key: string };
+
+/**
+ * Split keystrokes the operator TYPED (direct typing, `typed: true`) into runs. Consecutive literal
+ * characters (one code point, not a control character; `Space` counts as " ") become one text write,
+ * the way a reply types its text. Named keys (Enter, Backspace, arrows, chords) stay one paced RPC
+ * each, so Enter still lands as its own input event.
+ *
+ * Only typed text is grouped. A recipe's keys (`y`, `1`, `a` on a menu) keep one write per key:
+ * an Ink harness reads a multi-key write as one input event and drops the rest (see sendKeysPaced).
+ */
+export function typedSegments(keys: readonly string[]): TypedSegment[] {
+  const out: TypedSegment[] = [];
+  let run = "";
+  for (const k of keys) {
+    const ch = k === "Space" ? " " : k;
+    if (Array.from(ch).length === 1 && !/[\u0000-\u001f\u007f]/.test(ch)) {
+      run += ch;
+      continue;
+    }
+    if (run) { out.push({ text: run }); run = ""; }
+    out.push({ key: k });
+  }
+  if (run) out.push({ text: run });
+  return out;
+}
+
+/**
+ * Send typed keystrokes: each run of characters as one write, named keys paced as usual. Paced key
+ * by key, typing reached the pane at about 12 characters a second (KEY_GAP_MS plus one Herdr RPC per
+ * character), well behind a phone keyboard.
+ */
+export async function sendTypedKeys(
+  client: ReplySender,
+  paneId: string,
+  keys: string[],
+  sleep: SleepFn = defaultSleep,
+): Promise<void> {
+  const segments = typedSegments(keys);
+  for (let i = 0; i < segments.length; i++) {
+    if (i > 0) await sleep(KEY_GAP_MS);
+    const s = segments[i]!;
+    if ("text" in s) await client.sendPaneText(paneId, s.text);
+    else await client.sendPaneKeys(paneId, [s.key]);
+  }
+}
+
 export async function keysPane(
   herdr: HerdrClient,
   cfg: Config,
@@ -201,7 +249,7 @@ export async function keysPane(
 ): Promise<Response> {
   const bad = requireJsonBody(req);
   if (bad) return bad;
-  let body: { keys?: unknown; expected_prompt?: unknown };
+  let body: { keys?: unknown; expected_prompt?: unknown; typed?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -209,6 +257,8 @@ export async function keysPane(
   }
   const expected = expectedPrompt(body);
   if (!expected.ok) return text("bad expected_prompt", 400);
+  if (body.typed !== undefined && typeof body.typed !== "boolean") return text("bad typed", 400);
+  const typed = body.typed === true;
   const keys = Array.isArray(body.keys) ? body.keys.filter((k): k is string => typeof k === "string") : [];
   if (keys.length === 0) return text("no keys", 400);
   const ae = req.headers.get("accept-encoding");
@@ -221,7 +271,7 @@ export async function keysPane(
         : null;
       if (binding && !binding.ok) return { binding, sent: false, error: null };
       try {
-        await sendKeysPaced(herdr, paneId, keys, sleep);
+        await (typed ? sendTypedKeys : sendKeysPaced)(herdr, paneId, keys, sleep);
         return { binding, sent: true, error: null };
       } catch (err) {
         return { binding, sent: false, error: failureText("key send", err) };

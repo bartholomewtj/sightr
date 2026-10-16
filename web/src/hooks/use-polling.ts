@@ -21,8 +21,11 @@ import { SSE_KEEPALIVE_MS } from "@shared/limits";
 const HOT_MS = 1500;
 const COLD_MS = 4000;
 // While the operator types into the open pane (lib/typing.ts), its mirror refreshes this often so
-// the keystrokes show up quickly. Only the open pane's read runs at this pace.
-export const TYPING_MS = 750;
+// the keystrokes show up quickly. Only the open pane's read runs at this pace; a read costs the
+// bridge ~15 ms and comes back 304 when nothing moved.
+export const TYPING_MS = 400;
+// An open pane whose agent is working refreshes this often, so its output keeps up with the PC.
+export const WORKING_PANE_MS = 750;
 
 // Self-heal a wedged revalidation. Normally a tick no-ops while one is already in flight (see the
 // idle fast-path below), but a black-holed fetch can stay `loading` forever (its timeout aside — the
@@ -53,12 +56,14 @@ const SSE_WATCHDOG_TICK_MS = 5_000;
  *
  * Returns COLD_MS otherwise (home screen, idle herd, no pane open).
  *
- * Returns TYPING_MS, faster still, while the operator is typing into an open pane that exists.
+ * Returns WORKING_PANE_MS when the open pane's own agent is working or blocked, and TYPING_MS,
+ * faster still, while the operator is typing into an open pane that exists.
  */
 export function intervalFor(data: HomeData | undefined, paneId?: string | null, typing = false): number {
-  if (typing && paneId) {
-    const allPanes = [...(data?.agents ?? []), ...(data?.shellPanes ?? [])];
-    if (allPanes.some((p) => p.paneId === paneId)) return TYPING_MS;
+  if (paneId) {
+    const open = [...(data?.agents ?? []), ...(data?.shellPanes ?? [])].find((p) => p.paneId === paneId);
+    if (open && typing) return TYPING_MS;
+    if (open && (open.status === "working" || open.status === "blocked")) return WORKING_PANE_MS;
   }
   const anyActive = data?.agents.some((a) => a.status === "blocked" || a.status === "working");
   if (anyActive) return HOT_MS;

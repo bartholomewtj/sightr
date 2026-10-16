@@ -79,7 +79,7 @@ export function useComposerState(args: ComposerStateArgs) {
   const SENT_ECHO_GRACE_MS = 5_000;
 
   // Burst window for post-keypress revalidation (see scheduleKeyRevalidate).
-  const KEY_REVALIDATE_MS = 300;
+  const KEY_REVALIDATE_MS = 200;
   // Every write affordance is off when the pane is gone OR this device is read-only.
   const locked = gone || readOnly;
   // …and a ref alongside it, for the ONE caller that reads it after an await. `send()` checks
@@ -243,7 +243,8 @@ export function useComposerState(args: ComposerStateArgs) {
     // event observed directly rather than inferred from a timer, and it fires whether or not any
     // banner has decided the connection counts as lost yet.
     suspended: locked,
-    sendKeys: pressKeys,
+    // Typed, not a recipe: the bridge writes each run of characters in one go (`typed`).
+    sendKeys: (k) => pressKeys(k, true),
     onActivate: () => {
       sendConfirm.reset();
       forceConfirm.reset();
@@ -432,11 +433,11 @@ export function useComposerState(args: ComposerStateArgs) {
   const confirmingSend = sendConfirm.pending === "send";
   const forcingSend = forceConfirm.pending === "force";
   // Coalesce revalidations from a burst of key presses, LEADING edge first: the first press in a
-  // burst refetches immediately, and only presses that arrive inside the window collapse into one
-  // trailing refetch. It used to be trailing-only, which meant a lone press — the common case — sat
-  // out the full window before its fetch even *started*, and if that fetch then beat the TUI's
-  // repaint you waited a whole 1.5s poll to see anything. Arrow-key spam still coalesces exactly as
-  // before: presses 2..n only ever schedule the one trailing refetch.
+  // burst refetches immediately, and one trailing refetch follows KEY_REVALIDATE_MS after the last
+  // press. It used to be trailing-only, which meant a lone press — the common case — sat out the
+  // full window before its fetch even *started*. The trailing read now always runs, a lone press
+  // included: the leading read often lands before the TUI repaints, and without it the echo waited
+  // for the next poll. Arrow-key spam still coalesces: presses 2..n only move the one trailing read.
   function scheduleKeyRevalidate() {
     // Shell/TUI panes (draftr run tab, browser embeds) have no transcript — only the live frame.
     // Bust the ETag cache and retry across a short ladder: an immediate read often lands before the
@@ -451,16 +452,8 @@ export function useComposerState(args: ComposerStateArgs) {
       }
       return;
     }
-    if (keyRevalidateTimer.current === null) {
-      revalidator.revalidate(); // leading edge
-      // Cooldown only — it fires nothing itself; a press landing before it expires replaces it with
-      // the trailing refetch below.
-      keyRevalidateTimer.current = setTimeout(() => {
-        keyRevalidateTimer.current = null;
-      }, KEY_REVALIDATE_MS);
-      return;
-    }
-    clearTimeout(keyRevalidateTimer.current);
+    if (keyRevalidateTimer.current === null) revalidator.revalidate(); // leading edge
+    else clearTimeout(keyRevalidateTimer.current);
     keyRevalidateTimer.current = setTimeout(() => {
       keyRevalidateTimer.current = null;
       revalidator.revalidate(); // trailing edge — one refetch for the whole burst
@@ -471,10 +464,10 @@ export function useComposerState(args: ComposerStateArgs) {
   // mirror is still the source of truth for what the key DID, but it can be ~2s behind, and this
   // path used to be silent on success, so a press looked like it went nowhere. Errors still go to
   // the status channel; the echo just falls back to idle.
-  async function pressKeys(k: string[]): Promise<boolean> {
+  async function pressKeys(k: string[], typed = false): Promise<boolean> {
     if (locked) return false;
     try {
-      const res = await api.sendKeys(paneId, k);
+      const res = await api.sendKeys(paneId, k, undefined, typed);
       if (!res.ok) {
         setStatus(res.error ?? "Key send failed", "error");
         return false;

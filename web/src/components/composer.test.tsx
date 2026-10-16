@@ -843,10 +843,13 @@ describe("Composer — typing into the terminal", () => {
 
   it("sends committed keyboard text as literal ordered keys with no implicit Enter", async () => {
     const keyCalls: string[][] = [];
+    const typedFlags: unknown[] = [];
     let replyCalls = 0;
     server.use(
       http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
-        keyCalls.push(((await request.json()) as { keys: string[] }).keys);
+        const body = (await request.json()) as { keys: string[]; typed?: unknown };
+        keyCalls.push(body.keys);
+        typedFlags.push(body.typed);
         return HttpResponse.json({ ok: true });
       }),
       replyHandler(() => replyCalls++),
@@ -859,6 +862,8 @@ describe("Composer — typing into the terminal", () => {
     fireEvent.change(box, { target: { value: "b a" } });
 
     await waitFor(() => expect(keyCalls).toEqual([["b", "Space", "a"]]));
+    // Marked as typed, so the bridge writes the run in one go rather than paced key by key.
+    expect(typedFlags).toEqual([true]);
     expect(keyCalls.flat()).not.toContain("Enter");
     expect(replyCalls).toBe(0);
     expect(box).toHaveValue("");

@@ -36,7 +36,7 @@ export const INLINE_GROW_THRESHOLD = 800;
  *  jsonl line as the turn completes; the status flip can beat that write by a beat. */
 export const INLINE_IDLE_RETRY_MS = 2000;
 /** Fewest ms between two refreshes driven by the screen moving. */
-export const INLINE_SCREEN_REFRESH_MS = 1500;
+export const INLINE_SCREEN_REFRESH_MS = 750;
 
 export type InlineHistoryUnavailable = "disabled" | "no-session" | "no-log" | "error";
 
