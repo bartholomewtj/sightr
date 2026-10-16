@@ -156,7 +156,8 @@ export function useDirectTyping({
     committedComposition.current = null;
     activeRef.current = true;
     setActive(true);
-    if (!desktop) setStatus("Typing into the terminal — keys send as you type.", "success");
+    // No "typing into the terminal" toast on a phone: the armed Stop button and the typing box say it,
+    // and a toast there sits on top of the key bar the operator is about to tap.
     // Focus synchronously while the contextmenu event still carries browser user activation; a
     // deferred focus selects the field but mobile browsers may refuse to open their software
     // keyboard once that activation has expired. The existing callback still runs after React

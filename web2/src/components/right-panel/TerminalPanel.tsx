@@ -9,6 +9,10 @@
  * mirror has focus), and the harness's statusline rows under the header. The statusline goes through
  * v1's adapter registry (`adapterFor(thread.harness).extractStatusLines`) over the text the mirror
  * already read, so it costs no read of its own and names no harness here.
+ *
+ * Phone typing is compact: with the soft keyboard up, the mirror must keep the room. The toolbar and the
+ * typing box share one row, the armed strip shows only for a held paste or a password prompt, and the
+ * Keys pad gives way to a one-row key bar whose "More" opens the full pad.
  */
 import { ArrowDownIcon, KeyboardIcon, MinusIcon, PlusIcon, SearchIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -21,6 +25,7 @@ import { ThreadFindBar } from "~/components/chat/ThreadFindBar";
 import { stepThreadFindIndex } from "~/components/chat/threadFind";
 import { ctrlPresetsFor } from "@v1/lib/operator-keys";
 import { Button } from "~/components/ui/button";
+import { KeyBar } from "@/components/keys/key-bar";
 import { NavTray } from "@/components/keys/nav-tray";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
 import { useLayout } from "@/hooks/useLayout";
@@ -137,6 +142,8 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
 
   useEffect(() => {
     if (!typing.active) setPrompt(undefined);
+    // Arming on a phone folds the full pad down to the key bar: the keyboard is about to take its room.
+    else if (!desktop) setKeysOpen(false);
   }, [typing.active]);
 
   // ── ctrl+`: toggle direct typing while this tab is mounted ──
@@ -185,6 +192,45 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
   // short scrollback, comes back shorter; no harness check needed).
   const canLoadOlder = lines < LINES_MAX && mirror.text !== null && mirror.text.split("\n").length >= lines;
   const showKeysPad = writable && (!desktop || coarse);
+  /** A phone with direct typing armed: one-row controls, the key bar, no plain strip. */
+  const compact = typing.active && !desktop;
+
+  // Always mounted, so arming can focus it inside the tap (a phone opens its keyboard only for a focus
+  // made during the gesture); out of sight and out of the tab order until armed. On a phone it lives in
+  // the toolbar row (what you type shows in the mirror, so the box needs no room). Where it lives depends
+  // on the layout only, never on arming: moving it would remount it, drop focus and close the keyboard.
+  const typeBox = writable ? (
+    <textarea
+      ref={inputRef}
+      aria-label="Type into the terminal"
+      aria-hidden={!typing.active}
+      tabIndex={typing.active ? 0 : -1}
+      rows={1}
+      value={typing.value}
+      autoCapitalize="off"
+      autoCorrect="off"
+      autoComplete="off"
+      spellCheck={false}
+      enterKeyHint="send"
+      placeholder={compact ? "Type…" : "Keys go straight to the pane"}
+      className={cn(
+        "block resize-none rounded-lg border border-primary/60 bg-background font-mono text-base text-foreground outline-none sm:text-sm",
+        !typing.active ? "sr-only" : desktop ? "w-full px-2 py-1.5" : "h-7 min-w-0 flex-1 overflow-hidden px-2 py-0.5 text-sm leading-6 [scrollbar-width:none]",
+      )}
+      onChange={typing.active ? typing.onChange : () => {}}
+      onCompositionStart={typing.onCompositionStart}
+      onCompositionEnd={typing.onCompositionEnd}
+      onKeyDown={typing.active ? typing.onKeyDown : undefined}
+      onBlur={typing.onBlur}
+    />
+  ) : null;
+  const sendPadKeys = (keys: string[]) =>
+    sendKeys(paneId, keys)
+      .then((r) => {
+        mirror.refresh();
+        return r.ok;
+      })
+      .catch(() => false);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-terminal-tab="">
@@ -199,18 +245,28 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
             onClick={() => (typing.active ? typing.deactivate() : typing.activate())}
           >
             <KeyboardIcon className="size-3.5" aria-hidden="true" />
-            {typing.active ? "Stop typing" : "Type into terminal"}
+            {compact ? "Stop" : typing.active ? "Stop typing" : "Type into terminal"}
           </Button>
         ) : null}
-        {showKeysPad ? (
+        {desktop ? null : typeBox}
+        {showKeysPad && !compact ? (
           <Button size="xs" variant={keysOpen ? "outline" : "ghost-muted"} aria-pressed={keysOpen} onClick={() => setKeysOpen((v) => !v)}>
             Keys
           </Button>
         ) : null}
-        <span className="flex-1" />
-        <Button size="icon-xs" variant={findOpen ? "outline" : "ghost-muted"} aria-label="Find in output" aria-pressed={findOpen} onClick={openFind}>
+        {compact ? null : <span className="flex-1" />}
+        <Button
+          size="icon-xs"
+          variant={findOpen ? "outline" : "ghost-muted"}
+          aria-label="Find in output"
+          aria-pressed={findOpen}
+          onPointerDown={compact ? (e) => e.preventDefault() : undefined}
+          onClick={openFind}
+        >
           <SearchIcon />
         </Button>
+        {compact ? null : (
+          <>
         <Button
           size="icon-xs"
           variant="ghost-muted"
@@ -232,6 +288,8 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
         >
           <PlusIcon />
         </Button>
+          </>
+        )}
       </div>
       {statusLines.length > 0 ? <TerminalStatusLines lines={statusLines} /> : null}
       {findOpen ? (
@@ -300,44 +358,29 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
           The mirror stopped updating. Retrying every {MIRROR_COLD_MS / 1000} s.
         </p>
       ) : null}
-      {writable ? (
-        // Always mounted, so arming can focus it inside the tap (a phone opens its keyboard only for
-        // a focus made during the gesture); out of sight and out of the tab order until armed.
+      {writable && desktop ? (
         <div className={typing.active ? "border-t px-2 pt-1 pb-2" : "sr-only"} data-direct-typing={typing.active ? "armed" : "off"}>
           {typing.active ? <DirectTypingStrip onStop={typing.deactivate} {...(prompt ? { prompt } : {})} /> : null}
-          <textarea
-            ref={inputRef}
-            aria-label="Type into the terminal"
-            aria-hidden={!typing.active}
-            tabIndex={typing.active ? 0 : -1}
-            rows={1}
-            value={typing.value}
-            autoCapitalize="off"
-            autoCorrect="off"
-            autoComplete="off"
-            spellCheck={false}
-            enterKeyHint="send"
-            placeholder="Keys go straight to the pane"
-            className="block w-full resize-none rounded-lg border border-primary/60 bg-background px-2 py-1.5 font-mono text-base text-foreground outline-none sm:text-sm"
-            onChange={typing.active ? typing.onChange : () => {}}
-            onCompositionStart={typing.onCompositionStart}
-            onCompositionEnd={typing.onCompositionEnd}
-            onKeyDown={typing.active ? typing.onKeyDown : undefined}
-            onBlur={typing.onBlur}
-          />
+          {typeBox}
         </div>
       ) : null}
+      {compact ? (
+        <div data-direct-typing="armed" className="contents">
+          <DirectTypingStrip compact onStop={typing.deactivate} {...(prompt ? { prompt } : {})} />
+        </div>
+      ) : null}
+      {compact && !keysOpen ? <KeyBar onSend={sendPadKeys} onMore={() => setKeysOpen(true)} disabled={linkLost} /> : null}
       {showKeysPad && keysOpen ? (
         <div data-keys-dock="true" className="border-t bg-card p-1.5">
+          {compact ? (
+            <div className="flex justify-end pb-1">
+              <Button size="xs" variant="ghost-muted" onPointerDown={(e) => e.preventDefault()} onClick={() => setKeysOpen(false)}>
+                Fewer keys
+              </Button>
+            </div>
+          ) : null}
           <NavTray
-            onSend={(keys) =>
-              sendKeys(paneId, keys)
-                .then((r) => {
-                  mirror.refresh();
-                  return r.ok;
-                })
-                .catch(() => false)
-            }
+            onSend={sendPadKeys}
             presets={ctrlPresetsFor(thread.harness, operatorKeys)}
             disabled={linkLost}
           />
