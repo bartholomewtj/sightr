@@ -91,7 +91,7 @@ This replaces the whole-snapshot push and the per-pane `GET /api/pane/:id` polli
   - **Seams, not forks.** T3 imports we don't have (Effect atoms, client-runtime, router hooks) go through small shims in `web2/src/t3/shims/*`, never by editing the adopted body more than needed.
   - **Provenance.** `web2/t3-upstream.json` lists every adopted or adapted file: `{ local, upstream, commit, mode: "verbatim" | "adapted" | "pattern" }`. Adapted files carry a one-line header naming the upstream path and commit, plus T3's MIT notice in `web2/THIRD_PARTY.md`.
   - **Upstream check.** `bun scripts/t3-upstream.ts [--ref <tag|sha>]` clones or updates T3 into a cache outside the repo. For each manifest row it prints whether upstream changed since the recorded commit, with the upstream diff. It also lists new T3 component files under the mirrored folders. Report only; porting stays a deliberate change that bumps the row's `commit`.
-  - **Keeping up.** The weekly check, `/t3-sync` triage, sync slices and porting rules are in [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md). New T3 work reaches Sightr as `Tnn-sync-<tag>` slices in this folder.
+  - **Keeping up.** The weekly check, `/t3-sync` triage, sync slices and porting rules are in [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md). New T3 work reaches Sightr as `Tnn-sync-<sha7>` slices in this folder.
 - **Reuse:** the harness parsers under `web/src/lib/harness/` (import them; they are leaf files), the markdown and tool-row renderers where they fit, `conn-telemetry`, the keys pad, the attach upload and the lock screen.
 - **Layout (adaptive, like T3's iPad mode):**
   - ≥ 1024 px: sidebar | chat | right panel (Terminal / Files / Git), with `mod+k` palette and `when`-clause keybindings.
