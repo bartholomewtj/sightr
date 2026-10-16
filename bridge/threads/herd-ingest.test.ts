@@ -9,7 +9,7 @@ import type { PaneActivity } from "../activity.ts";
 import type { JournalAdapter } from "../journal/types.ts";
 import type { AgentView, EngineSnapshot } from "../state-engine.ts";
 import { createProject, createThread, project, thread } from "../test/thread-fixtures.ts";
-import { capabilitiesFor } from "./capabilities.ts";
+import { capabilitiesFor, INTERRUPT_TABLE } from "./capabilities.ts";
 import type { EventDraft, ServerThread } from "./events.ts";
 import {
   createHerdIngestor,
@@ -128,7 +128,7 @@ describe("diffHerd", () => {
       lastActivityAt: 5_000,
       createdAt: 5_000,
       updatedAt: 5_000,
-      capabilities: { ...NO_CAPABILITIES, hasJournal: true, canQueueDrain: true },
+      capabilities: { ...NO_CAPABILITIES, hasJournal: true, canQueueDrain: true, canInterrupt: true, interruptKeys: ["Escape"] },
     });
   });
 
@@ -623,9 +623,21 @@ describe("ingestor", () => {
 
 describe("capabilitiesFor", () => {
   test("journal from the registry, queue drain for agents only", () => {
-    expect(capabilitiesFor("claude", journals)).toEqual({ ...NO_CAPABILITIES, hasJournal: true, canQueueDrain: true });
+    const claudeInterrupt = { canInterrupt: true, interruptKeys: ["Escape"] };
+    expect(capabilitiesFor("claude", journals)).toEqual({ ...NO_CAPABILITIES, hasJournal: true, canQueueDrain: true, ...claudeInterrupt });
     expect(capabilitiesFor("agy", journals)).toEqual({ ...NO_CAPABILITIES, canQueueDrain: true });
-    expect(capabilitiesFor("claude", null)).toEqual({ ...NO_CAPABILITIES, canQueueDrain: true });
+    expect(capabilitiesFor("claude", null)).toEqual({ ...NO_CAPABILITIES, canQueueDrain: true, ...claudeInterrupt });
     expect(capabilitiesFor("shell", journals)).toEqual(NO_CAPABILITIES);
+  });
+
+  test("interrupt only where the key passed a live check (T06)", () => {
+    for (const [harness, row] of Object.entries(INTERRUPT_TABLE)) {
+      const caps = capabilitiesFor(harness, journals);
+      expect(caps.canInterrupt).toBe(row.verified);
+      expect(caps.interruptKeys).toEqual(row.verified ? row.keys : undefined);
+      expect(row.keys.length).toBe(1);
+    }
+    expect(capabilitiesFor("shell", journals).canInterrupt).toBe(false);
+    expect(capabilitiesFor("constructor", journals).canInterrupt).toBe(false);
   });
 });

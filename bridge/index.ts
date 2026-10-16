@@ -27,6 +27,8 @@ import { createRequestIngestor } from "./threads/request-ingest.ts";
 import { createPaneQueue } from "./pane-queue.ts";
 import { createV2Gate } from "./threads/herdr-floor.ts";
 import { respondEffect } from "./threads/v2-routes.ts";
+import { createGuardedSender } from "./guarded-send-route.ts";
+import { createDispatcher } from "./threads/dispatch.ts";
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
 // loadConfig throws on a config that would be unsafe to serve (a non-loopback bind). Print the
@@ -170,6 +172,21 @@ const requestIngestor = threadStore
   ? createRequestIngestor({ store: threadStore, engine, herdr, queue: paneWrites, cfg, audit })
   : null;
 
+// v2 dispatch (T06): message.dispatch start/queue/steer, the server-held queue and run.interrupt. The
+// start path is the same guarded send as v1's /api/pane/:id/send, on the same pane write queue. The
+// drainer holds every queued row at start; nothing is sent after a restart until the operator resumes.
+const dispatcher = threadStore
+  ? createDispatcher({
+      store: threadStore,
+      sender: createGuardedSender(herdr, cfg, engine, paneWrites),
+      herdr,
+      engine,
+      queue: paneWrites,
+      journal: journalIngestor,
+      audit,
+    })
+  : null;
+
 // v2 needs herdr >= 0.9.0 (T05). The version is asked once: right after the start-up ping below, or,
 // if herdr is not answering then, when the link first comes up. Below the floor nothing ingests and
 // every /api/v2/* route answers 503 with the reason; v1 is unaffected. A restart re-checks.
@@ -180,6 +197,7 @@ if (threadStore) {
     herdIngestor?.start();
     journalIngestor?.start();
     requestIngestor?.start();
+    dispatcher?.start();
   });
   engine.onLink((status) => {
     if (status === "connected" && v2Gate.state() === "pending") void v2Gate.check(herdr);
@@ -236,7 +254,10 @@ const server = startServer({
     store: threadStore,
     disabledReason: v2DisabledReason,
     gate: v2Gate,
-    effects: requestIngestor ? { "runtime-request.respond": respondEffect(requestIngestor.respond) } : {},
+    effects: {
+      ...(requestIngestor ? { "runtime-request.respond": respondEffect(requestIngestor.respond) } : {}),
+      ...(dispatcher?.effects ?? {}),
+    },
     watchers: threadWatchers,
     herdIngestor,
   },
@@ -254,6 +275,7 @@ const shutdown = async () => {
   herdIngestor?.stop();
   journalIngestor?.stop();
   requestIngestor?.stop();
+  dispatcher?.stop();
   poker.stop();
   // Retract anything still on the lock screen — nothing live stands behind it once we exit.
   notifications.clearAll();

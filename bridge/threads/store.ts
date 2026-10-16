@@ -714,6 +714,10 @@ export interface ThreadStore {
    * (`LOOSE_PAGE_ITEMS` at a time).
    */
   historyPage(threadId: string, before: number | null, limit: number): HistoryPage;
+  /** A thread's queued messages by position, or every thread's (by thread, then position) with no id (T06). */
+  listQueued(threadId?: string): QueuedMessage[];
+  /** One queued message by id (T06). */
+  getQueued(id: string): QueuedMessage | null;
   offsets: {
     get(threadId: string): JournalOffset | null;
     set(offset: JournalOffset): void;
@@ -1098,6 +1102,21 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
           .get(threadId, from);
         return { runs, loose, nextCursor: (older?.n ?? 0) > 0 ? encodeHistoryCursor(from) : null };
       })();
+    },
+
+    listQueued(threadId) {
+      const rows =
+        threadId === undefined
+          ? db.query<QueuedRow, []>("SELECT * FROM queued_messages ORDER BY thread_id, position, created_at").all()
+          : db
+              .query<QueuedRow, [string]>("SELECT * FROM queued_messages WHERE thread_id = ? ORDER BY position, created_at")
+              .all(threadId);
+      return rows.map(queuedFromRow);
+    },
+
+    getQueued(id) {
+      const row = db.query<QueuedRow, [string]>("SELECT * FROM queued_messages WHERE id = ?").get(id);
+      return row ? queuedFromRow(row) : null;
     },
 
     offsets: {
