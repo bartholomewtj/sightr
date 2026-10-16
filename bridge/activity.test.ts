@@ -11,6 +11,7 @@ import {
   meaningfulTabLabel,
   meaningfulTerminalTitle,
   PRUNE_AFTER_MS,
+  SEEN_REFRESH_MS,
 } from "./activity.ts";
 
 // A ledger over a throwaway state dir with a controllable clock. The debounce is set absurdly high
@@ -225,6 +226,31 @@ describe("ActivityLedger — the unseen derivation", () => {
     advance(10_000);
     l.noteActive("default", "w0:p1");
     expect(unseen(l.get("default", "w0:p1"))).toBe(true);
+  });
+
+  test("re-reading a read pane keeps its stamp until it is SEEN_REFRESH_MS old", () => {
+    const { l, advance } = ledger();
+    l.ensure("default", "w0:p1");
+    advance(SEEN_REFRESH_MS);
+    expect(l.noteSeen("default", "w0:p1")).toBe(true);
+    const stamped = l.get("default", "w0:p1")!.seenAt;
+    advance(1_500);
+    expect(l.noteSeen("default", "w0:p1")).toBe(false);
+    expect(l.get("default", "w0:p1")!.seenAt).toBe(stamped);
+    advance(SEEN_REFRESH_MS);
+    expect(l.noteSeen("default", "w0:p1")).toBe(true);
+  });
+
+  test("a read of an unread pane always clears it, however recent the last stamp", () => {
+    const { l, advance } = ledger();
+    l.ensure("default", "w0:p1");
+    advance(1_000);
+    l.noteSeen("default", "w0:p1");
+    advance(1_000);
+    l.noteActive("default", "w0:p1");
+    advance(500);
+    expect(l.noteSeen("default", "w0:p1")).toBe(true);
+    expect(unseen(l.get("default", "w0:p1"))).toBe(false);
   });
 
   test("noteActive preserves seenAt and noteSeen preserves activeAt", () => {

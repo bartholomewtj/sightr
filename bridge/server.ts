@@ -215,7 +215,7 @@ export function startServer(opts: {
         // known set, so the only way to reach here unrouted is a method mismatch (a GET at /reply, a
         // POST at /history) — which 405s. Without this a malformed request still marked the pane seen.
         const routed = isRead ? req.method === "GET" : req.method === "POST";
-        if (routed && marksPaneSeen(req, action)) { activity.noteSeen(ACTIVITY_KEY, paneId); events.notify(); }
+        if (routed && marksPaneSeen(req, action) && activity.noteSeen(ACTIVITY_KEY, paneId)) events.notify();
 
         if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req, engine);
         if (action === "history" && req.method === "GET")
