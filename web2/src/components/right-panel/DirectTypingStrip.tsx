@@ -1,5 +1,7 @@
-// Copied from web/src/components/direct-typing-strip.tsx (T13: the Terminal tab). Change: `prompt`
-// names the password prompt the operator is answering (T12's "Open terminal" hand-off).
+// Copied from web/src/components/direct-typing-strip.tsx (T13: the Terminal tab). Changes: `prompt`
+// names the password prompt the operator is answering (T12's "Open terminal" hand-off); `compact`
+// (a phone with its keyboard up) shows the strip only when it has something to say: a held paste or
+// a password prompt. Its plain "Typing into terminal … Stop" line repeats the armed Stop button.
 import { Keyboard } from "lucide-react";
 import type { PointerEvent } from "react";
 import { usePasteHold } from "@/lib/paste-hold";
@@ -21,8 +23,10 @@ export function DirectTypingStrip({
   disabled = false,
   reason,
   prompt,
-}: { onStop: () => void; disabled?: boolean; reason?: string; prompt?: string }) {
+  compact = false,
+}: { onStop: () => void; disabled?: boolean; reason?: string; prompt?: string; compact?: boolean }) {
   const hold = usePasteHold();
+  if (compact && !disabled && hold === null && !prompt) return null;
   const buttonProps = { onPointerDown: (event: PointerEvent<HTMLButtonElement>) => event.preventDefault() };
   return (
     <div data-direct-strip="" className={`flex items-center gap-2 px-1 pb-1 text-xs ${disabled ? "text-muted-foreground" : "text-primary"}`}>

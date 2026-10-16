@@ -63,8 +63,8 @@ export function RightPanelSheet(props: {
         className="h-[calc(100dvh-3rem)] rounded-t-2xl"
         data-right-panel-sheet=""
       >
-        <div className="flex items-center gap-2 border-b px-3 py-2">
-          <SheetTitle className="min-w-0 flex-1 truncate text-base font-semibold">{props.title}</SheetTitle>
+        <div className="flex items-center gap-2 border-b px-3 py-0.5">
+          <SheetTitle className="min-w-0 flex-1 truncate text-sm font-semibold">{props.title}</SheetTitle>
           <Button size="icon-sm" variant="ghost" aria-label={`Close ${props.title}`} onClick={() => guardPanelLeave(props.onClose)}>
             <XIcon />
           </Button>

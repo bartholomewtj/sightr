@@ -100,6 +100,62 @@ describe("TerminalPanel", () => {
     expect(document.querySelector("[data-keys-dock]")).not.toBeNull();
   });
 
+  describe("phone typing is compact", () => {
+    it("puts the typing box in the toolbar row, drops the plain strip and shows the one-row key bar", async () => {
+      setViewportWidth(390);
+      render(<TerminalPanel threadId="t1" />);
+      fireEvent.click(await screen.findByRole("button", { name: "Type into terminal" }));
+      const stop = await screen.findByRole("button", { name: "Stop" });
+      expect(stop.parentElement).toContainElement(typeBox());
+      expect(screen.queryByText("Typing into terminal")).toBeNull();
+      expect(screen.getByRole("toolbar", { name: "Terminal keys" })).toBeInTheDocument();
+      expect(document.querySelector("[data-keys-dock]")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Keys" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Larger text" })).toBeNull();
+    });
+
+    it("keeps the same typing box when arming, so the phone keyboard stays up", async () => {
+      setViewportWidth(390);
+      render(<TerminalPanel threadId="t1" />);
+      const before = typeBox();
+      fireEvent.click(await screen.findByRole("button", { name: "Type into terminal" }));
+      await screen.findByRole("button", { name: "Stop" });
+      expect(typeBox()).toBe(before);
+    });
+
+    it("sends a key bar key to the pane, and More swaps in the full pad until Fewer keys", async () => {
+      setViewportWidth(390);
+      render(<TerminalPanel threadId="t1" />);
+      fireEvent.click(await screen.findByRole("button", { name: "Type into terminal" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Enter" }));
+      await waitFor(() => expect(keyPosts.flatMap((p) => p.keys)).toEqual(["Enter"]));
+      fireEvent.click(screen.getByRole("button", { name: "More keys" }));
+      expect(document.querySelector("[data-keys-dock]")).not.toBeNull();
+      expect(screen.queryByRole("toolbar", { name: "Terminal keys" })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Fewer keys" }));
+      expect(document.querySelector("[data-keys-dock]")).toBeNull();
+      expect(screen.getByRole("toolbar", { name: "Terminal keys" })).toBeInTheDocument();
+    });
+
+    it("folds an open Keys pad down to the key bar when typing arms", async () => {
+      setViewportWidth(390);
+      render(<TerminalPanel threadId="t1" />);
+      fireEvent.click(await screen.findByRole("button", { name: "Keys" }));
+      expect(document.querySelector("[data-keys-dock]")).not.toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Type into terminal" }));
+      await screen.findByRole("button", { name: "Stop" });
+      expect(document.querySelector("[data-keys-dock]")).toBeNull();
+      expect(screen.getByRole("toolbar", { name: "Terminal keys" })).toBeInTheDocument();
+    });
+
+    it("still names a password prompt", async () => {
+      setViewportWidth(390);
+      act(() => useRightPanelStore.getState().requestDirectTyping("t1", "[sudo] password for bart:"));
+      render(<TerminalPanel threadId="t1" />);
+      expect(await screen.findByText(/answering: \[sudo\] password for bart:/)).toBeInTheDocument();
+    });
+  });
+
   it("keeps the font size per device, 10 to 16 px", async () => {
     render(<TerminalPanel threadId="t1" />);
     const larger = await screen.findByRole("button", { name: "Larger text" });
