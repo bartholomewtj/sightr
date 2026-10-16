@@ -1,6 +1,6 @@
 # T13 — Right panel: Terminal, Files, Git; palette and keybindings
 
-Status: draft (T3-shape series). Depends on: T09 (layout slots), T10 (thread list for the palette), T12 (composer hooks into the Terminal tab). Read `README.md` in this folder first.
+Status: done on feat/v2-web (2026-10-17). Depends on: T09 (layout slots), T10 (thread list for the palette), T12 (composer hooks into the Terminal tab). Read `README.md` in this folder first.
 
 ## Problem
 
@@ -94,3 +94,51 @@ All in `web2/src/components/right-panel/`, `web2/src/components/palette/`, `web2
 - **Palette logic:** scoring order, "Needs you" first on empty query, project entries, actions filtered by context; Enter opens a thread.
 - **Keybinding matcher:** `mod` mapping per platform; `when` grammar (and, or, not, parentheses, unknown key is false); terminalFocus suppresses `mod+k`; `mod+z` ignored in a textarea; `?` ignored in a text field.
 - **Shortcuts sheet** renders every default.
+
+## Built
+
+On feat/v2-web, on T3's structure (`web2/t3-upstream.json` rows added): `src/rightPanelStore.ts`,
+`components/RightPanelTabs.tsx` (desktop frame) and `RightPanelSheet.tsx` (phone), the tab contents in
+`components/right-panel/` (`TerminalPanel`, `TerminalMirror`, `DirectTypingStrip`, `FilesPanel`, `GitPanel`, `DiffView`),
+`components/CommandPalette.tsx` + `.logic.ts` + `CommandPaletteContent.tsx` (verbatim) + `CommandPaletteResults.tsx`, T3's
+`ui/command.tsx` and `ui/autocomplete.tsx` (verbatim), `commandPaletteBus.ts`, `KeyboardShortcutsDialog.tsx`,
+`GlobalShortcuts.tsx` + `shortcutHandlers.ts`, and the keybinding model as T3 splits it: `src/t3/contracts/keybindings.ts`
+(`@t3tools/contracts`), `src/t3/shared/keybindings.ts` (`@t3tools/shared/keybindings`: parser, matcher, `when` grammar and
+`DEFAULT_KEYBINDINGS`) and `src/keybindings.ts` (`resolveShortcutCommand`, `matchBinding`, labels). Copied from v1:
+`use-direct-typing.ts`, `use-ordered-key-sender.ts`, `paste-hold.ts`, `files-tree.ts`, the raw path of `AnsiMirror`,
+`direct-typing-strip.tsx`, `diff-view.tsx`, and `fetchPane` (ETag cache) plus the Files/Git/local-servers helpers in
+`web2/src/lib/api.ts`. Live-checked in `ca` against a scratch bridge and workspace `v2-test-T13` (shell pane + Claude
+Haiku): mirror, direct typing into the shell, Files at the thread folder and the scratchpad root, Git status and diff,
+mod+k jump to the Haiku thread, and the three tabs as sheets at 390 px.
+
+Deviations:
+
+- **Layout and names:** T3's files and names (README "same layout and names") instead of `components/palette/` and
+  `keys/defaults.ts`. The default table lives where T3 keeps it (`DEFAULT_KEYBINDINGS` in the shared keybindings module).
+- **Command and context names are T3's:** `thread.undo` (spec `undo.last`), `editableFocus` (spec `textFieldFocus`). Sightr
+  additions: `terminal.directTyping` (ctrl+`), `rightPanel.files`, `rightPanel.git`, `shortcuts.open`. A symbol key such as `?`
+  matches whatever Shift the layout needs, and Windows' AltGraph report counts as Ctrl+Alt for a Ctrl+Alt binding.
+- **Who runs a command:** a registry (`shortcutHandlers.ts`); the newest mounted handler runs first and may decline. One
+  capture-phase listener resolves the table, so a binding with no `when` (mod+b, mod+j, mod+alt+b) still applies while
+  direct typing is armed; every `!terminalFocus` binding goes to the agent.
+- **Composer keys:** Mod+Enter (`composer.sendAlternate`), Mod+Shift+Enter (`thread.steerQueuedMessage`) and Alt+Up
+  (`thread.editQueuedMessage`) are table commands now. Plain Enter / Shift+Enter (they follow the Enter-mode setting, T18)
+  and Escape (slash menu, queued edit) stay in the composer. The sidebar's own mod+z listener is gone (`thread.undo`).
+- **Bridge addition:** threads carry no cwd, so `GET /api/files/pane-folder?pane=<id>` answers `{ path }`, the pane's folder
+  as a contained rel path (null when outside the Files root). The client still never sees an absolute path.
+- **Files** start at that folder, with an Up button to the root; outside the root they start at the root with a note. The
+  unsaved-edits guard also covers a tab switch and closing the panel or sheet (`leaveGuard.ts`); the back gesture on a
+  phone sheet closes without asking.
+- **Git:** no ahead/behind (the bridge's `/api/files/git` has none). Each file's diff is folded until tapped.
+- **Terminal:** "Load older" shows only when the read filled the window it asked for (600, +600 up to herdr's 1,000); the
+  bridge caps a shell at 120 visible lines, so shells never offer it. web2 may not branch on harness ids. Arming is the
+  explicit button or ctrl+`; clicking the mirror does not arm (v1's desktop "typing surface" pref is not ported).
+- **Palette:** T3's token ranking plus a subsequence fallback ranked below it; a plain list (T3's virtualized list is not
+  needed for a herd). A project row focuses it in the sidebar; "New thread in …" opens `/new?project=<id>` for T14. Rename
+  uses a small dialog and Snooze the custom snooze dialog, so both work on a phone. `chat.find` is bound but declines, so the
+  browser's own find keeps Ctrl+F until T19.
+- **State:** the right panel's open state moved from `uiStateStore` to `rightPanelStore` (`sightr:v2:right-panel-state:v1`; the
+  old `sightr:v2:right-panel` key is no longer read). `uiStateStore` gained `sidebarOpen` for mod+b.
+- **Keys pad:** `nav-tray.tsx` and `key-queue-strip.tsx` moved to `components/keys/`, used by the composer and the Terminal tab.
+- Two timeline tests (T11) waited a fixed 200 ms for the list to re-render and failed under the larger parallel run; they
+  now `waitFor` the result.

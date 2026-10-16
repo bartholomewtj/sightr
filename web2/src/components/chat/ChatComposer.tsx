@@ -28,12 +28,15 @@ import { commandsFor } from "@v1/lib/agent-commands";
 import { isDestructiveInput } from "@v1/lib/destructive";
 import { ctrlPresetsFor } from "@v1/lib/operator-keys";
 import { cn } from "~/lib/utils";
-import { NavTray } from "@/components/nav-tray";
+import { currentShortcutContext } from "@/components/GlobalShortcuts";
+import { NavTray } from "@/components/keys/nav-tray";
 import { useDropUpload } from "@/hooks/use-drop-upload";
 import { useLayout } from "@/hooks/useLayout";
+import { KEYBINDINGS, resolveShortcutCommand } from "@/keybindings";
 import { sendKeys } from "@/lib/api";
 import { loadDraft, saveDraft } from "@/lib/drafts";
 import { useOperatorCommands, useOperatorKeys } from "@/lib/operator-commands";
+import { useShortcutHandler } from "@/shortcutHandlers";
 import { useSidebarThread } from "@/state/sidebar";
 import {
   addAttachments,
@@ -321,6 +324,19 @@ export function ChatComposer({ threadId }: { threadId: string }) {
     boxRef.current?.focus();
   }
 
+  // ── Keybinding table (T13): the composer's commands. The table decides which key means what. ──
+  useShortcutHandler("composer.sendAlternate", () => {
+    // Mod+Enter while the agent works: in Enter-sends mode it sends the other follow-up; in
+    // Mod+Enter-sends mode it is the plain send (Mod+Alt+Enter is the other one there).
+    void submit(enterMode === "enter");
+  });
+  useShortcutHandler("thread.editQueuedMessage", (event) => {
+    const el = boxRef.current;
+    if (!el || !event || !wantsEditNewest(event, textRef.current, el.selectionStart ?? 0)) return false;
+    return queueRef.current?.editLatest() ?? false;
+  });
+  useShortcutHandler("thread.steerQueuedMessage", () => queueRef.current?.steerNext() ?? false);
+
   function pickCommand(item: ComposerCommandItem): void {
     const cmd = item.command;
     if (cmd.takesArg) {
@@ -371,6 +387,13 @@ export function ChatComposer({ threadId }: { threadId: string }) {
       cancelEdit();
       return;
     }
+    // A key the table binds here was the global handler's to take; when it declined, the key does
+    // nothing extra (and a chord that would type a newline types nothing).
+    const bound = resolveShortcutCommand(native, KEYBINDINGS, { context: currentShortcutContext() });
+    if (bound !== null) {
+      if (bound !== "thread.editQueuedMessage") e.preventDefault();
+      return;
+    }
     const keyLike = {
       key: e.key,
       shiftKey: e.shiftKey,
@@ -380,15 +403,10 @@ export function ChatComposer({ threadId }: { threadId: string }) {
       isComposing: native.isComposing,
       keyCode: native.keyCode,
     };
-    if (wantsEditNewest(keyLike, textRef.current, e.currentTarget.selectionStart ?? 0)) {
-      if (queueRef.current?.editLatest()) e.preventDefault();
-      return;
-    }
+    // Plain Enter / Shift+Enter (and the chords the table leaves to the Enter mode). Mod+Shift+Enter
+    // never gets here: it is the table's thread.steerQueuedMessage.
     const action = resolveEnterAction(keyLike, enterMode);
-    if (action === "steer-oldest") {
-      e.preventDefault();
-      queueRef.current?.steerNext();
-    } else if (action === "submit" || action === "submit-alternate") {
+    if (action === "submit" || action === "submit-alternate") {
       e.preventDefault();
       void submit(action === "submit-alternate");
     }
@@ -507,7 +525,6 @@ export function ChatComposer({ threadId }: { threadId: string }) {
               <ComposerPendingUserInputPanel
                 request={request}
                 pendingCount={requests.length}
-                paneId={paneId}
                 respondingIndex={composer.responding?.requestId === request.id ? composer.responding.optionIndex : null}
                 verdict={composer.verdict}
                 disabled={readOnly || linkLost}
@@ -518,7 +535,6 @@ export function ChatComposer({ threadId }: { threadId: string }) {
               <ComposerPendingApprovalPanel
                 request={request}
                 pendingCount={requests.length}
-                paneId={paneId}
                 respondingIndex={composer.responding?.requestId === request.id ? composer.responding.optionIndex : null}
                 verdict={composer.verdict}
                 disabled={readOnly || linkLost}
@@ -608,6 +624,7 @@ export function ChatComposer({ threadId }: { threadId: string }) {
               <textarea
                 ref={boxRef}
                 aria-label="Message"
+                data-composer-input=""
                 aria-autocomplete="list"
                 aria-controls={menuOpen ? listId : undefined}
                 aria-activedescendant={menuOpen && activeId ? composerSuggestionOptionId(listId, activeId) : undefined}

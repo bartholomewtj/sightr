@@ -10,7 +10,7 @@ import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useKeyQueue } from "@/hooks/use-key-queue";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { useHoldRepeat } from "@/hooks/use-hold-repeat";
-import { KeyQueueStrip } from "@/components/key-queue-strip";
+import { KeyQueueStrip } from "@/components/keys/key-queue-strip";
 import { CONTROL_PRESETS, type CtrlDef } from "@v1/lib/operator-keys";
 
 // The inline navigation tray: the keys you need to drive an interactive agent prompt (selection

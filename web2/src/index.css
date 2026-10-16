@@ -62,6 +62,8 @@
   --contrast-input: var(--boxline);
 
   /* T3 geometry the adopted primitives use. */
+  --command-shell-inset: 0.5rem;
+  --command-content-inset: 1rem;
   --z-sheet: 46;
   --thread-details-panel-width: 17.5rem;
   --app-scrollbar-width: 6px;

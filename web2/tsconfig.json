@@ -38,6 +38,8 @@
       "@t3tools/shared/toolOutput": ["./src/t3/shims/toolOutput.ts"],
       "@t3tools/client-runtime/state/composer-dispatch": ["./src/t3/client-runtime/state/composerDispatch.ts"],
       "@t3tools/shared/searchRanking": ["./src/t3/shared/searchRanking.ts"],
+      "@t3tools/contracts": ["./src/t3/contracts/index.ts"],
+      "@t3tools/shared/keybindings": ["./src/t3/shared/keybindings.ts"],
       "~/*": ["./src/*"]
     }
   },

@@ -5,10 +5,13 @@ import { useEffect, useRef } from "react";
 import { ChatComposer } from "~/components/chat/ChatComposer";
 import { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { Button } from "~/components/ui/button";
+import { RightPanelSheet } from "@/components/RightPanelSheet";
+import { RIGHT_PANEL_ICON, RightPanelSurface } from "@/components/RightPanelTabs";
 import { useLayout } from "@/hooks/useLayout";
 import { useThreadStream } from "@/hooks/useThreadStream";
 import { canUnarchive } from "@/lib/archived";
 import { performThreadCommand, useSidebarThread } from "@/state/sidebar";
+import { RIGHT_PANEL_KINDS, RIGHT_PANEL_LABEL, useRightPanelStore } from "@/rightPanelStore";
 import { useThread, useThreadStore } from "@/stream/stores";
 
 export const Route = createFileRoute("/_chat/thread/$threadId")({
@@ -51,7 +54,9 @@ function ThreadRouteView() {
         )}
         <h1 className="min-w-0 flex-1 truncate font-semibold">{title}</h1>
         {state?.syncing && <span className="text-xs text-muted-foreground">Syncing…</span>}
+        {!desktop && !missing ? <PhonePanelButtons /> : null}
       </header>
+      {!desktop ? <PhonePanelSheet threadId={threadId} /> : null}
       {missing ? (
         <p className="p-4 text-sm text-muted-foreground">This thread no longer exists on the bridge.</p>
       ) : (
@@ -77,5 +82,35 @@ function ThreadRouteView() {
         </>
       )}
     </section>
+  );
+}
+
+/** Phone: Terminal, Files and Git open as one full-height sheet at a time (T13). */
+function PhonePanelButtons() {
+  const sheet = useRightPanelStore((s) => s.sheet);
+  const openSheet = useRightPanelStore((s) => s.openSheet);
+  return (
+    <div className="-mr-1 flex items-center" role="group" aria-label="Thread tools">
+      {RIGHT_PANEL_KINDS.map((kind) => {
+        const Icon = RIGHT_PANEL_ICON[kind];
+        return (
+          <Button key={kind} size="icon-sm" variant="ghost-muted" aria-label={RIGHT_PANEL_LABEL[kind]} aria-pressed={sheet === kind} onClick={() => openSheet(kind)}>
+            <Icon />
+          </Button>
+        );
+      })}
+    </div>
+  );
+}
+
+function PhonePanelSheet({ threadId }: { threadId: string }) {
+  const sheet = useRightPanelStore((s) => s.sheet);
+  const closeSheet = useRightPanelStore((s) => s.closeSheet);
+  // Leaving the thread closes its sheet.
+  useEffect(() => () => useRightPanelStore.getState().closeSheet(), [threadId]);
+  return (
+    <RightPanelSheet open={sheet !== null} title={sheet ? RIGHT_PANEL_LABEL[sheet] : ""} onClose={closeSheet}>
+      {sheet ? <RightPanelSurface key={`${sheet}:${threadId}`} kind={sheet} threadId={threadId} /> : null}
+    </RightPanelSheet>
   );
 }

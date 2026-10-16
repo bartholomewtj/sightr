@@ -34,7 +34,6 @@ export const AUTO_ADVANCE_MS = 200;
 interface PendingUserInputPanelProps {
   request: RuntimeRequest;
   pendingCount: number;
-  paneId: string;
   /** The option whose answer is in flight; `RESPONDING_ADVANCE` for a checkbox step's set. */
   respondingIndex: number | null;
   verdict: string | null;
@@ -67,7 +66,6 @@ export function selectedIndices(values: readonly string[]): number[] {
 const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard({
   request,
   pendingCount,
-  paneId,
   respondingIndex,
   verdict,
   disabled = false,
@@ -292,7 +290,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
           <>
             <p className="text-sm text-muted-foreground">Answer in the Terminal tab.</p>
             <div>
-              <OpenTerminalButton paneId={paneId} />
+              <OpenTerminalButton threadId={request.threadId} />
             </div>
           </>
         )}

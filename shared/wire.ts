@@ -72,6 +72,8 @@ export type FilesResponse =
   | { kind: "file"; path: string; name: string; size: number; mtimeMs: number; binary: boolean; text?: string; truncated?: boolean; openInBrowser?: boolean; embed?: "image" | "video" | "audio" };
 export interface FileSearchResponse { q: string; results: FileSearchResult[]; truncated: boolean; }
 export interface FolderGitEntry { path: string; x: string; y: string; }
+/** Where a pane's working folder sits in the Files root: `""` is the root; null when it is outside it, or Files is off. */
+export interface PaneFolderResponse { path: string | null; }
 export type FolderGitResponse =
   | { available: false; reason: "outside-root" | "not-a-repo" | "git-unavailable" | "timeout" }
   | { available: true; repo: string; rel: string; branch?: string; detached?: boolean; noCommits?: boolean; clean: boolean; entries: FolderGitEntry[]; hidden: number; statusTruncated: boolean; diff: string; diffTruncated: boolean; panes: string[] };

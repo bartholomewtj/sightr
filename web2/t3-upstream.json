@@ -7,7 +7,10 @@
     "apps/web/src/components/chat/",
     "apps/web/src/components/ui/",
     "apps/web/src/components/sidebar/",
-    "apps/web/src/hooks/"
+    "apps/web/src/hooks/",
+    "apps/web/src/",
+    "packages/shared/src/",
+    "packages/contracts/src/"
   ],
   "files": [
     {
@@ -481,6 +484,93 @@
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
       "note": "imports vitest instead of vite-plus/test"
+    },
+    {
+      "local": "src/t3/contracts/keybindings.ts",
+      "upstream": "packages/contracts/src/keybindings.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "plain TS types instead of Effect Schema; Sightr's command list"
+    },
+    {
+      "local": "src/t3/shared/keybindings.ts",
+      "upstream": "packages/shared/src/keybindings.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "DEFAULT_KEYBINDINGS is Sightr's table; parser, matcher and when grammar unchanged"
+    },
+    {
+      "local": "src/keybindings.ts",
+      "upstream": "apps/web/src/keybindings.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "Sightr's when context, injectable platform, no unmodified binding in a text field, symbol keys ignore Shift"
+    },
+    {
+      "local": "src/rightPanelStore.ts",
+      "upstream": "apps/web/src/rightPanelStore.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "three fixed tabs, per-device open state, tab, width and font; phone sheet"
+    },
+    {
+      "local": "src/components/RightPanelTabs.tsx",
+      "upstream": "apps/web/src/components/RightPanelTabs.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "Terminal, Files, Git; resize handle placed as T3's RightPanelResizeHandle"
+    },
+    {
+      "local": "src/components/RightPanelSheet.tsx",
+      "upstream": "apps/web/src/components/RightPanelSheet.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "bottom sheet, not kept mounted, back closes it"
+    },
+    {
+      "local": "src/commandPaletteBus.ts",
+      "upstream": "apps/web/src/commandPaletteBus.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "Zustand store instead of a window event"
+    },
+    {
+      "local": "src/components/CommandPalette.tsx",
+      "upstream": "apps/web/src/components/CommandPalette.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/CommandPalette.logic.ts",
+      "upstream": "apps/web/src/components/CommandPalette.logic.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "Sightr threads/projects/actions; T3 filtering and ranking, plus a subsequence fallback"
+    },
+    {
+      "local": "src/components/CommandPaletteContent.tsx",
+      "upstream": "apps/web/src/components/CommandPaletteContent.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/CommandPaletteResults.tsx",
+      "upstream": "apps/web/src/components/CommandPaletteResults.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "plain list only, no content-match excerpt or submenus"
+    },
+    {
+      "local": "src/components/ui/command.tsx",
+      "upstream": "apps/web/src/components/ui/command.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/autocomplete.tsx",
+      "upstream": "apps/web/src/components/ui/autocomplete.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
     }
   ]
 }

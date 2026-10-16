@@ -9,6 +9,7 @@ import { KeyRoundIcon, ShieldIcon, TerminalSquareIcon } from "lucide-react";
 
 import type { RuntimeRequest } from "@shared/v2/contracts";
 import { cn } from "~/lib/utils";
+import { openRightPanelSurface, useRightPanelStore } from "@/rightPanelStore";
 import { ComposerBanner } from "./ComposerBanner";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 
@@ -20,27 +21,29 @@ const KIND_LABEL: Record<RuntimeRequest["kind"], string> = {
   question: "Question",
 };
 
-/** The v1 pane view, which has the live terminal, until T13's Terminal tab lands. */
-export function terminalHref(paneId: string): string {
-  return `/pane/${encodeURIComponent(paneId)}`;
-}
-
-export function OpenTerminalButton({ paneId }: { paneId: string }) {
+/**
+ * Opens the thread's Terminal tab (T13): the panel on desktop, a sheet on a phone. With `prompt` (a
+ * password request) it also arms direct typing, and the strip names the prompt being answered.
+ */
+export function OpenTerminalButton({ threadId, prompt }: { threadId: string; prompt?: string }) {
   return (
-    <a
-      href={terminalHref(paneId)}
+    <button
+      type="button"
+      onClick={() => {
+        if (prompt !== undefined) useRightPanelStore.getState().requestDirectTyping(threadId, prompt);
+        openRightPanelSurface("terminal");
+      }}
       className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border-2 border-border bg-card px-3 text-sm font-medium text-foreground hover:border-you sm:min-h-9"
     >
       <TerminalSquareIcon className="size-4" aria-hidden="true" />
       Open terminal
-    </a>
+    </button>
   );
 }
 
 interface ComposerPendingApprovalPanelProps {
   request: RuntimeRequest;
   pendingCount: number;
-  paneId: string;
   respondingIndex: number | null;
   verdict: string | null;
   disabled?: boolean;
@@ -51,7 +54,6 @@ interface ComposerPendingApprovalPanelProps {
 export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprovalPanel({
   request,
   pendingCount,
-  paneId,
   respondingIndex,
   verdict,
   disabled = false,
@@ -95,7 +97,7 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
               This asks for a password. Sightr does not send it. Type it in the Terminal tab.
             </p>
             <div>
-              <OpenTerminalButton paneId={paneId} />
+              <OpenTerminalButton threadId={request.threadId} prompt={request.prompt.split("\n", 1)[0] ?? ""} />
             </div>
           </>
         ) : request.options.length > 0 ? (
@@ -110,7 +112,7 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
           <>
             <p className="text-sm text-muted-foreground">Answer in the Terminal tab.</p>
             <div>
-              <OpenTerminalButton paneId={paneId} />
+              <OpenTerminalButton threadId={request.threadId} />
             </div>
           </>
         )}

@@ -21,11 +21,12 @@ import {
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Link, useParams } from "@tanstack/react-router";
-import { ChevronDown, ChevronRight, GitBranch, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Command, GitBranch, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import type { Thread } from "@shared/v2/contracts";
 
+import { openCommandPalette } from "@/commandPaletteBus";
 import { CustomSnoozeDialog } from "@/components/CustomSnoozeDialog";
 import { handleSidebarDrop, sectionDropId, useSidebarDrag, zoneFor } from "@/components/Sidebar.drag";
 import {
@@ -42,40 +43,17 @@ import {
 import { SidebarRowContext, SidebarThreadRow, SortableThreadRow, type SidebarRowActions } from "@/components/sidebar/SidebarThreadRow";
 import { ThreadRowMenu } from "@/components/sidebar/ThreadRowMenu";
 import { ThreadStatusDot } from "@/components/ThreadStatusIndicators";
-import { undoLatestThreadAction } from "@/hooks/showThreadUndoNotice";
 import { useLayout } from "@/hooks/useLayout";
+import { KEYBINDINGS, shortcutLabelForCommand } from "@/keybindings";
 import { cn } from "@/lib/utils";
 import { performThreadCommand, useSidebarPrefs, useSidebarThreads } from "@/state/sidebar";
 import { useShell } from "@/stream/stores";
 
 const SECTION_LABEL: Record<SidebarSection, string> = { pinned: "Pinned", active: "Active", snoozed: "Snoozed", settled: "Settled" };
 
-/** True when keystrokes belong to a text field (mod+z is that field's undo, not ours). */
-export function isTextEntry(el: Element | null): boolean {
-  if (!el) return false;
-  if (el instanceof HTMLTextAreaElement) return true;
-  if (el instanceof HTMLInputElement) return !["button", "checkbox", "radio", "submit", "reset"].includes(el.type);
-  return (el as HTMLElement).isContentEditable === true;
-}
-
-/**
- * mod+z runs the latest sidebar undo when no text field has focus. T13's keybinding table takes this
- * over; until then the sidebar registers it itself.
- */
-export function useUndoShortcut(): void {
-  useEffect(() => {
-    const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key.toLowerCase() !== "z" || !(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
-      if (isTextEntry(e.target as Element | null) || isTextEntry(document.activeElement)) return;
-      if (undoLatestThreadAction()) e.preventDefault();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-}
-
 export function Sidebar() {
   const desktop = useLayout() === "desktop";
+  const paletteKey = desktop ? shortcutLabelForCommand(KEYBINDINGS, "commandPalette.toggle") : null;
   const loaded = useShell((s) => s.loaded);
   const projects = useShell((s) => s.projects);
   const threads = useSidebarThreads();
@@ -92,8 +70,6 @@ export function Sidebar() {
   const [menu, setMenu] = useState<{ threadId: string; anchor: HTMLElement } | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [snoozePick, setSnoozePick] = useState<string | null>(null);
-
-  useUndoShortcut();
 
   useEffect(() => {
     if (!desktop) return;
@@ -140,8 +116,18 @@ export function Sidebar() {
         className="flex min-h-0 flex-1 flex-col bg-sidebar text-sidebar-foreground"
         onKeyDown={onKeyDown}
       >
-        <div className="flex items-center justify-between px-4 pt-3 pb-2">
-          <span className="font-semibold">Sightr</span>
+        <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
+          <span className="flex-1 font-semibold">Sightr</span>
+          {/* T13: the command palette (mod+k on desktop; the only way in on a phone). */}
+          <button
+            type="button"
+            aria-label="Command palette"
+            title={paletteKey ? `Command palette (${paletteKey})` : "Command palette"}
+            onClick={() => openCommandPalette()}
+            className="-m-1 rounded-md p-1 text-muted-foreground hover:bg-sidebar-row-hover hover:text-foreground"
+          >
+            <Command className="size-4" aria-hidden />
+          </button>
           <Link to="/settings" className="text-sm text-muted-foreground hover:text-foreground">
             Settings
           </Link>
@@ -267,7 +253,7 @@ function ProjectBlock({ node, desktop }: { node: SidebarProjectNode; desktop: bo
   const dragging = useSidebarDrag((s) => s.dragging !== null);
   const hasPins = node.shelves.pinned.length > 0;
   return (
-    <section aria-label={project.label} className={cn(node.nested && "ml-3 border-l border-line/60")}>
+    <section aria-label={project.label} data-project-id={project.id} className={cn(node.nested && "ml-3 border-l border-line/60")}>
       <button
         type="button"
         data-project-row=""
