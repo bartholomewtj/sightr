@@ -1,6 +1,6 @@
 # T12 — Composer: send, queue, steer, requests
 
-Status: draft (T3-shape series). Depends on: T09, T06 (`message.dispatch`, queue, interrupt), T04 (runtime requests), T11 (timeline for the sent message). Read `README.md` in this folder first.
+Status: done on feat/v2-web (2026-10-17). Depends on: T09, T06 (`message.dispatch`, queue, interrupt), T04 (runtime requests), T11 (timeline for the sent message). Read `README.md` in this folder first.
 
 ## Problem
 
@@ -107,3 +107,42 @@ While `lost`, Send is disabled but the draft is kept.
 - **RequestPanel:** permission with destructive option; question with options; question with no options shows Open terminal; menu; password (no input, Open terminal button); a `via: "whistlr"` request posts nothing; expired replaced by box; busy state until the request leaves `pending`; focus rule.
 - **Banners:** lost stream disables Send and keeps the draft; herdr down; error with Retry.
 - **a11y:** the panel is a labelled region; buttons have names; `aria-live` announces a new request.
+
+## Built
+
+Files (T3 names, `web2/src/components/chat/`): `ChatComposer.tsx` (+ `.logic.ts`, tests), `ComposerPrimaryActions.tsx`,
+`ComposerPendingApprovalPanel.tsx`, `ComposerPendingApprovalActions.tsx`, `ComposerPendingUserInputPanel.tsx`,
+`QueuedRunsControl.tsx`, `ComposerBanner.tsx`, `ComposerBannerStack.tsx`, `composerSlashCommandSearch.ts`,
+`ComposerCommandMenu.tsx`; state in `web2/src/state/composer.ts`. T3's `composerDispatch.ts` and `searchRanking.ts` are
+verbatim ports under `web2/src/t3/` (aliased as `@t3tools/...`). All rows are in `web2/t3-upstream.json`. v1 copies:
+`lib/drafts.ts` (keyed by thread id), `lib/operator-commands.ts`, `components/nav-tray.tsx`, `components/key-queue-strip.tsx`,
+`hooks/use-key-queue.ts`, `use-hold-repeat.ts`, `use-action-echo.ts`, `use-pending-confirm.ts`, `use-drop-upload.ts`
+(adapted to hand every dropped file to the composer); `uploadImage`, `sendKeys` and `fetchConfig` added to
+`web2/src/lib/api.ts`. Live-checked against a Claude Haiku pane: send, queue while working, Stop (the queue then drained),
+Keys pad (Shift+Tab), and a Write permission answered from the panel.
+
+Deviations:
+
+- **Folder:** `components/chat/` with T3's file names, not `components/composer/` (README "same layout and names").
+  `RequestPanel` is `ComposerPendingApprovalPanel` (permission, trust, menu, password, whistlr) and
+  `ComposerPendingUserInputPanel` (question), both on `ComposerPendingApprovalActions`. `option-button.tsx` was not copied:
+  T3's actions component took its job (44 px rows, busy state, warn tokens for destructive).
+- **Limit:** 64 KiB (the bridge's `MAX_DISPATCH_CHARS`), not 120,000; the bridge refuses longer text.
+- **Bridge/contract additions** (needed for two banners; small, additive): `ShellSnapshot.herdr` and `.device` (only when
+  per-device auth is on), and `SequenceFrame.herdr` on `synchronized` and `ping`. web2 keeps them in `useBridgeInfo`; a
+  command refused with "device not authorised" also marks the device read-only. `ThreadState.dispatchFailure` holds the
+  newest `dispatch.failed` (with `commandId`), so a guard-refused start (200 + event) still shows the error, puts the text
+  back in an empty box and offers Retry.
+- **Steer now** on a queued row is `message.dispatch {mode: steer}` then `queued.cancel` (there is no promote command).
+  **Undo** after a cancel re-queues the text and then posts `queued.reorder` to put it back at its old index.
+- **Destructive text** is checked on every send (as v1's composer does), not only "destructive-sensitive" harnesses:
+  there is no capability flag for that.
+- **Enter:** in "Mod+Enter sends" mode, Mod+Alt+Enter does the other follow-up (Mod+Enter is the send itself).
+- **Slash search** uses T3's ranking: prefix matches first, then word-boundary, substring and fuzzy matches.
+- **Menu requests** show options in order but cannot mark the current one: T04's request has no current index. A
+  destructive option (a menu's own cancel) moves to the end.
+- **Open terminal** links to v1's pane view (`/pane/:paneId`) until T13's Terminal tab exists.
+- **Settings** (Enter mode, Queue or Steer) live in a small menu in the composer until T18's settings route.
+- `use-ordered-key-sender.ts` was not copied: the Keys pad sends one press per call, as v1's tray does.
+- Keys register locally (Enter rules, Mod+Shift+Enter, Alt+ArrowUp, Escape); T13 moves them into its table.
+

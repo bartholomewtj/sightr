@@ -1,6 +1,6 @@
 // The non-v2 bridge calls web2 needs: the lock endpoints (copied from web/src/lib/api.ts, same
 // `/api/lock/*` routes) and the request headers every web2 call sends.
-import type { LockStatus } from "@shared/wire";
+import type { ActionResponse, BridgeConfig, LockStatus, UploadResponse } from "@shared/wire";
 
 import { noteLockRequired } from "./lock";
 
@@ -68,4 +68,50 @@ export function unlockWebauthn(body: {
   return req("/api/lock/webauthn/unlock", { method: "POST", body: JSON.stringify(body) }, (status) =>
     status === 401 ? { ok: false } : null,
   );
+}
+
+// ── T12: the composer's non-v2 calls (copied from web/src/lib/api.ts, same routes) ──────────────
+
+/** The operator's palette rows and Keys presets (`commands.toml`, `keys.toml`), read once per page. */
+export function fetchConfig(): Promise<BridgeConfig> {
+  return req<BridgeConfig>("/api/config");
+}
+
+/** Keys for a pane, through the bridge's key route (the Keys pad). */
+export function sendKeys(paneId: string, keys: string[]): Promise<ActionResponse> {
+  return req<ActionResponse>(`/api/pane/${encodeURIComponent(paneId)}/keys`, {
+    method: "POST",
+    body: JSON.stringify({ keys }),
+  });
+}
+
+/** How long one upload may take before it fails (as v1). */
+export const UPLOAD_TIMEOUT_MS = 60_000;
+
+/**
+ * Upload one attachment for a pane. The reply's `path` is where the agent can read it. Multipart, so
+ * it does not go through `req` (the browser sets the boundary).
+ */
+export async function uploadImage(paneId: string, file: File): Promise<UploadResponse> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const signal = typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(UPLOAD_TIMEOUT_MS) : undefined;
+  const res = await fetch(`/api/pane/${encodeURIComponent(paneId)}/upload`, {
+    method: "POST",
+    body: fd,
+    headers: { [XHR_HEADER]: XHR_HEADER_VALUE },
+    ...(signal ? { signal } : {}),
+  });
+  if (!res.ok) {
+    noteIfLocked(res);
+    let detail = "";
+    try {
+      const body = (await res.json()) as { error?: unknown };
+      if (typeof body.error === "string") detail = body.error;
+    } catch {
+      // not JSON
+    }
+    return { ok: false, error: detail || `Upload failed (${res.status})` };
+  }
+  return (await res.json()) as UploadResponse;
 }

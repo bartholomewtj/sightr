@@ -187,3 +187,19 @@ describe("applyThreadEvent", () => {
     expect(next.items.i9?.ordinal).toBe(1);
   });
 });
+
+describe("applyThreadEvent: dispatch.failed (T12)", () => {
+  it("keeps the newest failure with its commandId; a snapshot clears it", () => {
+    const base = threadFromSnapshot(threadSnapshot(10, thread("t1")), false);
+    const next = applyThreadEvent(base, {
+      sequence: 11,
+      threadId: "t1",
+      commandId: "c1",
+      type: "dispatch.failed",
+      payload: { reason: "stalled", message: "no echo" },
+      ts: 5,
+    });
+    expect(next.dispatchFailure).toEqual({ sequence: 11, commandId: "c1", reason: "stalled", message: "no echo", ts: 5 });
+    expect(threadFromSnapshot(threadSnapshot(12, thread("t1")), false).dispatchFailure).toBeNull();
+  });
+});

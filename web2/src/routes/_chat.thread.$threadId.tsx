@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
 import { useEffect, useRef } from "react";
 
+import { ChatComposer } from "~/components/chat/ChatComposer";
 import { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { Button } from "~/components/ui/button";
 import { useLayout } from "@/hooks/useLayout";
@@ -70,7 +71,9 @@ function ThreadRouteView() {
                 </Button>
               ) : null}
             </div>
-          ) : null}
+          ) : (
+            <ChatComposer key={threadId} threadId={threadId} />
+          )}
         </>
       )}
     </section>

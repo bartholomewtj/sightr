@@ -12,7 +12,7 @@ import { SESSION_ID } from "@v1/lib/conn-telemetry";
 import { applyShellEvent, shellFromSnapshot } from "./apply";
 import { browserDeps, createConnection, type Connection, type ConnectionDeps } from "./connection";
 import { CONNECTION_LOST_MS } from "./health";
-import { clearBlocked, noteDropped, setBlocked, useShell, useStreamHealth } from "./stores";
+import { clearBlocked, noteDevice, noteDropped, noteHerdr, setBlocked, useShell, useStreamHealth } from "./stores";
 import { isBlockingCode, V2_SHELL_PATH, type ShellSnapshot } from "./wire";
 
 export interface ShellStream extends Connection {
@@ -59,6 +59,8 @@ export function createShellStream(deps: ConnectionDeps = browserDeps()): ShellSt
           }
           useShell.setState(shellFromSnapshot(snapshot), true);
           cursor = snapshot.sequence;
+          noteHerdr(snapshot.herdr);
+          noteDevice(snapshot.device);
         },
         event: (data) => {
           useShell.setState((s) => applyShellEvent(s, data, (reason) => reason === "malformed" && noteDropped()), true);
@@ -66,7 +68,9 @@ export function createShellStream(deps: ConnectionDeps = browserDeps()): ShellSt
         },
         synchronized: (data) => {
           cursor = Math.max(cursor, seqOf(data));
+          noteHerdr((data as { herdr?: unknown } | null)?.herdr);
         },
+        ping: (data) => noteHerdr((data as { herdr?: unknown } | null)?.herdr),
       },
       onLive: () => {
         if (lostTimer !== null) deps.clearTimeout(lostTimer);

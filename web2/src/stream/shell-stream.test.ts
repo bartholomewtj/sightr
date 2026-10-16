@@ -8,7 +8,7 @@ import { blockingResponse, setVisibility, testDeps } from "@/test/stream-deps";
 
 import { backoffBase, jittered, SILENCE_MS } from "./connection";
 import { createShellStream, type ShellStream } from "./shell-stream";
-import { useShell, useStreamHealth } from "./stores";
+import { useBridgeInfo, useShell, useStreamHealth } from "./stores";
 
 let stream: ShellStream | null = null;
 
@@ -50,6 +50,18 @@ describe("shell stream", () => {
     expect(useShell.getState()).toMatchObject({ loaded: true, sequence: 11 });
     expect(useShell.getState().threads.t1?.title).toBe("first");
     expect(useStreamHealth.getState().status).toBe("live");
+  });
+
+  it("reads the herdr link from the snapshot, synchronized and ping, and the device from the snapshot (T12)", () => {
+    const { es } = start();
+    es.emit("snapshot", { ...shellSnapshot(10), herdr: "connected", device: { enforced: true, device: "laptop", authorized: false } });
+    expect(useBridgeInfo.getState()).toEqual({ herdr: "connected", readOnly: true });
+    es.emit("ping", { sequence: 10, herdr: "disconnected" });
+    expect(useBridgeInfo.getState().herdr).toBe("disconnected");
+    es.emit("synchronized", { sequence: 10, herdr: "connected" });
+    expect(useBridgeInfo.getState().herdr).toBe("connected");
+    es.emit("snapshot", shellSnapshot(11));
+    expect(useBridgeInfo.getState().readOnly).toBe(false);
   });
 
   it("resumes from the last sequence after a reconnect", async () => {

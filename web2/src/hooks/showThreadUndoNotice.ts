@@ -5,7 +5,7 @@ import { create } from "zustand";
 
 export const UNDO_NOTICE_MS = 5_000;
 
-export type UndoAction = "Settled" | "Snoozed" | "Unpinned" | "Archived";
+export type UndoAction = "Settled" | "Snoozed" | "Unpinned" | "Archived" | "Removed from queue";
 
 export interface UndoNotice {
   /** Unique per notice, so a late failure only dismisses its own. */

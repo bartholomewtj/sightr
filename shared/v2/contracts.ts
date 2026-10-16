@@ -591,12 +591,26 @@ export const SHELL_EVENT_TYPES = [
   "thread.create.failed",
 ] as const satisfies readonly ThreadEventType[];
 
+/** Is the bridge's herdr socket up (v1's `SnapshotResponse.bridge`). */
+export type HerdrLink = "connected" | "disconnected";
+
+/** This client's device standing when per-device auth is on (v1's `DeviceAuth`). */
+export interface V2DeviceAuth {
+  enforced: boolean;
+  device: string | null;
+  authorized: boolean;
+}
+
 /** `event: snapshot` on the shell stream. `requests` are the pending ones, without options. */
 export interface ShellSnapshot {
   sequence: number;
   projects: Project[];
   threads: Thread[];
   requests: RuntimeRequestSummary[];
+  /** T12: the herdr link when the snapshot was taken (pings and `synchronized` refresh it). */
+  herdr?: HerdrLink;
+  /** T12: only when per-device auth is on. `authorized: false` is a read-only device. */
+  device?: V2DeviceAuth;
 }
 
 /** `event: snapshot` on a thread stream (the cursor was too old, too far behind, or absent). */
@@ -617,6 +631,8 @@ export interface ThreadSnapshot {
 /** `event: synchronized` (the catch-up is over) and `event: ping` (heartbeat). */
 export interface SequenceFrame {
   sequence: number;
+  /** T12: the herdr link at the time of the frame. */
+  herdr?: HerdrLink;
 }
 
 /** The frame names a v2 stream sends. `event` carries one `ThreadEvent`; `build` the UI build id; `reset` precedes a close. */

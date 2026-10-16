@@ -8,7 +8,7 @@ import { renderHook } from "@testing-library/react";
 
 import { sendCommand, V2CommandError } from "./commands";
 import { fetchThreadHistory } from "./history";
-import { useStreamHealth } from "./stores";
+import { useBridgeInfo, useStreamHealth } from "./stores";
 
 const ok = (sequence: number) => Response.json({ ok: true, sequence });
 const fixedId = () => "cmd-1";
@@ -64,6 +64,12 @@ describe("sendCommand", () => {
     expect(useStreamHealth.getState().blocked).toMatchObject({ code: "herdr-too-old", have: "0.8.2" });
     await sendCommand("thread.pin", { threadId: "t1" }, { fetch, newId: fixedId });
     expect(useStreamHealth.getState().blocked).toBeNull();
+  });
+
+  it("marks the device read-only when the bridge refuses a write for it (T12)", async () => {
+    server.use(http.post("/api/v2/command", () => new HttpResponse("device not authorised", { status: 403 })));
+    await expect(sendCommand("thread.pin", { threadId: "t1" })).rejects.toMatchObject({ status: 403 });
+    expect(useBridgeInfo.getState().readOnly).toBe(true);
   });
 
   it("raises the unlock prompt on a lock 401", async () => {

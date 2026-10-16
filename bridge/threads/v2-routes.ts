@@ -10,14 +10,16 @@ import {
   type CommandReply,
   type CommandType,
   type HistoryPage,
+  type HerdrLink,
   type SequenceFrame,
+  type ShellSnapshot,
   type ThreadEvent,
   type V2ErrorBody,
   type V2ErrorCode,
   type V2StreamFrame,
 } from "../../shared/v2/contracts.ts";
 import { SSE_KEEPALIVE_MS } from "../../shared/limits.ts";
-import { guard, streamMarksSeen } from "../access.ts";
+import { deviceAuth, guard, streamMarksSeen } from "../access.ts";
 import { ACTIVITY_KEY, type ActivityLedger } from "../activity.ts";
 import { SILENT_AUDIT, type AuditLog } from "../audit.ts";
 import type { Config } from "../config.ts";
@@ -295,6 +297,8 @@ export function createV2Routes(deps: V2RoutesDeps): V2Routes {
   const getBuildId = deps.buildId ?? defaultBuildId;
   const keepAliveMs = deps.keepAliveMs ?? SSE_KEEPALIVE_MS;
   const maxBehind = deps.maxBehindBytes ?? MAX_BEHIND_BYTES;
+  /** The herdr link as the state engine last saw it (T12's "herdr down" banner reads it off the streams). */
+  const herdrLink = (): HerdrLink => (engine.current().bridge === "connected" ? "connected" : "disconnected");
 
   /** Commands in flight by id: a duplicate waits for the first and then reads its receipt. */
   const inflight = new Map<string, Promise<Reply>>();
@@ -486,7 +490,7 @@ export function createV2Routes(deps: V2RoutesDeps): V2Routes {
         if (at - stream.lastWrite < keepAliveMs) continue;
         // The comment keeps intermediaries from idling the socket; `ping` is the frame a client's
         // watchdog sees (EventSource hides comments), as on v1's /api/events.
-        const ping: SequenceFrame = { sequence: store?.lastSequence() ?? 0 };
+        const ping: SequenceFrame = { sequence: store?.lastSequence() ?? 0, herdr: herdrLink() };
         if (stream.write(": keep-alive\n\n")) stream.write(frame("ping", ping));
       }
     }, Math.min(KEEPALIVE_TICK_MS, keepAliveMs));
@@ -583,7 +587,8 @@ export function createV2Routes(deps: V2RoutesDeps): V2Routes {
             }
           });
           for (const chunk of spec.catchUp) if (!stream.write(chunk)) return;
-          if (!stream.write(frame("synchronized", { sequence: spec.synced } satisfies SequenceFrame, spec.synced))) return;
+          const synced: SequenceFrame = { sequence: spec.synced, herdr: herdrLink() };
+          if (!stream.write(frame("synchronized", synced, spec.synced))) return;
           ensureTicker();
           void getBuildId()
             .then((id) => stream.write(frame("build", id)))
@@ -620,7 +625,12 @@ export function createV2Routes(deps: V2RoutesDeps): V2Routes {
     }
     let synced = last;
     if (!replayed) {
-      const snapshot = s.snapshotShell();
+      const device = deviceAuth(req, cfg);
+      const snapshot: ShellSnapshot = {
+        ...s.snapshotShell(),
+        herdr: herdrLink(),
+        ...(device.enforced ? { device } : {}),
+      };
       catchUp.push(frame("snapshot", snapshot, snapshot.sequence));
       synced = snapshot.sequence;
     }

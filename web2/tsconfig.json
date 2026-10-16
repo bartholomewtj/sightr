@@ -36,6 +36,8 @@
       "@t3tools/shared/orchestrationTiming": ["./src/t3/shared/orchestrationTiming.ts"],
       "@t3tools/shared/toolActivity": ["./src/t3/shared/toolActivity.ts"],
       "@t3tools/shared/toolOutput": ["./src/t3/shims/toolOutput.ts"],
+      "@t3tools/client-runtime/state/composer-dispatch": ["./src/t3/client-runtime/state/composerDispatch.ts"],
+      "@t3tools/shared/searchRanking": ["./src/t3/shared/searchRanking.ts"],
       "~/*": ["./src/*"]
     }
   },

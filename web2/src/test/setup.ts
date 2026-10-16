@@ -8,7 +8,10 @@ import { __resetConnTelemetry } from "@v1/lib/conn-telemetry";
 
 import { __resetToasts } from "@/components/toast";
 import { __resetThreadUndoNotice } from "@/hooks/showThreadUndoNotice";
+import { __resetDraftPrune } from "@/lib/drafts";
 import { clearLockRequired } from "@/lib/lock";
+import { __resetOperatorCommands } from "@/lib/operator-commands";
+import { __resetComposerState } from "@/state/composer";
 import { __resetSidebarState } from "@/state/sidebar";
 import { __resetTimelineState } from "@/state/timeline";
 import { __resetShellStream } from "@/stream/shell-stream";
@@ -23,6 +26,7 @@ import { installMatchMedia, resetMedia } from "./media";
 export const handlers = [
   http.get("/api/lock", () => HttpResponse.json({ enabled: false, unlocked: true })),
   http.post("/api/conn", () => new HttpResponse(null, { status: 204 })),
+  http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "" })),
 ];
 
 export const server = setupServer(...handlers);
@@ -47,6 +51,9 @@ beforeEach(() => {
   __resetUiState();
   __resetSidebarState();
   __resetTimelineState();
+  __resetComposerState();
+  __resetDraftPrune();
+  __resetOperatorCommands();
   __resetToasts();
   __resetThreadUndoNotice();
   clearLockRequired();

@@ -14,6 +14,9 @@ export const T3_SHIMS: Record<string, string> = {
   "@t3tools/shared/orchestrationTiming": "src/t3/shared/orchestrationTiming.ts",
   "@t3tools/shared/toolActivity": "src/t3/shared/toolActivity.ts",
   "@t3tools/shared/toolOutput": "src/t3/shims/toolOutput.ts",
+  // T12: the composer's dispatch-mode rule and the slash menu's ranking (verbatim ports).
+  "@t3tools/client-runtime/state/composer-dispatch": "src/t3/client-runtime/state/composerDispatch.ts",
+  "@t3tools/shared/searchRanking": "src/t3/shared/searchRanking.ts",
 };
 
 /** Vite `resolve.alias` entries: every shim first, then T3's own `~/` root (which is web2's `src`). */

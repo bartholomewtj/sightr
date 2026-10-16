@@ -11,7 +11,7 @@ import { timedFetch } from "@v1/lib/conn-telemetry";
 
 import { noteIfLocked, XHR_HEADER, XHR_HEADER_VALUE } from "@/lib/api";
 
-import { clearBlocked, setBlocked } from "./stores";
+import { clearBlocked, noteReadOnly, setBlocked } from "./stores";
 import { isBlockingCode, isV2ErrorBody, V2_COMMAND_PATH, type CommandReply, type V2ErrorBody } from "./wire";
 
 /** The fields a caller supplies; `commandId` and `type` are added here. */
@@ -74,7 +74,15 @@ export async function sendCommand<T extends CommandType>(
   }
 
   noteIfLocked(res);
-  const parsed: unknown = await res.json().catch(() => null);
+  const raw = await res.text().catch(() => "");
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // The access gate answers in plain text.
+  }
+  // Per-device auth refuses writes from a device that is not allowlisted (bridge/access.ts `guard`).
+  if (res.status === 403 && /device not authori[sz]ed/i.test(raw)) noteReadOnly();
   const error = isV2ErrorBody(parsed) ? parsed : null;
   if (res.status === 503 && error && isBlockingCode(error.code)) {
     setBlocked({ code: error.code, error: error.error ?? "", have: error.have, need: error.need });

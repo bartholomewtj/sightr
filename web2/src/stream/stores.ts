@@ -8,6 +8,8 @@
 import { create } from "zustand";
 
 import { EMPTY_SHELL, type ShellState, type ThreadState } from "./apply";
+import type { HerdrLink, V2DeviceAuth } from "@shared/v2/contracts";
+
 import type { BlockingCode } from "./wire";
 
 export const useShell = create<ShellState>(() => EMPTY_SHELL);
@@ -71,9 +73,40 @@ export function clearBlocked(): void {
   if (useStreamHealth.getState().blocked) useStreamHealth.setState({ blocked: null });
 }
 
+/**
+ * What the bridge says about the host and this device (T12's banners):
+ * - `herdr`: the bridge's herdr socket, from the shell snapshot, `synchronized` and `ping` frames;
+ *   null until the first one.
+ * - `readOnly`: this device may watch but not write (per-device auth). From the shell snapshot's
+ *   `device`, or a command refused with "device not authorised".
+ */
+export interface BridgeInfo {
+  herdr: HerdrLink | null;
+  readOnly: boolean;
+}
+
+const initialBridgeInfo = (): BridgeInfo => ({ herdr: null, readOnly: false });
+
+export const useBridgeInfo = create<BridgeInfo>(initialBridgeInfo);
+
+export function noteHerdr(link: unknown): void {
+  if (link !== "connected" && link !== "disconnected") return;
+  if (useBridgeInfo.getState().herdr !== link) useBridgeInfo.setState({ herdr: link });
+}
+
+export function noteDevice(device: V2DeviceAuth | undefined): void {
+  const readOnly = device !== undefined && device.enforced && !device.authorized;
+  if (useBridgeInfo.getState().readOnly !== readOnly) useBridgeInfo.setState({ readOnly });
+}
+
+export function noteReadOnly(): void {
+  if (!useBridgeInfo.getState().readOnly) useBridgeInfo.setState({ readOnly: true });
+}
+
 /** Test helper: every store back to its first state. */
 export function __resetStreamStores(): void {
   useShell.setState(EMPTY_SHELL, true);
   useThreadStore.setState({ current: null, missing: null }, true);
   useStreamHealth.setState(initialHealth(), true);
+  useBridgeInfo.setState(initialBridgeInfo(), true);
 }

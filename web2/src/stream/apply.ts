@@ -54,10 +54,35 @@ export interface ThreadState {
   queue: QueuedMessage[];
   /** Where older history starts (T05 history route); null when there is none. */
   historyCursor: string | null;
+  /** The newest `dispatch.failed` this stream applied (T12's error banner); a snapshot clears it. */
+  dispatchFailure: DispatchFailure | null;
+}
+
+/** A `dispatch.failed` notice as the composer reads it. */
+export interface DispatchFailure {
+  sequence: number;
+  /** The `message.dispatch` command it answers, when it came from one (a start or a steer). */
+  commandId?: string;
+  reason: string;
+  message?: string;
+  textDelivered?: boolean;
+  queuedId?: string;
+  ts: number;
 }
 
 export function emptyThread(threadId: string): ThreadState {
-  return { threadId, sequence: 0, syncing: true, thread: null, runs: {}, items: {}, requests: {}, queue: [], historyCursor: null };
+  return {
+    threadId,
+    sequence: 0,
+    syncing: true,
+    thread: null,
+    runs: {},
+    items: {},
+    requests: {},
+    queue: [],
+    historyCursor: null,
+    dispatchFailure: null,
+  };
 }
 
 const byId = <T extends { id: string }>(list: readonly T[]): Record<string, T> =>
@@ -89,6 +114,7 @@ export function threadFromSnapshot(snapshot: ThreadSnapshot, syncing: boolean): 
     requests: byId(snapshot.requests),
     queue: [...snapshot.queue].sort((a, b) => a.position - b.position),
     historyCursor: snapshot.historyCursor,
+    dispatchFailure: null,
   };
 }
 
@@ -282,8 +308,18 @@ export function applyThreadEvent(state: ThreadState, raw: unknown, onDrop?: OnDr
     }
     case "queue.updated":
       return at({ queue: [...event.payload.messages].sort((a, b) => a.position - b.position) });
+    case "dispatch.failed": {
+      const p = event.payload;
+      if (typeof p.reason !== "string") return state;
+      const failure: DispatchFailure = { sequence: event.sequence, reason: p.reason, ts: event.ts };
+      if (event.commandId !== undefined) failure.commandId = event.commandId;
+      if (typeof p.message === "string") failure.message = p.message;
+      if (p.textDelivered === true) failure.textDelivered = true;
+      if (typeof p.queuedId === "string") failure.queuedId = p.queuedId;
+      return at({ dispatchFailure: failure });
+    }
     default:
-      // Notices (command.rejected, dispatch.failed, thread.create.failed) are surfaced by T12/T14.
+      // Notices (command.rejected, thread.create.failed) are surfaced by T14.
       return state;
   }
 }

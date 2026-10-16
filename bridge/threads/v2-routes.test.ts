@@ -317,6 +317,17 @@ describe("access", () => {
     expect(ok.status).toBe(200);
   });
 
+  test("the shell snapshot tells a device whether it is read-only (T12)", async () => {
+    const r = await rig({ cfg: cfg({ deviceHeader: "x-device", deviceAllowlist: ["phone"] }) });
+    for (const [device, authorized] of [["laptop", false], ["phone", true]] as const) {
+      const s = sse(await call(r, get("/api/v2/shell", { "x-device": device })));
+      const frames = await s.until((f) => f.some((x) => x.event === "synchronized"));
+      const snap = frames.find((f) => f.event === "snapshot")!.data as { device?: { enforced: boolean; device: string; authorized: boolean } };
+      expect(snap.device).toEqual({ enforced: true, device, authorized });
+      await s.cancel();
+    }
+  });
+
   test("a cross-origin request is refused on every route", async () => {
     const r = await rig();
     const evil = { origin: "https://evil.example", host: "localhost" };
@@ -593,7 +604,10 @@ describe("GET /api/v2/shell", () => {
     const snap = frames[0]!.data as { sequence: number; projects: unknown[]; threads: { id: string }[]; requests: unknown[] };
     expect(snap.sequence).toBe(3);
     expect(snap.threads.map((t) => t.id)).toEqual(["t1", "t2"]);
-    expect(frames[1]).toEqual({ id: "3", event: "synchronized", data: { sequence: 3 } });
+    expect(frames[1]).toEqual({ id: "3", event: "synchronized", data: { sequence: 3, herdr: "connected" } });
+    // T12: the herdr link rides on the snapshot; `device` only when per-device auth is on.
+    expect((frames[0]!.data as { herdr?: string; device?: unknown }).herdr).toBe("connected");
+    expect((frames[0]!.data as { device?: unknown }).device).toBeUndefined();
     expect(named(frames, "build")[0]!.data).toBe("build-1");
 
     r.store.append([item("i1", "t1"), rename("t1", "live")]);
@@ -615,7 +629,7 @@ describe("GET /api/v2/shell", () => {
       const frames = await s.until(synced);
       expect(named(frames, "snapshot")).toEqual([]);
       expect(eventsOf(frames).map((e) => e.sequence)).toEqual([4, 6]);
-      expect(named(frames, "synchronized")[0]!.data).toEqual({ sequence: 6 });
+      expect(named(frames, "synchronized")[0]!.data).toEqual({ sequence: 6, herdr: "connected" });
       await s.cancel();
     }
   });
@@ -656,7 +670,7 @@ describe("GET /api/v2/shell", () => {
     r.clock.t += 15_000;
     r.tick();
     const frames = await s.until((f) => named(f, "ping").length > 0);
-    expect(named(frames, "ping")[0]).toEqual({ event: "ping", data: { sequence: 3 } });
+    expect(named(frames, "ping")[0]).toEqual({ event: "ping", data: { sequence: 3, herdr: "connected" } });
     expect(frames.some((f) => f.comment === "keep-alive")).toBe(true);
     await s.cancel();
   });

@@ -364,6 +364,109 @@
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "pattern",
       "note": "T11 block: chat lane, user-message surface, chat-markdown rules on house tokens"
+    },
+    {
+      "local": "src/components/chat/ChatComposer.tsx",
+      "upstream": "apps/web/src/components/chat/ChatComposer.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "T12: banner stack + queued list above a plain <textarea> (no Tiptap), slash menu, primary actions; the pending request replaces the box"
+    },
+    {
+      "local": "src/components/chat/ChatComposer.logic.ts",
+      "upstream": "apps/web/src/components/chat/composerSubmission.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "T12: button table, Enter rules, slash trigger, held-queue wording; uses T3's resolveComposerDispatchMode"
+    },
+    {
+      "local": "src/components/chat/ComposerPrimaryActions.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "labelled Send/Queue/Steer/Update pill + T3's Stop and Ctrl/⌘-click alternate; no plan/resume/compact/pending-question states"
+    },
+    {
+      "local": "src/components/chat/ComposerPendingApprovalPanel.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerPendingApprovalPanel.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "Sightr request kinds (permission/trust/menu/password/whistlr), replaces the box, you-step styling, Open terminal"
+    },
+    {
+      "local": "src/components/chat/ComposerPendingApprovalActions.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerPendingApprovalActions.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "one 44px button per dialog option; destructive = warn, last, two taps; busy until resolved"
+    },
+    {
+      "local": "src/components/chat/ComposerPendingUserInputPanel.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "one question, tap posts at once; digit shortcuts kept; no options -> Open terminal"
+    },
+    {
+      "local": "src/components/chat/QueuedRunsControl.tsx",
+      "upstream": "apps/web/src/components/chat/QueuedRunsControl.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "bridge queue rows; reorder posts whole order; Steer now = steer + cancel; Undo on cancel; held rows + Resume; Move up/down menu"
+    },
+    {
+      "local": "src/components/chat/ComposerBanner.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerBanner.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "flat house surfaces (no glass/seam mask); Surface/Peek/Dock/Column dropped; `you` variant"
+    },
+    {
+      "local": "src/components/chat/ComposerBannerStack.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "all notices as rows, worst first; no peek/hover expansion/exit animation"
+    },
+    {
+      "local": "src/components/chat/composerSlashCommandSearch.ts",
+      "upstream": "apps/web/src/components/chat/composerSlashCommandSearch.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "slash catalog items only (commandsFor); T3 scoring and ranking"
+    },
+    {
+      "local": "src/components/chat/ComposerCommandMenu.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerCommandMenu.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "plain ARIA listbox for the slash trigger; T3's item/option-id shape; no ui/command"
+    },
+    {
+      "local": "src/t3/client-runtime/state/composerDispatch.ts",
+      "upstream": "packages/client-runtime/src/state/composerDispatch.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/t3/client-runtime/state/composerDispatch.test.ts",
+      "upstream": "packages/client-runtime/src/state/composerDispatch.test.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "imports vitest instead of vite-plus/test"
+    },
+    {
+      "local": "src/t3/shared/searchRanking.ts",
+      "upstream": "packages/shared/src/searchRanking.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/t3/shared/searchRanking.test.ts",
+      "upstream": "packages/shared/src/searchRanking.test.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "imports vitest instead of vite-plus/test"
     }
   ]
 }
