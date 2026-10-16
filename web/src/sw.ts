@@ -1,10 +1,12 @@
 /// <reference lib="webworker" />
+/// <reference types="vite/client" />
 import { precacheAndRoute, createHandlerBoundToURL } from "workbox-precaching";
 import { NavigationRoute, registerRoute } from "workbox-routing";
 import { clientsClaim } from "workbox-core";
 
 import { decidePush, type PushPayload } from "./lib/push-decision";
 import { FONT_URLS, NAVIGATION_NETWORK_ONLY } from "./lib/sw-routes";
+import { BASE, stripBase, withBase } from "./lib/base";
 
 // Custom service worker (vite-plugin-pwa `injectManifest`). It does everything the old generated
 // Workbox SW did — precache the app shell + SPA-fallback navigations — PLUS the two handlers a
@@ -28,7 +30,8 @@ precacheAndRoute(self.__WB_MANIFEST);
 // bar, has no reachable path to the proxy at all: every navigation, including a reload, is answered
 // by the cached app shell. See lib/sw-routes for the contract.
 registerRoute(
-  new NavigationRoute(createHandlerBoundToURL("/index.html"), {
+  // `BASE` is `/v1/` since the T15 cutover: this worker's scope, precache and fallback live under it.
+  new NavigationRoute(createHandlerBoundToURL(withBase("/index.html")), {
     denylist: [...NAVIGATION_NETWORK_ONLY],
   }),
 );
@@ -54,7 +57,7 @@ const storable = (r: Response) =>
   r.status === 200 && !r.redirected && (r.headers.get("content-type") ?? "").includes("font");
 
 registerRoute(
-  ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith("/fonts/"),
+  ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith(withBase("/fonts/")),
   async ({ request }) => {
     const cache = await caches.open(FONT_CACHE);
     const hit = await cache.match(request);
@@ -76,7 +79,10 @@ self.addEventListener("activate", (event: ExtendableEvent) => {
       const cache = await caches.open(FONT_CACHE);
       const live = new Set<string>(FONT_URLS);
       for (const req of await cache.keys()) {
-        if (!live.has(new URL(req.url).pathname)) await cache.delete(req);
+        // FONT_URLS are app paths; the cache holds full URL paths under BASE. Entries outside BASE
+        // (the pre-cutover `/fonts/...`) are swept too.
+        const app = stripBase(new URL(req.url).pathname);
+        if (app === null || !live.has(app)) await cache.delete(req);
       }
     })(),
   );
@@ -94,7 +100,7 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
 // ── Web Push ────────────────────────────────────────────────────────────────────────────────────
 // The branching (suppress vs show vs clear, tag/title/renotify) lives in lib/push-decision so it's
 // unit-tested; here we only parse the event, read client visibility, and run the side effect.
-const ICON = "/web-app-manifest-192x192.png";
+const ICON = withBase("/web-app-manifest-192x192.png");
 
 self.addEventListener("push", (event: PushEvent) => {
   event.waitUntil(handlePush(event));
@@ -148,8 +154,8 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
 
 // Deep-link to the agent's pane — the body-tap path. Delegates the focus/navigate/open to openPath.
 async function openPane(paneId: string | undefined): Promise<void> {
-  const base = paneId && paneId !== "test" ? `/pane/${encodeURIComponent(paneId)}` : "/";
-  await openPath(base);
+  const path = paneId && paneId !== "test" ? `/pane/${encodeURIComponent(paneId)}` : "/";
+  await openPath(withBase(path));
 }
 
 // Focus an existing Sightr tab (navigating it to `path`) or open a new one. `path` is origin-relative.
@@ -157,6 +163,8 @@ async function openPath(path: string): Promise<void> {
   const url = new URL(path, self.location.origin).href;
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
   for (const client of windows) {
+    // Only v1's own tabs (under BASE); the thread app at / has its own worker and notifications.
+    if (stripBase(new URL(client.url).pathname, BASE) === null) continue;
     await client.focus();
     if (client.url !== url) await client.navigate(url).catch(() => null);
     return;

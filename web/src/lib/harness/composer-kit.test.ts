@@ -11,6 +11,8 @@ const FIELDS = [
   "draftCarriesSend",
   "bracketedPaste",
   "replyOneShot",
+  "permissionModeOf",
+  "defaultModeId",
 ] as const;
 
 describe("composer kit", () => {

@@ -22,6 +22,7 @@ import type { NotificationCoordinator } from "./notifications.ts";
 import type { StateEngine } from "./state-engine.ts";
 import { createWorkdir } from "./workdir.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
+import type { JournalAdapter } from "./journal/types.ts";
 import { TranscriptStore } from "./journal/store.ts";
 
 import { isLoopbackPeer, marksPaneSeen, guard, startupWarnings, deviceAuth } from "./access.ts";
@@ -37,11 +38,16 @@ import { createWorktreeIndex } from "./worktrees.ts";
 import { snapshotRoute, sharedSnapshot, bridgeConfigRoute } from "./snapshot-route.ts";
 import { createSnapshotEvents, eventsRoute, type SnapshotEvents } from "./events-route.ts";
 import { subscribeRoute, notifyPrefsRoute } from "./notify-routes.ts";
-import { createPaneQueue } from "./pane-queue.ts";
+import { createPaneQueue, type PaneQueue } from "./pane-queue.ts";
 import { SILENT_CONN, type ConnLog } from "./conn-log.ts";
 import { connRoute } from "./conn-route.ts";
 import { createLocalServersRoute } from "./local-servers.ts";
 import { CONN_PATH } from "../shared/conn.ts";
+import { createV2Routes, type EffectRegistry } from "./threads/v2-routes.ts";
+import { createV2Gate, type V2Gate } from "./threads/herdr-floor.ts";
+import type { ThreadStore } from "./threads/store.ts";
+import type { ThreadWatchers } from "./threads/journal-ingest.ts";
+import type { HerdIngestor } from "./threads/herd-ingest.ts";
 
 const MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024;
 const localServersRoute = createLocalServersRoute();
@@ -63,6 +69,21 @@ export function startServer(opts: {
   audit: AuditLog;
   conn?: ConnLog;
   onEvents?: (events: SnapshotEvents) => void;
+  /** The journal registry, when the caller built it (index.ts shares it with the v2 ingest). */
+  journals?: Record<string, JournalAdapter> | null;
+  /** The transcript store, when the caller built it (index.ts shares it with the v2 journal ingest). */
+  transcripts?: TranscriptStore | null;
+  /** The pane write queue, when the caller built it (index.ts shares it with the v2 request ingest). */
+  paneWrites?: PaneQueue;
+  /** The v2 API's parts (T05). Without them every `/api/v2/*` route answers 503 `v2-disabled`. */
+  v2?: {
+    store: ThreadStore | null;
+    disabledReason?: string;
+    gate: V2Gate;
+    effects?: EffectRegistry;
+    watchers?: ThreadWatchers;
+    herdIngestor?: HerdIngestor | null;
+  };
 }) {
   const { cfg, herdr, engine, notifications, push, notifyPrefs, settings, activity, lock, audit } = opts;
   const conn = opts.conn ?? SILENT_CONN;
@@ -72,7 +93,7 @@ export function startServer(opts: {
   opts.onEvents?.(events);
   const challenges = createChallenges();
   // One per-pane write queue for the whole process: two panes never wait on each other.
-  const paneWrites = createPaneQueue();
+  const paneWrites = opts.paneWrites ?? createPaneQueue();
   // One journal registry + store for the process. The store's cache is keyed by absolute path, so
   // sharing it across harnesses is correct. Which harnesses have journals at all is decided in
   // journal/registry.ts, never here.
@@ -80,8 +101,9 @@ export function startServer(opts: {
   const operatorCommands = createOperatorCommands(cfg.commandsFile);
   const operatorKeys = createOperatorKeys(cfg.keysFile);
   const operatorWheel = createOperatorWheel(cfg.keysFile);
-  const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots, cfg.stateDir) : null;
-  const transcripts = cfg.transcript ? new TranscriptStore() : null;
+  const journals =
+    opts.journals !== undefined ? opts.journals : cfg.transcript ? buildJournalRegistry(cfg.journalRoots, cfg.stateDir) : null;
+  const transcripts = opts.transcripts !== undefined ? opts.transcripts : cfg.transcript ? new TranscriptStore() : null;
   // Grok (and any future cwd-keyed harness) can offer history without Herdr naming a session.
   const offerHistory = (agent: string, hasSessionRef: boolean) => {
     const adapter = adapterFor(journals ?? {}, agent);
@@ -90,6 +112,23 @@ export function startServer(opts: {
   // One line per write, attributed to the device the request cleared the gate as. Only called inside
   // a write branch, so a read costs nothing.
   const auditFor = (req: Request): AuditLog => audit.scoped({ device: deviceAuth(req, cfg).device });
+
+  // The v2 API. Its commands take turns on the same pane queue as v1's writes.
+  const v2 = createV2Routes({
+    cfg,
+    store: opts.v2?.store ?? null,
+    ...(opts.v2?.disabledReason !== undefined ? { disabledReason: opts.v2.disabledReason } : {}),
+    gate: opts.v2?.gate ?? createV2Gate(),
+    engine,
+    activity,
+    queue: paneWrites,
+    auditFor,
+    conn,
+    effects: opts.v2?.effects ?? {},
+    ...(opts.v2?.watchers ? { watchers: opts.v2.watchers } : {}),
+    herdIngestor: opts.v2?.herdIngestor ?? null,
+    onSeen: () => events.notify(),
+  });
 
   const worktrees = createWorktreeIndex(herdr);
   const workdir = createWorkdir(cfg, { guard, json, text, failureText, secure, contentTypes: CONTENT_TYPES, requireJsonBody, auditFor, paneCwd: (paneId) => {
@@ -139,6 +178,8 @@ export function startServer(opts: {
       if (gated) return gated;
 
       if (workdir.owns(pathname)) return workdir.handle(req, url);
+
+      if (pathname.startsWith("/api/v2/")) return v2.handle(req, url) ?? text("not found", 404);
 
       if (pathname === "/api/snapshot") return snapshotRoute(req, snapshotDeps());
       if (pathname === "/api/events" && req.method === "GET") return eventsRoute(req, snapshotDeps(), events, conn);
@@ -258,7 +299,7 @@ export function startServer(opts: {
       if (isReservedAuthPath(pathname)) return reservedAuthPlaceholder();
 
       // ── Static PWA (with SPA fallback) ───────────────────────────────────
-      return serveStatic(pathname, req.headers.get("host") ?? "", cfg);
+      return serveStatic(pathname, req.headers.get("host") ?? "", cfg, undefined, url.search);
     },
   });
 

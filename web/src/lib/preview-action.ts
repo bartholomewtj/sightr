@@ -3,9 +3,10 @@
 
 import { sendKeys, sendReply } from "./api";
 import { type PreviewOption, type PreviewSelectModel } from "./blocks";
-import { guardDialog, pollDialog, type DialogTarget } from "./dialog-guard";
-import { sanitizeTypedText, type ActionResult, type Sleep } from "./harness/guard";
-import { previewCoreEqual, previewStructureEqual } from "./harness/preview-model";
+import { guardDialog, pollDialog, readDialog, sendBoundKeys, type DialogTarget } from "./dialog-guard";
+import { previewSelectRecipe } from "./dialog-recipes";
+import { defaultSleep, sanitizeTypedText, type ActionResult, type Sleep } from "./harness/guard";
+import { previewCoreEqual } from "./harness/preview-model";
 
 // The preview-variant action recipes — the generic race guard (lib/dialog-guard.ts) plus the extra
 // verified steps this dialog's MULTI-step choreography needs (harness/claude/preview-select.ts):
@@ -66,35 +67,17 @@ export async function submitPreviewOption(
 ): Promise<ActionResult> {
   const guarded = await guardDialog(previewTarget(args));
   if (!guarded.ok) return guarded.result;
-
-  try {
-    // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
-    const digit = await sendKeys(
-      args.paneId,
-      [String(args.option.n)],
-      guarded.region,
-    );
-    if (!digit.ok && digit.code === "prompt_changed") return { status: "changed" };
-    if (!digit.ok) return { status: "error", error: digit.error };
-  } catch (e) {
-    return { status: "error", error: e instanceof Error ? e.message : String(e) };
-  }
-
-  const pointed = await pollDialog(
-    previewTarget(args),
-    (m) =>
-      previewStructureEqual(m, args.preview) && // same dialog, note untouched (an open input eats keys)
-      (m.options.find((o) => o.n === args.option.n)?.pointed ?? false),
+  // The recipe (lib/dialog-recipes.ts) is shared with the bridge's v2 respond (T17).
+  return previewSelectRecipe(
+    {
+      read: async () => (await readDialog(previewTarget(args))).model,
+      send: (keys, region) => sendBoundKeys(args, keys, region),
+      sleep: args.sleep ?? defaultSleep,
+    },
+    args.preview,
+    args.option.n,
+    guarded.region,
   );
-  if (pointed !== "ok") return { status: "changed" };
-
-  try {
-    const enter = await sendKeys(args.paneId, ["Enter"]);
-    if (!enter.ok) return { status: "error", error: enter.error };
-    return { status: "sent" };
-  } catch (e) {
-    return { status: "error", error: e instanceof Error ? e.message : String(e) };
-  }
 }
 
 /**

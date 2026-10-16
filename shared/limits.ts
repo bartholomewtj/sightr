@@ -13,3 +13,8 @@ export const SEEN_HEADER = "x-sightr-seen";
 export const SSE_KEEPALIVE_MS = 15_000;
 /** Identifies the web bundle currently served by the bridge. */
 export const BUILD_HEADER = "x-sightr-build";
+/**
+ * Sent by v1 (served at `/v1/` since the T15 cutover) on its API calls, so the bridge answers its
+ * {@link BUILD_HEADER} with v1's build id. Requests without it get web2's id. Removed with v1.
+ */
+export const UI_HEADER = "x-sightr-ui";

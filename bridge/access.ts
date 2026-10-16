@@ -56,6 +56,18 @@ export function marksPaneSeen(req: Request, action: string | undefined): boolean
   if (req.headers.get(SEEN_HEADER) !== null) return true;
   return action !== undefined && action !== "history";
 }
+/**
+ * Whether opening a v2 thread stream (`GET /api/v2/thread/:id`) may stamp the thread's pane as seen.
+ * The same threat as {@link marksPaneSeen}: a cross-site `<img>` at a guessed thread id must not clear
+ * an unread mark. An `EventSource` cannot set {@link SEEN_HEADER}, so the browser's own
+ * `Sec-Fetch-Site` is accepted too: page script cannot set or forge it, and a cross-site request
+ * carries `cross-site` or `same-site`. A browser that sends neither header simply does not mark.
+ */
+export function streamMarksSeen(req: Request): boolean {
+  if (req.headers.get(SEEN_HEADER) !== null) return true;
+  return req.headers.get("sec-fetch-site") === "same-origin";
+}
+
 export function isStateChangingMethod(req: Request): boolean {
   const method = (req.method ?? "GET").toUpperCase();
   return method !== "GET" && method !== "HEAD";

@@ -39,16 +39,20 @@ export async function build(
     const gate = await run(bun, [path.join(paths.pluginRoot, "scripts/check-version.ts")], { cwd: paths.pluginRoot, env: childEnv });
     if (gate.code !== 0) throw new CtlError("error: version check failed", gate.code);
   }
+  // Both apps: web2 is the front door at `/`, v1 stays at `/v1/` for one release (T15).
+  const apps = ["web", "web2"].map((dir) => path.join(paths.pluginRoot, dir));
   await exec(["install", "--frozen-lockfile"], paths.pluginRoot);
-  await exec(["install", "--frozen-lockfile"], path.join(paths.pluginRoot, "web"));
+  for (const app of apps) await exec(["install", "--frozen-lockfile"], app);
   if (env.SKIP_TYPECHECK !== "1") {
     await exec(["run", "typecheck"], paths.pluginRoot);
-    await exec(["run", "typecheck"], path.join(paths.pluginRoot, "web"));
+    for (const app of apps) await exec(["run", "typecheck"], app);
   }
-  const staging = path.join(paths.pluginRoot, "web/dist-staging");
-  await rm(staging, { recursive: true, force: true });
-  await exec(["run", "build", "--", "--outDir", "dist-staging", "--emptyOutDir"], path.join(paths.pluginRoot, "web"));
-  await swapDist(path.join(paths.pluginRoot, "web"));
+  // Build both into staging, then swap both: a failed build leaves both live trees as they were.
+  for (const app of apps) {
+    await rm(path.join(app, "dist-staging"), { recursive: true, force: true });
+    await exec(["run", "build", "--", "--outDir", "dist-staging", "--emptyOutDir"], app);
+  }
+  for (const app of apps) await swapDist(app);
   await mkdir(paths.configDir, { recursive: true });
   return 0;
 }

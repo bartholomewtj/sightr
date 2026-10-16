@@ -167,6 +167,12 @@ export interface Config {
    */
   deviceHeader: string;
   /**
+   * Which app the front door `/` serves (`SIGHTR_UI`). Unset or `v2`: web2 at `/`, v1 at `/v1/`.
+   * `v1` is the rollback after the T15 cutover: navigations outside `/v1/` go to `/v1/` and `/sw.js`
+   * becomes a worker that retires web2's, so an installed PWA falls back to v1 without a rebuild.
+   */
+  ui?: "v1" | "v2";
+  /**
    * Device identifiers permitted to perform sensitive actions (typing into agent terminals,
    * structural creates). Everything else carrying the header is read-only. To revoke a device,
    * drop its value from this list and restart. Ignored when {@link deviceHeader} is empty.
@@ -340,6 +346,7 @@ export function loadConfig(): Config {
     trustedUser: process.env.SIGHTR_TRUSTED_USER ?? "",
     trustedUserOptional: envBool("SIGHTR_TRUSTED_USER_OPTIONAL", false),
     deviceHeader: (process.env.SIGHTR_DEVICE_HEADER ?? "").trim(),
+    ui: (process.env.SIGHTR_UI ?? "").trim().toLowerCase() === "v1" ? "v1" : "v2",
     deviceAllowlist: envList("SIGHTR_DEVICE_ALLOWLIST"),
     allowedOrigins: envList("SIGHTR_ALLOWED_ORIGINS"),
     publicHosts: envList("SIGHTR_PUBLIC_HOSTS"),

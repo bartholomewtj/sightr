@@ -397,7 +397,7 @@ function expectedPrompt(body: object): ExpectedPrompt {
   return { ok: true, present: true, value };
 }
 
-type PromptBindingCheck =
+export type PromptBindingCheck =
   | {
       ok: true;
       audit: { checked: true; passed: true; expected: string };
@@ -419,11 +419,16 @@ type PromptBindingCheck =
 // session.snapshot, so checking it would cost a second RPC before the write and widen the very
 // window this feature exists to shrink. The region check already subsumes it: if the exact prompt
 // text is still on screen, that prompt is still what the pane is showing.
-async function checkPromptBinding(
-  herdr: HerdrClient,
+//
+// `source` is `recent` for v1's routes (the mirror's own read). v2's runtime requests pass `visible`:
+// they bind to a background read of the viewport (bridge/threads/respond.ts), and `recent` on a pane
+// nobody is looking at can scroll-harvest (docs/HERDR_API.md).
+export async function checkPromptBinding(
+  herdr: Pick<HerdrClient, "readPane">,
   cfg: Config,
   paneId: string,
   expected: string,
+  source: "recent" | "visible" = "recent",
 ): Promise<PromptBindingCheck> {
   let fresh: PaneRead;
   try {
@@ -435,11 +440,11 @@ async function checkPromptBinding(
         expectedRawLines + DEFAULT_PROMPT_TAIL_LINES + PROMPT_BINDING_BLANK_LINE_HEADROOM,
       ),
     );
-    // Keep this coupled to readPane(): use its recent source and ANSI format so the bridge verifies
+    // Keep this coupled to readPane(): use its source and ANSI format so the bridge verifies
     // the same kind of pane data the GET handler serves. The line count deliberately does not follow
     // cfg.readLines alone because a small legal setting may not contain the expected region; include
     // room for the accepted tail and for blank separator lines that normalization drops.
-    fresh = await herdr.readPane(paneId, "recent", bindingReadLines, "ansi");
+    fresh = await herdr.readPane(paneId, source, bindingReadLines, "ansi");
     // The re-read is what authorises the keystroke. A body that names another pane is not evidence
     // this pane still shows the prompt, so it fails the same way a failed read does.
     if (!paneReadMatches(paneId, fresh)) {

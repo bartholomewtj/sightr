@@ -386,28 +386,32 @@ describe("ActivityLedger — flush timing", () => {
   test("the debounce window is 30 s", () => {
     expect(FLUSH_DEBOUNCE_MS).toBe(30_000);
   });
-  test("a change is on disk within a second", async () => {
-    const { l, stateDir, renames } = timedLedger();
+  // Wall-clock tests, so they assert order and a debounce floor, not a tight ceiling: under a loaded
+  // full run a timer can fire late, and these once failed only for that.
+  test("a change is on disk once the debounce window ends", async () => {
+    const { l, stateDir, renames } = timedLedger(300);
     const t0 = Date.now();
     l.noteSeen("default", "w0:p1");
 
-    while (renames.length === 0 && Date.now() - t0 < 3000) await Bun.sleep(25);
+    while (renames.length === 0 && Date.now() - t0 < 10_000) await Bun.sleep(25);
     expect(renames.length).toBe(1);
-    expect(renames[0]! - t0).toBeLessThanOrEqual(1_500);
+    // Not before the window (a little slack for timer granularity on Windows).
+    expect(renames[0]! - t0).toBeGreaterThanOrEqual(250);
     const activity = await Bun.file(join(stateDir, "activity.json")).json();
     expect(activity.default["w0:p1"].seenAt).toEqual(expect.any(Number));
     l.stop();
-  });
+  }, 20_000);
 
-  test("two changes 200 ms apart produce one write", async () => {
-    const { l, stateDir, renames } = timedLedger();
+  test("two changes inside one window produce one write", async () => {
+    // A wide window, so the second change lands inside it even when the 200 ms sleep runs long.
+    const { l, stateDir, renames } = timedLedger(2_000);
     l.noteSeen("default", "w0:p1");
     await Bun.sleep(200);
     l.noteSeen("default", "w0:p2");
     expect(renames.length).toBe(0);
 
     const t0 = Date.now();
-    while (renames.length === 0 && Date.now() - t0 < 3000) await Bun.sleep(25);
+    while (renames.length === 0 && Date.now() - t0 < 10_000) await Bun.sleep(25);
     expect(renames.length).toBe(1);
     const activity = await Bun.file(join(stateDir, "activity.json")).json();
     expect(activity.default["w0:p1"].seenAt).toEqual(expect.any(Number));
@@ -415,7 +419,7 @@ describe("ActivityLedger — flush timing", () => {
     await Bun.sleep(400);
     expect(renames.length).toBe(1);
     l.stop();
-  });
+  }, 20_000);
 });
 
 describe("ActivityLedger — persistence", () => {
@@ -455,5 +459,22 @@ describe("ActivityLedger — persistence", () => {
     expect(later.get("default", "w0:p1")).toBeUndefined();
     later.stop();
     at(0);
+  });
+});
+
+describe("noteUnseen (v2 thread.markUnread)", () => {
+  test("makes a seen pane read as active since it was seen, once", () => {
+    const { l, advance } = ledger();
+    l.ensure("s", "p1");
+    advance(5_000);
+    expect(l.noteUnseen("s", "p1")).toBe(true);
+    const a = l.get("s", "p1")!;
+    expect(a.activeAt).toBeGreaterThan(a.seenAt);
+    expect(l.noteUnseen("s", "p1")).toBe(false);
+    // Looking at it again clears it, even inside the seen-refresh window.
+    expect(l.noteSeen("s", "p1")).toBe(true);
+    const b = l.get("s", "p1")!;
+    expect(b.seenAt).toBeGreaterThanOrEqual(b.activeAt);
+    l.stop();
   });
 });

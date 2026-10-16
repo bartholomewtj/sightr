@@ -2,7 +2,7 @@ import { ACTIVITY_KEY, type ActivityLedger } from "./activity.ts";
 import type { Config } from "./config.ts";
 import { checkAccess, deviceAuth, guard } from "./access.ts";
 import { json, text } from "./responses.ts";
-import { buildId, withBuildHeader } from "./static-assets.ts";
+import { buildIdFor, withBuildHeader } from "./static-assets.ts";
 import { adapterFor } from "./journal/registry.ts";
 import type { JournalAdapter } from "./journal/types.ts";
 import { TranscriptStore } from "./journal/store.ts";
@@ -15,7 +15,7 @@ import type { BridgeConfig } from "../shared/wire.ts";
 import type * as Wire from "../shared/wire.ts";
 export type PaneWire = Wire.WirePane;
 export type SnapshotResponse = Omit<Wire.SnapshotResponse, "agents" | "shellPanes"> & { agents: PaneWire[]; shellPanes: PaneWire[] };
-export function toPaneWire(pane: AgentView, offerHistory: (agent: string, hasSessionRef: boolean) => boolean): PaneWire { const { agentSession, ...rest } = pane; return offerHistory(pane.agent, Boolean(agentSession)) ? { ...rest, hasSession: true } : rest; }
+export function toPaneWire(pane: AgentView, offerHistory: (agent: string, hasSessionRef: boolean) => boolean): PaneWire { const { agentSession, terminalId: _terminalId, ...rest } = pane; return offerHistory(pane.agent, Boolean(agentSession)) ? { ...rest, hasSession: true } : rest; }
 
 export interface SnapshotDeps {
   cfg: Config; engine: StateEngine; activity: ActivityLedger;
@@ -100,7 +100,7 @@ async function renderSnapshot(req: Request, deps: SnapshotDeps): Promise<Respons
       ...(deps.workdir.enabled ? { files: true as const } : {}),
       ts: Date.now(),
     } satisfies SnapshotResponse, req.headers.get("accept-encoding")),
-    await buildId(),
+    await buildIdFor(req),
   );
 }
 
@@ -119,7 +119,7 @@ export async function bridgeConfigRoute(req: Request, deps: BridgeConfigDeps): P
   return json({
     push: deps.push.enabled,
     vapidPublicKey: deps.push.publicKey,
-    build: await buildId(),
+    build: await buildIdFor(req),
     // Omitted entirely when there are none, so an operator who never wrote a commands.toml
     // ships the same payload as before.
     ...(mine.length > 0 ? { operatorCommands: mine } : {}),

@@ -26,7 +26,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { containedRealpath, exists, head, loadTail, rootList, statFile } from "./files.ts";
+import { containedRealpath, exists, head, loadTail, readRange as readLogRange, rootList, statFile } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
   AgentSessionRef,
@@ -403,6 +403,8 @@ export class ClaudeTranscriptSource implements TranscriptSource {
   stat = statFile;
 
   load = loadTail;
+
+  readRange = readLogRange;
 }
 
 /**
@@ -412,9 +414,21 @@ export class ClaudeTranscriptSource implements TranscriptSource {
  * order.
  */
 export function claudeJournal(roots: string | readonly string[]): JournalAdapter {
+  const source = new ClaudeTranscriptSource(roots);
   return {
     agent: "claude",
-    source: new ClaudeTranscriptSource(roots),
+    source,
     parse: (text) => parseClaudeTranscript(text),
+    // A resumed or compacted conversation continues in a new log that starts with the same root
+    // entry, so the root names the conversation (see conversationRoot).
+    sessionLineage: async (ref) => {
+      const path = await source.resolve(ref);
+      if (path === null) return null;
+      try {
+        return conversationRoot(await head(path));
+      } catch {
+        return null;
+      }
+    },
   };
 }

@@ -1,0 +1,679 @@
+{
+  "$comment": "Files in web2 taken from or modelled on T3 Code (MIT, THIRD_PARTY.md). mode: verbatim = byte-identical to upstream at commit; adapted = upstream body with local edits (header names the source); pattern = same job and name, Sightr's own code. Check for upstream changes with `bun scripts/t3-upstream.ts`; porting a change bumps the row's commit.",
+  "repo": "https://github.com/pingdotgg/t3code.git",
+  "baseline": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+  "folders": [
+    "apps/web/src/components/",
+    "apps/web/src/components/chat/",
+    "apps/web/src/components/ui/",
+    "apps/web/src/components/sidebar/",
+    "apps/web/src/hooks/",
+    "apps/web/src/",
+    "packages/shared/src/",
+    "packages/contracts/src/",
+    "apps/web/src/components/settings/",
+    "apps/web/src/routes/"
+  ],
+  "files": [
+    {
+      "local": "src/components/ui/alert.tsx",
+      "upstream": "apps/web/src/components/ui/alert.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/badge.tsx",
+      "upstream": "apps/web/src/components/ui/badge.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/button.tsx",
+      "upstream": "apps/web/src/components/ui/button.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/checkbox.tsx",
+      "upstream": "apps/web/src/components/ui/checkbox.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/collapsible.tsx",
+      "upstream": "apps/web/src/components/ui/collapsible.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/dialog-styles.ts",
+      "upstream": "apps/web/src/components/ui/dialog-styles.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/dialog.tsx",
+      "upstream": "apps/web/src/components/ui/dialog.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/empty.tsx",
+      "upstream": "apps/web/src/components/ui/empty.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/input.tsx",
+      "upstream": "apps/web/src/components/ui/input.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/kbd.tsx",
+      "upstream": "apps/web/src/components/ui/kbd.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/label.tsx",
+      "upstream": "apps/web/src/components/ui/label.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/menu.tsx",
+      "upstream": "apps/web/src/components/ui/menu.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/popover.tsx",
+      "upstream": "apps/web/src/components/ui/popover.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/scroll-area.tsx",
+      "upstream": "apps/web/src/components/ui/scroll-area.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/select.tsx",
+      "upstream": "apps/web/src/components/ui/select.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/separator.tsx",
+      "upstream": "apps/web/src/components/ui/separator.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/sheet.tsx",
+      "upstream": "apps/web/src/components/ui/sheet.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/switch.tsx",
+      "upstream": "apps/web/src/components/ui/switch.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/textarea.tsx",
+      "upstream": "apps/web/src/components/ui/textarea.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/toggle-group.tsx",
+      "upstream": "apps/web/src/components/ui/toggle-group.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/toggle.tsx",
+      "upstream": "apps/web/src/components/ui/toggle.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/tooltip.tsx",
+      "upstream": "apps/web/src/components/ui/tooltip.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/lib/utils.ts",
+      "upstream": "apps/web/src/lib/utils.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "cn() only"
+    },
+    {
+      "local": "src/t3/shims/windowControlsOverlay.ts",
+      "upstream": "apps/web/src/lib/windowControlsOverlay.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "shim: useNativeTitlebarHeight() = 0"
+    },
+    {
+      "local": "src/router.ts",
+      "upstream": "apps/web/src/router.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/routes/__root.tsx",
+      "upstream": "apps/web/src/routes/__root.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/routes/_chat.tsx",
+      "upstream": "apps/web/src/routes/_chat.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/routes/_chat.index.tsx",
+      "upstream": "apps/web/src/routes/_chat.index.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/routes/_chat.new.tsx",
+      "upstream": "apps/web/src/routes/_chat.new.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/uiStateStore.ts",
+      "upstream": "apps/web/src/uiStateStore.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/Sidebar.tsx",
+      "upstream": "apps/web/src/components/Sidebar.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "T10: projects, shelves, Needs you, search, row menu, @dnd-kit drag"
+    },
+    {
+      "local": "src/components/Sidebar.logic.ts",
+      "upstream": "apps/web/src/components/Sidebar.logic.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "resolveSidebarThreadSection, resolveSidebarDropVerb, resolveSidebarRowAccessibility, resolveAdjacentThreadId; Sightr shelves, tree, filters, commands"
+    },
+    {
+      "local": "src/components/Sidebar.logic.ts",
+      "upstream": "packages/client-runtime/src/state/threadSort.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "planPinnedReorder on numeric pinOrder"
+    },
+    {
+      "local": "src/components/Sidebar.snooze.ts",
+      "upstream": "apps/web/src/components/Sidebar.snooze.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "snoozeWakeDescription; epoch ms"
+    },
+    {
+      "local": "src/components/Sidebar.snooze.ts",
+      "upstream": "packages/client-runtime/src/state/threadSettled.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "resolveSnoozePresets (morning 08:00), snoozeWakeLabel, resolveCustomSnooze for datetime-local; no Effect DateTime"
+    },
+    {
+      "local": "src/components/Sidebar.drag.ts",
+      "upstream": "apps/web/src/components/Sidebar.drag.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "drop resolution and drag UI state on @dnd-kit"
+    },
+    {
+      "local": "src/components/ThreadStatusIndicators.tsx",
+      "upstream": "apps/web/src/components/ThreadStatusIndicators.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "ThreadStatusDot only"
+    },
+    {
+      "local": "src/components/CustomSnoozeDialog.tsx",
+      "upstream": "apps/web/src/components/CustomSnoozeDialog.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "one native datetime-local field"
+    },
+    {
+      "local": "src/components/sidebar/SidebarThreadUndoNotice.tsx",
+      "upstream": "apps/web/src/components/sidebar/SidebarThreadUndoNotice.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "one undo at a time, fixed shortcut label"
+    },
+    {
+      "local": "src/hooks/showThreadUndoNotice.ts",
+      "upstream": "apps/web/src/hooks/showThreadUndoNotice.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "one undo at a time (new replaces old), no claims or Effect results"
+    },
+    {
+      "local": "src/components/chat/MessagesTimeline.logic.ts",
+      "upstream": "apps/web/src/components/chat/MessagesTimeline.logic.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "T11: T3 row model (message, work, work-toggle, work-live, working, thinking, turn-fold, assistant-meta, event) on Sightr items; epoch ms; + day dividers; no attempts/subagents/plans/MCP/compaction/minimap"
+    },
+    {
+      "local": "src/components/chat/MessagesTimeline.tsx",
+      "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list"
+    },
+    {
+      "local": "src/components/chat/WorkLog.tsx",
+      "upstream": "apps/web/src/components/chat/WorkLog.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/chat/WorkLog.test.tsx",
+      "upstream": "apps/web/src/components/chat/WorkLog.test.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "imports vitest instead of vite-plus/test"
+    },
+    {
+      "local": "src/components/chat/TimelineSystemDivider.tsx",
+      "upstream": "apps/web/src/components/chat/TimelineSystemDivider.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/chat/MessageCopyButton.tsx",
+      "upstream": "apps/web/src/components/chat/MessageCopyButton.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "lucide-react icons; try/catch clipboard with a status line instead of the anchored toast"
+    },
+    {
+      "local": "src/components/chat/ToolItemDetail.tsx",
+      "upstream": "apps/web/src/components/chat/V2ItemInspector.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "an open tool row's call and output; inline output, 200-line cap"
+    },
+    {
+      "local": "src/components/ChatMarkdown.tsx",
+      "upstream": "apps/web/src/components/ChatMarkdown.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "react-markdown + remark-gfm (+ remark-breaks); no Shiki, Mermaid, raw HTML, file links, images, citations"
+    },
+    {
+      "local": "src/session-logic.ts",
+      "upstream": "apps/web/src/session-logic.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "turn items -> timeline entries / work-log entries; Sightr run-end notices and reasoning durations"
+    },
+    {
+      "local": "src/pendingUserInput.ts",
+      "upstream": "apps/web/src/pendingUserInput.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "Sightr's UserInputQuestion type; projectPendingUserInputAnswer (thread-context links) left out"
+    },
+    {
+      "local": "src/pendingUserInput.test.ts",
+      "upstream": "apps/web/src/pendingUserInput.test.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "vitest; projectPendingUserInputAnswer cases left out"
+    },
+    {
+      "local": "src/t3/client-runtime/work-log/presentation.ts",
+      "upstream": "packages/client-runtime/src/work-log/presentation.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "group actions, summaries, failure rules; no T3 MCP tools or tool sources"
+    },
+    {
+      "local": "src/t3/shared/toolActivity.ts",
+      "upstream": "packages/shared/src/toolActivity.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "classifier, read/search labels, path collection"
+    },
+    {
+      "local": "src/t3/shared/orchestrationTiming.ts",
+      "upstream": "packages/shared/src/orchestrationTiming.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "formatDuration only"
+    },
+    {
+      "local": "src/t3/shims/toolOutput.ts",
+      "upstream": "packages/shared/src/toolOutput.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "shim: toolOutputIndicatesFailure only"
+    },
+    {
+      "local": "src/t3/shims/commandLabel.ts",
+      "upstream": "packages/client-runtime/src/work-log/commandLabel.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "shim: first-word program name, no shell tokenizer"
+    },
+    {
+      "local": "src/index.css",
+      "upstream": "apps/web/src/index.css",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "T11 block: chat lane, user-message surface, chat-markdown rules on house tokens"
+    },
+    {
+      "local": "src/components/chat/ChatComposer.tsx",
+      "upstream": "apps/web/src/components/chat/ChatComposer.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "T12: banner stack + queued list above a plain <textarea> (no Tiptap), slash menu, primary actions; the pending request replaces the box"
+    },
+    {
+      "local": "src/components/chat/ChatComposer.logic.ts",
+      "upstream": "apps/web/src/components/chat/composerSubmission.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "T12: button table, Enter rules, slash trigger, held-queue wording; uses T3's resolveComposerDispatchMode"
+    },
+    {
+      "local": "src/components/chat/ComposerPrimaryActions.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "labelled Send/Queue/Steer/Update pill + T3's Stop and Ctrl/\u2318-click alternate; no plan/resume/compact/pending-question states"
+    },
+    {
+      "local": "src/components/chat/ComposerPendingApprovalPanel.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerPendingApprovalPanel.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "Sightr request kinds (permission/trust/menu/password/whistlr), replaces the box, you-step styling, Open terminal"
+    },
+    {
+      "local": "src/components/chat/ComposerPendingApprovalActions.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerPendingApprovalActions.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "one 44px button per dialog option; destructive = warn, last, two taps; busy until resolved"
+    },
+    {
+      "local": "src/components/chat/ComposerPendingUserInputPanel.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "one question per request (T3 shape via shared/v2/request-question.ts); T3 draft + 200 ms auto-advance + multi-select toggles kept; advance button in the card; stepper, review answers, preview pane (T17); no options -> Open terminal"
+    },
+    {
+      "local": "src/components/chat/QueuedRunsControl.tsx",
+      "upstream": "apps/web/src/components/chat/QueuedRunsControl.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "bridge queue rows; reorder posts whole order; Steer now = steer + cancel; Undo on cancel; held rows + Resume; Move up/down menu"
+    },
+    {
+      "local": "src/components/chat/ComposerBanner.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerBanner.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "flat house surfaces (no glass/seam mask); Surface/Peek/Dock/Column dropped; `you` variant"
+    },
+    {
+      "local": "src/components/chat/ComposerBannerStack.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "all notices as rows, worst first; no peek/hover expansion/exit animation"
+    },
+    {
+      "local": "src/components/chat/composerSlashCommandSearch.ts",
+      "upstream": "apps/web/src/components/chat/composerSlashCommandSearch.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "slash catalog items only (commandsFor); T3 scoring and ranking"
+    },
+    {
+      "local": "src/components/chat/ComposerCommandMenu.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerCommandMenu.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "plain ARIA listbox for the slash trigger; T3's item/option-id shape; no ui/command"
+    },
+    {
+      "local": "src/t3/client-runtime/state/composerDispatch.ts",
+      "upstream": "packages/client-runtime/src/state/composerDispatch.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/t3/client-runtime/state/composerDispatch.test.ts",
+      "upstream": "packages/client-runtime/src/state/composerDispatch.test.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "imports vitest instead of vite-plus/test"
+    },
+    {
+      "local": "src/t3/shared/searchRanking.ts",
+      "upstream": "packages/shared/src/searchRanking.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/t3/shared/searchRanking.test.ts",
+      "upstream": "packages/shared/src/searchRanking.test.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "imports vitest instead of vite-plus/test"
+    },
+    {
+      "local": "src/t3/contracts/keybindings.ts",
+      "upstream": "packages/contracts/src/keybindings.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "plain TS types instead of Effect Schema; Sightr's command list"
+    },
+    {
+      "local": "src/t3/shared/keybindings.ts",
+      "upstream": "packages/shared/src/keybindings.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "DEFAULT_KEYBINDINGS is Sightr's table; parser, matcher and when grammar unchanged"
+    },
+    {
+      "local": "src/keybindings.ts",
+      "upstream": "apps/web/src/keybindings.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "Sightr's when context, injectable platform, no unmodified binding in a text field, symbol keys ignore Shift"
+    },
+    {
+      "local": "src/rightPanelStore.ts",
+      "upstream": "apps/web/src/rightPanelStore.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "three fixed tabs, per-device open state, tab, width and font; phone sheet"
+    },
+    {
+      "local": "src/components/RightPanelTabs.tsx",
+      "upstream": "apps/web/src/components/RightPanelTabs.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "Terminal, Files, Git; resize handle placed as T3's RightPanelResizeHandle"
+    },
+    {
+      "local": "src/components/RightPanelSheet.tsx",
+      "upstream": "apps/web/src/components/RightPanelSheet.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "bottom sheet, not kept mounted, back closes it"
+    },
+    {
+      "local": "src/commandPaletteBus.ts",
+      "upstream": "apps/web/src/commandPaletteBus.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "Zustand store instead of a window event"
+    },
+    {
+      "local": "src/components/CommandPalette.tsx",
+      "upstream": "apps/web/src/components/CommandPalette.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/CommandPalette.logic.ts",
+      "upstream": "apps/web/src/components/CommandPalette.logic.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "Sightr threads/projects/actions; T3 filtering and ranking, plus a subsequence fallback"
+    },
+    {
+      "local": "src/components/CommandPaletteContent.tsx",
+      "upstream": "apps/web/src/components/CommandPaletteContent.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/CommandPaletteResults.tsx",
+      "upstream": "apps/web/src/components/CommandPaletteResults.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "plain list only, no content-match excerpt or submenus"
+    },
+    {
+      "local": "src/components/ui/command.tsx",
+      "upstream": "apps/web/src/components/ui/command.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ui/autocomplete.tsx",
+      "upstream": "apps/web/src/components/ui/autocomplete.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/settings/SettingsGroup.tsx",
+      "upstream": "apps/web/src/components/settings/SettingsGroup.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/settings/settingsLayout.tsx",
+      "upstream": "apps/web/src/components/settings/settingsLayout.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted"
+    },
+    {
+      "local": "src/components/settings/NotificationSettings.tsx",
+      "upstream": "apps/web/src/components/settings/NotificationSettings.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/settings/ThemeSettings.tsx",
+      "upstream": "apps/web/src/components/settings/ThemeSettings.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/routes/settings.tsx",
+      "upstream": "apps/web/src/routes/settings.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/chat/threadFind.ts",
+      "upstream": "apps/web/src/components/chat/threadFind.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "T19: T3's match shape, step and count helpers kept; in-memory search of the thread's items with v1's matcher and a fold/group reveal plan replace the server search"
+    },
+    {
+      "local": "src/components/chat/ThreadFindBar.tsx",
+      "upstream": "apps/web/src/components/chat/ThreadFindBar.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "T19: v1's find bar (web/src/components/find-bar.tsx) under T3's name and count text; also used over the Terminal mirror"
+    },
+    {
+      "local": "src/components/chat/threadFindHighlights.ts",
+      "upstream": "apps/web/src/components/chat/threadFindHighlights.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "T19: ranges over mounted rows painted with CSS Custom Highlights, MutationObserver repaint; row scope minus [data-thread-find-ignore]; active row marked with data-thread-find-active"
+    },
+    {
+      "local": "src/components/chat/useThreadFind.ts",
+      "upstream": "apps/web/src/components/chat/useThreadFind.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "T19: a small store for the open bar, query and focused match; matches computed in memory from the loaded items"
+    },
+    {
+      "local": "src/components/chat/useThreadFindNavigation.ts",
+      "upstream": "apps/web/src/components/chat/useThreadFindNavigation.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "T19: open the hit's fold and tool group, then scrollToIndex; never pages history"
+    },
+    {
+      "local": "src/components/chat/DraftHeroHeadline.tsx",
+      "upstream": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/chat/ProviderModelPicker.tsx",
+      "upstream": "apps/web/src/components/chat/ProviderModelPicker.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/chat/ModelPickerContent.tsx",
+      "upstream": "apps/web/src/components/chat/ModelPickerContent.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/chat/TraitsPicker.tsx",
+      "upstream": "apps/web/src/components/chat/TraitsPicker.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/BranchToolbar.tsx",
+      "upstream": "apps/web/src/components/BranchToolbar.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/BranchToolbarEnvModeSelector.tsx",
+      "upstream": "apps/web/src/components/BranchToolbarEnvModeSelector.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    }
+  ]
+}

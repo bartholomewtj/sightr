@@ -10,7 +10,7 @@
     />
     <!-- Blocking, and first: the pin class must be on <html> before anything paints. Same-origin,
          so `script-src 'self'` already allows it. -->
-    <script src="/theme-init.js"></script>
+    <script src="%BASE_URL%theme-init.js"></script>
     <!-- Browser chrome follows the OS for System users. useTheme rewrites these at runtime for
          someone who has pinned the opposite of their OS. -->
     <meta name="theme-color" content="#f4f6f8" media="(prefers-color-scheme: light)" />
@@ -21,10 +21,10 @@
     <meta name="apple-mobile-web-app-title" content="Sightr" />
     <title>Sightr</title>
     <!-- The web manifest <link> is injected by vite-plugin-pwa at build time. -->
-    <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="shortcut icon" href="/favicon.ico" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" href="%BASE_URL%favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
+    <link rel="shortcut icon" href="%BASE_URL%favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="%BASE_URL%apple-touch-icon.png" />
     <!-- First-paint splash: the knockout loader shown the instant the PWA opens, bridging the
          OS launch splash and React mount (createRoot replaces #root, so it clears itself). Critical
          CSS is inlined here so it paints before the app bundle/index.css load — no JS. It mirrors
@@ -75,8 +75,8 @@
   <body>
     <div id="root">
       <div class="boot-splash" role="status" aria-label="Loading Sightr">
-        <img class="boot-splash__mark boot-splash__mark--dark" src="/sightr-loading-badge.svg" alt="" width="64" height="64" />
-        <img class="boot-splash__mark boot-splash__mark--light" src="/sightr-loading-badge-light.svg" alt="" width="64" height="64" />
+        <img class="boot-splash__mark boot-splash__mark--dark" src="%BASE_URL%sightr-loading-badge.svg" alt="" width="64" height="64" />
+        <img class="boot-splash__mark boot-splash__mark--light" src="%BASE_URL%sightr-loading-badge-light.svg" alt="" width="64" height="64" />
         <span>Connecting to the herd…</span>
       </div>
     </div>

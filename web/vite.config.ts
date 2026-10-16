@@ -108,7 +108,12 @@ const buildInfoPlugin: Plugin = {
   },
 };
 
+// v1 lives at /v1/ since the T15 cutover (the thread app, web2, is the front door at /). It stays for
+// one release; the release after removes it.
+const BASE = "/v1/";
+
 export default defineConfig({
+  base: BASE,
   define: { __BUILD_INFO__: JSON.stringify(BUILD_INFO) },
   plugins: [
     react(),
@@ -126,7 +131,7 @@ export default defineConfig({
       registerType: "autoUpdate",
       strategies: "injectManifest",
       srcDir: "src",
-      filename: "sw.ts", // source; compiled to dist/sw.js (the bridge sets Service-Worker-Allowed: /)
+      filename: "sw.ts", // source; compiled to dist/sw.js, served at /v1/sw.js (Service-Worker-Allowed: /v1/)
       includeAssets: [
         "favicon.svg",
         "favicon.ico",
@@ -140,12 +145,14 @@ export default defineConfig({
         "sightr-loading-static-light.svg",
       ],
       manifest: {
-        name: "Sightr",
-        short_name: "Sightr",
+        // Its own install at /v1/: the id, scope and start URL "/" now belong to web2's manifest, so an
+        // installed Sightr updates in place to the thread app.
+        name: "Sightr v1",
+        short_name: "Sightr v1",
         description: "Monitor and reply to your Herdr agent herd from your phone",
-        id: "/",
-        start_url: "/",
-        scope: "/",
+        id: BASE,
+        start_url: BASE,
+        scope: BASE,
         display: "standalone",
         // Do not lock rotation: desktop mode can be reached on a landscape tablet with a mouse.
         orientation: "any",
@@ -156,8 +163,8 @@ export default defineConfig({
           // icon and the Android adaptive ("maskable") icon. (favicon.svg is intentionally NOT a
           // manifest icon: it's the 16/32 tab reticle only — declaring it sizes:"any" would let an
           // installer pick the small mark as the home-screen icon.)
-          { src: "/web-app-manifest-192x192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
-          { src: "/web-app-manifest-512x512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+          { src: `${BASE}web-app-manifest-192x192.png`, sizes: "192x192", type: "image/png", purpose: "any maskable" },
+          { src: `${BASE}web-app-manifest-512x512.png`, sizes: "512x512", type: "image/png", purpose: "any maskable" },
         ],
       },
       injectManifest: {

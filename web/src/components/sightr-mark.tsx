@@ -1,13 +1,14 @@
 import type { CSSProperties } from "react";
 
+import { withBase } from "@/lib/base";
 import { cn } from "@/lib/utils";
 
 /** Cream-disk knockout. Rest mark on dark paper; tab/OS icons are the separate favicon set. */
-export const MARK_SRC = "/sightr-badge.svg";
+export const MARK_SRC = withBase("/sightr-badge.svg");
 /** Navy-disk knockout. Rest mark on light paper. */
-export const MARK_LIGHT_SRC = "/sightr-badge-light.svg";
-const RUN_SRC = "/sightr-loading-badge.svg";
-const RUN_LIGHT_SRC = "/sightr-loading-badge-light.svg";
+export const MARK_LIGHT_SRC = withBase("/sightr-badge-light.svg");
+const RUN_SRC = withBase("/sightr-loading-badge.svg");
+const RUN_LIGHT_SRC = withBase("/sightr-loading-badge-light.svg");
 
 interface SightrLoaderProps {
   /** Play the sightr loader (ticks spin, bison gallops). When false, the static badge. */

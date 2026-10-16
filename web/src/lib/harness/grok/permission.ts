@@ -30,6 +30,12 @@ const FOOTER_CANCEL = /Ctrl\+c:cancel/i;
 const PERSISTENT = /always-approve|don['’]t ask again|this session|^always allow:|^never allow:/i;
 const YES_ROW = /^yes\b/i;
 const NO_ROW = /^no, reject\b/i;
+
+/** The card's reject row ("No, reject"), by label. dialog-kit marks it destructive. */
+export function isRejectLabel(label: string): boolean {
+  return NO_ROW.test(label);
+}
+
 const FOREIGN_OPTION = /^\s*[┃│]\s+\S{1,3}\s+[([]/;
 const SCOPE_CHROME_ROW = /^← → narrow scope\s+·\s+e edit pattern$/;
 

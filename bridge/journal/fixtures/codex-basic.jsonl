@@ -1,0 +1,27 @@
+{"timestamp":"2026-10-17T03:00:00.000Z","type":"session_meta","payload":{"session_id":"019a2f4e-1c3d-7b8a-9e0f-1a2b3c4d5e6f","id":"019a2f4e-1c3d-7b8a-9e0f-1a2b3c4d5e6f","timestamp":"2026-10-17T03:00:00.000Z","cwd":"/home/dev/demo","originator":"codex_cli_rs","cli_version":"0.150.0","source":"cli","model_provider":"openai","base_instructions":{"text":"You are a coding agent."},"git":{"branch":"main"}}}
+{"timestamp":"2026-10-17T03:00:00.010Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"<permissions instructions>Workspace write.</permissions instructions>"}]}}
+{"timestamp":"2026-10-17T03:00:00.020Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>\n  <cwd>/home/dev/demo</cwd>\n  <shell>bash</shell>\n</environment_context>"}]}}
+{"timestamp":"2026-10-17T03:00:00.030Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions for /home/dev/demo\n\n<INSTRUCTIONS>\nUse two spaces.\n</INSTRUCTIONS>"}]}}
+{"timestamp":"2026-10-17T03:00:01.000Z","type":"turn_context","payload":{"turn_id":"turn-1","cwd":"/home/dev/demo","approval_policy":"on-request","sandbox_policy":{"type":"workspace-write"},"model":"gpt-5-codex","effort":"medium","summary":"auto"}}
+{"timestamp":"2026-10-17T03:00:01.010Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1","model_context_window":272000}}
+{"timestamp":"2026-10-17T03:00:01.020Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Add a greeting to the README."}]}}
+{"timestamp":"2026-10-17T03:00:01.030Z","type":"event_msg","payload":{"type":"user_message","message":"Add a greeting to the README.","images":[]}}
+{"timestamp":"2026-10-17T03:00:02.000Z","type":"response_item","payload":{"type":"reasoning","id":"rs_basic_1","summary":[{"type":"summary_text","text":"**Looking at the README**"}],"encrypted_content":"gAAAAexample"}}
+{"timestamp":"2026-10-17T03:00:02.100Z","type":"response_item","payload":{"type":"reasoning","id":"rs_basic_2","summary":[],"encrypted_content":"gAAAAexample2"}}
+{"timestamp":"2026-10-17T03:00:02.200Z","type":"response_item","payload":{"type":"message","id":"msg_basic_1","role":"assistant","content":[{"type":"output_text","text":"I'll check the README first."}],"phase":"commentary"}}
+{"timestamp":"2026-10-17T03:00:02.300Z","type":"response_item","payload":{"type":"function_call","id":"fc_basic_1","name":"shell_command","arguments":"{\"command\":\"cat README.md\",\"workdir\":\"/home/dev/demo\"}","call_id":"call_basic_1"}}
+{"timestamp":"2026-10-17T03:00:02.400Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_basic_1","output":"Exit code: 0\nWall time: 0.1 seconds\nOutput:\n# Demo\n"}}
+{"timestamp":"2026-10-17T03:00:03.000Z","type":"response_item","payload":{"type":"custom_tool_call","id":"ctc_basic_1","status":"completed","call_id":"call_basic_2","name":"apply_patch","input":"*** Begin Patch\n*** Update File: README.md\n@@\n # Demo\n+Hello there.\n*** End Patch\n"}}
+{"timestamp":"2026-10-17T03:00:03.100Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"call_basic_2","output":"Success. Updated the following files:\nM README.md\n"}}
+{"timestamp":"2026-10-17T03:00:04.000Z","type":"response_item","payload":{"type":"function_call","id":"fc_basic_3","name":"exec_command","arguments":"{\"cmd\":\"npm test\",\"yield_time_ms\":10000}","call_id":"call_basic_3"}}
+{"timestamp":"2026-10-17T03:00:05.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_basic_3","output":"Chunk ID: 4f2a\nWall time: 1.2034 seconds\nProcess exited with code 1\nOriginal token count: 12\nOutput:\nnpm ERR! missing script: test\n"}}
+{"timestamp":"2026-10-17T03:00:05.500Z","type":"response_item","payload":{"type":"web_search_call","id":"ws_basic_1","status":"completed","action":{"type":"search","query":"markdown greeting conventions"}}}
+{"timestamp":"2026-10-17T03:00:06.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Added a greeting to the README.","phase":"final_answer"}}
+{"timestamp":"2026-10-17T03:00:06.010Z","type":"response_item","payload":{"type":"message","id":"msg_basic_2","role":"assistant","content":[{"type":"output_text","text":"Added a greeting to the README."}],"phase":"final_answer"}}
+{"timestamp":"2026-10-17T03:00:06.020Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":null}}
+{"timestamp":"2026-10-17T03:00:06.030Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","last_agent_message":"Added a greeting to the README."}}
+{"timestamp":"2026-10-17T03:00:06.040Z","type":"future_record_kind","payload":{"anything":1}}
+{"timestamp":"2026-10-17T03:00:06.050Z","type":"response_item","payload":{"type":"brand_new_item","id":"zz_basic_1"}}
+this line is not json
+{"timestamp":"2026-10-17T03:00:07.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Now show me git status."}]}}
+{"timestamp":"2026-10-17T03:00:07.500Z","type":"response_item","payload":{"type":"function_call","id":"fc_basic_4","name":"shell","arguments":"{\"command\":[\"bash\",\"-lc\",\"git status --short\"],\"workdir\":\"/home/dev/demo\"}","call_id":"call_basic_4"}}

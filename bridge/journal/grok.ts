@@ -55,7 +55,7 @@ import {
   type ClaimStrength,
 } from "./claims.ts";
 import { grokPromptBody } from "../../shared/grok-prompt.ts";
-import { containedRealpath, exists, loadTail, rootList, statFile } from "./files.ts";
+import { containedRealpath, exists, loadTail, readRange as readLogRange, rootList, statFile } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type { TranscriptAsk, TranscriptAskOption, TranscriptAskQuestion } from "../../shared/wire.ts";
 import type {
@@ -664,6 +664,8 @@ export class GrokTranscriptSource implements TranscriptSource {
 
   stat = statFile;
   load = loadTail;
+
+  readRange = readLogRange;
 }
 
 /** How many of the newest sessions we fingerprint against a live pane. */

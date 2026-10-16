@@ -8,6 +8,7 @@ import { SettingsRoute } from "@/routes/settings";
 import { FilesRoute } from "@/routes/files";
 import { LocalRoute } from "@/routes/local";
 import { rememberPath, restoreOnBoot } from "@/lib/last-path";
+import { basenameFor, stripBase } from "@/lib/base";
 import { filesLoader, filesShouldRevalidate, rootLoader, paneLoader, snapshotShouldRevalidate, PANE_ROUTE_ID, ROOT_ROUTE_ID } from "@/lib/loaders";
 
 // We don't use view transitions. React Router persists an "applied view transitions" map to
@@ -50,7 +51,13 @@ export const router = createBrowserRouter([
       { id: PANE_ROUTE_ID, path: "pane/:paneId", loader: paneLoader, element: <DetailRoute /> },
     ],
   },
-]);
+  // v1 lives at /v1/ since the T15 cutover (vite `base`); route paths stay relative to it.
+], { basename: basenameFor() });
 
 // Every settled location is remembered so a relaunch can resume it (lib/last-path).
-router.subscribe((state) => rememberPath(state.location.pathname + state.location.search));
+// `state.location.pathname` carries the basename (`/v1/...`); remember the app path so a relaunch
+// restores `/v1/pane/x`, not `/v1/v1/pane/x`.
+router.subscribe((state) => {
+  const path = stripBase(state.location.pathname);
+  if (path !== null) rememberPath(path + state.location.search);
+});

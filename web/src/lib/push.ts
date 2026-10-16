@@ -1,5 +1,6 @@
-import { fetchConfig, XHR_HEADER, XHR_HEADER_VALUE } from "@/lib/api";
+import { fetchConfig, UI_HEADERS, XHR_HEADER, XHR_HEADER_VALUE } from "@/lib/api";
 import { isReadOnly, type BridgeConfig, type DeviceAuth } from "@/lib/types";
+import { BASE, withBase } from "@/lib/base";
 
 // Client-side control of Web Push: the browser subscription plus a per-device preference. We persist
 // the user's choice so we don't re-subscribe on next load.
@@ -233,12 +234,31 @@ export function keysMatch(existing: ArrayBuffer | null | undefined, serverKey: U
 
 // Subscribe this device to push and register it with the bridge; clears the user's "disabled"
 // preference on success. Returns whether a live subscription now exists (with a reason if not).
+/**
+ * v1's own registration (scope `/v1/` since the T15 cutover). `getRegistration` matches by longest
+ * scope, so at `/v1/` it can hand back web2's worker at `/`; that one is never v1's to read or drop.
+ */
+async function ownRegistration(): Promise<ServiceWorkerRegistration | undefined> {
+  const reg = await navigator.serviceWorker.getRegistration(BASE);
+  if (!reg?.scope) return reg;
+  return new URL(reg.scope, window.location.href).pathname === BASE ? reg : undefined;
+}
+
 /** Re-attach push at boot only when this device has a different or unknown endpoint. */
 export async function reattachPush(): Promise<{ skipped: boolean; result?: EnableResult }> {
+  // At /v1/ (after the T15 cutover) re-attach only a subscription v1 itself holds: opening v1 to look
+  // around must not move the device's notifications off the thread app.
+  if (BASE !== "/") {
+    try {
+      if (!(await (await ownRegistration())?.pushManager.getSubscription())) return { skipped: true };
+    } catch {
+      return { skipped: true };
+    }
+  }
   const known = rememberedEndpoint();
   if (known) {
     try {
-      const reg = await navigator.serviceWorker.getRegistration();
+      const reg = await ownRegistration();
       const sub = await reg?.pushManager.getSubscription();
       if (sub?.endpoint === known) return { skipped: true };
     } catch {
@@ -252,7 +272,7 @@ export async function enablePush(): Promise<EnableResult> {
   if (!pushSupported()) return { ok: false, reason: "unsupported" };
   if (!window.isSecureContext) return { ok: false, reason: "insecure" };
 
-  const reg = await navigator.serviceWorker.register("/sw.js");
+  const reg = await navigator.serviceWorker.register(withBase("/sw.js"), { scope: BASE });
   const cfg = await fetchConfig();
   if (!cfg.push || !cfg.vapidPublicKey) return { ok: false, reason: "server-off" };
   if (Notification.permission === "denied") return { ok: false, reason: "denied" };
@@ -278,7 +298,7 @@ export async function enablePush(): Promise<EnableResult> {
   const body = subscribeBody(sub.toJSON(), rememberedEndpoint());
   const res = await fetch("/api/subscribe", {
     method: "POST",
-    headers: { "content-type": "application/json", [XHR_HEADER]: XHR_HEADER_VALUE },
+    headers: { "content-type": "application/json", [XHR_HEADER]: XHR_HEADER_VALUE, ...UI_HEADERS },
     body: JSON.stringify(body),
   });
   if (!res.ok) return { ok: false, reason: res.status === 403 ? "refused" : "server-off" };
@@ -295,7 +315,7 @@ export async function disablePush(): Promise<void> {
   setUserDisabled(true);
   if (!pushSupported()) return;
   try {
-    const reg = await navigator.serviceWorker.getRegistration();
+    const reg = await ownRegistration();
     const sub = await reg?.pushManager.getSubscription();
     await sub?.unsubscribe();
     rememberEndpoint(null);
@@ -312,7 +332,7 @@ export async function getPushState(): Promise<PushState> {
 
   let subscribed = false;
   try {
-    const reg = await navigator.serviceWorker.getRegistration();
+    const reg = await ownRegistration();
     subscribed = Boolean(await reg?.pushManager.getSubscription());
   } catch {
     /* ignore — treat as not subscribed */

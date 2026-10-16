@@ -2,7 +2,7 @@ import { guard } from "./access.ts";
 import { SILENT_CONN, type ConnLog } from "./conn-log.ts";
 import type { SnapshotDeps } from "./snapshot-route.ts";
 import { snapshotRoute } from "./snapshot-route.ts";
-import { buildId } from "./static-assets.ts";
+import { v1BuildId } from "./static-assets.ts";
 import { SSE_KEEPALIVE_MS } from "../shared/limits.ts";
 
 export const EVENT_COALESCE_MS = 250;
@@ -36,7 +36,8 @@ export function createSnapshotEvents(
 
   const emit = async () => {
     if (!clients.size) return;
-    const builtId = buildId();
+    // Only v1 opens this stream (an EventSource cannot send x-sightr-ui), so it carries v1's build id.
+    const builtId = v1BuildId();
     let shared: Promise<string> | undefined;
     let built: string | undefined;
     for (const client of [...clients]) {
@@ -137,7 +138,7 @@ export function eventsRoute(
         const body = await snapshotRoute(new Request(req, { headers }), deps);
         if (!body.ok) { try { controller.error(); } catch {} ; return; }
         send(`event: snapshot\ndata: ${await body.text()}\n\n`);
-        send(`event: build\ndata: ${JSON.stringify(await buildId())}\n\n`);
+        send(`event: build\ndata: ${JSON.stringify(await v1BuildId())}\n\n`);
       })();
     },
     cancel() { detach?.(); detach = undefined; },

@@ -143,6 +143,20 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
   return out;
 }
 
+// Cursor's optional mode line in its status rows (T08): "Plan (shift+tab to cycle)", "Debug (shift+tab
+// to cycle)" in captures. The default (agent) mode paints none. Unverified end to end, so the switch
+// flag stays off; the word is returned lowercased.
+const MODE_LINE = /^\s*([A-Z][A-Za-z]+) \(shift\+tab to cycle\)\s*$/;
+
+/** The mode Cursor's status rows name, lowercased (`plan`, `debug`), or null when none is shown. */
+export function permissionModeOf(lines: StyledLine[]): string | null {
+  for (const row of extractStatusLines(lines)) {
+    const m = MODE_LINE.exec(rstrip(lineText(row)));
+    if (m) return m[1]!.toLowerCase();
+  }
+  return null;
+}
+
 export function extractInputDraft(lines: StyledLine[]): string | null {
   if (
     detectPermissionRegion(lines) !== null ||

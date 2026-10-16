@@ -6,9 +6,11 @@ import { paneReadMatches, paneReadSpec } from "./pane-read-routes.ts";
 import { bracketedPasteChunks, sendKeysPaced, sendReplySteps, type SleepFn } from "./pane-write-routes.ts";
 import { json, requireJsonBody, text } from "./responses.ts";
 import { effectiveSettings } from "./runtime-settings.ts";
-import type { StateEngine } from "./state-engine.ts";
+import type { AgentView, StateEngine } from "./state-engine.ts";
+import { parseLines } from "../web/src/lib/blocks.ts";
 import { runGuardedSend, type GuardedSendIo, type ReplyOutcome, type WriteResult } from "../web/src/lib/guarded-send.ts";
-import { composerFor } from "../web/src/lib/harness/composer-kit.ts";
+import { composerFor, type ComposerKit } from "../web/src/lib/harness/composer-kit.ts";
+import type { StyledLine } from "../web/src/lib/blocks.ts";
 
 // POST /api/pane/:id/send — the free-text reply, guarded, in one request (spec 24).
 //
@@ -42,6 +44,167 @@ export function sweepKeys(draft: string): string[] {
 const writeResult = (outcome: { ok: true } | { ok: false; error: string }): WriteResult =>
   outcome.ok ? { ok: true } : { ok: false, error: outcome.error };
 
+/** Which pane to send to. With `terminalId`, a pane whose terminal changed (a reused pane) is not it. */
+export interface GuardedSendTarget {
+  paneId: string;
+  terminalId?: string;
+}
+
+export type GuardedSendResult =
+  /** The bridge's own snapshot has no such pane (or it now holds another terminal). Nothing was sent. */
+  | { kind: "no-pane" }
+  /** Another write held the pane past `PANE_QUEUE_TIMEOUT_MS`. Nothing was sent. */
+  | { kind: "busy" }
+  | { kind: "done"; outcome: ReplyOutcome; swept: number };
+
+export interface GuardedSendOptions {
+  force?: boolean;
+  audit?: AuditLog;
+}
+
+/**
+ * The guarded send core with the bridge's I/O, shared by `POST /api/pane/:id/send` and the v2
+ * dispatcher (T06), so both run one function.
+ */
+export interface GuardedSender {
+  send(target: GuardedSendTarget, text: string, opts?: GuardedSendOptions): Promise<GuardedSendResult>;
+  /**
+   * One read of the pane, in its own queue turn: is the harness's composer on screen? True when the
+   * harness has no `composerReady` (nothing can tell; the send's own guard decides). Null: no pane.
+   */
+  composerReady(target: GuardedSendTarget): Promise<boolean | null>;
+  /**
+   * Run `fn` in the pane's write-queue turn with the same ANSI read the guard uses and the harness's
+   * composer kit (T08's mode switch reads, presses and re-reads inside one turn).
+   */
+  withPane<T>(target: GuardedSendTarget, fn: (pane: PaneSession) => Promise<T>): Promise<PaneTurn<T>>;
+}
+
+/** One pane, inside its write-queue turn. */
+export interface PaneSession {
+  paneId: string;
+  /** The harness's composer kit; undefined for a shell or a harness with no adapter. */
+  kit: ComposerKit | undefined;
+  /** One fresh read of the pane, parsed (the guard's read: same source, lines and `ansi` format). */
+  read(): Promise<StyledLine[]>;
+}
+
+export type PaneTurn<T> = { kind: "no-pane" } | { kind: "busy" } | { kind: "done"; value: T };
+
+function findPane(engine: Pick<StateEngine, "current">, target: GuardedSendTarget): AgentView | null {
+  const { agents, shellPanes } = engine.current();
+  const pane = agents.find((p) => p.paneId === target.paneId) ?? shellPanes.find((p) => p.paneId === target.paneId);
+  if (!pane) return null;
+  if (target.terminalId && pane.terminalId && pane.terminalId !== target.terminalId) return null;
+  return pane;
+}
+
+export function createGuardedSender(
+  herdr: HerdrClient,
+  cfg: Config,
+  engine: Pick<StateEngine, "current">,
+  queue: PaneQueue,
+  sleep: SleepFn = defaultSleep,
+): GuardedSender {
+  const readerFor = (pane: AgentView) => {
+    const read = paneReadSpec(pane, effectiveSettings(cfg).readLines);
+    return async (): Promise<string> => {
+      const got = await herdr.readPane(pane.paneId, read.source, read.lines, "ansi");
+      if (!paneReadMatches(pane.paneId, got)) throw new Error("pane read mismatch");
+      return got.text;
+    };
+  };
+
+  return {
+    async send(target, sent, opts = {}) {
+      // The bridge's own view of the pane decides the harness, never the client's.
+      const pane = findPane(engine, target);
+      if (!pane) return { kind: "no-pane" };
+      const paneId = pane.paneId;
+      const kit = pane.kind === "shell" ? undefined : composerFor(pane.agent);
+      const force = opts.force === true;
+      const settings = effectiveSettings(cfg);
+      const io: GuardedSendIo = {
+        read: readerFor(pane),
+        type: async (t, paste) => writeResult(await sendReplySteps(herdr, paneId, paste ? bracketedPasteChunks(t) : t, false, [], sleep)),
+        submit: async (keys) => writeResult(await sendReplySteps(herdr, paneId, "", true, keys ?? settings.submitKeys, sleep)),
+        oneShot: async (t) => writeResult(await sendReplySteps(herdr, paneId, t, true, settings.submitKeys, sleep)),
+        sleep,
+        pollAttempts: BRIDGE_POLL_ATTEMPTS,
+        pollDelayMs: BRIDGE_POLL_DELAY_MS,
+      };
+
+      let swept = 0;
+      let outcome: ReplyOutcome;
+      try {
+        // The whole guard holds the pane's write queue: no keys or reply can land between its steps.
+        outcome = await queue.run(paneKey(paneId), () =>
+          runGuardedSend(kit, io, {
+            text: sent,
+            force,
+            // Runs only after a live read positively saw the composer, never under `force` (the core
+            // enforces both). The draft comes from that same read, so it is sized exactly.
+            onComposerSeen: async ({ draft }) => {
+              if (draft === null || draft.trim() === "") return { ok: true, keysSent: false };
+              const keys = sweepKeys(draft);
+              try {
+                await sendKeysPaced(herdr, paneId, keys, sleep);
+              } catch {
+                return { ok: false, error: "Couldn't clear the terminal input — nothing was typed." };
+              }
+              swept = keys.length;
+              await sleep(SWEEP_SETTLE_MS);
+              return { ok: true, keysSent: true };
+            },
+          }),
+        );
+      } catch (err) {
+        if (!(err instanceof PaneBusyError)) throw err;
+        return { kind: "busy" };
+      }
+
+      const detail: AuditDetail = { text: sent, status: outcome.status };
+      if (force) detail.force = true;
+      if (swept > 0) detail.swept = swept;
+      if (outcome.status === "error" && outcome.textDelivered) detail.textDelivered = true;
+      (opts.audit ?? SILENT_AUDIT).record({ action: "send", paneId, detail });
+      return { kind: "done", outcome, swept };
+    },
+
+    async withPane(target, fn) {
+      const pane = findPane(engine, target);
+      if (!pane) return { kind: "no-pane" };
+      const kit = pane.kind === "shell" ? undefined : composerFor(pane.agent);
+      const read = readerFor(pane);
+      try {
+        const value = await queue.run(paneKey(pane.paneId), () =>
+          fn({ paneId: pane.paneId, kit, read: async () => parseLines(await read()) }),
+        );
+        return { kind: "done", value };
+      } catch (err) {
+        if (err instanceof PaneBusyError) return { kind: "busy" };
+        throw err;
+      }
+    },
+
+    async composerReady(target) {
+      const pane = findPane(engine, target);
+      if (!pane) return null;
+      const kit = pane.kind === "shell" ? undefined : composerFor(pane.agent);
+      if (!kit?.composerReady) return true;
+      const ready = kit.composerReady.bind(kit);
+      const read = readerFor(pane);
+      return queue.run(paneKey(pane.paneId), async () => {
+        try {
+          return ready(parseLines(await read()));
+        } catch {
+          return false;
+        }
+      });
+    },
+  };
+}
+
 export async function guardedSendPane(
   herdr: HerdrClient,
   cfg: Config,
@@ -62,65 +225,19 @@ export async function guardedSendPane(
   }
   if (typeof body.text !== "string" || body.text.trim() === "") return text("bad text", 400);
   if (body.force !== undefined && typeof body.force !== "boolean") return text("bad force", 400);
-  const sent = body.text;
-  const force = body.force === true;
   const ae = req.headers.get("accept-encoding");
 
-  // The bridge's own view of the pane decides the harness, never the client's.
-  const { agents, shellPanes } = engine.current();
-  const pane = agents.find((p) => p.paneId === paneId) ?? shellPanes.find((p) => p.paneId === paneId);
-  if (!pane) return text("no such pane", 404);
-  const kit = pane.kind === "shell" ? undefined : composerFor(pane.agent);
-
-  const settings = effectiveSettings(cfg);
-  const read = paneReadSpec(pane, settings.readLines);
-  const io: GuardedSendIo = {
-    read: async () => {
-      const got = await herdr.readPane(paneId, read.source, read.lines, "ansi");
-      if (!paneReadMatches(paneId, got)) throw new Error("pane read mismatch");
-      return got.text;
-    },
-    type: async (t, paste) => writeResult(await sendReplySteps(herdr, paneId, paste ? bracketedPasteChunks(t) : t, false, [], sleep)),
-    submit: async (keys) => writeResult(await sendReplySteps(herdr, paneId, "", true, keys ?? settings.submitKeys, sleep)),
-    oneShot: async (t) => writeResult(await sendReplySteps(herdr, paneId, t, true, settings.submitKeys, sleep)),
-    sleep,
-    pollAttempts: BRIDGE_POLL_ATTEMPTS,
-    pollDelayMs: BRIDGE_POLL_DELAY_MS,
-  };
-
-  let swept = 0;
-  let outcome: ReplyOutcome;
-  try {
-    // The whole guard holds the pane's write queue: no keys or reply can land between its steps.
-    outcome = await queue.run(paneKey(paneId), () =>
-      runGuardedSend(kit, io, {
-        text: sent,
-        force,
-        // Runs only after a live read positively saw the composer, never under `force` (the core
-        // enforces both). The draft comes from that same read, so it is sized exactly.
-        onComposerSeen: async ({ draft }) => {
-          if (draft === null || draft.trim() === "") return { ok: true, keysSent: false };
-          const keys = sweepKeys(draft);
-          try {
-            await sendKeysPaced(herdr, paneId, keys, sleep);
-          } catch {
-            return { ok: false, error: "Couldn't clear the terminal input — nothing was typed." };
-          }
-          swept = keys.length;
-          await sleep(SWEEP_SETTLE_MS);
-          return { ok: true, keysSent: true };
-        },
-      }),
-    );
-  } catch (err) {
-    if (!(err instanceof PaneBusyError)) throw err;
-    outcome = { status: "error", error: "Another write to this pane is still running. Nothing was typed." };
+  const result = await createGuardedSender(herdr, cfg, engine, queue, sleep).send({ paneId }, body.text, {
+    force: body.force === true,
+    audit,
+  });
+  if (result.kind === "no-pane") return text("no such pane", 404);
+  if (result.kind === "busy") {
+    const outcome: ReplyOutcome = { status: "error", error: "Another write to this pane is still running. Nothing was typed." };
+    const detail: AuditDetail = { text: body.text, status: outcome.status };
+    if (body.force === true) detail.force = true;
+    audit.record({ action: "send", paneId, detail });
+    return json(outcome, ae);
   }
-
-  const detail: AuditDetail = { text: sent, status: outcome.status };
-  if (force) detail.force = true;
-  if (swept > 0) detail.swept = swept;
-  if (outcome.status === "error" && outcome.textDelivered) detail.textDelivered = true;
-  audit.record({ action: "send", paneId, detail });
-  return json(outcome, ae);
+  return json(result.outcome, ae);
 }

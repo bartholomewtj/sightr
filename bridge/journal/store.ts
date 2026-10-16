@@ -6,6 +6,7 @@
 // parse cache is keyed by absolute path, so two sessions fronting panes whose agents write into the
 // same root still hit the same entry.
 
+import { MAX_TRANSCRIPT_BYTES } from "./files.ts";
 import type { AgentSessionRef, JournalAdapter, TranscriptEntry, TranscriptPage } from "./types.ts";
 
 /** How many parsed journals to keep hot. Each is re-parsed only when its file's size/mtime moves. */
@@ -63,6 +64,45 @@ export function newestEntryPendingTool(entries: TranscriptEntry[]): boolean {
   const last = entries[entries.length - 1]!;
   return last.parts.some((p) => p.kind === "tool" && p.result === undefined);
 }
+
+/**
+ * How far before its saved offset an incremental read starts. Claude and Pi fold a tool result onto
+ * the call that precedes it in the same parse; re-reading the tail lets a result that lands in a
+ * later chunk find its call. The repeated entries change nothing: the v2 ingest upserts by id.
+ */
+export const OVERLAP_BYTES = 256 * 1024;
+
+/** Where the last incremental read of a log stopped. */
+export interface SavedRead {
+  path: string;
+  /** The byte just after the last complete line read. */
+  offset: number;
+  size: number;
+  mtimeMs: number;
+}
+
+export type ReadSinceResult =
+  /** The ref names no log, the adapter refused it, or the file vanished. */
+  | { kind: "missing" }
+  /** Same path, size and mtime as last time: nothing was read. */
+  | { kind: "unchanged"; path: string }
+  | {
+      kind: "read";
+      path: string;
+      entries: TranscriptEntry[];
+      /** Where the next read starts: the end of the last complete line. A partial last line waits. */
+      nextOffset: number;
+      size: number;
+      mtimeMs: number;
+      /** The log is new to us (first read, another path, or it shrank): read from its start. */
+      reset: boolean;
+      /** The read began at the head of the file (nothing before it was skipped). */
+      fromStart: boolean;
+    };
+
+const utf8 = new TextEncoder();
+const decoder = new TextDecoder();
+const NEWLINE = 0x0a;
 
 function runningKey(adapter: JournalAdapter, ref: AgentSessionRef): string {
   return `${adapter.agent}\0${ref.kind}\0${ref.value}`;
@@ -128,6 +168,57 @@ export class TranscriptStore {
       total: entries.length,
       fileTruncated: !complete,
     };
+  }
+
+  /**
+   * Read what is new in a log since `saved` (the v2 journal ingest). Stateless: the caller keeps the
+   * offset (the thread store saves it in the same transaction as the events the read produced).
+   *
+   * - Same path, size and mtime as `saved`: `unchanged`, nothing read.
+   * - No `saved`, another path, or a file now shorter than the saved offset: `reset`, read from byte
+   *   0 (the last {@link MAX_TRANSCRIPT_BYTES} of a bigger file).
+   * - Otherwise from `saved.offset - OVERLAP_BYTES`, moved on to the next line start.
+   *
+   * Only complete lines are parsed: a partial last line (a write in progress) is left for the next
+   * read, and `nextOffset` stops before it.
+   */
+  async readSince(adapter: JournalAdapter, ref: AgentSessionRef, saved: SavedRead | null): Promise<ReadSinceResult> {
+    const path = await adapter.source.resolve(ref);
+    if (path === null) return { kind: "missing" };
+    const meta = await adapter.source.stat(path);
+    if (meta === null) return { kind: "missing" };
+    const samePath = saved !== null && saved.path === path;
+    if (samePath && meta.size === saved.size && meta.mtimeMs === saved.mtimeMs) return { kind: "unchanged", path };
+
+    const reset = !samePath || meta.size < saved.offset;
+    const start = reset ? Math.max(0, meta.size - MAX_TRANSCRIPT_BYTES) : Math.max(0, saved.offset - OVERLAP_BYTES);
+    const bytes = await this.readRange(adapter, path, start, meta.size);
+    // Begin on a line start: before the first newline is the tail of an earlier line (a saved offset
+    // is always a line start, so this never skips past it). End after the last newline: a partial
+    // last line is a write in progress and waits for the next read. Cut on bytes, then decode, so a
+    // range that splits a multi-byte character is harmless.
+    const first = start === 0 ? 0 : bytes.indexOf(NEWLINE) + 1; // 0 when there is no line start at all
+    const last = bytes.lastIndexOf(NEWLINE) + 1;
+    const hasLines = (start === 0 || first > 0) && last > first;
+    const text = hasLines ? decoder.decode(bytes.subarray(first, last)) : "";
+    const nextOffset = hasLines ? start + last : reset ? start + first : saved!.offset;
+    return {
+      kind: "read",
+      path,
+      entries: text === "" ? [] : adapter.parse(text),
+      nextOffset,
+      size: meta.size,
+      mtimeMs: meta.mtimeMs,
+      reset,
+      fromStart: start === 0,
+    };
+  }
+
+  private async readRange(adapter: JournalAdapter, path: string, start: number, end: number): Promise<Uint8Array> {
+    if (adapter.source.readRange) return adapter.source.readRange(path, start, end);
+    // A source with no ranged read (a test fake): slice its whole load by bytes.
+    const { text } = await adapter.source.load(path);
+    return utf8.encode(text).slice(start, end);
   }
 
   /**

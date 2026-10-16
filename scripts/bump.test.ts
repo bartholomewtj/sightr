@@ -18,12 +18,14 @@ function removeTree(root: string) {
 function makeTree(changelog?: string): string {
   const root = mkdtempSync(join(tmpdir(), "sightr-bump-"));
   mkdirSync(join(root, "web"));
+  mkdirSync(join(root, "web2"));
   mkdirSync(join(root, "scripts"));
   cpSync(join(repoRoot, "herdr-plugin.toml"), join(root, "herdr-plugin.toml"));
   cpSync(join(repoRoot, "package.json"), join(root, "package.json"));
   if (changelog === undefined) cpSync(join(repoRoot, "CHANGELOG.md"), join(root, "CHANGELOG.md"));
   else writeFileSync(join(root, "CHANGELOG.md"), changelog);
   cpSync(join(repoRoot, "web", "package.json"), join(root, "web", "package.json"));
+  cpSync(join(repoRoot, "web2", "package.json"), join(root, "web2", "package.json"));
   return root;
 }
 
@@ -39,7 +41,7 @@ function contents(root: string, file: string): string {
 }
 
 function manifestVersions(root: string): string[] {
-  return ["herdr-plugin.toml", "package.json", "web/package.json"].map((file) => {
+  return ["herdr-plugin.toml", "package.json", "web/package.json", "web2/package.json"].map((file) => {
     const match = /(?:version\s*=\s*|"version":\s*")"?([^"\n]+)"?/.exec(contents(root, file));
     return match?.[1] ?? "";
   });
@@ -52,7 +54,7 @@ describe("bump", () => {
       const from = readCanonicalVersion(root);
       const result = bump({ root, kind: "patch", today: new Date(2026, 8, 1) });
       expect(result.to).toBe(nextVersion(from, "patch"));
-      expect(manifestVersions(root)).toEqual([result.to, result.to, result.to]);
+      expect(manifestVersions(root)).toEqual([result.to, result.to, result.to, result.to]);
       expect(checkVersion(root).ok).toBe(true);
     } finally {
       removeTree(root);
@@ -65,7 +67,7 @@ describe("bump", () => {
       const from = readCanonicalVersion(root);
       const expected = nextVersion(from, "minor");
       bump({ root, kind: "minor", today: new Date(2026, 8, 1) });
-      expect(manifestVersions(root)).toEqual([expected, expected, expected]);
+      expect(manifestVersions(root)).toEqual([expected, expected, expected, expected]);
       expect(contents(root, "CHANGELOG.md")).toContain(`## [${expected}] - 2026-09-01`);
     } finally {
       removeTree(root);
@@ -78,7 +80,7 @@ describe("bump", () => {
       const starting = readCanonicalVersion(root);
       const expected = nextVersion(starting, "major");
       bump({ root, kind: "major", today: new Date(2026, 8, 1) });
-      expect(manifestVersions(root)).toEqual([expected, expected, expected]);
+      expect(manifestVersions(root)).toEqual([expected, expected, expected, expected]);
     } finally {
       removeTree(root);
     }

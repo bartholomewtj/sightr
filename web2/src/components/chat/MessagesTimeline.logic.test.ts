@@ -1,0 +1,203 @@
+import { beforeEach, describe, expect, it } from "vitest";
+
+import type { Run, TurnItem } from "@shared/v2/contracts";
+
+import { deriveTimelineEntries } from "~/session-logic";
+import { assistant, command, edit, read, reasoning, resetOrdinals, run, screen, session, user } from "@/test/turn-items";
+
+import {
+  computeStableMessagesTimelineRows,
+  deriveMessagesTimelineRows,
+  insertDayDividers,
+  resolveTimelineIsAtEnd,
+  type MessagesTimelineRow,
+  type MessagesTimelineRowsInput,
+} from "./MessagesTimeline.logic";
+
+beforeEach(() => resetOrdinals());
+
+function rowsFor(items: TurnItem[], runs: Run[] = [], over: Partial<MessagesTimelineRowsInput> = {}): MessagesTimelineRow[] {
+  const latest = runs.at(-1);
+  const running = runs.find((r) => r.status === "running");
+  return deriveMessagesTimelineRows({
+    timelineEntries: deriveTimelineEntries({ items, runs }),
+    latestRun: latest ? { runId: latest.id, status: latest.status, startedAt: latest.startedAt, completedAt: latest.completedAt } : null,
+    runningRunId: running?.id ?? null,
+    runs,
+    isWorking: running !== undefined,
+    activeTurnStartedAt: running?.startedAt ?? null,
+    ...over,
+  });
+}
+
+const kinds = (rows: MessagesTimelineRow[]) => rows.map((r) => r.kind);
+const R = "r1";
+const inRun = { runId: R };
+/** Expanded so the run's work is not folded under "Worked for …". */
+const open = { expandedRunIds: new Set([R]) };
+
+describe("deriveMessagesTimelineRows (T3 row model on Sightr items)", () => {
+  it("groups consecutive tools into one toggle row", () => {
+    const rows = rowsFor(
+      [user("u:0", "go", inRun), command("a:0", "ls", inRun), command("b:0", "pwd", inRun), command("c:0", "whoami", inRun), assistant("d:0", "done", inRun)],
+      [run(R)],
+      open,
+    );
+    const toggle = rows.find((r) => r.kind === "work-toggle");
+    expect(toggle).toMatchObject({ summary: "Ran 3 commands", hiddenCount: 3, expanded: false });
+    expect(rows.filter((r) => r.kind === "work-toggle")).toHaveLength(1);
+  });
+
+  it("splits groups at a message between tools", () => {
+    const rows = rowsFor(
+      [user("u:0", "go", inRun), command("a:0", "ls", inRun), command("b:0", "pwd", inRun), assistant("m:0", "halfway", inRun), command("c:0", "x", inRun), command("d:0", "y", inRun), assistant("e:0", "done", inRun)],
+      [run(R)],
+      open,
+    );
+    expect(rows.filter((r) => r.kind === "work-toggle")).toHaveLength(2);
+    expect(kinds(rows)).toEqual(["message", "turn-fold", "work-toggle", "message", "work-toggle", "message"]);
+  });
+
+  it("shows a single tool as a one-line row, not a group", () => {
+    const rows = rowsFor([user("u:0", "go", inRun), command("a:0", "npm test", inRun), assistant("b:0", "ok", inRun)], [run(R)], open);
+    const work = rows.find((r) => r.kind === "work");
+    expect(work).toMatchObject({ kind: "work", displayLabel: "npm test", isExpandedToolGroup: false });
+    expect(rows.some((r) => r.kind === "work-toggle")).toBe(false);
+  });
+
+  it("labels a mixed group with T3's summary (two leading actions, then the rest)", () => {
+    const rows = rowsFor(
+      [
+        user("u:0", "go", inRun),
+        command("a:0", "ls", inRun),
+        read("b:0", "src/a.ts", inRun),
+        edit("c:0", "src/a.ts", inRun),
+        read("d:0", "src/b.ts", inRun),
+        command("e:0", "bun test", inRun),
+        read("f:0", "src/c.ts", inRun),
+        assistant("g:0", "done", inRun),
+      ],
+      [run(R)],
+      open,
+    );
+    const toggle = rows.find((r) => r.kind === "work-toggle");
+    expect(toggle && toggle.kind === "work-toggle" && toggle.summary).toBe("Ran 2 commands, changed 1 file, and performed 3 other actions");
+    expect(toggle && toggle.kind === "work-toggle" && toggle.summaryKind).toBe("mixed");
+  });
+
+  it("names a single read and a read-only group by their files", () => {
+    const one = rowsFor([user("u:0", "go", inRun), read("a:0", "src/a.ts", inRun), assistant("b:0", "ok", inRun)], [run(R)], open);
+    expect(one.find((r) => r.kind === "work")).toMatchObject({ displayLabel: "Read src/a.ts" });
+    resetOrdinals();
+    const many = rowsFor(
+      [user("u:0", "go", inRun), read("a:0", "a.ts", inRun), read("b:0", "b.ts", inRun), assistant("c:0", "ok", inRun)],
+      [run(R)],
+      open,
+    );
+    expect(many.find((r) => r.kind === "work-toggle")).toMatchObject({ summary: "Read 2 files", summaryKind: "read" });
+  });
+
+  it("folds a settled run's work under 'Worked for …' and keeps its last reply", () => {
+    const rows = rowsFor(
+      [user("u:0", "go", inRun), command("a:0", "ls", inRun), command("b:0", "pwd", inRun), assistant("c:0", "done", inRun)],
+      [run(R, { startedAt: 1_000_000, completedAt: 1_063_000 })],
+    );
+    expect(kinds(rows)).toEqual(["message", "turn-fold", "message"]);
+    expect(rows[1]).toMatchObject({ label: "Worked for 1m 3s", expanded: false });
+  });
+
+  it("inserts a day divider when the calendar day changes", () => {
+    const day1 = new Date(2026, 9, 14, 23, 50).getTime();
+    const day2 = new Date(2026, 9, 15, 0, 10).getTime();
+    const rows = rowsFor([user("u:0", "late", { createdAt: day1 }), user("v:0", "early", { createdAt: day2 })], [], {
+      now: new Date(2026, 9, 16, 9, 0).getTime(),
+    });
+    expect(kinds(rows)).toEqual(["message", "day", "message"]);
+    expect(rows[1]).toMatchObject({ kind: "day", label: "Yesterday", id: "day:2026-10-15" });
+  });
+
+  it("keeps no divider before the first row or within one day", () => {
+    const now = new Date(2026, 9, 16, 9, 0).getTime();
+    const rows = insertDayDividers(
+      rowsFor([user("u:0", "a", { createdAt: now - 60_000 }), user("v:0", "b", { createdAt: now })]),
+      now,
+    );
+    expect(kinds(rows)).toEqual(["message", "message"]);
+  });
+
+  it("renders a session change and a screen capture as event rows", () => {
+    const rows = rowsFor([user("u:0", "go"), session("s:0"), screen("x:0", "$ ls\nfile")]);
+    expect(rows.filter((r) => r.kind === "event").map((r) => (r.kind === "event" ? r.projectedItem.type : null))).toEqual([
+      "session",
+      "screen",
+    ]);
+  });
+
+  it("adds the working header and the live tail only while a run is running", () => {
+    const live = rowsFor([user("u:0", "go", inRun)], [run(R, { status: "running", completedAt: undefined })]);
+    expect(kinds(live)).toEqual(["message", "working", "thinking"]);
+    expect(live[1]).toMatchObject({ createdAt: 1_000_000 });
+    resetOrdinals();
+    const done = rowsFor([user("u:0", "go", inRun), assistant("a:0", "ok", inRun)], [run(R)]);
+    expect(kinds(done)).not.toContain("working");
+    expect(kinds(done)).not.toContain("thinking");
+  });
+
+  it("shows a running tool as the live row, never folded", () => {
+    const rows = rowsFor(
+      [user("u:0", "go", inRun), command("a:0", "ls", inRun), command("b:0", "npm test", { ...inRun, status: "running" })],
+      [run(R, { status: "running", completedAt: undefined })],
+    );
+    const liveRow = rows.find((r) => r.kind === "work-live");
+    expect(liveRow).toMatchObject({ active: true, expanded: false });
+    expect(liveRow && liveRow.kind === "work-live" && liveRow.entry.command).toBe("npm test");
+    expect(kinds(rows)).not.toContain("turn-fold");
+  });
+
+  it("adds a 'Stopped' notice after an interrupted run and an error after a failed one", () => {
+    const stopped = rowsFor([user("u:0", "go", inRun), assistant("a:0", "partial", inRun)], [run(R, { status: "interrupted" })]);
+    const notice = stopped.find((r) => r.kind === "work" && r.groupedEntries[0]?.itemType === "system_notice");
+    expect(notice && notice.kind === "work" && notice.groupedEntries[0]?.label).toBe("Stopped");
+    resetOrdinals();
+    const failed = rowsFor([user("u:0", "go", inRun), command("a:0", "ls", inRun)], [run(R, { status: "failed" })]);
+    const error = failed.find((r) => r.kind === "work" && r.groupedEntries[0]?.itemType === "error");
+    expect(error).toBeDefined();
+    expect(kinds(failed)).not.toContain("turn-fold");
+  });
+
+  it("puts reasoning in the work log, labelled with its duration", () => {
+    const rows = rowsFor(
+      [user("u:0", "go", { ...inRun, createdAt: 1_000_000 }), reasoning("t:0", "Let me think.", { ...inRun, createdAt: 1_000_000 }), command("c:0", "ls", { ...inRun, createdAt: 1_012_000 }), assistant("d:0", "ok", inRun)],
+      [run(R)],
+      open,
+    );
+    const toggle = rows.find((r) => r.kind === "work-toggle");
+    expect(toggle && toggle.kind === "work-toggle" && toggle.summary).toBe("Ran 1 command");
+    const details = deriveTimelineEntries({ items: [reasoning("t:0", "x", { ...inRun, createdAt: 0 }), command("c:0", "ls", { ...inRun, createdAt: 12_000 })], runs: [] });
+    expect(details[0]?.kind === "work" && details[0].entry.reasoningTime).toBe(12_000);
+  });
+});
+
+describe("computeStableMessagesTimelineRows", () => {
+  it("keeps row objects whose item did not change, and replaces the one that did", () => {
+    const a = command("a:0", "ls", inRun);
+    const items = [user("u:0", "go", inRun), a, assistant("b:0", "ok", inRun)];
+    const first = computeStableMessagesTimelineRows(rowsFor(items, [run(R)], open), { byId: new Map(), result: [] });
+    const again = computeStableMessagesTimelineRows(rowsFor([...items], [run(R)], open), first);
+    expect(again).toBe(first);
+    const changed = computeStableMessagesTimelineRows(
+      rowsFor([items[0]!, { ...a, status: "failed" } as TurnItem, items[2]!], [run(R)], open),
+      again,
+    );
+    expect(changed.result[0]).toBe(first.result[0]);
+    expect(changed.result.find((r) => r.id === "a:0")).not.toBe(first.result.find((r) => r.id === "a:0"));
+  });
+});
+
+describe("resolveTimelineIsAtEnd", () => {
+  it("re-arms follow within 80 px of the end", () => {
+    expect(resolveTimelineIsAtEnd({ contentLength: 1000, scroll: 330, scrollLength: 600 })).toBe(true);
+    expect(resolveTimelineIsAtEnd({ contentLength: 1000, scroll: 300, scrollLength: 600 })).toBe(false);
+    expect(resolveTimelineIsAtEnd(undefined)).toBeUndefined();
+  });
+});

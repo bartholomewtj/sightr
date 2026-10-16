@@ -8,7 +8,7 @@ import { fetchClassOf, SESSION_ID, timedFetch } from "./conn-telemetry";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { noteTyping } from "./typing";
 import type { ReplyOutcome } from "./guarded-send";
-import { SEEN_HEADER } from "@shared/limits";
+import { SEEN_HEADER, UI_HEADER } from "@shared/limits";
 import { EVENTS_PATH } from "./sw-routes";
 import type {
   ActionResponse,
@@ -55,6 +55,12 @@ export type { NotifyPrefs, BridgeSettings, BridgeSettingsView, BridgeSettingKey 
  */
 export const XHR_HEADER = "x-requested-with";
 export const XHR_HEADER_VALUE = "XMLHttpRequest";
+/**
+ * Every v1 API call says it is v1 (`x-sightr-ui: v1`), so the bridge answers X-Sightr-Build with v1's
+ * build id rather than web2's (the app at `/` since the T15 cutover). Without it this app would see a
+ * build that is never its own and loop on `registration.update()` (spec 10). Removed with v1.
+ */
+export const UI_HEADERS: Record<string, string> = { [UI_HEADER]: "v1" };
 const LOCK_HEADER = "x-sightr-lock";
 export class ApiError extends Error {
   readonly status: number;
@@ -200,6 +206,7 @@ async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>):
     headers: {
       "content-type": "application/json",
       [XHR_HEADER]: XHR_HEADER_VALUE,
+      ...UI_HEADERS,
       ...init?.headers,
     },
   }));
@@ -326,6 +333,7 @@ export async function fetchPane(
   const headers: Record<string, string> = {
     [SEEN_HEADER]: "1",
     [XHR_HEADER]: XHR_HEADER_VALUE,
+    ...UI_HEADERS,
   };
   if (cached) headers["if-none-match"] = cached.etag;
 
@@ -391,6 +399,7 @@ export async function fetchHistory(
   const headers: Record<string, string> = {
     [SEEN_HEADER]: "1",
     [XHR_HEADER]: XHR_HEADER_VALUE,
+    ...UI_HEADERS,
   };
   if (cached) headers["if-none-match"] = cached.etag;
 
@@ -676,7 +685,7 @@ export function uploadImage(paneId: string, file: File): Promise<UploadResponse>
         body: fd,
         // No content-type: the browser sets the multipart boundary. The XHR marker still applies —
         // an upload refused by a lapsed proxy session must surface as a status, not a redirect.
-        headers: { [XHR_HEADER]: XHR_HEADER_VALUE },
+        headers: { [XHR_HEADER]: XHR_HEADER_VALUE, ...UI_HEADERS },
         signal: withTimeout(undefined, UPLOAD_TIMEOUT_MS),
       });
       if (!res.ok) {

@@ -46,6 +46,8 @@ export const NAVIGATION_NETWORK_ONLY = [
   // Proxies whose prefix IS movable (oauth2-proxy's `--proxy-prefix`, Authelia) are documented in
   // the README instead of listed here — this list stays for paths nobody can move.
   /^\/cdn-cgi\//,
+  // The T09 `/v2/` entry is gone: since the T15 cutover this worker's scope is `/v1/`, so it never sees
+  // a navigation to the thread app at `/`.
 ] as const;
 
 /**

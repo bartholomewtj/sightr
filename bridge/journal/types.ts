@@ -56,6 +56,12 @@ export interface TranscriptSource {
   stat(path: string): Promise<{ size: number; mtimeMs: number } | null>;
   /** Tail-read a log. `complete` is false when the byte cap clipped the head. */
   load(path: string): Promise<{ text: string; complete: boolean; size: number; mtimeMs: number }>;
+  /**
+   * Bytes `[start, end)` of a resolved log. The v2 journal ingest reads only what is new since its
+   * saved offset (`TranscriptStore.readSince`). Optional so a test fake can skip it; the store then
+   * slices a `load`.
+   */
+  readRange?(path: string, start: number, end: number): Promise<Uint8Array>;
 }
 
 /**
@@ -101,4 +107,11 @@ export interface JournalAdapter {
    * layout is keyed by cwd (Grok) implement it. A miss is `null`, same as "no-log".
    */
   inferFromCwd?(cwdOrOpts: string | InferSessionOpts): Promise<AgentSessionRef | null>;
+  /**
+   * The conversation a session belongs to, when one conversation can span several logs (Claude
+   * copies a lineage into a new file on resume and compaction: `conversationRoot`). Two refs with
+   * the same non-null lineage are one conversation, so the v2 ingest draws no session divider
+   * between them. Optional: harnesses without it treat every new session as a new conversation.
+   */
+  sessionLineage?(ref: AgentSessionRef): Promise<string | null>;
 }

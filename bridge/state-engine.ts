@@ -19,7 +19,14 @@ import {
 import { readBeacons, type BeaconSweepDeps } from "./beacon/reader.ts";
 import { hasBlockingDialog, sniffsDialogs } from "../web/src/lib/harness/dialog-sniff.ts";
 
-export interface AgentView extends PaneCommon { agentSession?: AgentSessionRef; }
+export interface AgentView extends PaneCommon {
+  agentSession?: AgentSessionRef;
+  /**
+   * Herdr's `terminal_id` for the pane: with `paneId` it is a v2 thread's identity (a new terminal in
+   * the same pane is a new thread). Bridge-side only; `toPaneWire` strips it, so the v1 wire is unchanged.
+   */
+  terminalId?: string;
+}
 
 /** Trim a Herdr string field; empty/whitespace/non-string become absent. */
 function nonempty(value: unknown): string | undefined {
@@ -363,6 +370,7 @@ export class StateEngine {
         );
         return {
           paneId: p.pane_id,
+          ...(typeof p.terminal_id === "string" && p.terminal_id !== "" ? { terminalId: p.terminal_id } : {}),
           workspaceId: p.workspace_id,
           workspaceLabel,
           workspaceNumber: ws?.number ?? 0,

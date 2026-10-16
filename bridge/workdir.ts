@@ -1,9 +1,9 @@
 // Work-directory browser (reads plus delete/save of an editable text file). It is opt-in via SIGHTR_WORK_ROOT;
 // every path is contained after symlink resolution and the client never sees an absolute path.
 // Dot names are refused deliberately: a simple fail-closed rule is safer than an allow-list.
-import { readdir, stat, lstat, unlink, open } from "node:fs/promises";
+import { readdir, realpath, stat, lstat, unlink, open } from "node:fs/promises";
 import { constants } from "node:fs";
-import { basename, extname, join } from "node:path";
+import { basename, extname, join, relative, sep } from "node:path";
 import type { Config } from "./config.ts";
 import type { AuditLog } from "./audit.ts";
 import { containedRealpath } from "./containment.ts";
@@ -128,6 +128,15 @@ export function parseFilesOpenRel(url: URL): string[] | null {
   }
   const segs = parseRelPath(raw);
   return segs && segs.length > 0 ? segs : null;
+}
+
+/** `abs` as a Files rel path (`""` is the root), or null when it is outside the root or refused. */
+export async function relInRoot(root: string, abs: string): Promise<string | null> {
+  const real = await containedRealpath(abs, root);
+  const realRoot = await realpath(root).catch(() => null);
+  if (real === null || realRoot === null) return null;
+  const rel = relative(realRoot, real).split(sep).join("/");
+  return parseRelPath(rel) === null ? null : rel;
 }
 
 export async function resolveInRoot(root: string, segs: string[]): Promise<string | null> {
@@ -331,6 +340,14 @@ export function createWorkdir(cfg: Config, h: WorkdirHelpers) {
         if (!info?.isDirectory()) return notFound(h);
         const panes = url.searchParams.getAll("pane").slice(0, MAX_PANE_IDS).map((paneId) => ({ paneId, cwd: h.paneCwd(paneId) })).filter((p): p is { paneId: string; cwd: string } => p.cwd !== null);
         const res = h.json(await folderGit.inspect(real, panes), req.headers.get("accept-encoding"));
+        res.headers.set("cache-control", "no-store");
+        return res;
+      }
+      if (url.pathname === "/api/files/pane-folder") {
+        // The v2 Files and Git tabs start at the thread's folder (T13). The client never sees the
+        // absolute cwd: the bridge answers with the contained rel path, or null when it is outside.
+        const cwd = h.paneCwd(url.searchParams.get("pane") ?? "");
+        const res = h.json({ path: cwd === null ? null : await relInRoot(cfg.workRoot, cwd) }, req.headers.get("accept-encoding"));
         res.headers.set("cache-control", "no-store");
         return res;
       }

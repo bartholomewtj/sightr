@@ -64,6 +64,11 @@ describe("service-worker navigation passthrough", () => {
     expect(isNetworkOnlyNavigation("/apidocs")).toBe(false);
   });
 
+  // Since the T15 cutover this worker's scope is /v1/; the T09 `/v2/` entry is gone with it.
+  it("no longer carries the /v2/ entry", () => {
+    expect(isNetworkOnlyNavigation("/v2/")).toBe(false);
+  });
+
   it("exports the reserved path the UI links to, ending in a slash", () => {
     expect(PROXY_AUTH_PATH).toBe("/auth/");
     expect(isNetworkOnlyNavigation(PROXY_AUTH_PATH)).toBe(true);
