@@ -300,6 +300,9 @@ Herdr exposes its control socket as a named pipe and the bridge dials it through
 `wscript.exe` so no console window shows, and restarts after failures. The job wraps a watchdog: after
 a 60-second grace period it probes `/api/snapshot` every 15 seconds and, after four consecutive
 failures, kills the bridge, restarts it, and writes a `[supervisor]` line to `sightr-error.log`.
+If the bun supervisor itself is killed (for example by `taskkill /F /IM bun.exe /T`), the PowerShell
+launcher relaunches it after 10 seconds, backing off to 5 minutes, and writes a `[launcher]` line.
+A clean exit, or a disabled or removed task, ends the loop.
 
 `stop` stops every bridge from this checkout and waits for the port to clear. `start` refuses to
 stack a second listener on a busy port. Herdr actions run `contrib\windows\sightr-ctl.ps1` through

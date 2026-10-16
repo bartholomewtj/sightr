@@ -158,7 +158,29 @@ switch ($Command) {
     $env:HERDR_PLUGIN_CONFIG_DIR = $script:ConfigDir
     $env:HERDR_SOCKET_PATH = $script:SocketPath
     $env:SIGHTR_PORT = [string]$script:Port
-    Invoke-SightrCtl ((@("_exec-bridge", "--config-dir", $script:ConfigDir, "--socket", $script:SocketPath)) + @($CommandArgs))
+    # The bun supervisor respawns a crashed bridge, but nothing respawned the supervisor itself.
+    # An agent clearing a hung test with `taskkill /F /IM bun.exe /T` takes out both bun processes
+    # and leaves this PowerShell parent alive; Task Scheduler's RestartCount only covers a failed
+    # start, so the bridge stayed down until someone ran start (seen 2026-10-16). Relaunch on any
+    # non-zero exit. Exit 0 is a clean stop. `stop` kills this process by its _exec-bridge argv,
+    # and a stray relaunch is cleared by the next supervisor's stopAllBridges.
+    $errorLog = Join-Path $script:ConfigDir "sightr-error.log"
+    $delay = 10
+    while ($true) {
+      $started = Get-Date
+      # A function returns its uncaptured output too; the exit code is the last item.
+      $code = @(Invoke-SightrCtl ((@("_exec-bridge", "--config-dir", $script:ConfigDir, "--socket", $script:SocketPath)) + @($CommandArgs)) -NoExit)[-1]
+      if ($code -eq 0) { exit 0 }
+      if (((Get-Date) - $started).TotalMinutes -ge 5) { $delay = 10 }
+      try {
+        Add-Content -LiteralPath $errorLog -Value "[launcher] $((Get-Date).ToUniversalTime().ToString('o')) supervisor exited with code $code - relaunching in ${delay}s"
+      } catch { }
+      Start-Sleep -Seconds $delay
+      # stop disables the task and uninstall removes it; either way, stay down.
+      $task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+      if (-not $task -or $task.State -eq "Disabled") { exit $code }
+      $delay = [Math]::Min($delay * 2, 300)
+    }
   }
   default { Write-Error "usage: sightr-ctl.ps1 {start|stop|restart|uninstall|serve|unserve|update|version|build|status|env-check|keys|push-keys|url|logs|conn|hooks|qr|push-test|push-list|push-forget}" }
 }
