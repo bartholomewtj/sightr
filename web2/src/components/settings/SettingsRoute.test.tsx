@@ -33,7 +33,7 @@ describe("/settings", () => {
   it("shows the sections in order, with Shortcuts on desktop", async () => {
     setViewportWidth(1280);
     await open();
-    expect(sectionTitles()).toEqual(["Display", "Composer", "Notifications", "Security", "Bridge", "Connection", "Shortcuts", "Sightr v1"]);
+    expect(sectionTitles()).toEqual(["Display", "Composer", "Notifications", "Security", "Bridge", "Connection", "Shortcuts", "Gesture wheel", "Sightr v1"]);
     fireEvent.click(screen.getByRole("button", { name: "Show shortcuts" }));
     expect(await screen.findByRole("table", { name: "Keyboard shortcuts" })).toBeInTheDocument();
   });

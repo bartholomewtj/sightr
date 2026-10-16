@@ -1,5 +1,6 @@
-// The Settings slot for the phone's gesture wheel picker. Empty until T19 ports the wheel and fills it
-// with v1's picker (web/src/components/wheel-prefs-control.tsx).
+// The Settings slot for the phone's gesture wheel picker (T19's port of v1's wheel-prefs-control).
+import { WheelPrefsControl } from "./WheelPrefsControl";
+
 export function GestureWheelSettingsSlot() {
-  return null;
+  return <WheelPrefsControl />;
 }
