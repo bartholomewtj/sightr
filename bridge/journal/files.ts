@@ -86,3 +86,12 @@ export async function loadTail(
   const text = complete ? await file.text() : await file.slice(size - MAX_TRANSCRIPT_BYTES).text();
   return { text, complete, size, mtimeMs: st.mtimeMs };
 }
+
+/**
+ * Bytes `[start, end)` of a log. The caller clamps the range (the v2 ingest reads from its saved
+ * offset, minus an overlap, to the size it just stat'ed) and cuts it at newlines before decoding, so a
+ * range that splits a multi-byte character costs nothing.
+ */
+export async function readRange(path: string, start: number, end: number): Promise<Uint8Array> {
+  return new Uint8Array(await Bun.file(path).slice(start, end).arrayBuffer());
+}

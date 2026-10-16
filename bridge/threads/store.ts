@@ -522,6 +522,14 @@ export function applyEvent(tx: Database, event: StoredEvent): void {
       if (r.changes === 0) throw new Error(`no run ${event.payload.runId}`);
       return;
     }
+    case "run.updated": {
+      const run = event.payload.run;
+      const r = tx
+        .query("UPDATE runs SET user_item_id = ?, status = ?, completed_at = ? WHERE id = ?")
+        .run(run.userItemId ?? null, run.status, run.completedAt ?? null, run.id);
+      if (r.changes === 0) throw new Error(`no run ${run.id}`);
+      return;
+    }
     case "turn-item.updated": {
       const item = event.payload.item as TurnItem;
       tx.query(
@@ -674,6 +682,16 @@ export interface ThreadStore {
   openRuns(): Run[];
   /** Every `pending` runtime request, with options (T02 reads the kind and expires them). */
   pendingRequests(): RuntimeRequest[];
+  getRun(id: string): Run | null;
+  /** A thread's newest `limit` runs (default all), oldest first. */
+  listRuns(threadId: string, limit?: number): Run[];
+  /** The thread's newest run still `running`, if any. */
+  openRun(threadId: string): Run | null;
+  getTurnItem(id: string): TurnItem | null;
+  /** A thread's newest `limit` items, oldest first. */
+  recentItems(threadId: string, limit: number): TurnItem[];
+  /** The items attributed to `runId`, in position order. */
+  itemsForRun(runId: string): TurnItem[];
   offsets: {
     get(threadId: string): JournalOffset | null;
     set(offset: JournalOffset): void;
@@ -939,6 +957,48 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
         .query<{ body_json: string }, []>("SELECT body_json FROM runtime_requests WHERE status = 'pending' ORDER BY updated_sequence")
         .all()
         .map((r) => JSON.parse(r.body_json) as RuntimeRequest);
+    },
+
+    getRun(id) {
+      const row = db.query<RunRow, [string]>("SELECT * FROM runs WHERE id = ?").get(id);
+      return row ? runFromRow(row) : null;
+    },
+
+    listRuns(threadId, limit = -1) {
+      return db
+        .query<RunRow, [string, number]>("SELECT * FROM runs WHERE thread_id = ? ORDER BY ordinal DESC LIMIT ?")
+        .all(threadId, limit)
+        .reverse()
+        .map(runFromRow);
+    },
+
+    openRun(threadId) {
+      const row = db
+        .query<RunRow, [string]>("SELECT * FROM runs WHERE thread_id = ? AND status = 'running' ORDER BY ordinal DESC LIMIT 1")
+        .get(threadId);
+      return row ? runFromRow(row) : null;
+    },
+
+    getTurnItem(id) {
+      const row = db.query<{ body_json: string }, [string]>("SELECT body_json FROM turn_items WHERE id = ?").get(id);
+      return row ? (JSON.parse(row.body_json) as TurnItem) : null;
+    },
+
+    recentItems(threadId, limit) {
+      return db
+        .query<{ body_json: string }, [string, number]>(
+          "SELECT body_json FROM turn_items WHERE thread_id = ? ORDER BY position DESC LIMIT ?",
+        )
+        .all(threadId, limit)
+        .reverse()
+        .map((r) => JSON.parse(r.body_json) as TurnItem);
+    },
+
+    itemsForRun(runId) {
+      return db
+        .query<{ body_json: string }, [string]>("SELECT body_json FROM turn_items WHERE run_id = ? ORDER BY position")
+        .all(runId)
+        .map((r) => JSON.parse(r.body_json) as TurnItem);
     },
 
     offsets: {

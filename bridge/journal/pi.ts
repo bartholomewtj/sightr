@@ -27,6 +27,7 @@ import {
   containedRealpathIn,
   exists,
   loadTail,
+  readRange as readLogRange,
   rootList,
   statFile,
 } from "./files.ts";
@@ -231,6 +232,8 @@ export class PiTranscriptSource implements TranscriptSource {
   stat = statFile;
 
   load = loadTail;
+
+  readRange = readLogRange;
 }
 
 /** pi's journal adapter. `agent` matches the Herdr snapshot's `agent` string. */

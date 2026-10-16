@@ -196,6 +196,13 @@ function script(): EventDraft[][] {
     [{ type: "run.ended", threadId: "t1", payload: { runId: "r1", status: "completed", completedAt: 3_000 } }],
     [
       {
+        type: "run.updated",
+        threadId: "t1",
+        payload: { run: { id: "r1", threadId: "t1", ordinal: 1, userItemId: "i1", status: "completed", startedAt: 2_000, completedAt: 3_000 } },
+      },
+    ],
+    [
+      {
         type: "runtime-request.updated",
         threadId: "t2",
         payload: {
@@ -289,7 +296,7 @@ describe("reads", () => {
 
     const t1 = store.snapshotThread("t1")!;
     expect(t1.thread).toMatchObject({ title: "renamed", titleSource: "user", shelf: "pinned", pinOrder: 1, pinnedAt: 3_500 });
-    expect(t1.runs).toEqual([{ id: "r1", threadId: "t1", ordinal: 1, status: "completed", startedAt: 2_000, completedAt: 3_000 }]);
+    expect(t1.runs).toEqual([{ id: "r1", threadId: "t1", ordinal: 1, userItemId: "i1", status: "completed", startedAt: 2_000, completedAt: 3_000 }]);
     expect(t1.items.map((i) => i.id)).toEqual(["i1", "i2"]);
     expect(t1.queue.map((m) => m.id)).toEqual(["m1"]);
     expect(t1.historyCursor).toBeNull();
@@ -428,5 +435,45 @@ describe("retention", () => {
     store.append([{ type: "thread.archived", threadId: "t1", payload: { reason: "user", at: 0 } }]);
     expect(store.prune(RETAIN_ARCHIVED_MS - 1).threads).toBe(0);
     expect(store.prune(RETAIN_ARCHIVED_MS + 1).threads).toBe(1);
+  });
+});
+
+describe("run and item reads (T03)", () => {
+  test("listRuns, openRun, getRun, run.updated", () => {
+    const store = open();
+    store.append([createProject(), createThread()]);
+    const run = (id: string, ordinal: number) => ({ id, threadId: "t1", ordinal, status: "running" as const, startedAt: ordinal });
+    store.append([
+      { type: "run.started", threadId: "t1", payload: { run: run("r1", 1) } },
+      { type: "run.ended", threadId: "t1", payload: { runId: "r1", status: "completed", completedAt: 2 } },
+      { type: "run.started", threadId: "t1", payload: { run: run("r2", 2) } },
+    ]);
+    expect(store.listRuns("t1").map((r) => r.id)).toEqual(["r1", "r2"]);
+    expect(store.listRuns("t1", 1).map((r) => r.id)).toEqual(["r2"]);
+    expect(store.openRun("t1")?.id).toBe("r2");
+    store.append([{ type: "run.updated", threadId: "t1", payload: { run: { ...run("r2", 2), userItemId: "u1:0" } } }]);
+    expect(store.getRun("r2")).toMatchObject({ userItemId: "u1:0", status: "running" });
+    expect(store.getRun("nope")).toBeNull();
+    expect(() => store.append([{ type: "run.updated", threadId: "t1", payload: { run: run("ghost", 9) } }])).toThrow("no run ghost");
+  });
+
+  test("getTurnItem, recentItems, itemsForRun", () => {
+    const store = open();
+    store.append([
+      createProject(),
+      createThread(),
+      { type: "run.started", threadId: "t1", payload: { run: { id: "r1", threadId: "t1", ordinal: 1, status: "running", startedAt: 1 } } },
+    ]);
+    store.append(
+      ["a", "b", "c"].map((id, i) => ({
+        type: "turn-item.updated" as const,
+        threadId: "t1",
+        payload: { item: textItem(id, "t1", i === 1 ? null : "r1") },
+      })),
+    );
+    expect(store.getTurnItem("b")).toMatchObject({ id: "b", ordinal: 1, runId: null });
+    expect(store.getTurnItem("zz")).toBeNull();
+    expect(store.recentItems("t1", 2).map((i) => i.id)).toEqual(["b", "c"]);
+    expect(store.itemsForRun("r1").map((i) => i.id)).toEqual(["a", "c"]);
   });
 });

@@ -21,6 +21,8 @@ import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
 import { openThreadStore, STORE_FILE, StoreTooNewError, type ThreadStore } from "./threads/store.ts";
 import { createHerdIngestor } from "./threads/herd-ingest.ts";
 import { buildJournalRegistry } from "./journal/registry.ts";
+import { TranscriptStore } from "./journal/store.ts";
+import { createJournalIngestor, createThreadWatchers } from "./threads/journal-ingest.ts";
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
 // loadConfig throws on a config that would be unsafe to serve (a non-loopback bind). Print the
@@ -144,6 +146,15 @@ const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots, cfg.sta
 const herdIngestor = threadStore ? createHerdIngestor({ store: threadStore, engine, activity, journals }) : null;
 herdIngestor?.start();
 
+// v2 journal ingest: harness logs → turn items, herdr status → runs. It reads a thread's log only
+// while the thread is working or a client watches it (T05 adds and removes watchers).
+const transcripts = cfg.transcript ? new TranscriptStore() : null;
+const threadWatchers = createThreadWatchers();
+const journalIngestor = threadStore
+  ? createJournalIngestor({ store: threadStore, engine, herdr, journals, transcripts, watchers: threadWatchers })
+  : null;
+journalIngestor?.start();
+
 // Background notifications on lifecycle transitions (foreground toasts are computed client-side by
 // diffing snapshots). The whole herd shares one notification slot (HERD_TAG).
 const clock: NotifyClock<ReturnType<typeof setTimeout>> = {
@@ -186,6 +197,7 @@ const server = startServer({
   cfg, herdr, engine, notifications, push, notifyPrefs, settings, activity, lock, audit, conn,
   onEvents: (events) => { snapshotEvents = events; },
   journals,
+  transcripts,
 });
 
 let stopping = false;
@@ -198,6 +210,7 @@ const shutdown = async () => {
   await server.stop();
   engine.stop();
   herdIngestor?.stop();
+  journalIngestor?.stop();
   poker.stop();
   // Retract anything still on the lock screen — nothing live stands behind it once we exit.
   notifications.clearAll();
