@@ -13,8 +13,7 @@
 // no flag, no race — and because a navigation aborts any in-flight revalidation, the nav is instant
 // even while a poll's doomed fetch is still hanging.
 
-import { fetchFiles, fetchLocalServers, fetchPane, fetchSnapshot, isApiErrorStatus, isLockRequiredError } from "@/lib/api";
-import type { LocalServer } from "@/lib/api";
+import { fetchFiles, fetchPane, fetchSnapshot, isApiErrorStatus, isLockRequiredError } from "@/lib/api";
 import { withDialogPresence } from "@/lib/dialog-presence";
 import { parseLines } from "@/lib/blocks";
 import { isLostLatched, markLive } from "@/lib/connection-health";
@@ -276,29 +275,6 @@ export async function filesLoader({ params, request }: { params: Record<string, 
  */
 export function filesShouldRevalidate({ currentUrl, nextUrl }: { currentUrl: URL; nextUrl: URL }): boolean {
   return currentUrl.pathname !== nextUrl.pathname;
-}
-
-export interface LocalData {
-  host: string;
-  servers: LocalServer[];
-  error?: string;
-}
-
-// Last good list, so a failed poll doesn't flash the Tailscale-down message over a list the
-// operator was just reading. An abort is rethrown, same as filesLoader.
-let lastLocal: LocalData | undefined;
-
-/** The list changes on its own, so a poll revalidation re-runs this — unlike {@link filesShouldRevalidate}. */
-export async function localLoader({ request }: { request: Request }): Promise<LocalData> {
-  try {
-    const body = await fetchLocalServers(request.signal);
-    lastLocal = { host: body.host, servers: body.servers };
-    return lastLocal;
-  } catch (e) {
-    if (isAbortError(e)) throw e;
-    if (lastLocal) return { ...lastLocal, error: e instanceof Error ? e.message : "Couldn't list local servers" };
-    return { host: "", servers: [], error: e instanceof Error ? e.message : "Couldn't list local servers" };
-  }
 }
 
 const lastPaneText = new Map<string, string>();

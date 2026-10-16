@@ -466,44 +466,6 @@ describe("filesShouldRevalidate", () => {
   });
 });
 
-describe("localLoader", () => {
-  const local = { host: "host.example", servers: [{ port: 3080, name: "local models" }] };
-  const request = (signal?: AbortSignal) => ({ request: new Request("http://x/local", { signal }) });
-
-  it("returns the host and the servers", async () => {
-    server.use(http.get("/api/local-servers", () => HttpResponse.json(local)));
-    const { localLoader } = await import("./loaders");
-    expect(await localLoader(request())).toEqual(local);
-  });
-
-  it("rethrows an abort, the same as filesLoader", async () => {
-    const { localLoader } = await import("./loaders");
-    const controller = new AbortController();
-    controller.abort();
-    await expect(localLoader(request(controller.signal))).rejects.toMatchObject({ name: "AbortError" });
-  });
-
-  it("returns an error instead of throwing when the fetch fails", async () => {
-    server.use(http.get("/api/local-servers", () => new HttpResponse(null, { status: 500 })));
-    const { localLoader } = await import("./loaders");
-    const data = await localLoader(request());
-    expect(data.host).toBe("");
-    expect(data.servers).toEqual([]);
-    expect(data.error).toBeTruthy();
-  });
-
-  it("keeps the last good list when a refresh fails", async () => {
-    server.use(http.get("/api/local-servers", () => HttpResponse.json(local)));
-    const { localLoader } = await import("./loaders");
-    await localLoader(request());
-    server.use(http.get("/api/local-servers", () => new HttpResponse(null, { status: 500 })));
-    const stale = await localLoader(request());
-    expect(stale.host).toBe("host.example");
-    expect(stale.servers).toEqual(local.servers);
-    expect(stale.error).toBeTruthy();
-  });
-});
-
 describe("snapshotShouldRevalidate", () => {
   it("skips a same-URL poll while SSE is connected and there is no pending push", async () => {
     const { setSnapshotPushMode, snapshotShouldRevalidate } = await import("./loaders");
