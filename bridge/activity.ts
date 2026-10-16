@@ -43,6 +43,8 @@ export const PRUNE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
  *  for an open pane. Clean shutdown still flushes; a hard kill can lose up to 30 s of “you looked at
  *  this”, whose worst effect is one already-read pane re-appearing as unread after restart. */
 export const FLUSH_DEBOUNCE_MS = 30_000;
+/** How old a read pane's seen stamp gets before a read re-stamps it (see noteSeen). */
+export const SEEN_REFRESH_MS = 30_000;
 
 /**
  * A tab label worth putting on screen. Herdr labels an unlabelled tab **positionally** — it returns
@@ -220,13 +222,24 @@ export class ActivityLedger {
     this.markDirty();
   }
 
-  /** You opened or drove the pane through Sightr. Clears its unread state by construction. */
-  noteSeen(session: string, paneId: string): void {
+  /**
+   * You opened or drove the pane through Sightr. Clears its unread state by construction. Returns
+   * whether the entry changed, which is what the caller pushes a snapshot on.
+   *
+   * A pane already read keeps its stamp until it is SEEN_REFRESH_MS old. Every pane read lands here,
+   * and an open pane is read every 0.75–1.5 s: re-stamping each one changed the snapshot, the bridge
+   * pushed it, the push made the phone re-read the pane, and that read stamped it again. It ran at
+   * about two pushes a second for as long as a pane was open. Ages read "just now" under a minute,
+   * so the coarser stamp does not show.
+   */
+  noteSeen(session: string, paneId: string): boolean {
     const panes = this.panesFor(session);
     const t = this.now();
     const prev = panes.get(paneId);
+    if (prev && prev.seenAt >= prev.activeAt && t - prev.seenAt < SEEN_REFRESH_MS) return false;
     panes.set(paneId, { activeAt: prev?.activeAt ?? t, seenAt: t });
     this.markDirty();
+    return true;
   }
 
   get(session: string, paneId: string): PaneActivity | undefined {
