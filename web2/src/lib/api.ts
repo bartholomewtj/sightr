@@ -16,6 +16,7 @@ import type {
 import { fetchClassOf, timedFetch } from "@v1/lib/conn-telemetry";
 
 import { noteLockRequired } from "./lock";
+import type { DecisionReplyRequest } from "@shared/wire";
 
 /** Marks a request as XHR so a fronting identity proxy answers with a status, not a redirect (see web/src/lib/api.ts). */
 export const XHR_HEADER = "x-requested-with";
@@ -99,6 +100,18 @@ export function sendKeys(paneId: string, keys: string[], typed?: boolean): Promi
   return req<ActionResponse>(`/api/pane/${encodeURIComponent(paneId)}/keys`, {
     method: "POST",
     body: JSON.stringify({ keys, ...(typed ? { typed: true } : {}) }),
+  });
+}
+
+/**
+ * Answer a whistlr-marked operator decision (T19): v1's route, copied from web/src/lib/api.ts. The
+ * bridge runs `whistlr reply`; nothing is typed into the pane. `{ ok: false, error }` is the bridge's
+ * own refusal (no marker, whistlr failed, pane busy).
+ */
+export function decisionReply(paneId: string, body: DecisionReplyRequest): Promise<ActionResponse> {
+  return req<ActionResponse>(`/api/pane/${encodeURIComponent(paneId)}/decision-reply`, {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }
 

@@ -394,7 +394,8 @@ describe("reads", () => {
 describe("retention", () => {
   test("old events, old receipts, items over the cap and long-archived threads go; an open run's items stay", () => {
     let now = 0;
-    const store = open(join(tempDir(), "threads.sqlite"), () => now);
+    // In memory: the prune is under test, not the disk. On a file this took ~7 s under a loaded run.
+    const store = open(":memory:", () => now);
     store.append([createProject(), createThread(), createThread(thread("old"))], { commandId: "c-old", receipt: { type: "x" } });
     store.append([{ type: "thread.archived", threadId: "old", payload: { reason: "pane-closed", at: 0 } }]);
     // One open run whose items are the oldest in the thread, then enough loose items to pass the cap.
@@ -429,7 +430,7 @@ describe("retention", () => {
     expect(items).toHaveLength(MAX_ITEMS_PER_THREAD);
     expect(store.getThread("old")).toBeNull();
     expect(result.threads).toBe(1);
-  });
+  }, 30_000);
 
   test("events older than seven days and beyond the newest 50 000 go, and minSequence moves", () => {
     let now = 0;
@@ -452,7 +453,7 @@ describe("retention", () => {
     // The sequence never goes back.
     expect(store.lastSequence()).toBe(last);
     expect(store.append([{ type: "command.rejected", payload: { reason: "after" } }]).first).toBe(last + 1);
-  });
+  }, 30_000);
 
   test("an archived thread younger than 90 days stays", () => {
     const store = open();

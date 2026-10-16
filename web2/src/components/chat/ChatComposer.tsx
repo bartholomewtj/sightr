@@ -74,6 +74,13 @@ import {
 } from "./ChatComposer.logic";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./ComposerBannerStack";
 import { ComposerCommandMenu, composerSuggestionOptionId, toCommandItems, type ComposerCommandItem } from "./ComposerCommandMenu";
+import { ComposerDecisionPanel } from "./ComposerDecisionPanel";
+import { isWhistlrDecision, replyToDecision } from "@/state/decision-reply";
+import { GestureWheel } from "@/components/keys/gesture-wheel";
+import { useWheelPrefs } from "@/hooks/use-wheel-prefs";
+import { useOperatorWheel } from "@/lib/operator-commands";
+import { openRightPanelSurface, useRightPanelStore } from "@/rightPanelStore";
+import { wheelSlicesFor } from "@v1/lib/wheel";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
@@ -146,6 +153,9 @@ export function ChatComposer({ threadId }: { threadId: string }) {
   const alternate = useAlternateModifier();
   const operatorCommands = useOperatorCommands();
   const operatorKeys = useOperatorKeys();
+  // T19: the phone's gesture wheel beside Send (this device's picks > keys.toml [[wheel]] > shipped).
+  const wheelPicks = useWheelPrefs().picks;
+  const operatorWheel = useOperatorWheel();
 
   const [text, setTextState] = useState(() => loadDraft(threadId) ?? "");
   const textRef = useRef(text);
@@ -450,6 +460,14 @@ export function ChatComposer({ threadId }: { threadId: string }) {
     if (ok && textRef.current === failed.text) setText("", false);
   }
 
+  /** The Keys dock's sender; the wheel's key slices use it too, so both send alike. */
+  function sendDockKeys(keys: string[]): Promise<boolean> {
+    if (!paneId) return Promise.resolve(false);
+    return sendKeys(paneId, keys)
+      .then((r) => r.ok)
+      .catch(() => false);
+  }
+
   // ── Banners ──
   const latestRun = useMemo(() => {
     const runs = Object.values(state?.runs ?? {});
@@ -521,7 +539,18 @@ export function ChatComposer({ threadId }: { threadId: string }) {
         />
         {request ? (
           <section role="region" aria-label="The agent is asking" data-request-panel="true">
-            {request.kind === "question" ? (
+            {isWhistlrDecision(request) ? (
+              // T19: a draftr decision goes through `whistlr reply`, never keys or runtime-request.respond.
+              <ComposerDecisionPanel
+                request={request}
+                pendingCount={requests.length}
+                respondingIndex={composer.responding?.requestId === request.id ? composer.responding.optionIndex : null}
+                verdict={composer.verdict}
+                disabled={readOnly || linkLost || paneId === ""}
+                firstOptionRef={firstOptionRef}
+                onRespond={(index) => void replyToDecision(threadId, paneId, request, index)}
+              />
+            ) : request.kind === "question" ? (
               <ComposerPendingUserInputPanel
                 request={request}
                 pendingCount={requests.length}
@@ -548,11 +577,7 @@ export function ChatComposer({ threadId }: { threadId: string }) {
             {keysOpen && layout === "phone" && paneId ? (
               <div data-keys-dock="true" className="rounded-xl border bg-card p-1.5">
                 <NavTray
-                  onSend={(keys) =>
-                    sendKeys(paneId, keys)
-                      .then((r) => r.ok)
-                      .catch(() => false)
-                  }
+                  onSend={sendDockKeys}
                   presets={ctrlPresetsFor(thread?.harness, operatorKeys)}
                   disabled={readOnly || linkLost}
                 />
@@ -705,6 +730,21 @@ export function ChatComposer({ threadId }: { threadId: string }) {
                 <span className="min-w-0 flex-1 truncate px-1 text-xs text-muted-foreground" aria-live="polite">
                   {armed ? `Destructive: ${armed}. Tap again to send.` : (buttons.primary.reason ?? "")}
                 </span>
+                {layout === "phone" ? (
+                  <GestureWheel
+                    slices={wheelSlicesFor(operatorWheel, wheelPicks, ctrlPresetsFor(thread?.harness, operatorKeys))}
+                    onKeys={sendDockKeys}
+                    onType={() => {
+                      // Type: the Terminal tab, with direct typing armed (T13).
+                      useRightPanelStore.getState().requestDirectTyping(threadId);
+                      openRightPanelSurface("terminal");
+                    }}
+                    typeActive={false}
+                    onTap={() => setKeysOpen((open) => !open)}
+                    disabled={readOnly || linkLost || !paneId || thread?.shelf === "archived"}
+                    busy={composer.busy === "send"}
+                  />
+                ) : null}
                 <ComposerPrimaryActions
                   buttons={buttons}
                   confirmArmed={armed !== null}

@@ -4,11 +4,21 @@
  * direct typing: keystrokes go straight to `POST /api/pane/:id/keys` with no reply guard, and the mode
  * disarms on blur, a failed batch or a hidden page (v1's `useDirectTyping`, copied). The Keys pad docks
  * under the mirror on a phone or a touch screen. A read-only device sees the mirror only.
+ *
+ * T19: find over the mirror's text (v1's find bar and matcher; the search button, or mod+f while the
+ * mirror has focus), and the harness's statusline rows under the header. The statusline goes through
+ * v1's adapter registry (`adapterFor(thread.harness).extractStatusLines`) over the text the mirror
+ * already read, so it costs no read of its own and names no harness here.
  */
-import { ArrowDownIcon, KeyboardIcon, MinusIcon, PlusIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { ArrowDownIcon, KeyboardIcon, MinusIcon, PlusIcon, SearchIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { parseLines, trimTrailingBlank } from "@v1/lib/blocks";
+import { MIRROR_INVERT, MIRROR_SPACE, styleFor } from "@v1/components/mirror-space";
+import { parseLines, trimTrailingBlank, type StyledLine } from "@v1/lib/blocks";
+import { adapterFor } from "@v1/lib/harness/registry";
+import { cn } from "~/lib/utils";
+import { ThreadFindBar } from "~/components/chat/ThreadFindBar";
+import { stepThreadFindIndex } from "~/components/chat/threadFind";
 import { ctrlPresetsFor } from "@v1/lib/operator-keys";
 import { Button } from "~/components/ui/button";
 import { NavTray } from "@/components/keys/nav-tray";
@@ -95,7 +105,33 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
 
   const mirror = useMirror(paneId, { hot: typing.active || thread?.status === "working", lines });
   mirrorRef.current = mirror;
-  const styled = useMemo(() => (mirror.text === null ? [] : trimTrailingBlank(parseLines(mirror.text))), [mirror.text]);
+  const parsed = useMemo(() => (mirror.text === null ? [] : parseLines(mirror.text)), [mirror.text]);
+  const styled = useMemo(() => trimTrailingBlank(parsed), [parsed]);
+  const harness = thread?.harness;
+  const statusLines = useMemo(() => {
+    if (parsed.length === 0) return [];
+    const adapter = adapterFor(harness);
+    return adapter?.extractStatusLines ? adapter.extractStatusLines(parsed) : [];
+  }, [parsed, harness]);
+
+  // ── Find over the mirror (T19) ──
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findIndex, setFindIndex] = useState(0);
+  const [findCount, setFindCount] = useState(0);
+  const [findFocus, setFindFocus] = useState(0);
+  const openFind = () => {
+    setFindOpen(true);
+    setFindFocus((n) => n + 1);
+  };
+  const closeFind = () => {
+    setFindOpen(false);
+    setFindQuery("");
+    setFindIndex(0);
+    scrollRef.current?.focus();
+  };
+  const onMatchCount = useCallback((n: number) => setFindCount(n), []);
+  const findCurrent = findOpen && findQuery && findCount > 0 ? Math.min(findIndex, findCount - 1) : -1;
 
   useEffect(() => {
     if (!typing.active) setPrompt(undefined);
@@ -168,6 +204,9 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
           </Button>
         ) : null}
         <span className="flex-1" />
+        <Button size="icon-xs" variant={findOpen ? "outline" : "ghost-muted"} aria-label="Find in output" aria-pressed={findOpen} onClick={openFind}>
+          <SearchIcon />
+        </Button>
         <Button
           size="icon-xs"
           variant="ghost-muted"
@@ -190,9 +229,35 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
           <PlusIcon />
         </Button>
       </div>
+      {statusLines.length > 0 ? <TerminalStatusLines lines={statusLines} /> : null}
+      {findOpen ? (
+        <div className="border-b px-2 py-0.5">
+          <ThreadFindBar
+            subject="output"
+            query={findQuery}
+            onQueryChange={(q) => {
+              setFindQuery(q);
+              setFindIndex(0);
+            }}
+            count={findQuery ? findCount : 0}
+            current={Math.max(findCurrent, 0)}
+            onPrevious={() => setFindIndex((i) => stepThreadFindIndex(i, findCount, -1))}
+            onNext={() => setFindIndex((i) => stepThreadFindIndex(i, findCount, 1))}
+            onClose={closeFind}
+            focusRequestId={findFocus}
+          />
+        </div>
+      ) : null}
       <div className="relative min-h-0 flex-1">
         <div
           ref={scrollRef}
+          onKeyDown={(e) => {
+            // The table's `chat.find` stays out while the terminal has focus; the mirror takes mod+f itself.
+            if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "f") {
+              e.preventDefault();
+              openFind();
+            }
+          }}
           data-terminal-mirror=""
           tabIndex={0}
           aria-label="Terminal"
@@ -209,7 +274,14 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
           {mirror.text === null ? (
             <p className="p-3 text-sm text-muted-foreground">{mirror.error ? "Couldn't read the pane." : "Reading the pane…"}</p>
           ) : (
-            <TerminalMirror lines={styled} fontSize={fontSize} className="p-2" />
+            <TerminalMirror
+              lines={styled}
+              fontSize={fontSize}
+              className="p-2"
+              query={findOpen ? findQuery : ""}
+              currentMatch={findCurrent}
+              onMatchCount={onMatchCount}
+            />
           )}
         </div>
         {!atBottom ? (
@@ -267,6 +339,27 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
           />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * The harness's own statusline rows (T19), as v1's `PaneStatusLines` (pane-details-sheet.tsx, copied):
+ * the agent's terminal colours in the mirror's dark space, inverted in light with it (ADR 0002).
+ */
+export function TerminalStatusLines({ lines }: { lines: StyledLine[] }) {
+  return (
+    <div data-terminal-statusline="" aria-label="Status line" className={cn("border-b px-3 py-1 font-mono text-[11px] leading-tight", MIRROR_SPACE, MIRROR_INVERT)}>
+      {lines.map((row, i) => (
+        // Positional rows re-derived on every read: no identity to keep.
+        <div key={i} className="truncate">
+          {row.segments.map((seg, si) => (
+            <span key={si} style={styleFor(seg)}>
+              {seg.text}
+            </span>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

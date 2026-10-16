@@ -1,9 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, SearchIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { ChatComposer } from "~/components/chat/ChatComposer";
 import { MessagesTimeline } from "~/components/chat/MessagesTimeline";
+import { TimelineFind } from "~/components/chat/ThreadFindBar";
+import { openThreadFind } from "~/components/chat/useThreadFind";
+import { useShortcutHandler } from "@/shortcutHandlers";
 import { Button } from "~/components/ui/button";
 import { RightPanelSheet } from "@/components/RightPanelSheet";
 import { RIGHT_PANEL_ICON, RightPanelSurface } from "@/components/RightPanelTabs";
@@ -46,6 +49,11 @@ function ThreadRouteView() {
   useMarkReadOnOpen(threadId, synchronized, shellThread?.unreadDone ?? state?.thread?.unreadDone);
   const archived = (shellThread ?? state?.thread)?.shelf === "archived";
   const archiveReason = (shellThread ?? state?.thread)?.archiveReason;
+  // T19: mod+f (`chat.find`, not while the terminal has the keys) opens find over the timeline.
+  useShortcutHandler("chat.find", () => {
+    if (missing) return false;
+    openThreadFind(threadId);
+  });
 
   return (
     <section aria-label={title} className="flex min-h-0 flex-1 flex-col">
@@ -57,6 +65,11 @@ function ThreadRouteView() {
         )}
         <h1 className="min-w-0 flex-1 truncate font-semibold">{title}</h1>
         {state?.syncing && <span className="text-xs text-muted-foreground">Syncing…</span>}
+        {!missing ? (
+          <Button size="icon-sm" variant="ghost-muted" aria-label="Find in thread" onClick={() => openThreadFind(threadId)}>
+            <SearchIcon />
+          </Button>
+        ) : null}
         {!desktop && !missing ? <PhonePanelButtons /> : null}
       </header>
       {!desktop ? <PhonePanelSheet threadId={threadId} /> : null}
@@ -66,6 +79,7 @@ function ThreadRouteView() {
         <>
           <div data-region="timeline" className="relative min-h-0 flex-1">
             <MessagesTimeline threadId={threadId} />
+            <TimelineFind threadId={threadId} />
           </div>
           {archived ? (
             // Read-only: the composer (T12) is replaced.

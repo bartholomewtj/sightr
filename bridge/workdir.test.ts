@@ -359,6 +359,7 @@ describe("workdir", () => {
     expect((await gated.handle(new Request("http://x/api/files/git?path="), new URL("http://x/api/files/git?path="))).status).toBe(403);
   });
 
+  // Real git processes: under a loaded full run these have passed 5 s, so they get their own budget.
   test("routes folder git by path and filters panes to the repo", async () => {
     const root = await mkdtemp(join(tmpdir(), "sightr-workdir-git-route-"));
     try {
@@ -371,7 +372,7 @@ describe("workdir", () => {
       const routedResponse = await routed.handle(new Request("http://x/api/files/git?path=repo&pane=p1&pane=ghost"), new URL("http://x/api/files/git?path=repo&pane=p1&pane=ghost"));
       expect((await routedResponse.json()).panes).toEqual(["p1"]); expect((await w.handle(new Request("http://x/api/files/git?path=file"), new URL("http://x/api/files/git?path=file"))).status).toBe(404);
     } finally { await rm(root, { recursive: true, force: true }); }
-  });
+  }, 30_000);
 
   test("is inert without a root", () => {
     const w = createWorkdir(cfg(""), helpers); expect(w.enabled).toBe(false); expect(w.owns("/api/files")).toBe(false); expect(w.owns("/api/files/search")).toBe(false);

@@ -488,12 +488,14 @@ function rig(store = tempStore()) {
 }
 
 describe("ingestor", () => {
+  // The first test of the file pays the store's on-disk open and schema; under a loaded full run that
+  // has taken ~6 s, so it gets its own budget rather than the 5 s default.
   test("reconcile is idempotent", () => {
     const { store, poll } = rig();
     expect(types(poll(snap([agent("w1:p1")], [shell("w1:p2")])))).toEqual(["project.upserted", "thread.created", "thread.created"]);
     expect(poll(snap([agent("w1:p1")], [shell("w1:p2")]))).toEqual([]);
     expect(store.listThreads().map((t) => t.harness)).toEqual(["claude", "shell"]);
-  });
+  }, 30_000);
 
   test("a transition to done makes unreadDone; noteSeen clears it on the next reconcile", () => {
     const { store, activity, ingestor, engine, poll, tick } = rig();

@@ -520,11 +520,11 @@ describe("ChatComposer: a pending request replaces the box", () => {
     expect(useRightPanelStore.getState().directTyping).toMatchObject({ threadId: "t1", prompt: "[sudo] password:" });
   });
 
-  it("a whistlr request posts nothing and offers no buttons", () => {
-    show({ thread: { status: "approval" }, requests: [request({ via: "whistlr" })] });
+  it("a whistlr request is a decision card: its options as buttons, nothing posted until a tap (T19)", () => {
+    show({ thread: { status: "approval" }, requests: [request({ via: "whistlr", decision: { thread: "th", run: "rn" } })] });
     const panel = screen.getByRole("region", { name: "The agent is asking" });
-    expect(within(panel).queryByRole("button")).toBeNull();
-    expect(within(panel).getByText("Answer with whistlr reply.")).toBeInTheDocument();
+    expect(within(panel).getByText("Decision for the operator")).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Yes" })).toBeInTheDocument();
     expect(posts).toHaveLength(0);
   });
 
