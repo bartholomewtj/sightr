@@ -42,12 +42,13 @@ import {
   type SidebarSection,
 } from "@/components/Sidebar.logic";
 import { SidebarRowContext, SidebarThreadRow, SortableThreadRow, type SidebarRowActions } from "@/components/sidebar/SidebarThreadRow";
+import { ProjectRenameField, ProjectRowMenu } from "@/components/sidebar/ProjectRowMenu";
 import { ThreadRowMenu } from "@/components/sidebar/ThreadRowMenu";
 import { ThreadStatusDot } from "@/components/ThreadStatusIndicators";
 import { useLayout } from "@/hooks/useLayout";
 import { KEYBINDINGS, shortcutLabelForCommand } from "@/keybindings";
 import { cn } from "@/lib/utils";
-import { performThreadCommand, useSidebarPrefs, useSidebarThreads } from "@/state/sidebar";
+import { performThreadCommand, renameProject, useSidebarPrefs, useSidebarThreads } from "@/state/sidebar";
 import { useShell } from "@/stream/stores";
 
 const SECTION_LABEL: Record<SidebarSection, string> = { pinned: "Pinned", active: "Active", snoozed: "Snoozed", settled: "Settled" };
@@ -72,6 +73,16 @@ export function Sidebar() {
   const [menu, setMenu] = useState<{ threadId: string; anchor: HTMLElement } | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [snoozePick, setSnoozePick] = useState<string | null>(null);
+  const [projectMenu, setProjectMenu] = useState<{ projectId: string; anchor: HTMLElement } | null>(null);
+  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null);
+  const projectActions = useMemo<ProjectActions>(
+    () => ({
+      renamingId: renamingProjectId,
+      openMenu: (projectId, anchor) => setProjectMenu({ projectId, anchor }),
+      endRename: () => setRenamingProjectId(null),
+    }),
+    [renamingProjectId],
+  );
 
   useEffect(() => {
     if (!desktop) return;
@@ -184,7 +195,7 @@ export function Sidebar() {
             tree.length === 0 ? (
               <p className="px-4 text-sm text-muted-foreground">No threads.</p>
             ) : (
-              <ProjectTree tree={tree} desktop={desktop} />
+              <ProjectTree tree={tree} desktop={desktop} projectActions={projectActions} />
             )
           ) : null}
         </div>
@@ -201,6 +212,12 @@ export function Sidebar() {
         run={run}
         onRename={(id) => setTimeout(() => setRenamingId(id), 0)}
         onPickSnooze={(id) => setSnoozePick(id)}
+      />
+      <ProjectRowMenu
+        project={projectMenu ? (projects[projectMenu.projectId] ?? null) : null}
+        anchor={projectMenu?.anchor ?? null}
+        onClose={() => setProjectMenu(null)}
+        onRename={(id) => setTimeout(() => setRenamingProjectId(id), 0)}
       />
       <CustomSnoozeDialog
         open={snoozePick !== null}
@@ -233,7 +250,13 @@ function FilterChip({ pressed, onClick, children }: { pressed: boolean; onClick(
 
 // ── The project tree, with drag ─────────────────────────────────────────────────────────────────
 
-function ProjectTree({ tree, desktop }: { tree: SidebarProjectNode[]; desktop: boolean }) {
+interface ProjectActions {
+  renamingId: string | null;
+  openMenu(projectId: string, anchor: HTMLElement): void;
+  endRename(): void;
+}
+
+function ProjectTree({ tree, desktop, projectActions }: { tree: SidebarProjectNode[]; desktop: boolean; projectActions: ProjectActions }) {
   // Desktop only; a phone swipes instead. No keyboard sensor: Space opens the row menu.
   const pointer = useSensor(PointerSensor, { activationConstraint: { distance: 6 } });
   const sensors = useSensors(...(desktop ? [pointer] : []));
@@ -252,13 +275,13 @@ function ProjectTree({ tree, desktop }: { tree: SidebarProjectNode[]; desktop: b
       onDragCancel={onDragCancel}
     >
       {tree.map((node) => (
-        <ProjectBlock key={node.project.id} node={node} desktop={desktop} />
+        <ProjectBlock key={node.project.id} node={node} desktop={desktop} actions={projectActions} />
       ))}
     </DndContext>
   );
 }
 
-function ProjectBlock({ node, desktop }: { node: SidebarProjectNode; desktop: boolean }) {
+function ProjectBlock({ node, desktop, actions }: { node: SidebarProjectNode; desktop: boolean; actions: ProjectActions }) {
   const { project } = node;
   const collapsed = useSidebarPrefs((s) => s.collapsedProjects.includes(project.id));
   const toggle = useSidebarPrefs((s) => s.toggleProject);
@@ -267,19 +290,33 @@ function ProjectBlock({ node, desktop }: { node: SidebarProjectNode; desktop: bo
   return (
     <section aria-label={project.label} data-project-id={project.id} className={cn(node.nested && "ml-3 border-l border-line/60")}>
       <div className="group/project flex items-center pr-2">
-        <button
-          type="button"
-          data-project-row=""
-          aria-expanded={!collapsed}
-          onClick={() => toggle(project.id)}
-          className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pl-3 text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-        >
-          {collapsed ? <ChevronRight className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
-          {node.nested ? <GitBranch className="size-3.5" role="img" aria-label="Worktree" /> : null}
-          <span className="min-w-0 flex-1 truncate">{project.label}</span>
-          <span className="font-mono text-2xs tabular-nums">{project.number}</span>
-          {node.rollUp ? <ThreadStatusDot status={node.rollUp} showElapsed={false} /> : null}
-        </button>
+        {actions.renamingId === project.id ? (
+          <ProjectRenameField label={project.label} onDone={actions.endRename} onCommit={(label) => void renameProject(project.id, label)} />
+        ) : (
+          <button
+            type="button"
+            data-project-row=""
+            aria-expanded={!collapsed}
+            onClick={() => toggle(project.id)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              actions.openMenu(project.id, e.currentTarget);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === " ") {
+                e.preventDefault();
+                actions.openMenu(project.id, e.currentTarget);
+              }
+            }}
+            className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pl-3 text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            {collapsed ? <ChevronRight className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
+            {node.nested ? <GitBranch className="size-3.5" role="img" aria-label="Worktree" /> : null}
+            <span className="min-w-0 flex-1 truncate">{project.label}</span>
+            <span className="font-mono text-2xs tabular-nums">{project.number}</span>
+            {node.rollUp ? <ThreadStatusDot status={node.rollUp} showElapsed={false} /> : null}
+          </button>
+        )}
         {/* T14: a new thread in this project. */}
         <Link
           to="/new"
@@ -300,7 +337,7 @@ function ProjectBlock({ node, desktop }: { node: SidebarProjectNode; desktop: bo
           <CollapsedShelf node={node} section="snoozed" desktop={desktop} />
           <CollapsedShelf node={node} section="settled" desktop={desktop} />
           {node.worktrees.map((w) => (
-            <ProjectBlock key={w.project.id} node={w} desktop={desktop} />
+            <ProjectBlock key={w.project.id} node={w} desktop={desktop} actions={actions} />
           ))}
         </>
       )}

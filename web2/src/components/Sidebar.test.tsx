@@ -386,6 +386,55 @@ describe("sidebar: rename", () => {
   });
 });
 
+describe("sidebar: project rename", () => {
+  async function startRename(user: ReturnType<typeof userEvent.setup>) {
+    await openShell([thread("t1", { title: "One" })]);
+    fireEvent.contextMenu(screen.getByRole("button", { name: /^Sightr/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const input = await screen.findByRole("textbox", { name: "Project name" });
+    await waitFor(() => expect(input).toHaveFocus());
+    return input;
+  }
+
+  it("Enter posts project.rename with the trimmed label", async () => {
+    const posted = commands();
+    const user = userEvent.setup();
+    const input = await startRename(user);
+    expect(input).toHaveValue("Sightr");
+    await user.clear(input);
+    await user.type(input, "  Work {Enter}");
+    await waitFor(() => expect(posted).toEqual([expect.objectContaining({ type: "project.rename", projectId: "w1", label: "Work" })]));
+    expect(screen.queryByRole("textbox", { name: "Project name" })).not.toBeInTheDocument();
+  });
+
+  it("Escape cancels and an empty name is refused", async () => {
+    const posted = commands();
+    const user = userEvent.setup();
+    const input = await startRename(user);
+    await user.clear(input);
+    await user.type(input, "   {Enter}");
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    await user.type(input, "zzz{Escape}");
+    expect(screen.queryByRole("textbox", { name: "Project name" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Sightr/ })).toBeInTheDocument();
+    expect(posted).toEqual([]);
+  });
+
+  it("Space on the project row opens the menu; a refusal toasts", async () => {
+    const posted = commands(409);
+    const user = userEvent.setup();
+    await openShell([thread("t1", { title: "One" })]);
+    screen.getByRole("button", { name: /^Sightr/ }).focus();
+    await user.keyboard(" ");
+    await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const input = await screen.findByRole("textbox", { name: "Project name" });
+    await waitFor(() => expect(input).toHaveFocus());
+    await user.type(input, "x{Enter}");
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(await screen.findByText(/Couldn't rename/)).toBeInTheDocument();
+  });
+});
+
 describe("sidebar: keyboard", () => {
   it("Up/Down move focus, Enter opens, Space opens the menu", async () => {
     const user = userEvent.setup();

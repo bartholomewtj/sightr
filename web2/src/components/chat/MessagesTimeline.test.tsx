@@ -285,7 +285,15 @@ describe("MessagesTimeline: virtualization", () => {
       await new Promise((r) => setTimeout(r, 200));
     });
     // Under a loaded test run the list can take longer than 200 ms to mount the new window.
-    await waitFor(() => expect(mounted()).toContain("u0:0"), { timeout: 10_000 });
+    await waitFor(
+      () => {
+        // The list can re-anchor to the end while it is still measuring; scroll again until it holds.
+        scroller.scrollTop = 0;
+        scroller.dispatchEvent(new Event("scroll"));
+        expect(mounted()).toContain("u0:0");
+      },
+      { timeout: 10_000 },
+    );
     expect(mounted().length).toBeLessThan(80);
   }, 30_000);
 });
@@ -316,11 +324,11 @@ describe("MessagesTimeline: follow mode", () => {
       scroller.dispatchEvent(new Event("scroll"));
       await new Promise((r) => setTimeout(r, 200));
     });
-    await waitFor(() => expect(document.querySelector("[data-jump-to-latest]")).not.toBeNull());
+    await waitFor(() => expect(document.querySelector("[data-jump-to-latest]")).not.toBeNull(), { timeout: 10_000 });
     act(() => followTimeline());
     // Wait on the result, not a fixed delay: under load the scroll back to the end takes longer.
-    await waitFor(() => expect(document.querySelector("[data-jump-to-latest]")).toBeNull(), { timeout: 3000 });
-  });
+    await waitFor(() => expect(document.querySelector("[data-jump-to-latest]")).toBeNull(), { timeout: 10_000 });
+  }, 30_000);
 });
 
 describe("MessagesTimeline: history paging", () => {

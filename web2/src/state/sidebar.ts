@@ -161,6 +161,18 @@ export async function sendShelfCommand(command: ShelfCommand): Promise<boolean> 
   }
 }
 
+/** Rename a project (`project.rename`). Not optimistic: the bridge's `project.upserted` redraws the label. */
+export async function renameProject(projectId: string, label: string): Promise<boolean> {
+  try {
+    await sendCommand("project.rename", { projectId, label }, commandDeps());
+    return true;
+  } catch (err) {
+    const reason = err instanceof V2CommandError ? (err.body?.error ?? err.code) : "the bridge did not answer";
+    showToast(`Couldn't rename: ${reason}`, "error");
+    return false;
+  }
+}
+
 /** Run commands one after another; stop at the first refusal. */
 export async function sendShelfCommands(commands: readonly ShelfCommand[]): Promise<boolean> {
   for (const command of commands) if (!(await sendShelfCommand(command))) return false;
