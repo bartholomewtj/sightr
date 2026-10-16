@@ -62,7 +62,8 @@ export interface ConnReport {
   };
   wakes: { n: number; liveMs: Dist; overTrouble: number; failed: number };
   sse: {
-    opens: number; drops: number; neverOpened: number; connectMs: Dist; upMs: Dist; bridgeUpMs: Dist;
+    /** `stale`: open streams that went silent past the keep-alive and were given up by the phone. */
+    opens: number; drops: number; neverOpened: number; stale: number; connectMs: Dist; upMs: Dist; bridgeUpMs: Dist;
     dropsPerVisibleHour: number | null; cut: { atMs: number; n: number; of: number } | null;
   };
   bridge: { starts: string[]; herdrDowns: number; herdrDownMs: Dist };
@@ -314,7 +315,7 @@ export function analyseConn(all: ConnLine[], opts: { from: number; to: number; b
     },
     wakes: { n: wakes.length, liveMs: dist(wakeLive), overTrouble: wakeLive.filter((ms) => ms >= TROUBLE_MS).length, failed: wakes.length - wakeLive.length },
     sse: {
-      opens: opens.length, drops: drops.length, neverOpened: drops.filter((d) => !d.opened).length,
+      opens: opens.length, drops: drops.length, neverOpened: drops.filter((d) => !d.opened).length, stale: drops.filter((d) => d.stale).length,
       connectMs: dist(opens.map((o) => o.connectMs)), upMs: dist(upMs), bridgeUpMs: dist(bridgeUp),
       dropsPerVisibleHour: perHour(drops.length), cut: findCluster(upMs),
     },
@@ -378,6 +379,11 @@ export function findings(r: ConnReport): Finding[] {
     add({ id: "sse-flap", severity: "medium", title: `Snapshot stream drops ${dph.toFixed(1)}×/visible hour`,
       evidence: `${r.sse.drops} drops, session p50 ${secs(r.sse.upMs.p50)}.`,
       suggest: "Each drop falls back to polling with a 1s→30s backoff (web/src/hooks/use-polling.ts). Compare with the gap causes: network drops point at the path, not the code." });
+  }
+  if (r.sse.stale >= 3) {
+    add({ id: "sse-silent", severity: "medium", title: `${r.sse.stale} snapshot streams went silent without an error`,
+      evidence: `The phone heard nothing for over ${(2 * EVENT_KEEPALIVE_MS + 5_000) / 1000}s on an open stream, ${r.sse.stale} of ${r.sse.drops} drops; lived p50 ${secs(r.sse.upMs.p50)}.`,
+      suggest: `Something in the path drops the flow without closing it (a 4G NAT, a tailnet route change). The watchdog recovers each one (web/src/hooks/use-polling.ts). If they are frequent, a shorter EVENT_KEEPALIVE_MS (bridge/events-route.ts, shared/limits.ts) keeps the flow warm.` });
   }
   if (r.sse.drops >= 5 && r.sse.neverOpened / r.sse.drops > 0.5) {
     add({ id: "sse-never-opens", severity: "medium", title: "The snapshot stream mostly fails before it opens",
@@ -465,7 +471,7 @@ export function formatConnReport(r: ConnReport): string {
     L.push(`  by hour (local) 00 ${g.byHour.map((n) => bars[peak ? Math.ceil((n / peak) * 8) : 0]).join("")} 23`);
   }
   L.push(`Wake → live: ${r.wakes.n} wakes; p50 ${secs(r.wakes.liveMs.p50)}, p95 ${secs(r.wakes.liveMs.p95)}; amber on ${r.wakes.overTrouble}; no data before hide ${r.wakes.failed}`);
-  L.push(`Stream (SSE): ${r.sse.opens} opens (connect p50 ${secs(r.sse.connectMs.p50)}), ${r.sse.drops} drops (${r.sse.neverOpened} never opened); lived p50 ${secs(r.sse.upMs.p50)}; bridge-side p50 ${secs(r.sse.bridgeUpMs.p50)}`);
+  L.push(`Stream (SSE): ${r.sse.opens} opens (connect p50 ${secs(r.sse.connectMs.p50)}), ${r.sse.drops} drops (${r.sse.neverOpened} never opened${r.sse.stale ? `, ${r.sse.stale} went silent` : ""}); lived p50 ${secs(r.sse.upMs.p50)}; bridge-side p50 ${secs(r.sse.bridgeUpMs.p50)}`);
   L.push(`Bridge: ${r.bridge.starts.length} starts; Herdr link down ${r.bridge.herdrDowns}× (max ${secs(r.bridge.herdrDownMs.max)})`);
   L.push("");
 

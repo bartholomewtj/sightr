@@ -3,9 +3,10 @@ import { SILENT_CONN, type ConnLog } from "./conn-log.ts";
 import type { SnapshotDeps } from "./snapshot-route.ts";
 import { snapshotRoute } from "./snapshot-route.ts";
 import { buildId } from "./static-assets.ts";
+import { SSE_KEEPALIVE_MS } from "../shared/limits.ts";
 
 export const EVENT_COALESCE_MS = 250;
-export const EVENT_KEEPALIVE_MS = 15_000;
+export const EVENT_KEEPALIVE_MS = SSE_KEEPALIVE_MS;
 
 type TimerApi = {
   setTimeout: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;

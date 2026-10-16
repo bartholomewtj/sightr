@@ -68,8 +68,11 @@ export type PhoneEvent = PhoneBase &
     /** The page came back to the foreground. `liveMs` null = hidden again before anything was live. */
     | { kind: "wake"; hiddenMs: number; liveMs: number | null }
     | { kind: "sse.open"; connectMs: number }
-    /** The EventSource errored. `upMs` 0 with `opened` false = it never opened. */
-    | { kind: "sse.drop"; upMs: number; opened: boolean }
+    /**
+     * The EventSource errored. `upMs` 0 with `opened` false = it never opened. `stale` = it raised no
+     * error but the bridge had written nothing for well past its keep-alive, so the phone gave up on it.
+     */
+    | { kind: "sse.drop"; upMs: number; opened: boolean; stale?: true }
     | { kind: "online"; on: boolean }
     | { kind: "net"; type: string; eff: string; rttMs: number | null; downMbps: number | null }
   );
@@ -151,7 +154,8 @@ export function normalizePhoneEvent(raw: unknown): PhoneEvent | null {
     }
     case "sse.drop": {
       const upMs = ms(raw.upMs);
-      return upMs === undefined ? null : { ...base, kind: "sse.drop", upMs, opened: raw.opened === true };
+      if (upMs === undefined) return null;
+      return { ...base, kind: "sse.drop", upMs, opened: raw.opened === true, ...(raw.stale === true ? { stale: true as const } : {}) };
     }
     case "online":
       return typeof raw.on === "boolean" ? { ...base, kind: "online", on: raw.on } : null;

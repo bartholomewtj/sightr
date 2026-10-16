@@ -249,18 +249,25 @@ export function openFileUrl(path: string): string {
   return `/api/files/open/${path.split("/").filter(Boolean).map(encodeURIComponent).join("/")}`;
 }
 
+/**
+ * Open the bridge's snapshot stream. `onBeat` fires on every frame the bridge writes (snapshot, ping,
+ * build), so the caller can tell a quiet herd from a stream that died without an error.
+ */
 export function openSnapshotStream(
   onSnapshot: (snapshot: SnapshotResponse) => void,
   onError: () => void,
+  onBeat?: () => void,
 ): EventSource {
   const query = new URLSearchParams({ client: SESSION_ID });
   const path = `${EVENTS_PATH}?${query}`;
   const source = new EventSource(path);
   source.addEventListener("snapshot", (event) => {
+    onBeat?.();
     try { onSnapshot(JSON.parse((event as MessageEvent).data) as SnapshotResponse); } catch { onError(); }
   });
-  source.addEventListener("ping", () => { markLive(); });
+  source.addEventListener("ping", () => { onBeat?.(); markLive(); });
   source.addEventListener("build", (event) => {
+    onBeat?.();
     try { observeServerBuild(JSON.parse((event as MessageEvent).data) as string); } catch { /* older bridge */ }
   });
   source.addEventListener("error", onError);
