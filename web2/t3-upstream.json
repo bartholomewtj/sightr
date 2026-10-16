@@ -557,6 +557,42 @@
       "upstream": "apps/web/src/components/ui/autocomplete.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "verbatim"
+    },
+    {
+      "local": "src/components/chat/DraftHeroHeadline.tsx",
+      "upstream": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/chat/ProviderModelPicker.tsx",
+      "upstream": "apps/web/src/components/chat/ProviderModelPicker.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/chat/ModelPickerContent.tsx",
+      "upstream": "apps/web/src/components/chat/ModelPickerContent.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/chat/TraitsPicker.tsx",
+      "upstream": "apps/web/src/components/chat/TraitsPicker.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/BranchToolbar.tsx",
+      "upstream": "apps/web/src/components/BranchToolbar.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/BranchToolbarEnvModeSelector.tsx",
+      "upstream": "apps/web/src/components/BranchToolbarEnvModeSelector.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
     }
   ]
 }

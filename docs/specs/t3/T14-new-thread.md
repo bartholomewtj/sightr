@@ -1,6 +1,6 @@
 # T14 — New thread: draft screen and spawn progress
 
-Status: draft (T3-shape series). Depends on: T09, T10 (sidebar entry points), T12 (composer parts), T06 (`message.dispatch` queue mode for the first message), T07 (`thread.create`, `project.create`, launch table), T08 (capability flags). Read `README.md` in this folder first.
+Status: done on feat/v2-web (2026-10-17). Depends on: T09, T10 (sidebar entry points), T12 (composer parts), T06 (`message.dispatch` queue mode for the first message), T07 (`thread.create`, `project.create`, launch table), T08 (capability flags). Read `README.md` in this folder first.
 
 ## Problem
 
@@ -84,3 +84,49 @@ After Start, the draft screen becomes a progress view bound to the `commandId` o
 ## Notes for the planner
 
 - Names here follow T07 (`launch.models`, `efforts`, `modes`, `buildLaunchArgs`, `thread.create.failed`) and T08 (`ThreadCapabilities`). An installed-on-host check would need a bridge probe; it is not in this series.
+
+## Built
+
+T3 names where the job matches (all `pattern` rows in `web2/t3-upstream.json`): `routes/_chat.new.tsx` (the
+screen, `?project=` preselects), `components/chat/DraftHeroHeadline.tsx` ("What should we build in {project}?"
+with the project picker), `chat/ProviderModelPicker.tsx` + `chat/ModelPickerContent.tsx` (model),
+`chat/TraitsPicker.tsx` (effort and permission mode), `BranchToolbar.tsx` + `BranchToolbarEnvModeSelector.tsx`
+(placement, direction, tab name). Sightr-only pieces in `components/new-thread/`: `NewThreadView`,
+`HarnessPicker`, `ChoiceGroup` (the radio groups), `NewProjectForm`, `DraftFirstMessage`, `SpawnProgress`, and
+the pure rules in `NewThread.logic.ts`. State in `state/draft-thread.ts`. `stream/shell-events.ts` hands each
+new shell event to listeners (the draft matches `thread.created` / `project.upserted` to its `commandId` and
+reads `thread.create.failed`). Entry points: a "New thread" link in the sidebar header and a "+" on each
+project row (hover on desktop); mod+n and the palette already went to `/new`.
+
+Live on 17 Oct 2026 (scratch bridge from this worktree, herdr 0.9.0-preview): New project made workspace
+`v2-test-T14` in a folder and selected it; Claude (Haiku) with "say hi" went Creating pane → Starting →
+the thread, the message queued, ran and replied; pi (thinking low) started as a split down of that thread.
+
+Deviations:
+
+- **Plain shell needed a bridge change.** T07's `thread.create` refused `harness: "shell"`. `spawn.ts` now takes
+  it: the pane is made, the thread is created `idle` with the shell capabilities, no agent starts, and any
+  model/effort/mode is refused (`invalid-launch: shell-takes-no-options`).
+- **No `/draft/$draftId` route.** One draft at a time, so `/new` holds it (T3 keeps many drafts).
+- **Project picker is inline**, not a combobox popup: it opens under the headline (works the same on a phone).
+- **Project folder.** `Project` has no `cwd` and the client never holds absolute paths (ADR 0026), so the line
+  under the headline is the folder of one of the project's live panes as the Files root names it (T13's
+  `/api/files/pane-folder`). It is empty for a project with no pane yet or with Files off.
+- **New project** posts `project.create` as specified, so the new workspace keeps its root shell pane (a shell
+  thread) and the agent starts in a new tab beside it. If the event is lost to a snapshot, the one project that
+  was not there before the command is taken as the new one.
+- **Bypass, two confirmations:** the first tap on a destructive mode shows the warning, the second selects it,
+  and Start then asks once more ("Start with approvals off"). A bypass mode is never restored as a project's
+  last-used mode.
+- **Split source** is the last thread opened in this tab (`noteOpenThread` from the thread route), since the
+  draft replaces the thread in the Chat region.
+- **Attachments** are kept in memory only (a `File` cannot go in localStorage): a reload keeps the draft text
+  but drops picked files.
+- **Ready** is the thread leaving `starting`. Live, the herd ingest ends `starting` about 1 s after the pane
+  appears (T07's note), before the agent is ready, so the screen moves to the thread early; the queued first
+  message is held by T06 until the agent settles, as intended. The screen moves on only after that dispatch is
+  accepted; a refused dispatch shows "Try again" with the thread kept.
+- **Reload during "Creating pane"** (before `thread.created` arrived) cannot find the thread again: after 45 s the
+  view offers "Back to the draft" instead of "Open terminal".
+- **The command reply** is still `{sequence}` (no `threadId`): adding it would make a receipt replay answer
+  differently from the first reply.

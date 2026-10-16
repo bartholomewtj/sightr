@@ -9,7 +9,7 @@ import type { JournalAdapter } from "../journal/types.ts";
 import type { PaneQueue } from "../pane-queue.ts";
 import { failureText } from "../responses.ts";
 import type { StateEngine } from "../state-engine.ts";
-import { capabilitiesFor } from "./capabilities.ts";
+import { capabilitiesFor, SHELL_HARNESS } from "./capabilities.ts";
 import { MAX_TITLE_LENGTH } from "./decide.ts";
 import type { EventDraft, ServerThread, ServerThreadPatch } from "./events.ts";
 import type { ThreadStore } from "./store.ts";
@@ -256,15 +256,20 @@ export function createSpawner(deps: SpawnDeps): Spawner {
     const c = command as CommandOf<"thread.create">;
 
     // 1. Validate. Nothing touches herdr until the whole command is known to be good.
-    if (typeof c.harness !== "string" || !launchFor(c.harness)) return invalid("invalid-launch: no-launch");
+    // `shell` (T14's "Terminal only") makes the pane and starts nothing in it, so it takes no launch options.
+    const plainShell = c.harness === SHELL_HARNESS;
+    if (typeof c.harness !== "string" || (!plainShell && !launchFor(c.harness))) return invalid("invalid-launch: no-launch");
     if (!optionalString(c.model) || !optionalString(c.effort) || !optionalString(c.permissionMode)) {
       return invalid("invalid-launch: bad-type");
     }
-    const built = buildLaunchArgs(c.harness, {
-      ...(c.model !== undefined ? { model: c.model.trim() } : {}),
-      ...(c.effort !== undefined ? { effort: c.effort } : {}),
-      ...(c.permissionMode !== undefined ? { permissionMode: c.permissionMode } : {}),
-    });
+    if (plainShell && (c.model || c.effort || c.permissionMode)) return invalid("invalid-launch: shell-takes-no-options");
+    const built = plainShell
+      ? { ok: true as const, args: [], destructive: false }
+      : buildLaunchArgs(c.harness, {
+          ...(c.model !== undefined ? { model: c.model.trim() } : {}),
+          ...(c.effort !== undefined ? { effort: c.effort } : {}),
+          ...(c.permissionMode !== undefined ? { permissionMode: c.permissionMode } : {}),
+        });
     if (!built.ok) return invalid(`invalid-launch: ${built.reason}`);
     if (built.destructive && c.confirmBypass !== true) return invalid("bypass-needs-confirm");
     if (c.name !== undefined && (typeof c.name !== "string" || c.name.trim() === "" || c.name.length > MAX_NAME_LENGTH || hasControl(c.name))) {
@@ -308,7 +313,7 @@ export function createSpawner(deps: SpawnDeps): Spawner {
     }
 
     const harness = c.harness;
-    const launch = launchFor(harness)!;
+    const kind = plainShell ? "" : launchFor(harness)!.kind;
     const given = c.name?.trim();
 
     // 2–4. Make the pane and announce the thread, one spawn at a time.
@@ -331,7 +336,8 @@ export function createSpawner(deps: SpawnDeps): Spawner {
         title: display.slice(0, MAX_TITLE_LENGTH),
         titleSource: given ? ("user" as const) : ("herd" as const),
         harness,
-        status: "starting" as const,
+        // A plain shell is ready as soon as its pane exists; the herd ingest owns it from here.
+        status: plainShell ? ("idle" as const) : ("starting" as const),
         capabilities,
         ...(model ? { model } : {}),
         ...(c.permissionMode ? { permissionMode: c.permissionMode } : {}),
@@ -375,6 +381,7 @@ export function createSpawner(deps: SpawnDeps): Spawner {
         paneId: created.paneId,
         detail: { harness, placement: newProject ? "workspace" : (c.placement ?? "tab"), args: built.args },
       });
+      if (plainShell) return { ok: true, sequence: last, threadId };
 
       const agentName = (given ? agentNameFrom(given, harness) : "") || agentNameFrom(display, harness) || defaultName(harness, pid);
       const job: SpawnJob = {
@@ -385,7 +392,7 @@ export function createSpawner(deps: SpawnDeps): Spawner {
         workspaceId: pid,
         workspaceCreated: newProject !== null,
         harness,
-        kind: launch.kind,
+        kind,
         args: built.args,
         agentName,
       };

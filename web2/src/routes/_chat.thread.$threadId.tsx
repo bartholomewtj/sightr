@@ -10,6 +10,7 @@ import { RIGHT_PANEL_ICON, RightPanelSurface } from "@/components/RightPanelTabs
 import { useLayout } from "@/hooks/useLayout";
 import { useThreadStream } from "@/hooks/useThreadStream";
 import { canUnarchive } from "@/lib/archived";
+import { noteOpenThread } from "@/state/draft-thread";
 import { performThreadCommand, useSidebarThread } from "@/state/sidebar";
 import { RIGHT_PANEL_KINDS, RIGHT_PANEL_LABEL, useRightPanelStore } from "@/rightPanelStore";
 import { useThread, useThreadStore } from "@/stream/stores";
@@ -34,6 +35,8 @@ function useMarkReadOnOpen(threadId: string, synchronized: boolean, unreadDone: 
 function ThreadRouteView() {
   const { threadId } = Route.useParams();
   useThreadStream(threadId);
+  // T14: the new-thread draft offers a split next to the thread that was open.
+  useEffect(() => noteOpenThread(threadId), [threadId]);
   const desktop = useLayout() === "desktop";
   const shellThread = useSidebarThread(threadId);
   const state = useThread(threadId);

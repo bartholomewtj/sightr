@@ -146,7 +146,7 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
         valuePrefix: "new-thread-in",
         titleFor: (p) => `New thread in ${p.label}`,
         icon: () => icon(PlusIcon),
-        runProject: (p) => void navigate({ to: "/new", search: { project: p.id } as never }),
+        runProject: (p) => void navigate({ to: "/new", search: { project: p.id } }),
       }),
     ];
 
