@@ -454,6 +454,9 @@ powershell -File contrib/windows/sightr-ctl.ps1 conn --json       # for scripts 
 
 It reports the share of visible time the app was live, each gap blamed on a bridge restart, a Herdr
 drop or the network, wake-to-live time, stream lifetimes, and per-class request failure and latency.
+A batch the phone sends twice counts once. Time the page spent hidden never counts as a gap. A gap
+with a bridge start inside it is blamed on the restart. Requests in a usage window that spans a
+restart are listed apart from the rest, so a release does not show up as bridge errors.
 Then it lists findings, each naming the setting or file to change: for example, streams that keep dying
 at the same age (an idle cut in the path; `EVENT_KEEPALIVE_MS`), wakes that show amber, or reads that
 hit the `GET_TIMEOUT_MS` leash.

@@ -109,6 +109,54 @@ describe("analyseConn", () => {
     expect(r.findings.map((f) => f.id)).toContain("restart-outages");
   });
 
+  test("a gap that ends after a long bridge outage is the restart, not the network", () => {
+    const lines = [
+      ...usage(),
+      bridge(T0 + 150 * MIN, { kind: "bridge.start", version: "x" }),
+      phone(T0 + 150 * MIN + 2_000, { kind: "gap", ms: 40 * MIN, lost: true, ended: "live" }),
+    ];
+    expect(run(lines).gaps.byCause.restart).toEqual({ n: 1, ms: 40 * MIN });
+  });
+
+  test("a re-sent batch counts once", () => {
+    const gap = phone(T0 + 60 * MIN, { kind: "gap", ms: 6_000, lost: false, ended: "live" });
+    const again = { ...gap, ts: iso(T0 + 90 * MIN) } as ConnLine;
+    const r = run([...usage(), gap, again]);
+    expect(r.gaps.amber).toBe(1);
+    expect(r.lines.duplicates).toBe(1);
+  });
+
+  test("time the page spent hidden is not an outage", () => {
+    // Amber, then the page hides and the 15 s latch fires in the background. An older phone kept that
+    // episode open until the next wake, 1 h later, and live data came 700 ms after the wake.
+    const wakeAt = T0 + 120 * MIN;
+    const lines = [
+      ...usage(),
+      phone(wakeAt + 700, { kind: "wake", hiddenMs: 60 * MIN, liveMs: 700 }),
+      phone(wakeAt + 700, { kind: "gap", ms: 60 * MIN + 5_700, lost: true, ended: "live" }),
+    ];
+    const r = run(lines);
+    expect(r.gaps.ms.max).toBe(5_700);
+    expect(r.gaps.spannedHidden).toBe(1);
+    expect(r.gaps.availability).toBeGreaterThan(0.99);
+  });
+
+  test("failures in a window that spans a restart are the restart's", () => {
+    const restartAt = T0 + 62 * MIN;
+    const lines = [
+      ...usage(),
+      bridge(restartAt, { kind: "bridge.start", version: "x" }),
+      // The window closing a minute after the restart spans it and carries its 502s; the next one,
+      // which starts after the restart, does not.
+      phone(T0 + 63 * MIN, { kind: "window", visibleMs: 0, stats: { snapshot: stats(10, 120, { ok: 4, http5: 6 }) } }),
+    ];
+    const r = run(lines);
+    expect(r.restartWindows.n).toBe(1);
+    expect(r.restartWindows.failed).toBe(6);
+    expect(r.fetch.snapshot.http5).toBe(0);
+    expect(r.findings.map((f) => f.id)).not.toContain("bridge-errors");
+  });
+
   test("low availability is high severity", () => {
     const gaps = Array.from({ length: 12 }, (_, i) => phone(T0 + (i + 1) * 40 * MIN, { kind: "gap", ms: 2 * MIN, lost: true, ended: "live" }));
     const r = run([...usage(), ...gaps]);
