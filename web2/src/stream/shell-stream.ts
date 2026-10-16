@@ -9,6 +9,8 @@
  */
 import { SESSION_ID } from "@v1/lib/conn-telemetry";
 
+import { observeServerBuild } from "@/lib/server-build";
+
 import { applyShellEvent, shellFromSnapshot } from "./apply";
 import { browserDeps, createConnection, type Connection, type ConnectionDeps } from "./connection";
 import { CONNECTION_LOST_MS } from "./health";
@@ -74,6 +76,10 @@ export function createShellStream(deps: ConnectionDeps = browserDeps()): ShellSt
           noteHerdr((data as { herdr?: unknown } | null)?.herdr);
         },
         ping: (data) => noteHerdr((data as { herdr?: unknown } | null)?.herdr),
+        // The bridge's web2 build id; a different one than this bundle's triggers the SW update.
+        build: (data) => {
+          if (typeof data === "string") observeServerBuild(data);
+        },
       },
       onLive: () => {
         if (lostTimer !== null) deps.clearTimeout(lostTimer);

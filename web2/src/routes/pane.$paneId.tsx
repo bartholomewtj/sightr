@@ -5,9 +5,9 @@ import { findThreadByPane } from "@/lib/paneThread";
 import { useShell } from "@/stream/stores";
 
 /**
- * `/v2/pane/:paneId`: where a push notification lands (the bridge's payload names a pane, not a
- * thread). Finds the thread in the shell store and replaces itself with `/v2/thread/:id`; home with a
- * "Pane not found" notice when none matches. T15 reuses it for old v1 URLs.
+ * `/pane/:paneId`: where a push notification lands (the bridge's payload names a pane, not a
+ * thread). Finds the thread in the shell store and replaces itself with `/thread/:id`; home with a
+ * "Pane not found" notice when none matches. Old v1 URLs and pre-cutover notifications land here too.
  */
 export const Route = createFileRoute("/pane/$paneId")({
   component: PaneRedirect,

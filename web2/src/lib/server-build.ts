@@ -1,6 +1,7 @@
 // From web/src/lib/server-build.ts: the build id the bridge reports for the bundle it serves, for
-// Settings → Connection. v1 reads it off its own poll responses; web2's stream carries none, so it is
-// asked for once when Settings opens (api.ts `fetchServerBuild`).
+// Settings → Connection and for the service-worker update check (lib/pwa.ts). The shell stream's
+// `build` frame feeds it (stream/shell-stream.ts), and Settings asks once when it opens
+// (api.ts `fetchServerBuild`).
 import { useEffect, useSyncExternalStore } from "react";
 
 import { fetchServerBuild } from "./api";
@@ -19,10 +20,11 @@ export function getServerBuild(): string | undefined {
   return current;
 }
 
-function subscribe(cb: () => void): () => void {
+export function subscribeServerBuild(cb: () => void): () => void {
   listeners.add(cb);
   return () => listeners.delete(cb);
 }
+const subscribe = subscribeServerBuild;
 
 /** The latest server build id, asked for on mount; undefined until it lands. */
 export function useServerBuild(): string | undefined {

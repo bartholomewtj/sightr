@@ -72,7 +72,7 @@ describe("herdr floor", () => {
         await screen.findByRole("heading", { name: "Sightr v2 needs herdr 0.9.0 or newer. This host runs 0.8.2." }),
       ).toBeInTheDocument();
       expect(screen.getByText("v2 needs herdr >= 0.9.0 (found 0.8.2)")).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Open Sightr v1" })).toHaveAttribute("href", "/");
+      expect(screen.getByRole("link", { name: "Open Sightr v1" })).toHaveAttribute("href", "/v1/");
 
       // A minute later it tries again; this time the bridge streams.
       const before = FakeEventSource.instances.length;

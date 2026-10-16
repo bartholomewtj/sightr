@@ -11,6 +11,7 @@ import { BottomNav } from "@/components/bottom-nav";
 import { DesktopShell } from "@/components/desktop-shell";
 import { useDesktop } from "@/lib/desktop";
 import { homePath } from "@/lib/nav";
+import { withBase } from "@/lib/base";
 import { PANE_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 import { bucketOf } from "@/lib/triage";
 import { useEffect } from "react";
@@ -71,6 +72,7 @@ export function RootLayout() {
         authError={data.authError}
         lastSeenAt={shownLastSeenAt(data, pane)}
       />
+      <V2MainBanner />
       {desktop ? (
         <DesktopShell />
       ) : (
@@ -80,6 +82,21 @@ export function RootLayout() {
       )}
       {!desktop && showNav && <BottomNav files={data.files === true} />}
     </div>
+  );
+}
+
+/**
+ * v1 stays at `/v1/` for one release after the T15 cutover. Says so once per screen, with the way back
+ * to the thread app at `/` (a plain link: it is outside this router's basename).
+ */
+export function V2MainBanner() {
+  return (
+    <p role="note" className="border-b bg-muted px-4 py-2 text-center text-xs text-muted-foreground">
+      Sightr v2 is the main app now. This is v1, kept for one release.{" "}
+      <a href="/" className="font-medium text-foreground underline underline-offset-4">
+        Open Sightr
+      </a>
+    </p>
   );
 }
 
@@ -100,8 +117,8 @@ export function BootSplash() {
       <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 text-muted-foreground">
         {/* Same knockout loader as index.html's first-paint splash — cream disk, navy bison. */}
         <span role="img" aria-label="Loading" className="size-16">
-          <img src="/sightr-loading-badge.svg" alt="" aria-hidden="true" className="hidden size-full dark:block" />
-          <img src="/sightr-loading-badge-light.svg" alt="" aria-hidden="true" className="size-full dark:hidden" />
+          <img src={withBase("/sightr-loading-badge.svg")} alt="" aria-hidden="true" className="hidden size-full dark:block" />
+          <img src={withBase("/sightr-loading-badge-light.svg")} alt="" aria-hidden="true" className="size-full dark:hidden" />
         </span>
         <span className="text-sm">Connecting to the herd…</span>
       </div>
@@ -139,7 +156,7 @@ export function RootError() {
       <button
         type="button"
         onClick={() => {
-          window.location.assign(homePath());
+          window.location.assign(withBase(homePath()));
         }}
         className="text-sm underline underline-offset-4"
       >

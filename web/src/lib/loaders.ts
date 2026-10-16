@@ -26,6 +26,7 @@ import {
   saveLastSnapshot,
 } from "@/lib/last-seen";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
+import { stripBase } from "@/lib/base";
 import type {
   AgentView,
   BridgeStatus,
@@ -148,7 +149,7 @@ let lastPaneUrl: string | undefined;
 function isPaneUrl(url: string | undefined): boolean {
   if (!url) return false;
   try {
-    return new URL(url).pathname.startsWith("/pane/");
+    return (stripBase(new URL(url).pathname) ?? "").startsWith("/pane/");
   } catch {
     return url.includes("/pane/");
   }

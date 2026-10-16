@@ -4,7 +4,7 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "Sightr v2 — the event-sourced front end, on T3 Code's UI stack (served at /v2/)",
+  "description": "Sightr v2 — the event-sourced front end, on T3 Code's UI stack (served at /)",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

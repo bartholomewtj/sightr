@@ -9,17 +9,31 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SpacesRouteImport } from './routes/spaces'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as LocalRouteImport } from './routes/local'
 import { Route as ArchivedRouteImport } from './routes/archived'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
+import { Route as SpaceSpaceIdRouteImport } from './routes/space.$spaceId'
 import { Route as PanePaneIdRouteImport } from './routes/pane.$paneId'
+import { Route as FilesSplatRouteImport } from './routes/files.$'
 import { Route as ChatNewRouteImport } from './routes/_chat.new'
 import { Route as ChatThreadThreadIdRouteImport } from './routes/_chat.thread.$threadId'
 
+const SpacesRoute = SpacesRouteImport.update({
+  id: '/spaces',
+  path: '/spaces',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LocalRoute = LocalRouteImport.update({
+  id: '/local',
+  path: '/local',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ArchivedRoute = ArchivedRouteImport.update({
@@ -36,9 +50,19 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ChatRoute,
 } as any)
+const SpaceSpaceIdRoute = SpaceSpaceIdRouteImport.update({
+  id: '/space/$spaceId',
+  path: '/space/$spaceId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PanePaneIdRoute = PanePaneIdRouteImport.update({
   id: '/pane/$paneId',
   path: '/pane/$paneId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FilesSplatRoute = FilesSplatRouteImport.update({
+  id: '/files/$',
+  path: '/files/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatNewRoute = ChatNewRouteImport.update({
@@ -55,16 +79,24 @@ const ChatThreadThreadIdRoute = ChatThreadThreadIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
   '/archived': typeof ArchivedRoute
+  '/local': typeof LocalRoute
   '/settings': typeof SettingsRoute
+  '/spaces': typeof SpacesRoute
   '/new': typeof ChatNewRoute
+  '/files/$': typeof FilesSplatRoute
   '/pane/$paneId': typeof PanePaneIdRoute
+  '/space/$spaceId': typeof SpaceSpaceIdRoute
   '/thread/$threadId': typeof ChatThreadThreadIdRoute
 }
 export interface FileRoutesByTo {
   '/archived': typeof ArchivedRoute
+  '/local': typeof LocalRoute
   '/settings': typeof SettingsRoute
+  '/spaces': typeof SpacesRoute
   '/new': typeof ChatNewRoute
+  '/files/$': typeof FilesSplatRoute
   '/pane/$paneId': typeof PanePaneIdRoute
+  '/space/$spaceId': typeof SpaceSpaceIdRoute
   '/': typeof ChatIndexRoute
   '/thread/$threadId': typeof ChatThreadThreadIdRoute
 }
@@ -72,9 +104,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
   '/archived': typeof ArchivedRoute
+  '/local': typeof LocalRoute
   '/settings': typeof SettingsRoute
+  '/spaces': typeof SpacesRoute
   '/_chat/new': typeof ChatNewRoute
+  '/files/$': typeof FilesSplatRoute
   '/pane/$paneId': typeof PanePaneIdRoute
+  '/space/$spaceId': typeof SpaceSpaceIdRoute
   '/_chat/': typeof ChatIndexRoute
   '/_chat/thread/$threadId': typeof ChatThreadThreadIdRoute
 }
@@ -83,25 +119,37 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/archived'
+    | '/local'
     | '/settings'
+    | '/spaces'
     | '/new'
+    | '/files/$'
     | '/pane/$paneId'
+    | '/space/$spaceId'
     | '/thread/$threadId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/archived'
+    | '/local'
     | '/settings'
+    | '/spaces'
     | '/new'
+    | '/files/$'
     | '/pane/$paneId'
+    | '/space/$spaceId'
     | '/'
     | '/thread/$threadId'
   id:
     | '__root__'
     | '/_chat'
     | '/archived'
+    | '/local'
     | '/settings'
+    | '/spaces'
     | '/_chat/new'
+    | '/files/$'
     | '/pane/$paneId'
+    | '/space/$spaceId'
     | '/_chat/'
     | '/_chat/thread/$threadId'
   fileRoutesById: FileRoutesById
@@ -109,17 +157,35 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
   ArchivedRoute: typeof ArchivedRoute
+  LocalRoute: typeof LocalRoute
   SettingsRoute: typeof SettingsRoute
+  SpacesRoute: typeof SpacesRoute
+  FilesSplatRoute: typeof FilesSplatRoute
   PanePaneIdRoute: typeof PanePaneIdRoute
+  SpaceSpaceIdRoute: typeof SpaceSpaceIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/spaces': {
+      id: '/spaces'
+      path: '/spaces'
+      fullPath: '/spaces'
+      preLoaderRoute: typeof SpacesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/local': {
+      id: '/local'
+      path: '/local'
+      fullPath: '/local'
+      preLoaderRoute: typeof LocalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/archived': {
@@ -143,11 +209,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatIndexRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/space/$spaceId': {
+      id: '/space/$spaceId'
+      path: '/space/$spaceId'
+      fullPath: '/space/$spaceId'
+      preLoaderRoute: typeof SpaceSpaceIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pane/$paneId': {
       id: '/pane/$paneId'
       path: '/pane/$paneId'
       fullPath: '/pane/$paneId'
       preLoaderRoute: typeof PanePaneIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/files/$': {
+      id: '/files/$'
+      path: '/files/$'
+      fullPath: '/files/$'
+      preLoaderRoute: typeof FilesSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_chat/new': {
@@ -184,8 +264,12 @@ const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
   ArchivedRoute: ArchivedRoute,
+  LocalRoute: LocalRoute,
   SettingsRoute: SettingsRoute,
+  SpacesRoute: SpacesRoute,
+  FilesSplatRoute: FilesSplatRoute,
   PanePaneIdRoute: PanePaneIdRoute,
+  SpaceSpaceIdRoute: SpaceSpaceIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

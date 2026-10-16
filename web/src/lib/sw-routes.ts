@@ -46,9 +46,8 @@ export const NAVIGATION_NETWORK_ONLY = [
   // Proxies whose prefix IS movable (oauth2-proxy's `--proxy-prefix`, Authelia) are documented in
   // the README instead of listed here — this list stays for paths nobody can move.
   /^\/cdn-cgi\//,
-  // Sightr v2 (web2) is a separate app at /v2/ with its own service worker. This SW would otherwise
-  // answer a /v2/ navigation with v1's cached index.html, so an installed v1 PWA could never open v2.
-  /^\/v2(?:[/?]|$)/,
+  // The T09 `/v2/` entry is gone: since the T15 cutover this worker's scope is `/v1/`, so it never sees
+  // a navigation to the thread app at `/`.
 ] as const;
 
 /**

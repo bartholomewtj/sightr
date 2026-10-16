@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { FakeEventSource } from "@/test/fake-event-source";
 import { shellSnapshot, thread, threadSnapshot } from "@/test/fixtures";
+import { useRightPanelStore } from "@/rightPanelStore";
 import { setViewportWidth } from "@/test/media";
 import { frame, renderApp } from "@/test/render-app";
 import { clampSidebarWidth, SIDEBAR_MAX, SIDEBAR_MIN, useUiState } from "@/uiStateStore";
@@ -106,5 +107,25 @@ describe("the root", () => {
     const { router } = await boot("/v2/pane/nope");
     expect(await screen.findByText(/Pane not found/)).toBeInTheDocument();
     expect(router.history.location.pathname).toBe("/v2/");
+  });
+
+  it("maps old v1 URLs to their v2 homes (T15)", async () => {
+    setViewportWidth(1280);
+    useRightPanelStore.setState({ isOpen: false, activeSurfaceId: "terminal" });
+    for (const path of ["/v2/files/a/b", "/v2/files", "/v2/local"]) {
+      const { router, unmount } = renderApp(path);
+      await waitFor(() => expect(router.history.location.pathname).toBe("/v2/"));
+      expect(useRightPanelStore.getState()).toMatchObject({ isOpen: true, activeSurfaceId: "files" });
+      unmount();
+      useRightPanelStore.setState({ isOpen: false, activeSurfaceId: "terminal" });
+    }
+    for (const path of ["/v2/spaces", "/v2/space/w1"]) {
+      const { router, unmount } = renderApp(path);
+      await waitFor(() => expect(router.history.location.pathname).toBe("/v2/"));
+      unmount();
+    }
+    const { router } = renderApp("/v2/settings");
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(router.history.location.pathname).toBe("/v2/settings");
   });
 });

@@ -2,6 +2,7 @@ import { registerSW } from "virtual:pwa-register";
 
 import { createUpdater } from "./pwa-update";
 import { getServerBuild, subscribeServerBuild } from "./server-build";
+import { BASE, withBase } from "./base";
 
 // Service-worker registration + update wiring, in one place so the `virtual:pwa-register` import
 // (a build-time virtual module) stays isolated and easy to stub in tests. The update logic itself
@@ -17,13 +18,19 @@ const updater = createUpdater({
   appBuild: __BUILD_INFO__.id,
   registration: () => registration,
   reload: () => window.location.reload(),
+  // Only v1's own registration (scope /v1/ since the T15 cutover): web2's at / is not v1's to drop.
   unregisterAll: async () => {
     const all = await navigator.serviceWorker.getRegistrations();
-    await Promise.all(all.map((r) => r.unregister()));
+    await Promise.all(all.filter((r) => new URL(r.scope).pathname === BASE).map((r) => r.unregister()));
   },
   storage: () => window.sessionStorage,
   setTimeout: (fn, ms) => window.setTimeout(fn, ms),
-  hadController: "serviceWorker" in navigator && Boolean(navigator.serviceWorker.controller),
+  // Only v1's own worker counts: a first visit to /v1/ is claimed away from web2's worker at /, and
+  // that is initial control, not an update to reload for.
+  hadController:
+    "serviceWorker" in navigator &&
+    Boolean(navigator.serviceWorker.controller) &&
+    new URL(navigator.serviceWorker.controller?.scriptURL ?? "/", window.location.href).pathname === withBase("/sw.js"),
 });
 
 /** Check for a newer worker now (the 60s poll does this on its own). */

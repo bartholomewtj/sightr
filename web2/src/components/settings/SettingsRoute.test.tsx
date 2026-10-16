@@ -45,10 +45,10 @@ describe("/settings", () => {
     expect(screen.queryByText(/desktop mode/i)).toBeNull();
   });
 
-  it("links to Sightr v1 outside the /v2/ app, and back to the threads", async () => {
+  it("links to Sightr v1 at /v1/, and back to the threads", async () => {
     await open();
     const v1 = within(screen.getByRole("region", { name: "Sightr v1" })).getByRole("link", { name: /Open Sightr v1/ });
-    expect(v1).toHaveAttribute("href", "/");
+    expect(v1).toHaveAttribute("href", "/v1/");
     expect(screen.getByRole("link", { name: "Back to threads" })).toHaveAttribute("href", expect.stringMatching(/^\/v2\/?$/));
   });
 

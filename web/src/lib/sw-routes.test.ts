@@ -64,14 +64,9 @@ describe("service-worker navigation passthrough", () => {
     expect(isNetworkOnlyNavigation("/apidocs")).toBe(false);
   });
 
-  // web2 is served at /v2/ with its own SW; v1's precached shell must never answer for it.
-  it("passes Sightr v2 navigations to the network", () => {
-    expect(isNetworkOnlyNavigation("/v2/")).toBe(true);
-    expect(isNetworkOnlyNavigation("/v2")).toBe(true);
-    expect(isNetworkOnlyNavigation("/v2/thread/1")).toBe(true);
-    expect(isNetworkOnlyNavigation("/v2?x=1")).toBe(true);
-    expect(isNetworkOnlyNavigation("/v2x")).toBe(false);
-    expect(isNetworkOnlyNavigation("/pane/v2")).toBe(false);
+  // Since the T15 cutover this worker's scope is /v1/; the T09 `/v2/` entry is gone with it.
+  it("no longer carries the /v2/ entry", () => {
+    expect(isNetworkOnlyNavigation("/v2/")).toBe(false);
   });
 
   it("exports the reserved path the UI links to, ending in a slash", () => {
@@ -84,7 +79,6 @@ describe("service-worker navigation passthrough", () => {
       String(/^\/api\//),
       String(/^\/auth(?:[/?]|$)/),
       String(/^\/cdn-cgi\//),
-      String(/^\/v2(?:[/?]|$)/),
     ]);
   });
 });

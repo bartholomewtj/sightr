@@ -7,7 +7,7 @@ import { TranscriptStore } from "./journal/store.ts";
 import type { PaneHistoryResponse, PaneReadResponse } from "../shared/wire.ts";
 import type { AgentView } from "./state-engine.ts";
 import type { StateEngine } from "./state-engine.ts";
-import { buildId, withBuildHeader } from "./static-assets.ts";
+import { buildIdFor, withBuildHeader } from "./static-assets.ts";
 import { failureText, json, secure, text } from "./responses.ts";
 import { effectiveSettings } from "./runtime-settings.ts";
 
@@ -80,7 +80,7 @@ export async function readPane(
     const etag = computeEtag(bodyStr);
     // Tag pane polls too (both the 304 and the full body), so a client that only has a pane open —
     // not the home snapshot — still observes a live rebuild between polls.
-    const build = await buildId();
+    const build = await buildIdFor(req);
     if (notModified(req.headers.get("if-none-match"), etag)) {
       // RFC 7232 §4.1: 304 MUST echo the ETag; body MUST be empty.
       return withBuildHeader(

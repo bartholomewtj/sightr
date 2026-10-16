@@ -10,8 +10,10 @@ import { resolve } from "node:path";
 import { t3Aliases } from "./t3-shims.ts";
 import { v1Scope } from "./v1-scope.ts";
 
-// web2 is served by the bridge at /v2/ beside v1 (docs/specs/t3/T09-web2-shell.md) until cutover (T15).
-// In `vite dev`, proxy /api to the bridge like web/ does.
+// web2 is the front door at `/` since the T15 cutover; v1 moved to `/v1/`. `SIGHTR_WEB2_BASE` (e.g.
+// `/v2/`) overrides the base for a `vite dev` preview only: the bridge serves a `/` build and redirects
+// `/v2/...` to `/...`. In `vite dev`, proxy /api to the bridge like web/ does.
+const BASE = process.env.SIGHTR_WEB2_BASE ?? "/";
 const BRIDGE = process.env.SIGHTR_DEV_TARGET ?? "http://127.0.0.1:8787";
 const devHosts = (process.env.SIGHTR_DEV_HOSTS ?? "")
   .split(",")
@@ -20,7 +22,7 @@ const devHosts = (process.env.SIGHTR_DEV_HOSTS ?? "")
 const allowedHosts = devHosts.includes("*") ? true : devHosts.length > 0 ? devHosts : undefined;
 
 // Build stamp, the same scheme as web/vite.config.ts: baked into the bundle as __BUILD_INFO__ and
-// emitted to dist/build-info.json, which the bridge reads off disk for X-Sightr-Build on /v2/ responses.
+// emitted to dist/build-info.json, which the bridge reads off disk for X-Sightr-Build on web2's responses.
 const git = (cmd: string) =>
   execSync(cmd, { cwd: import.meta.dirname, stdio: ["ignore", "pipe", "ignore"] })
     .toString()
@@ -69,7 +71,7 @@ const buildInfoPlugin: Plugin = {
 };
 
 export default defineConfig({
-  base: "/v2/",
+  base: BASE,
   define: { __BUILD_INFO__: JSON.stringify(BUILD_INFO) },
   plugins: [
     v1Scope({ web2Src: resolve(import.meta.dirname, "src"), v1Src: resolve(import.meta.dirname, "../web/src") }),
@@ -84,23 +86,24 @@ export default defineConfig({
       registerType: "autoUpdate",
       strategies: "injectManifest",
       srcDir: "src",
-      filename: "sw.ts", // -> dist/sw.js, served at /v2/sw.js with Service-Worker-Allowed: /v2/
+      filename: "sw.ts", // -> dist/sw.js, served at /sw.js with Service-Worker-Allowed: / (v1's old URL)
       includeAssets: ["favicon.svg", "favicon.ico", "favicon-96x96.png", "apple-touch-icon.png"],
       manifest: {
-        // A separate install from v1: its own id and scope.
-        name: "Sightr v2",
-        short_name: "Sightr v2",
+        // The id, scope and start URL v1's manifest had, so an installed Sightr is the same app and
+        // updates in place (T15). v1's manifest moved to /v1/.
+        name: "Sightr",
+        short_name: "Sightr",
         description: "Monitor and reply to your Herdr agent herd",
-        id: "/v2/",
-        start_url: "/v2/",
-        scope: "/v2/",
+        id: BASE,
+        start_url: BASE,
+        scope: BASE,
         display: "standalone",
         orientation: "any",
         background_color: "#171b21",
         theme_color: "#171b21",
         icons: [
-          { src: "/v2/web-app-manifest-192x192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
-          { src: "/v2/web-app-manifest-512x512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+          { src: `${BASE}web-app-manifest-192x192.png`, sizes: "192x192", type: "image/png", purpose: "any maskable" },
+          { src: `${BASE}web-app-manifest-512x512.png`, sizes: "512x512", type: "image/png", purpose: "any maskable" },
         ],
       },
       injectManifest: { globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest}"] },

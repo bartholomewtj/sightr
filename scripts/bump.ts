@@ -85,6 +85,7 @@ export function stagedVersionFiles(root: string): string[] {
     "herdr-plugin.toml",
     "package.json",
     "web/package.json",
+    "web2/package.json",
     "CHANGELOG.md",
   ]);
   if (result.exitCode !== 0) return [];
@@ -109,11 +110,12 @@ export function bump(opts: {
   const tomlPath = join(opts.root, "herdr-plugin.toml");
   const packagePath = join(opts.root, "package.json");
   const webPackagePath = join(opts.root, "web", "package.json");
+  const web2PackagePath = join(opts.root, "web2", "package.json");
   const changelogPath = join(opts.root, "CHANGELOG.md");
 
   const toml = readFileSync(tomlPath, "utf8");
   writeFileSync(tomlPath, toml.replace(VERSION, `version = "${to}"`));
-  for (const path of [packagePath, webPackagePath]) {
+  for (const path of [packagePath, webPackagePath, web2PackagePath]) {
     const contents = readFileSync(path, "utf8");
     writeFileSync(path, contents.replace(PACKAGE_VERSION, `$1"version": "${to}"`));
   }

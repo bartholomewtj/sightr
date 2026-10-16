@@ -2,7 +2,7 @@ import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 import { setDesktop, __resetDesktop } from "@/lib/desktop";
 import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { render, cleanup, waitFor, screen, act } from "@testing-library/react";
-import { RootLayout, BootSplash, shownLastSeenAt } from "./root";
+import { RootLayout, BootSplash, shownLastSeenAt, V2MainBanner } from "./root";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { MARK_SRC } from "@/components/sightr-mark";
 import { CONNECTION_LOST_MS } from "@/hooks/use-connection-lost";
@@ -128,5 +128,12 @@ describe('desktop document title', () => {
     it("leaves title alone when off", async () => { document.title = "Existing"; show(); await waitFor(() => expect(document.title).toBe("Existing")); });
     it("counts needs agents when on", async () => { setDesktop(true); show(data([agent("a"), agent("b")])); await waitFor(() => expect(document.title).toBe("(2) Sightr")); });
     it("uses the plain title on desktop with no needs agents", async () => { setDesktop(true); document.title = "Existing"; show(data([])); await waitFor(() => expect(document.title).toBe("Sightr")); });
+  });
+});
+describe("V2MainBanner (T15)", () => {
+  it("says v2 is the main app and links back to it at /", () => {
+    render(<V2MainBanner />);
+    expect(screen.getByRole("note")).toHaveTextContent("Sightr v2 is the main app now.");
+    expect(screen.getByRole("link", { name: "Open Sightr" })).toHaveAttribute("href", "/");
   });
 });

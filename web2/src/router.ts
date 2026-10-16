@@ -2,8 +2,17 @@ import { createRouter, type RouterHistory } from "@tanstack/react-router";
 
 import { routeTree } from "./routeTree.gen";
 
-/** web2 lives under /v2/ until cutover (T15); every route path below is relative to it. */
-export const BASEPATH = "/v2";
+/** The router basepath for vite's `base`: `/` → "/", `/v2/` → "/v2". Pure + exported for tests. */
+export function basepathFor(base: string): string {
+  const trimmed = base.replace(/\/+$/, "");
+  return trimmed === "" ? "/" : trimmed;
+}
+
+/**
+ * web2 is served at `/` since the T15 cutover (vite `base`); every route path is relative to it. Tests
+ * and a `vite dev` preview may use `/v2/`.
+ */
+export const BASEPATH = basepathFor(import.meta.env.BASE_URL);
 
 export function getRouter(history?: RouterHistory) {
   return createRouter({

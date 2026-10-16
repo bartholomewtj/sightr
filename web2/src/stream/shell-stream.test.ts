@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { __pendingConn, SESSION_ID } from "@v1/lib/conn-telemetry";
 
+import { __resetServerBuild, getServerBuild } from "@/lib/server-build";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { renamed, shellSnapshot, thread } from "@/test/fixtures";
 import { blockingResponse, setVisibility, testDeps } from "@/test/stream-deps";
@@ -38,6 +39,15 @@ describe("shell stream", () => {
     expect(url.pathname).toBe("/api/v2/shell");
     expect(url.searchParams.get("client")).toBe(SESSION_ID);
     expect(es.after).toBeNull();
+  });
+
+  it("records the bridge's build frame for the service-worker update check (T15)", () => {
+    __resetServerBuild();
+    const { es } = start();
+    es.emit("build", "1.2.1+abc.99");
+    expect(getServerBuild()).toBe("1.2.1+abc.99");
+    es.emit("build", { not: "an id" });
+    expect(getServerBuild()).toBe("1.2.1+abc.99");
   });
 
   it("applies a snapshot, then events above its sequence only", () => {

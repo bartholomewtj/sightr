@@ -11,13 +11,22 @@ function failingBuild(calls: Call[] = []): Run {
   return async (cmd, args, opts) => { calls.push({ cmd, args, cwd: opts?.cwd, env: opts?.env }); return { code: args.includes("build") ? 2 : 0, stdout: "", stderr: "" }; };
 }
 
-test("build keeps frozen-lockfile installs first and ordered", async () => {
+test("build keeps frozen-lockfile installs first and ordered, for the bridge, web and web2", async () => {
   const calls: Call[] = [];
   await expect(build(env, failingBuild(calls))).rejects.toThrow("error: command failed");
   const installs = calls.filter(x => x.args[0] === "install");
-  expect(installs.slice(0, 2).map(x => x.args)).toEqual([["install", "--frozen-lockfile"], ["install", "--frozen-lockfile"]]);
-  expect(installs[0]?.cwd).toBe(path.resolve(import.meta.dir, "../.."));
-  expect(installs[1]?.cwd).toBe(path.join(path.resolve(import.meta.dir, "../.."), "web"));
+  const root = path.resolve(import.meta.dir, "../..");
+  expect(installs.map(x => x.args)).toEqual([["install", "--frozen-lockfile"], ["install", "--frozen-lockfile"], ["install", "--frozen-lockfile"]]);
+  expect(installs.map(x => x.cwd)).toEqual([root, path.join(root, "web"), path.join(root, "web2")]);
+});
+test("both apps build into staging before either live dist is swapped", async () => {
+  const calls: Call[] = [];
+  const run: Run = async (cmd, args, opts) => { calls.push({ cmd, args, cwd: opts?.cwd }); return { code: args.includes("build") && opts?.cwd?.endsWith("web2") ? 2 : 0, stdout: "", stderr: "" }; };
+  await expect(build(env, run)).rejects.toThrow("error: command failed");
+  const builds = calls.filter(x => x.args[1] === "build");
+  const root = path.resolve(import.meta.dir, "../..");
+  expect(builds.map(x => x.cwd)).toEqual([path.join(root, "web"), path.join(root, "web2")]);
+  expect(builds[0]?.args).toEqual(["run", "build", "--", "--outDir", "dist-staging", "--emptyOutDir"]);
 });
 test("SKIP flags omit gates and typecheck runs when enabled", async () => {
   const skipped: Call[] = [];
@@ -26,9 +35,10 @@ test("SKIP flags omit gates and typecheck runs when enabled", async () => {
   const enabled: Call[] = [];
   await expect(build({ SKIP_VERSION_CHECK: "1" }, failingBuild(enabled))).rejects.toThrow();
   const types = enabled.filter(x => x.args[0] === "run" && x.args[1] === "typecheck");
-  expect(types).toHaveLength(2);
+  expect(types).toHaveLength(3);
   expect(types[0]?.cwd).toBe(path.resolve(import.meta.dir, "../.."));
   expect(types[1]?.cwd).toBe(path.join(path.resolve(import.meta.dir, "../.."), "web"));
+  expect(types[2]?.cwd).toBe(path.join(path.resolve(import.meta.dir, "../.."), "web2"));
   expect(enabled.some(isGate)).toBe(false);
 });
 const isGate = (x: Call) => x.args[0]?.endsWith("check-version.ts") === true;

@@ -2,13 +2,13 @@ import { extname, join, normalize, relative, sep } from "node:path";
 import type { Config } from "./config.ts";
 import { isHostAllowed } from "./access.ts";
 import { CONTENT_TYPES, CSP, secure, text } from "./responses.ts";
-import { BUILD_HEADER } from "../shared/limits.ts";
-export { BUILD_HEADER };
+import { BUILD_HEADER, UI_HEADER } from "../shared/limits.ts";
+export { BUILD_HEADER, UI_HEADER };
 
-// The built PWA lives in web/dist (Vite output). If it's missing, the bridge still runs the API
-// — only the static UI 503s with a hint to build.
+// The two built apps. Since the T15 cutover web2 (the thread app) is the front door at `/` and v1
+// lives at `/v1/` for one release; the release after removes it. If a tree is missing, the bridge
+// still runs the API — only that tree's pages 503 with a hint to build.
 const WEB_DIR = join(import.meta.dir, "..", "web", "dist");
-// The v2 app (docs/specs/t3/T09-web2-shell.md), served at /v2/ beside v1 until cutover (T15).
 const WEB2_DIR = join(import.meta.dir, "..", "web2", "dist");
 
 /** The two built trees `serveStatic` reads. Tests pass their own. */
@@ -21,8 +21,9 @@ const DEFAULT_DIRS: StaticDirs = { web: WEB_DIR, web2: WEB2_DIR };
 // Build id of the bundle currently on disk (written by the Vite build to dist/build-info.json), per
 // tree. Surfaced via the X-Sightr-Build header and /api/config so a stale, service-worker-cached client
 // can tell it's behind. Cached by file mtime so a frontend rebuild (live, no restart) is picked up.
+// The default is web2's: it is the app at `/`. v1 asks for its own with `x-sightr-ui: v1`.
 const buildCache = new Map<string, { id: string; mtime: number }>();
-export async function buildId(dir: string = WEB_DIR): Promise<string> {
+export async function buildId(dir: string = WEB2_DIR): Promise<string> {
   try {
     const f = Bun.file(join(dir, "build-info.json"));
     const mtime = f.lastModified;
@@ -38,14 +39,74 @@ export async function buildId(dir: string = WEB_DIR): Promise<string> {
   }
 }
 
-/**
- * Which tree a request path belongs to. `/v2` and `/v2/...` are web2's, with the prefix stripped;
- * everything else is v1's. Pure + exported for tests.
- */
-export function staticTree(pathname: string): { v2: boolean; pathname: string } {
-  if (pathname === "/v2" || pathname.startsWith("/v2/")) return { v2: true, pathname: pathname.slice(3) || "/" };
-  return { v2: false, pathname };
+/** v1's build id (web/dist), for the route only v1 calls (the snapshot SSE, which cannot send headers). */
+export function v1BuildId(): Promise<string> {
+  return buildId(WEB_DIR);
 }
+
+/**
+ * The build id a request's own UI should compare against: v1's when it says `x-sightr-ui: v1`,
+ * web2's otherwise. Each UI reloads on a mismatch (spec 10), so neither may see the other's id, or
+ * the one at `/v1/` would loop on `registration.update()`. A v1 bundle from before the cutover sends
+ * no header, sees web2's id, and so updates itself into web2's worker (the in-place migration).
+ */
+export function buildIdFor(req: Request, dirs: StaticDirs = DEFAULT_DIRS): Promise<string> {
+  return buildId(req.headers.get(UI_HEADER) === "v1" ? dirs.web : dirs.web2);
+}
+
+/** Which UI serves the front door (`SIGHTR_UI`, see Config.ui). */
+export type UiMode = "v1" | "v2";
+
+/** Where a static request goes: a tree and the path inside it, a redirect, or the retiring worker. */
+export type StaticRoute =
+  | { tree: "web" | "web2"; pathname: string }
+  | { redirect: string }
+  | { retireWorker: true };
+
+// v1 paths a rollback redirect keeps (web2's own paths, like /thread/x, land on v1's home).
+const V1_KEPT_PATHS = /^\/(?:pane\/|files(?:\/|$)|local$|settings$)/;
+
+/**
+ * Which tree a request path belongs to. Pure + exported for tests.
+ * - `/v1` and `/v1/...` are v1's, with the prefix stripped.
+ * - `/v2` and `/v2/...` (the pre-cutover preview address) redirect to the same path under `/`.
+ * - Everything else is web2's.
+ * With `ui: "v1"` (the rollback) navigations outside `/v1/` redirect into it, `/sw.js` is the
+ * retiring worker, and web2's other files stay readable so a cached web2 page keeps working until
+ * its worker is gone.
+ */
+export function staticTree(pathname: string, ui: UiMode = "v2", search = ""): StaticRoute {
+  if (pathname === "/v1" || pathname.startsWith("/v1/")) return { tree: "web", pathname: pathname.slice(3) || "/" };
+  const inV2 = pathname === "/v2" || pathname.startsWith("/v2/");
+  if (ui === "v1") {
+    if (pathname === "/sw.js") return { retireWorker: true };
+    const inner = inV2 ? pathname.slice(3) || "/" : pathname;
+    if (extname(inner) === "") return { redirect: V1_KEPT_PATHS.test(inner) ? `/v1${inner}${search}` : "/v1/" };
+    return { tree: "web2", pathname: inner };
+  }
+  if (inV2) return { redirect: `${pathname.slice(3) || "/"}${search}` };
+  return { tree: "web2", pathname };
+}
+
+/**
+ * What `/sw.js` answers under `SIGHTR_UI=v1`. An installed PWA holds web2's worker at scope `/` and
+ * would keep answering `/` from its precache. web2 re-checks `/sw.js` every minute; this script
+ * replaces that worker, drops its precache, unregisters itself and reloads its pages, which then
+ * reach the network and are redirected to `/v1/`. It has no fetch handler, so nothing is served from
+ * a cache in between. v1 never registers `/sw.js`, so this cannot loop.
+ */
+export const RETIRE_WORKER_JS = `// Sightr: SIGHTR_UI=v1 retires the web2 worker at this scope.
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (event) => {
+  event.waitUntil((async () => {
+    for (const name of await caches.keys()) {
+      if (name.startsWith("workbox-precache") && name.endsWith(self.registration.scope)) await caches.delete(name);
+    }
+    await self.registration.unregister();
+    for (const client of await self.clients.matchAll({ type: "window" })) client.navigate(client.url).catch(() => null);
+  })());
+});
+`;
 
 // The response header carrying the on-disk bundle's build id. A polling client reads it off every
 // snapshot/pane response (web/src/lib/server-build.ts) to notice a live rebuild WITHOUT a service
@@ -139,6 +200,7 @@ export async function serveStatic(
   host: string,
   cfg: Config,
   dirs: StaticDirs = DEFAULT_DIRS,
+  search = "",
 ): Promise<Response> {
   // The Host allowlist, which every /api/* route gets via guard() → checkAccess. The static route
   // was the last one that skipped it, so with SIGHTR_PUBLIC_HOSTS set a rebound DNS name was still
@@ -149,11 +211,22 @@ export async function serveStatic(
   // rebound host cannot tell 403/404/503 apart by probing paths.
   if (cfg.publicHosts.length > 0 && !isHostAllowed(host, cfg)) return text("host not allowed", 403);
 
-  // `/v2/...` is web2's tree (prefix stripped), everything else v1's. Each tree has its own SPA
-  // fallback, build id and service-worker scope.
-  const tree = staticTree(pathname);
-  const dir = tree.v2 ? dirs.web2 : dirs.web;
-  const resolved = resolveStaticPath(tree.pathname, dir);
+  // `/v1/...` is v1's tree (prefix stripped), `/v2/...` redirects to `/...`, everything else is
+  // web2's. Each tree has its own SPA fallback, build id and service-worker scope.
+  const route = staticTree(pathname, cfg.ui ?? "v2", search);
+  if ("redirect" in route) {
+    return secure(new Response(null, { status: 302, headers: { location: route.redirect, "cache-control": "no-store" } }));
+  }
+  if ("retireWorker" in route) {
+    return secure(
+      new Response(RETIRE_WORKER_JS, {
+        headers: { "content-type": CONTENT_TYPES[".js"] ?? "text/javascript; charset=utf-8", "cache-control": "no-cache", "service-worker-allowed": "/" },
+      }),
+    );
+  }
+  const v1 = route.tree === "web";
+  const dir = v1 ? dirs.web : dirs.web2;
+  const resolved = resolveStaticPath(route.pathname, dir);
   if (!resolved) return text("forbidden", 403);
   let { rel, full } = resolved;
 
@@ -168,10 +241,7 @@ export async function serveStatic(
       full = join(dir, "index.html");
       file = Bun.file(full);
       if (!(await file.exists())) {
-        return text(
-          tree.v2 ? "web2 not built — run `bun run build:web2`" : "frontend not built — run `bun run build` in web/",
-          503,
-        );
+        return text(v1 ? "v1 not built — run `bun run build:web`" : "frontend not built — run `bun run build`", 503);
       }
     } else {
       return text("not found", 404);
@@ -185,7 +255,8 @@ export async function serveStatic(
     "cache-control": cacheControlFor(rel),
   };
   if (ext === ".html") headers["content-security-policy"] = CSP;
-  if (rel === "sw.js") headers["service-worker-allowed"] = tree.v2 ? "/v2/" : "/";
+  // `/sw.js` is web2's worker at the URL and scope v1's had, so an installed PWA updates in place.
+  if (rel === "sw.js") headers["service-worker-allowed"] = v1 ? "/v1/" : "/";
   return secure(new Response(file, { headers }));
 }
 

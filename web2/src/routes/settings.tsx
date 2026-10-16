@@ -20,14 +20,12 @@ import { SettingsPageContainer, SettingsRow, SettingsSection } from "@/component
 import { ThemeSettings } from "@/components/settings/ThemeSettings";
 import { useLayout } from "@/hooks/useLayout";
 import { formatShortcutLabel, KEYBINDINGS } from "@/keybindings";
+import { SIGHTR_V1_PATH } from "@/lib/v1-path";
 import { useBridgeInfo } from "@/stream/stores";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsRouteView,
 });
-
-/** Where "Open Sightr v1" goes. T15 changes it to `/v1/`. */
-export const SIGHTR_V1_PATH = "/";
 
 function SettingsRouteView() {
   const desktop = useLayout() === "desktop";
@@ -89,7 +87,7 @@ function SettingsRouteView() {
         <SettingsSection title="Sightr v1" id="sightr-v1">
           <SettingsRow
             title="Open Sightr v1"
-            description="The previous app, on the same bridge."
+            description="The previous app, kept at /v1/ for this release."
             control={
               <Button size="sm" variant="outline" render={<a href={SIGHTR_V1_PATH} />}>
                 <ExternalLinkIcon />

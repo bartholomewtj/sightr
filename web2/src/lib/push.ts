@@ -1,6 +1,6 @@
 // Copied from web/src/lib/push.ts (same bridge endpoints, same localStorage keys: same origin), adapted
-// for web2's own service worker: subscribe through the registration at web2's scope (`/v2/` before
-// cutover, `/` after T15; vite's `base`). A device that subscribed in v1 holds a different
+// for web2's own service worker: subscribe through the registration at web2's scope (vite's `base`:
+// `/` since the T15 cutover, the scope v1's worker had, so an installed phone keeps its subscription). A device that subscribed in v1 holds a different
 // registration, so it gets a new endpoint here; v1's `sightr:push-endpoint` is kept, so the subscribe
 // body's `replaces` names the v1 endpoint and the bridge drops that row (collie#104). One device, one
 // notification per event: the last UI to subscribe owns the device's push.
@@ -18,7 +18,7 @@ export const PUSH_DISMISS_MS = 7 * 24 * 60 * 60 * 1000;
 /** The endpoint this device last registered with the bridge, so the next one can supersede it. */
 export const ENDPOINT_KEY = "sightr:push-endpoint";
 
-/** web2's service worker scope (vite `base`: `/v2/` until cutover) and its URL. */
+/** web2's service worker scope (vite `base`: `/` since the T15 cutover) and its URL. */
 export const swScope = (): string => import.meta.env.BASE_URL;
 export const swUrl = (): string => `${import.meta.env.BASE_URL}sw.js`;
 
@@ -220,9 +220,9 @@ export function keysMatch(existing: ArrayBuffer | null | undefined, serverKey: U
 }
 
 /**
- * web2's own registration. Before cutover v1's worker has scope `/`, which also covers `/v2/`, so
- * `getRegistration` can hand back v1's while web2's is not registered yet; that one is never ours to
- * read or unsubscribe.
+ * web2's own registration, by exact scope. Before the cutover v1's worker had scope `/`, which also
+ * covered a `/v2/` preview, so `getRegistration` could hand back v1's; that one is never ours to read
+ * or unsubscribe.
  */
 async function web2Registration(): Promise<ServiceWorkerRegistration | undefined> {
   const reg = await navigator.serviceWorker.getRegistration(swScope());

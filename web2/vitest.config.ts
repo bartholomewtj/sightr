@@ -26,6 +26,10 @@ export default defineConfig({
     ],
   },
   test: {
+    // The suite renders the app under the pre-cutover preview base, `/v2/` (import.meta.env.BASE_URL):
+    // the code reads its base from vite (router basepath, worker URL), so this also proves nothing is
+    // pinned to the production base `/`.
+    env: { BASE_URL: "/v2/" },
     environment: "jsdom",
     globals: true,
     css: false,
