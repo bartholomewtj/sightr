@@ -26,7 +26,7 @@ import { CtlError, realRun, type Run } from "./types.ts";
 export const TROUBLE_MS = 4_000;
 export const CONNECTION_LOST_MS = 15_000;
 export const GET_TIMEOUT_MS = 10_000;
-/** A gap that starts this soon after a bridge start is blamed on the restart. */
+/** How long after a usage window a bridge start still blames that window's failures on the restart. */
 const RESTART_BLAME_MS = 60_000;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -45,11 +45,17 @@ export type GapCause = "restart" | "herdr" | "network";
 
 export interface ConnReport {
   window: { from: string; to: string; days: number };
-  lines: { total: number; bad: number; phone: number; bridge: number };
+  /** `duplicates`: phone lines dropped because the same event was already logged (a batch re-sent). */
+  lines: { total: number; bad: number; phone: number; bridge: number; duplicates: number };
   phone: { sessions: number; devices: string[]; platforms: Record<string, number>; visibleHours: number };
+  /** Requests in usage windows that span no bridge restart. */
   fetch: Record<FetchClass, ClassReport>;
+  /** Usage windows that span a bridge restart, set aside so a release does not read as bridge errors. */
+  restartWindows: { n: number; requests: number; failed: number };
   gaps: {
     amber: number; red: number; ms: Dist; amberMs: number; redMs: number; endedHidden: number;
+    /** Gaps that ran across time the page was hidden; that time is taken out of `ms`. */
+    spannedHidden: number;
     perVisibleHour: number | null; availability: number | null;
     byCause: Record<GapCause, { n: number; ms: number }>;
     byHour: number[]; byNet: Record<string, { n: number; ms: number }>;
@@ -161,8 +167,47 @@ export function findCluster(values: number[], minN = 5, minShare = 0.4): { atMs:
 type L<K extends ConnLine["kind"]> = Extract<ConnLine, { kind: K }>;
 const is = <K extends ConnLine["kind"]>(kind: K) => (l: ConnLine): l is L<K> => l.kind === kind;
 
+/**
+ * Drop phone lines that repeat an event already logged. The phone keeps a batch until the bridge
+ * answers, and a POST sent as the page hides can land after the page stops listening, so the same
+ * batch arrives again later with a new `ts`. Every phone event carries its own clock and page id, so
+ * the line minus `ts` names the event.
+ */
+export function dedupePhoneLines(lines: ConnLine[]): { lines: ConnLine[]; duplicates: number } {
+  const seen = new Set<string>();
+  const out: ConnLine[] = [];
+  let duplicates = 0;
+  for (const l of lines) {
+    if (l.src === "phone") {
+      const { ts: _ts, ...event } = l;
+      const key = JSON.stringify(event);
+      if (seen.has(key)) { duplicates++; continue; }
+      seen.add(key);
+    }
+    out.push(l);
+  }
+  return { lines: out, duplicates };
+}
+
+/**
+ * How much of a gap the page spent hidden, from the same page's wake lines. Before the phone stopped
+ * opening episodes in the background, a latch that fired just after the page hid opened one that only
+ * closed on the next wake, so a pocketed phone logged its whole time away as an outage.
+ */
+function hiddenWithin(start: number, end: number, wakes: L<"wake">[]): number {
+  let hidden = 0;
+  for (const w of wakes) {
+    const shown = w.at - (w.liveMs ?? 0);
+    const from = Math.max(start, shown - w.hiddenMs);
+    const to = Math.min(end, shown);
+    if (to > from) hidden += to - from;
+  }
+  return hidden;
+}
+
 export function analyseConn(all: ConnLine[], opts: { from: number; to: number; bad?: number }): ConnReport {
-  const lines = all.filter((l) => { const t = timeOf(l); return t >= opts.from && t <= opts.to; }).sort((a, b) => timeOf(a) - timeOf(b));
+  const inWindow = all.filter((l) => { const t = timeOf(l); return t >= opts.from && t <= opts.to; }).sort((a, b) => timeOf(a) - timeOf(b));
+  const { lines, duplicates } = dedupePhoneLines(inWindow);
   const phone = lines.filter((l) => l.src === "phone");
   const bridge = lines.filter((l) => l.src === "bridge");
 
@@ -179,12 +224,31 @@ export function analyseConn(all: ConnLine[], opts: { from: number; to: number; b
   const visibleMs = windows.reduce((a, w) => a + w.visibleMs, 0);
   const visibleHours = visibleMs / HOUR;
   const perHour = (n: number) => (visibleHours >= 0.25 ? n / visibleHours : null);
-  const merged = Object.fromEntries(FETCH_CLASSES.map((c) => [c, emptyFetchStats()])) as Record<FetchClass, FetchStats>;
-  for (const w of windows) for (const c of FETCH_CLASSES) { const s = w.stats[c]; if (s) mergeStats(merged[c], s); }
-  const fetch = Object.fromEntries(FETCH_CLASSES.map((c) => [c, classReport(merged[c])])) as Record<FetchClass, ClassReport>;
 
   // Bridge restarts and Herdr link episodes.
   const starts = bridge.filter(is("bridge.start")).map(timeOf);
+
+  // Request stats. A window spans from the page's previous window (or boot) to its own line. One that
+  // a restart falls in, or follows closely enough that the bridge was already down during it, is set
+  // aside: `tailscale serve` answers 502 while the bridge is away, and that is the restart, not a
+  // bridge error.
+  const merged = Object.fromEntries(FETCH_CLASSES.map((c) => [c, emptyFetchStats()])) as Record<FetchClass, FetchStats>;
+  const restartWindows = { n: 0, requests: 0, failed: 0 };
+  const spanStart = new Map<string, number>();
+  for (const l of phone) {
+    if (l.kind === "boot") { spanStart.set(l.sid, l.at); continue; }
+    if (l.kind !== "window") continue;
+    const from = spanStart.get(l.sid) ?? l.at - l.visibleMs;
+    spanStart.set(l.sid, l.at);
+    const stats = FETCH_CLASSES.flatMap((c) => (l.stats[c] ? [[c, l.stats[c]!] as const] : []));
+    if (stats.length && starts.some((s) => s >= from && s <= l.at + RESTART_BLAME_MS)) {
+      restartWindows.n++;
+      for (const [, s] of stats) { restartWindows.requests += s.n; restartWindows.failed += s.timeout + s.network + s.http5; }
+      continue;
+    }
+    for (const [c, s] of stats) mergeStats(merged[c], s);
+  }
+  const fetch = Object.fromEntries(FETCH_CLASSES.map((c) => [c, classReport(merged[c])])) as Record<FetchClass, ClassReport>;
   const herdrDown: Array<{ from: number; to: number }> = [];
   let downSince: number | null = null;
   for (const l of bridge) {
@@ -193,15 +257,25 @@ export function analyseConn(all: ConnLine[], opts: { from: number; to: number; b
   }
   if (downSince !== null) herdrDown.push({ from: downSince, to: opts.to });
 
-  // Gaps the operator saw, and what most likely caused each.
-  const gapLines = phone.filter(is("gap"));
+  // Gaps the operator saw, less any time the page spent hidden, and what most likely caused each.
+  const wakesBySid = new Map<string, L<"wake">[]>();
+  for (const w of phone.filter(is("wake"))) wakesBySid.set(w.sid, [...(wakesBySid.get(w.sid) ?? []), w]);
+  let spannedHidden = 0;
+  const gapLines = phone.filter(is("gap")).map((g) => {
+    const end = timeOf(g);
+    const hidden = hiddenWithin(end - g.ms, end, wakesBySid.get(g.sid) ?? []);
+    if (hidden > 0) spannedHidden++;
+    return hidden > 0 ? { ...g, ms: Math.max(0, g.ms - hidden) } : g;
+  });
   const byCause: Record<GapCause, { n: number; ms: number }> = { restart: { n: 0, ms: 0 }, herdr: { n: 0, ms: 0 }, network: { n: 0, ms: 0 } };
   const byHour = new Array<number>(24).fill(0);
   const byNet: Record<string, { n: number; ms: number }> = {};
   for (const g of gapLines) {
     const end = timeOf(g);
     const start = end - g.ms;
-    const cause: GapCause = starts.some((s) => s >= start - 5_000 && s <= start + RESTART_BLAME_MS && s <= end)
+    // A bridge start inside the gap means the bridge was away for part of it, however long it was
+    // gone: a start near the gap's beginning is a release, one near its end is a recovery.
+    const cause: GapCause = starts.some((s) => s >= start - 5_000 && s <= end)
       ? "restart"
       : herdrDown.some((d) => d.from <= end && d.to >= start) ? "herdr" : "network";
     byCause[cause].n++; byCause[cause].ms += g.ms;
@@ -225,13 +299,15 @@ export function analyseConn(all: ConnLine[], opts: { from: number; to: number; b
 
   const report: ConnReport = {
     window: { from: new Date(opts.from).toISOString(), to: new Date(opts.to).toISOString(), days: Math.round(((opts.to - opts.from) / DAY) * 100) / 100 },
-    lines: { total: lines.length, bad: opts.bad ?? 0, phone: phone.length, bridge: bridge.length },
+    lines: { total: lines.length, bad: opts.bad ?? 0, phone: phone.length, bridge: bridge.length, duplicates },
     phone: { sessions: sessions.size, devices: [...devices].sort(), platforms, visibleHours: Math.round(visibleHours * 100) / 100 },
     fetch,
+    restartWindows,
     gaps: {
       amber: amber.length, red: red.length, ms: dist(gapLines.map((g) => g.ms)),
       amberMs: amber.reduce((a, g) => a + g.ms, 0), redMs: red.reduce((a, g) => a + g.ms, 0),
       endedHidden: gapLines.filter((g) => g.ended === "hidden").length,
+      spannedHidden,
       perVisibleHour: perHour(gapLines.length),
       availability: visibleMs > 0 ? Math.max(0, 1 - gapMs / visibleMs) : null,
       byCause, byHour, byNet,
@@ -279,7 +355,7 @@ export function findings(r: ConnReport): Finding[] {
   const restart = r.gaps.byCause.restart;
   if (restart.n >= 2 && totalGapMs > 0 && restart.ms / totalGapMs >= 0.3) {
     add({ id: "restart-outages", severity: "medium", title: `Bridge restarts cause ${pct(restart.ms / totalGapMs)} of outage time`,
-      evidence: `${restart.n} gaps began within ${RESTART_BLAME_MS / 1000}s of one of ${r.bridge.starts.length} bridge starts.`,
+      evidence: `${restart.n} gaps had one of ${r.bridge.starts.length} bridge starts inside them.`,
       suggest: "Run `sightr-ctl logs` for crash output. If the restarts are updates, cut them when the phone is idle; if crashes, fix the crash first." });
   }
   if (r.bridge.herdrDowns > 0) {
@@ -374,14 +450,14 @@ export function formatConnReport(r: ConnReport): string {
   const L: string[] = [];
   const row = (cells: string[], widths: number[]) => cells.map((c, i) => (i === 0 ? c.padEnd(widths[i]!) : c.padStart(widths[i]!))).join("  ");
   L.push(`Sightr connection  ${r.window.from.slice(0, 16).replace("T", " ")} → ${r.window.to.slice(0, 16).replace("T", " ")} UTC (${r.window.days >= 1 ? `${r.window.days} d` : `${Math.round(r.window.days * 24)} h`})`);
-  L.push(`lines ${r.lines.total} (phone ${r.lines.phone}, bridge ${r.lines.bridge}${r.lines.bad ? `, ${r.lines.bad} unreadable` : ""})`);
+  L.push(`lines ${r.lines.total} (phone ${r.lines.phone}, bridge ${r.lines.bridge}${r.lines.bad ? `, ${r.lines.bad} unreadable` : ""}${r.lines.duplicates ? `; ${r.lines.duplicates} re-sent phone lines dropped` : ""})`);
   const plats = Object.entries(r.phone.platforms).map(([k, v]) => `${k}×${v}`).join(", ") || "—";
   L.push(`phone: ${r.phone.sessions} page loads, ${r.phone.visibleHours.toFixed(1)} h visible; ${plats}${r.phone.devices.length ? `; devices ${r.phone.devices.join(", ")}` : ""}`);
   L.push("");
 
   const g = r.gaps;
   L.push(`Live ${g.availability === null ? "—" : pct(g.availability)} of visible time`);
-  L.push(`  gaps: ${g.amber} amber, ${g.red} red; p50 ${secs(g.ms.p50)}, p95 ${secs(g.ms.p95)}, max ${secs(g.ms.max)}${g.endedHidden ? `; ${g.endedHidden} unresolved when hidden` : ""}`);
+  L.push(`  gaps: ${g.amber} amber, ${g.red} red; p50 ${secs(g.ms.p50)}, p95 ${secs(g.ms.p95)}, max ${secs(g.ms.max)}${g.endedHidden ? `; ${g.endedHidden} unresolved when hidden` : ""}${g.spannedHidden ? `; ${g.spannedHidden} less their hidden time` : ""}`);
   L.push(`  cause: restart ${g.byCause.restart.n} (${secs(g.byCause.restart.ms)}), herdr ${g.byCause.herdr.n} (${secs(g.byCause.herdr.ms)}), network ${g.byCause.network.n} (${secs(g.byCause.network.ms)})`);
   if (g.amber + g.red > 0) {
     const peak = Math.max(...g.byHour);
@@ -400,6 +476,8 @@ export function formatConnReport(r: ConnReport): string {
     if (!f.n) continue;
     L.push(row([c, String(f.n), pct(f.failRate), String(f.timeout), String(f.network), String(f.http5), hsecs(f.p50, f.n), hsecs(f.p95, f.n), secs(f.maxMs)], widths));
   }
+  const rw = r.restartWindows;
+  if (rw.n) L.push(`(${rw.n} usage windows across a bridge restart left out: ${rw.failed} of ${rw.requests} requests failed)`);
   L.push("");
 
   L.push("Findings");

@@ -125,6 +125,50 @@ describe("conn-telemetry", () => {
     ]);
   });
 
+  it("time in the background is not a gap", () => {
+    vi.useFakeTimers();
+    // The bridge is away, so every event stays queued where the test can read it.
+    server.use(http.post(CONN_PATH, () => HttpResponse.error()));
+    startConnTelemetry();
+    const anchor = Date.now();
+    vi.advanceTimersByTime(4_000);
+    noteTrouble(true, false, anchor);
+    setVisibility("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    // The latch fires in the background, and the page stays away for an hour.
+    vi.advanceTimersByTime(11_000);
+    noteTrouble(true, true, anchor);
+    vi.advanceTimersByTime(3_600_000);
+    setVisibility("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    vi.advanceTimersByTime(250);
+    // Still red after the wake: that much is a gap, timed from the wake.
+    vi.advanceTimersByTime(450);
+    noteTrouble(false, false, anchor);
+    expect(__pendingConn().filter((e) => e.kind === "gap")).toEqual([
+      expect.objectContaining({ ms: 4_000, ended: "hidden" }),
+      expect.objectContaining({ ms: 700, lost: true, ended: "live" }),
+    ]);
+  });
+
+  it("a wake that clears the banner opens no gap", () => {
+    vi.useFakeTimers();
+    // The bridge is away, so every event stays queued where the test can read it.
+    server.use(http.post(CONN_PATH, () => HttpResponse.error()));
+    startConnTelemetry();
+    noteTrouble(true, false, Date.now() - 4_000);
+    setVisibility("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+    vi.advanceTimersByTime(60_000);
+    setVisibility("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    noteTrouble(false, false, Date.now());
+    vi.advanceTimersByTime(1_000);
+    expect(__pendingConn().filter((e) => e.kind === "gap")).toEqual([
+      expect.objectContaining({ ended: "hidden" }),
+    ]);
+  });
+
   it("a wake reports how long until live data arrived", async () => {
     vi.useFakeTimers();
     captureBatches();

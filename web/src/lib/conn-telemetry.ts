@@ -140,13 +140,24 @@ export function noteLive(now: number): void {
 }
 
 let episode: { anchor: number; lost: boolean } | null = null;
+/** What the banner last showed, so a wake can pick an episode back up. */
+let banner = { trouble: false, lost: false };
+/** How long after a wake to read the banner again. */
+const WAKE_SETTLE_MS = 250;
+
+const pageHidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
 
 /**
  * Called with what the connection banner shows. An episode opens when amber appears (measured from
  * `anchor`, the last live moment) and closes into a `gap` event when it clears or the page hides.
+ *
+ * A hidden page opens none. The 15 s latch can fire just after the page hides, and an episode opened
+ * then stayed open until the next wake, so every minute in a pocket was logged as an outage. If the
+ * banner still shows trouble when the page comes back, the wake opens a fresh episode instead.
  */
 export function noteTrouble(trouble: boolean, lost: boolean, anchor: number): void {
-  if (trouble && !episode) episode = { anchor: Math.max(anchor, shownAt), lost };
+  banner = { trouble, lost };
+  if (trouble && !episode && !pageHidden()) episode = { anchor: Math.max(anchor, shownAt), lost };
   if (episode && lost) episode.lost = true;
   if (!trouble && episode) closeEpisode("live");
 }
@@ -174,6 +185,13 @@ function onVisibility(): void {
     shownAt = now;
     if (hiddenAt !== null) wake = { at: now, hiddenMs: now - hiddenAt };
     hiddenAt = null;
+    // The wake itself moves the banner's anchor, so read the banner once it has re-rendered: trouble
+    // still showing then is a red latch the operator is looking at, timed from the wake.
+    if (banner.trouble) {
+      window.setTimeout(() => {
+        if (banner.trouble && !episode && !pageHidden()) episode = { anchor: now, lost: banner.lost };
+      }, WAKE_SETTLE_MS);
+    }
   }
 }
 
@@ -265,6 +283,7 @@ export function __resetConnTelemetry(): void {
   hiddenAt = null;
   wake = null;
   episode = null;
+  banner = { trouble: false, lost: false };
   shownAt = 0;
   flushing = false;
 }
