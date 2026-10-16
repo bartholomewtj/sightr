@@ -54,7 +54,7 @@ describe("contracts", () => {
     expect(new Set(THREAD_EVENT_TYPES).size).toBe(THREAD_EVENT_TYPES.length);
     expect<string[]>([...COMMAND_TYPES].sort()).toEqual(
       [
-        "thread.create", "thread.rename", "thread.pin", "thread.unpin", "thread.snooze", "thread.settle",
+        "thread.create", "thread.rename", "thread.pin", "thread.unpin", "thread.snooze", "thread.unsnooze", "thread.settle",
         "thread.unsettle", "thread.archive", "thread.unarchive", "thread.markRead", "thread.markUnread",
         "message.dispatch", "queued.reorder", "queued.edit", "queued.cancel", "queue.resume", "run.interrupt",
         "runtime-request.respond", "thread.permissionMode.set", "thread.model.set", "project.create", "project.rename",

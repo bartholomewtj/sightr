@@ -44,6 +44,10 @@ const rows: Row[] = [
   { name: "pin with no pins starts at 1", state: live(), command: c({ type: "thread.pin" }), expected: shelf({ shelf: "pinned", pinOrder: 1 }) },
   { name: "pin of a pinned thread is a no-op", state: live({ thread: thread("t1", { shelf: "pinned", pinOrder: 2 }) }), command: c({ type: "thread.pin" }), expected: none },
   { name: "pin refuses an archived thread", state: live({ thread: thread("t1", { shelf: "archived" }) }), command: c({ type: "thread.pin" }), expected: reject("conflict", "archived") },
+  { name: "pin at a given order", state: live({ maxPinOrder: 4 }), command: c({ type: "thread.pin", pinOrder: 1.5 }), expected: shelf({ shelf: "pinned", pinOrder: 1.5 }) },
+  { name: "pin of a pinned thread at a new order moves it", state: live({ thread: thread("t1", { shelf: "pinned", pinOrder: 2 }) }), command: c({ type: "thread.pin", pinOrder: 0.5 }), expected: shelf({ shelf: "pinned", pinOrder: 0.5 }) },
+  { name: "pin of a pinned thread at its own order is a no-op", state: live({ thread: thread("t1", { shelf: "pinned", pinOrder: 2 }) }), command: c({ type: "thread.pin", pinOrder: 2 }), expected: none },
+  { name: "pin refuses a non-number order", state: live(), command: c({ type: "thread.pin", pinOrder: Number.NaN }), expected: reject("invalid", "bad-pin-order") },
   { name: "unpin returns to active", state: live({ thread: thread("t1", { shelf: "pinned" }) }), command: c({ type: "thread.unpin" }), expected: shelf({ shelf: "active" }) },
   { name: "unpin of an unpinned thread is a no-op", state: live(), command: c({ type: "thread.unpin" }), expected: none },
   // snooze
@@ -52,6 +56,8 @@ const rows: Row[] = [
   { name: "snooze refuses now", state: live(), command: c({ type: "thread.snooze", until: NOW }), expected: reject("invalid", "snooze-in-past") },
   { name: "snooze refuses a non-number", state: live(), command: c({ type: "thread.snooze", until: Number.NaN }), expected: reject("invalid", "bad-time") },
   { name: "snooze refuses an archived thread", state: live({ thread: thread("t1", { shelf: "archived" }) }), command: c({ type: "thread.snooze", until: NOW + 1 }), expected: reject("conflict", "archived") },
+  { name: "unsnooze wakes a snoozed thread", state: live({ thread: thread("t1", { shelf: "snoozed", snoozedUntil: NOW + 5 }) }), command: c({ type: "thread.unsnooze" }), expected: shelf({ shelf: "active" }) },
+  { name: "unsnooze of an active thread is a no-op", state: live(), command: c({ type: "thread.unsnooze" }), expected: none },
   // settle / unsettle
   { name: "settle", state: live(), command: c({ type: "thread.settle" }), expected: shelf({ shelf: "settled" }) },
   { name: "settle of a settled thread is a no-op", state: live({ thread: thread("t1", { shelf: "settled" }) }), command: c({ type: "thread.settle" }), expected: none },

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { NO_CAPABILITIES, type RuntimeRequest, type ThreadStatus } from "../../shared/v2/contracts.ts";
+import { NO_CAPABILITIES, type Project, type RuntimeRequest, type ThreadStatus } from "../../shared/v2/contracts.ts";
 import type { AgentStatus, WorkspaceView } from "../../shared/wire.ts";
 import type { PaneActivity } from "../activity.ts";
 import type { JournalAdapter } from "../journal/types.ts";
@@ -142,9 +142,17 @@ describe("diffHerd", () => {
     const { events } = diffHerd(snap([agent("w1:p1"), agent("w9:p1", { workspaceId: "w9", workspaceLabel: "late", workspaceNumber: 9 })], [], [ws]), EMPTY, ctx());
     const projects = events.filter((e) => e.type === "project.upserted").map((e) => (e.payload as { project: unknown }).project);
     expect(projects).toEqual([
-      expect.objectContaining({ id: "w1", order: 3, worktreeOf: "repo" }),
+      expect.objectContaining({ id: "w1", order: 3, repoKey: "repo", worktreeOf: "repo" }),
       expect.objectContaining({ id: "w9", label: "late", number: 9 }),
     ]);
+  });
+
+  test("a primary checkout records its repo key and no worktreeOf", () => {
+    const ws = workspace("w1", 1, { worktree: { repoKey: "repo", repoName: "r", repoRoot: "/r", checkoutPath: "/r", isLinkedWorktree: false } });
+    const { events } = diffHerd(snap([agent("w1:p1")], [], [ws]), EMPTY, ctx());
+    const upsert = events.find((e) => e.type === "project.upserted")?.payload as { project: Project } | undefined;
+    expect(upsert?.project).toMatchObject({ id: "w1", repoKey: "repo" });
+    expect(upsert?.project.worktreeOf).toBeUndefined();
   });
 
   test("a user label survives a herd rename", () => {

@@ -11,6 +11,7 @@ import {
   openThreadStore,
   RETAIN_ARCHIVED_MS,
   RETAIN_EVENTS_MS,
+  MIGRATIONS,
   SCHEMA_VERSION,
   StoreTooNewError,
   type ThreadStore,
@@ -60,16 +61,32 @@ describe("migrations", () => {
     open(path).close();
     const db = new Database(path);
     expect(db.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version).toBe(SCHEMA_VERSION);
-    expect(db.query("SELECT version FROM migrations").all()).toEqual([{ version: SCHEMA_VERSION }]);
+    expect(db.query("SELECT version FROM migrations ORDER BY version").all()).toEqual(MIGRATIONS.map((m) => ({ version: m.version })));
     db.close();
 
     const again = open(path);
     again.append([createProject()]);
     again.close();
     const db2 = new Database(path);
-    expect(db2.query("SELECT version FROM migrations").all()).toEqual([{ version: SCHEMA_VERSION }]);
+    expect(db2.query("SELECT version FROM migrations ORDER BY version").all()).toEqual(MIGRATIONS.map((m) => ({ version: m.version })));
     expect(db2.query("SELECT count(*) AS n FROM projects").get()).toEqual({ n: 1 });
     db2.close();
+  });
+
+  test("migration 2 adds the project repo key to a version-1 database", () => {
+    const path = join(tempDir(), "threads.sqlite");
+    const v1 = new Database(path);
+    v1.run(`CREATE TABLE migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)`);
+    MIGRATIONS[0]!.up(v1);
+    v1.query("INSERT INTO migrations (version, applied_at) VALUES (1, 0)").run();
+    v1.run(`PRAGMA user_version = 1`);
+    v1.query("INSERT INTO projects (id, label, label_source, number, ord, status) VALUES ('w1', 'a', 'herd', 1, 1, 'idle')").run();
+    v1.close();
+    const store = open(path);
+    expect(store.getProject("w1")).toEqual({ id: "w1", label: "a", labelSource: "herd", number: 1, order: 1, status: "idle" });
+    store.append([createProject(project("w1", { repoKey: "/r/.git" }))]);
+    expect(store.getProject("w1")?.repoKey).toBe("/r/.git");
+    store.close();
   });
 
   test("a database stamped with a newer version refuses to open", () => {
@@ -185,7 +202,7 @@ describe("append", () => {
 /** A scripted history that touches every projection-writing event type. */
 function script(): EventDraft[][] {
   return [
-    [createProject(), createProject(project("w2", { number: 2, order: 2, worktreeOf: "repo" }))],
+    [createProject(), createProject(project("w2", { number: 2, order: 2, repoKey: "repo", worktreeOf: "repo" }))],
     [createThread(), createThread(thread("t2", { projectId: "w2", sessionRef: { kind: "id", value: "sess-1" } }))],
     [{ type: "thread.updated", threadId: "t1", payload: { patch: { title: "renamed", titleSource: "user", status: "working" }, at: 2_000 } }],
     [{ type: "run.started", threadId: "t1", payload: { run: { id: "r1", threadId: "t1", ordinal: 1, status: "running", startedAt: 2_000 } } }],
@@ -260,6 +277,14 @@ describe("replay equivalence", () => {
 });
 
 describe("reads", () => {
+  test("a fractional pin order (a drop between two pins) survives the store", () => {
+    const store = open();
+    store.append([createProject(), createThread(thread("t1"))]);
+    store.append([{ type: "thread.shelf-changed", threadId: "t1", payload: { shelf: "pinned", pinOrder: 1.5, at: 2_000 } }]);
+    expect(store.getThread("t1")?.pinOrder).toBe(1.5);
+    expect(store.maxPinOrder()).toBe(1.5);
+  });
+
   test("eventsAfter honours threadId and limit", () => {
     const store = open();
     for (const batch of script()) store.append(batch);
@@ -288,7 +313,7 @@ describe("reads", () => {
     const shell = store.snapshotShell();
     expect(shell.sequence).toBe(store.lastSequence());
     expect(shell.projects.map((p) => p.id)).toEqual(["w1", "w2"]);
-    expect(shell.projects[1]).toMatchObject({ closedAt: 4_000, worktreeOf: "repo" });
+    expect(shell.projects[1]).toMatchObject({ closedAt: 4_000, repoKey: "repo", worktreeOf: "repo" });
     expect(shell.requests).toEqual([
       expect.objectContaining({ id: "q1", kind: "permission", prompt: "Allow?", status: "pending" }),
     ]);

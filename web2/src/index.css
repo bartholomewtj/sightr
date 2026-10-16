@@ -105,6 +105,7 @@
   --color-boxline: var(--boxline);
   --color-nav: var(--nav);
   --color-cage: var(--cage);
+  --color-chip-ink: var(--chip-ink);
 
   /* The signature. */
   --color-you: var(--accent);
@@ -219,4 +220,41 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--app-scrollbar-thumb-hover);
+}
+
+/* ── Motion (T10) ────────────────────────────────────────────────────────────────────────────────
+   The working pulse is the product's one motion (opacity only, 1.2 s). The refused-drop shake on the
+   Snoozed header runs once. Both stop under prefers-reduced-motion (the dot also drops the class). */
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@utility animate-status-pulse {
+  animation: status-pulse 1.2s ease-in-out infinite;
+}
+@keyframes shake-once {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+@utility animate-shake-once {
+  animation: shake-once 0.3s ease-in-out 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-status-pulse,
+  .animate-shake-once {
+    animation: none;
+  }
 }

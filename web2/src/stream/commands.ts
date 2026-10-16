@@ -35,7 +35,9 @@ export interface CommandDeps {
   newId: () => string;
 }
 
-const defaultDeps = (): CommandDeps => ({
+/** The real fetch and a random UUID. A caller that must know the `commandId` up front (an optimistic
+ * change keyed by it, T10) spreads these and replaces `newId`. */
+export const defaultCommandDeps = (): CommandDeps => ({
   fetch: (...args) => globalThis.fetch(...args),
   newId: () => crypto.randomUUID(),
 });
@@ -45,7 +47,7 @@ const isAbort = (err: unknown) => (err as { name?: string } | null)?.name === "A
 export async function sendCommand<T extends CommandType>(
   type: T,
   payload: CommandPayload<T>,
-  deps: CommandDeps = defaultDeps(),
+  deps: CommandDeps = defaultCommandDeps(),
 ): Promise<{ sequence: number }> {
   const body = JSON.stringify({ ...payload, commandId: deps.newId(), type });
   const post = () =>

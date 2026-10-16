@@ -5,7 +5,9 @@
   "folders": [
     "apps/web/src/components/",
     "apps/web/src/components/chat/",
-    "apps/web/src/components/ui/"
+    "apps/web/src/components/ui/",
+    "apps/web/src/components/sidebar/",
+    "apps/web/src/hooks/"
   ],
   "files": [
     {
@@ -189,6 +191,76 @@
       "upstream": "apps/web/src/uiStateStore.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "pattern"
+    },
+    {
+      "local": "src/components/Sidebar.tsx",
+      "upstream": "apps/web/src/components/Sidebar.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "T10: projects, shelves, Needs you, search, row menu, @dnd-kit drag"
+    },
+    {
+      "local": "src/components/Sidebar.logic.ts",
+      "upstream": "apps/web/src/components/Sidebar.logic.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "resolveSidebarThreadSection, resolveSidebarDropVerb, resolveSidebarRowAccessibility, resolveAdjacentThreadId; Sightr shelves, tree, filters, commands"
+    },
+    {
+      "local": "src/components/Sidebar.logic.ts",
+      "upstream": "packages/client-runtime/src/state/threadSort.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "planPinnedReorder on numeric pinOrder"
+    },
+    {
+      "local": "src/components/Sidebar.snooze.ts",
+      "upstream": "apps/web/src/components/Sidebar.snooze.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "snoozeWakeDescription; epoch ms"
+    },
+    {
+      "local": "src/components/Sidebar.snooze.ts",
+      "upstream": "packages/client-runtime/src/state/threadSettled.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "resolveSnoozePresets (morning 08:00), snoozeWakeLabel, resolveCustomSnooze for datetime-local; no Effect DateTime"
+    },
+    {
+      "local": "src/components/Sidebar.drag.ts",
+      "upstream": "apps/web/src/components/Sidebar.drag.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "drop resolution and drag UI state on @dnd-kit"
+    },
+    {
+      "local": "src/components/ThreadStatusIndicators.tsx",
+      "upstream": "apps/web/src/components/ThreadStatusIndicators.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "ThreadStatusDot only"
+    },
+    {
+      "local": "src/components/CustomSnoozeDialog.tsx",
+      "upstream": "apps/web/src/components/CustomSnoozeDialog.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern",
+      "note": "one native datetime-local field"
+    },
+    {
+      "local": "src/components/sidebar/SidebarThreadUndoNotice.tsx",
+      "upstream": "apps/web/src/components/sidebar/SidebarThreadUndoNotice.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "one undo at a time, fixed shortcut label"
+    },
+    {
+      "local": "src/hooks/showThreadUndoNotice.ts",
+      "upstream": "apps/web/src/hooks/showThreadUndoNotice.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "one undo at a time (new replaces old), no claims or Effect results"
     }
   ]
 }

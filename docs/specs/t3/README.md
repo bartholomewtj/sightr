@@ -31,7 +31,7 @@ One spec = one run. Do not implement a sibling spec in the same run. The rules a
 
 ## Domain (shared/v2/contracts.ts, spec T01)
 
-- **Project** `{ id: workspace_id, label, labelSource: herd|user, number, worktreeOf?, order, status (roll-up), closedAt? }`.
+- **Project** `{ id: workspace_id, label, labelSource: herd|user, number, repoKey?, worktreeOf?, order, status (roll-up), closedAt? }`.
 - **Thread** `{ id (bridge uuid), paneId, terminalId, projectId, title, titleSource, harness, status, shelf: active|pinned|snoozed|settled|archived, snoozedUntil?, pinnedAt?, pinOrder?, settledAt?, unreadDone, lastActivityAt, createdAt, updatedAt, archivedAt?, archiveReason?, sessionRef?, capabilities, permissionMode?, model? }`. Shelf and time fields use T3's `OrchestrationV2AppThread` names.
   - Identity: a thread is bound to `(paneId, terminalId)`. A new `terminal_id` on the same `pane_id` is a new thread. Herdr pane ids are long and not reused, but the terminal id is the guard.
   - A harness session change inside the pane (relaunch, `/clear`, `/new`) is a `session` divider item, not a new thread.
@@ -48,7 +48,7 @@ One spec = one run. Do not implement a sibling spec in the same run. The rules a
 (a receipt row). Commands for one thread run one at a time on the existing pane write queue
 (`bridge/pane-queue.ts`). The reply is `{ sequence }`: the intent committed, not that the work finished.
 
-`thread.create` · `thread.rename` · `thread.pin|unpin` · `thread.snooze {until}` · `thread.settle|unsettle` ·
+`thread.create` · `thread.rename` · `thread.pin {pinOrder?}|unpin` · `thread.snooze {until}|unsnooze` · `thread.settle|unsettle` ·
 `thread.archive|unarchive` · `thread.markRead|markUnread` · `message.dispatch {text, attachments, mode: start|queue|steer}` ·
 `queued.reorder|edit|cancel` · `run.interrupt` · `runtime-request.respond {requestId, optionIndex}` ·
 `thread.permissionMode.set` · `thread.model.set` · `project.create` · `project.rename`.

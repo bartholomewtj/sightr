@@ -6,7 +6,10 @@ import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
 
 import { __resetConnTelemetry } from "@v1/lib/conn-telemetry";
 
+import { __resetToasts } from "@/components/toast";
+import { __resetThreadUndoNotice } from "@/hooks/showThreadUndoNotice";
 import { clearLockRequired } from "@/lib/lock";
+import { __resetSidebarState } from "@/state/sidebar";
 import { __resetShellStream } from "@/stream/shell-stream";
 import { __resetStreamStores } from "@/stream/stores";
 import { __resetThreadStream } from "@/stream/thread-stream";
@@ -41,6 +44,9 @@ beforeEach(() => {
   __resetThreadStream();
   __resetStreamStores();
   __resetUiState();
+  __resetSidebarState();
+  __resetToasts();
+  __resetThreadUndoNotice();
   clearLockRequired();
   FakeEventSource.reset();
   resetMedia();

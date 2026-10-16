@@ -48,6 +48,7 @@ export function decide(state: DecideState, command: Command, ctx: DecideContext)
     case "thread.pin":
     case "thread.unpin":
     case "thread.snooze":
+    case "thread.unsnooze":
     case "thread.settle":
     case "thread.unsettle":
     case "thread.archive":
@@ -72,14 +73,17 @@ export function decide(state: DecideState, command: Command, ctx: DecideContext)
       if (archived) return reject("conflict", "archived");
       return accept({ type: "thread.updated", threadId, payload: { patch: { title, titleSource: "user" }, at } });
     }
-    case "thread.pin":
+    case "thread.pin": {
       if (archived) return reject("conflict", "archived");
-      if (thread.shelf === "pinned") return accept();
+      const wanted = command.pinOrder;
+      if (wanted !== undefined && !Number.isFinite(wanted)) return reject("invalid", "bad-pin-order");
+      if (thread.shelf === "pinned" && (wanted === undefined || wanted === thread.pinOrder)) return accept();
       return accept({
         type: "thread.shelf-changed",
         threadId,
-        payload: { shelf: "pinned", pinOrder: (state.maxPinOrder ?? 0) + 1, at },
+        payload: { shelf: "pinned", pinOrder: wanted ?? (state.maxPinOrder ?? 0) + 1, at },
       });
+    }
     case "thread.unpin":
       if (thread.shelf !== "pinned") return accept();
       return accept({ type: "thread.shelf-changed", threadId, payload: { shelf: "active", at } });
@@ -88,6 +92,9 @@ export function decide(state: DecideState, command: Command, ctx: DecideContext)
       if (command.until <= at) return reject("invalid", "snooze-in-past");
       if (archived) return reject("conflict", "archived");
       return accept({ type: "thread.shelf-changed", threadId, payload: { shelf: "snoozed", snoozedUntil: command.until, at } });
+    case "thread.unsnooze":
+      if (thread.shelf !== "snoozed") return accept();
+      return accept({ type: "thread.shelf-changed", threadId, payload: { shelf: "active", at } });
     case "thread.settle":
       if (archived) return reject("conflict", "archived");
       if (thread.shelf === "settled") return accept();

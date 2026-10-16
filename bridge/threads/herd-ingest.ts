@@ -114,6 +114,7 @@ export interface HerdDiff {
 interface DesiredWorkspace {
   label: string;
   number: number;
+  repoKey?: string;
   worktreeOf?: string;
 }
 
@@ -128,6 +129,7 @@ function sameProject(a: Project, b: Project): boolean {
     a.labelSource === b.labelSource &&
     a.number === b.number &&
     a.order === b.order &&
+    a.repoKey === b.repoKey &&
     a.worktreeOf === b.worktreeOf &&
     a.status === b.status &&
     a.closedAt === b.closedAt
@@ -304,6 +306,7 @@ export function diffHerd(snap: EngineSnapshot, projection: HerdProjection, ctx: 
     workspaces.set(w.workspaceId, {
       label: w.label || w.workspaceId,
       number: w.number,
+      ...(w.worktree ? { repoKey: w.worktree.repoKey } : {}),
       ...(w.worktree?.isLinkedWorktree ? { worktreeOf: w.worktree.repoKey } : {}),
     });
   }
@@ -331,6 +334,7 @@ export function diffHerd(snap: EngineSnapshot, projection: HerdProjection, ctx: 
       labelSource: user ? "user" : "herd",
       number: w.number,
       order: w.number,
+      ...(w.repoKey !== undefined ? { repoKey: w.repoKey } : {}),
       ...(w.worktreeOf !== undefined ? { worktreeOf: w.worktreeOf } : {}),
       status: rollUp(id),
     };

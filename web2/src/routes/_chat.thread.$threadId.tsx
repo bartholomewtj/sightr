@@ -1,22 +1,43 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
+import { useEffect, useRef } from "react";
 
+import { Button } from "~/components/ui/button";
 import { useLayout } from "@/hooks/useLayout";
 import { useThreadStream } from "@/hooks/useThreadStream";
-import { useShell, useThread, useThreadStore } from "@/stream/stores";
+import { canUnarchive } from "@/lib/archived";
+import { performThreadCommand, useSidebarThread } from "@/state/sidebar";
+import { useThread, useThreadStore } from "@/stream/stores";
 
 export const Route = createFileRoute("/_chat/thread/$threadId")({
   component: ThreadRouteView,
 });
 
+/**
+ * Opening a thread marks it read (T10), once per visit and only after the thread stream says
+ * `synchronized`, so a thread that finished while the stream was catching up is not cleared unseen.
+ */
+function useMarkReadOnOpen(threadId: string, synchronized: boolean, unreadDone: boolean | undefined): void {
+  const sent = useRef<string | null>(null);
+  useEffect(() => {
+    if (!synchronized || unreadDone === undefined || sent.current === threadId) return;
+    sent.current = threadId;
+    if (unreadDone) void performThreadCommand({ type: "thread.markRead", threadId });
+  }, [threadId, synchronized, unreadDone]);
+}
+
 function ThreadRouteView() {
   const { threadId } = Route.useParams();
   useThreadStream(threadId);
   const desktop = useLayout() === "desktop";
-  const shellThread = useShell((s) => s.threads[threadId]);
+  const shellThread = useSidebarThread(threadId);
   const state = useThread(threadId);
   const missing = useThreadStore((s) => s.missing === threadId);
-  const title = state?.thread?.title ?? shellThread?.title ?? "Thread";
+  const title = shellThread?.title ?? state?.thread?.title ?? "Thread";
+  const synchronized = state !== null && !state.syncing;
+  useMarkReadOnOpen(threadId, synchronized, shellThread?.unreadDone ?? state?.thread?.unreadDone);
+  const archived = (shellThread ?? state?.thread)?.shelf === "archived";
+  const archiveReason = (shellThread ?? state?.thread)?.archiveReason;
 
   return (
     <section aria-label={title} className="flex min-h-0 flex-1 flex-col">
@@ -32,8 +53,23 @@ function ThreadRouteView() {
       {missing ? (
         <p className="p-4 text-sm text-muted-foreground">This thread no longer exists on the bridge.</p>
       ) : (
-        // T11 (timeline) and T12 (composer) fill this region.
-        <div data-region="timeline" className="min-h-0 flex-1 overflow-y-auto" />
+        <>
+          {/* T11 (timeline) fills this region. */}
+          <div data-region="timeline" className="min-h-0 flex-1 overflow-y-auto" />
+          {archived ? (
+            // Read-only: the composer (T12) is replaced.
+            <div data-region="composer" className="flex items-center gap-3 border-t px-4 py-3 text-sm text-muted-foreground">
+              <span className="flex-1">
+                {canUnarchive(archiveReason) ? "This thread is archived." : "This thread's pane was closed."}
+              </span>
+              {canUnarchive(archiveReason) ? (
+                <Button size="sm" variant="outline" onClick={() => void performThreadCommand({ type: "thread.unarchive", threadId })}>
+                  Unarchive
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </>
       )}
     </section>
   );

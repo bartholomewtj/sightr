@@ -166,6 +166,13 @@ export const MIGRATIONS: readonly Migration[] = [
       )`);
     },
   },
+  {
+    // T10: the sidebar nests a linked worktree under the primary checkout with the same repo key.
+    version: 2,
+    up(db) {
+      db.run(`ALTER TABLE projects ADD COLUMN repo_key TEXT`);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
@@ -222,6 +229,7 @@ interface ProjectRow {
   label: string;
   label_source: string;
   number: number;
+  repo_key: string | null;
   worktree_of: string | null;
   ord: number;
   status: string;
@@ -291,6 +299,7 @@ function projectFromRow(r: ProjectRow): Project {
     label: r.label,
     labelSource: r.label_source as Project["labelSource"],
     number: r.number,
+    ...(r.repo_key !== null ? { repoKey: r.repo_key } : {}),
     ...(r.worktree_of !== null ? { worktreeOf: r.worktree_of } : {}),
     order: r.ord,
     status: r.status as Project["status"],
@@ -304,6 +313,7 @@ function projectParams(p: Project) {
     label: p.label,
     label_source: p.labelSource,
     number: p.number,
+    repo_key: p.repoKey ?? null,
     worktree_of: p.worktreeOf ?? null,
     ord: p.order,
     status: p.status,

@@ -59,4 +59,15 @@ describe("t3 shims", () => {
       expect(["verbatim", "adapted", "pattern"]).toContain(row.mode);
     }
   });
+
+  it("gives every adapted file a header naming its upstream path", () => {
+    const manifest = JSON.parse(readFileSync(resolve(here, "t3-upstream.json"), "utf8")) as {
+      files: { local: string; upstream: string; mode: string }[];
+    };
+    for (const row of manifest.files.filter((r) => r.mode === "adapted")) {
+      const head = readFileSync(resolve(here, row.local), "utf8").split(/\r?\n/).slice(0, 8).join(" ");
+      expect(head, row.local).toContain("T3 Code");
+      expect(head, `${row.local} names ${row.upstream}`).toContain(row.upstream);
+    }
+  });
 });

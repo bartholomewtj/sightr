@@ -89,6 +89,9 @@ export interface Project {
   /** `user` after `project.rename`; the herd ingest then leaves the label alone. */
   labelSource: "herd" | "user";
   number: number;
+  /** The git repo the workspace checks out (herdr `worktree.repoKey`), on primaries and linked worktrees alike. */
+  repoKey?: string;
+  /** On a linked worktree: its repo's `repoKey`. The sidebar nests it under the primary with the same `repoKey`. */
   worktreeOf?: string;
   order: number;
   /** Roll-up of its active and pinned threads (`worstStatus`). */
@@ -402,9 +405,16 @@ export type Command =
       confirmBypass?: boolean;
     })
   | (CommandBase & { type: "thread.rename"; threadId: string; title: string })
-  | (CommandBase & { type: "thread.pin"; threadId: string })
+  /**
+   * `pinOrder` places the thread among the pins (a drop at an index, an undo restoring its place; any
+   * finite number, fractions included, like T3's `orderKey`). Omitted: after the last pin. A pinned
+   * thread with a different `pinOrder` moves (T3's `thread.pin.reorder`).
+   */
+  | (CommandBase & { type: "thread.pin"; threadId: string; pinOrder?: number })
   | (CommandBase & { type: "thread.unpin"; threadId: string })
   | (CommandBase & { type: "thread.snooze"; threadId: string; until: number })
+  /** Wake a snoozed thread now (T3's name). */
+  | (CommandBase & { type: "thread.unsnooze"; threadId: string })
   | (CommandBase & { type: "thread.settle"; threadId: string })
   | (CommandBase & { type: "thread.unsettle"; threadId: string })
   | (CommandBase & { type: "thread.archive"; threadId: string })
@@ -444,6 +454,7 @@ export const COMMAND_TYPES = [
   "thread.pin",
   "thread.unpin",
   "thread.snooze",
+  "thread.unsnooze",
   "thread.settle",
   "thread.unsettle",
   "thread.archive",

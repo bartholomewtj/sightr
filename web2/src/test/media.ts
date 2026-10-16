@@ -5,9 +5,11 @@
 type ChangeListener = (event: { matches: boolean }) => void;
 
 let width = 800;
+let reducedMotion = false;
 const queries = new Set<{ media: string; listeners: Set<ChangeListener>; last: boolean }>();
 
 function evaluate(media: string): boolean {
+  if (/prefers-reduced-motion:\s*reduce/.test(media)) return reducedMotion;
   const min = /min-width:\s*(\d+)px/.exec(media);
   const max = /max-width:\s*(\d+)px/.exec(media);
   if (min && width < Number(min[1])) return false;
@@ -41,6 +43,16 @@ export function installMatchMedia(): void {
 /** Move the viewport and notify every query whose answer changed. */
 export function setViewportWidth(px: number): void {
   width = px;
+  notify();
+}
+
+/** Turn the operator's reduced-motion preference on or off. */
+export function setReducedMotion(on: boolean): void {
+  reducedMotion = on;
+  notify();
+}
+
+function notify(): void {
   for (const q of queries) {
     const now = evaluate(q.media);
     if (now === q.last) continue;
@@ -51,5 +63,6 @@ export function setViewportWidth(px: number): void {
 
 export function resetMedia(): void {
   width = 800;
+  reducedMotion = false;
   queries.clear();
 }

@@ -1,6 +1,6 @@
 # T10 — Sidebar: projects, threads, shelves
 
-Status: draft (T3-shape series). Depends on: T09 (shell, stores, `sendCommand`), T02 (projects and threads), T05 (commands). Read `README.md` in this folder first.
+Status: done on feat/v2-web (2026-10-16). Depends on: T09 (shell, stores, `sendCommand`), T02 (projects and threads), T05 (commands). Read `README.md` in this folder first.
 
 ## Problem
 
@@ -88,3 +88,45 @@ Order inside a project (or flat, see below): **Pinned**, **Active**, **Snoozed**
 - **Mark read:** opening a thread does not post `markRead` until `synchronized`.
 - **Archived route:** lists archived threads; the composer is replaced; Unarchive shows only when the pane exists.
 - **a11y:** arrow-key focus movement and Enter open; the menu opens with `Space`.
+
+## Built
+
+Built on `feat/v2-web` before T05, against msw and the fake `EventSource` with the shapes in `shared/v2/contracts.ts` and
+`web2/src/stream/wire.ts`. Every shelf change goes through T09's command client.
+
+- **Files mirror T3's names.** `components/Sidebar.tsx` (pattern), `Sidebar.logic.ts` (adapted: section model, drop verbs,
+  `planPinnedReorder` on numbers, row accessibility, adjacent-row traversal), `Sidebar.snooze.ts` (adapted from
+  `Sidebar.snooze.ts` + client-runtime `threadSettled.ts`), `Sidebar.drag.ts` (pattern, @dnd-kit), `ThreadStatusIndicators.tsx`
+  (`ThreadStatusDot`), `CustomSnoozeDialog.tsx`, `components/sidebar/SidebarThreadUndoNotice.tsx` + `hooks/showThreadUndoNotice.ts`
+  (adapted), plus `sidebar/SidebarThreadRow.tsx`, `sidebar/ThreadRowMenu.tsx`, `components/toast.tsx`, `state/sidebar.ts`,
+  `hooks/useSwipeActions.ts`, `lib/archived.ts`, `components/AgentIcon.tsx` (v1's icon and data in one file). All T3 rows are in
+  `web2/t3-upstream.json`; a config test checks every adapted file's header names its upstream. No shims were needed: the
+  adapted bodies had their Effect / client-runtime imports replaced by plain code. @dnd-kit pinned to T3's lockfile:
+  core 6.3.1, sortable 10.0.0, modifiers 9.0.0, utilities 3.2.2.
+- **Contract additions (bridge + shared).** `thread.pin` takes an optional `pinOrder` (a drop index, an undo; a pinned thread
+  with a different order moves, T3's `thread.pin.reorder`). New `thread.unsnooze` (T3's name) wakes a snoozed thread: the
+  Snoozed → Active drop and the undo of a snooze need it, and no command could do it. `decide.ts` handles both.
+- **`Project.repoKey`.** T02 sets `worktreeOf` to herdr's repo key, which the client could not match to a primary checkout. The
+  herd ingest now sets `repoKey` on every workspace with git info; store migration 2 adds `projects.repo_key`. A worktree nests
+  under the open project with the same `repoKey` and no `worktreeOf`; otherwise it stands at top level.
+- **Optimistic changes** live in a small store beside `useShell` (`usePendingShelf`, keyed by `commandId`), not inside it.
+  The sidebar draws `useShell` threads with pending commands applied (`applyShelfCommand` mirrors `decide.ts`). An entry goes
+  when the command fails (rollback plus an error toast) or when the shell stream reaches the reply's sequence (the stream is
+  then the truth; 15 s cap). `stream/commands.ts` exports `defaultCommandDeps` so the caller can know the `commandId`.
+- **Status.** The sidebar reads `unreadDone` into the status (read `done` shows idle, a marked-unread idle shows done), so
+  mark read/unread shows at once. The project roll-up covers all non-archived threads and the nested worktrees (the bridge's
+  `Project.status` covers only Active and Pinned). Snoozed/Settled headers show a dot only for approval, input, failed, done.
+- **Working time.** The shell carries no run start, so the client notes when it first sees a thread go `working` (its
+  `updatedAt` then); a thread already working at page load counts from its last update. T05 could add the run start to the
+  shell snapshot. The time uses v1's `elapsed()` (`m:ss`), so the dot reads "Working, 2:14".
+- **Snooze menu** offers T3's presets (1 h, 3 h, this evening, tomorrow 08:00, next week) plus Pick time and, on a snoozed
+  thread, Wake now. A superset of the spec's list. The menu is flat (no submenu) for the phone.
+- **Unarchive** shows when `archiveReason` is `user`, the one reason that leaves the pane open; the client has no pane list. A
+  user-archived thread whose pane closed later is refused by the bridge and the toast says so. An archived thread's screen
+  says "This thread's pane was closed." or, for a user archive, "This thread is archived." with Unarchive.
+- **Undo** is one notice at a time (T3 groups same-action undos). Undo of an archive is `thread.unarchive` then the command to
+  the old shelf.
+- **Drag tests** drive the drop handler (`handleSidebarDrop`) with the store, not pointer events; @dnd-kit's pointer sensing
+  does not run in jsdom. Drag is desktop only, with no keyboard sensor (Space opens the menu).
+- **Swipe** right reveals Pin (Unpin on a pinned thread); left reveals Settle and Archive; a full swipe runs Pin/Unpin or Settle.
+

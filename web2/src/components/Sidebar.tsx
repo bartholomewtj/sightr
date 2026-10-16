@@ -1,74 +1,399 @@
-import { Link } from "@tanstack/react-router";
-import { useMemo } from "react";
-import { useShallow } from "zustand/react/shallow";
+/**
+ * The thread sidebar (T10). Same job and name as T3 Code's apps/web/src/components/Sidebar.tsx; Sightr's
+ * own component on the same pieces (Base UI menu, @dnd-kit drag, Sidebar.logic.ts).
+ *
+ * Projects (herdr workspaces, worktrees nested under their primary checkout) hold four shelves:
+ * Pinned, Active, Snoozed, Settled. Archived threads live at /archived. Every shelf change is a bridge
+ * command (state/sidebar.ts), applied optimistically and undoable. Above the list: All / Needs you and
+ * a search box (either flattens the list). The sidebar renders only from the shell stream's store.
+ */
+import {
+  closestCenter,
+  DndContext,
+  PointerSensor,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { Link, useParams } from "@tanstack/react-router";
+import { ChevronDown, ChevronRight, GitBranch, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 
-import type { Project, Thread } from "@shared/v2/contracts";
+import type { Thread } from "@shared/v2/contracts";
+
+import { CustomSnoozeDialog } from "@/components/CustomSnoozeDialog";
+import { handleSidebarDrop, sectionDropId, useSidebarDrag, zoneFor } from "@/components/Sidebar.drag";
+import {
+  buildProjectTree,
+  documentTitle,
+  needsYouThreads,
+  resolveAdjacentThreadId,
+  rollUpStatus,
+  searchSidebarThreads,
+  type ShelfCommand,
+  type SidebarProjectNode,
+  type SidebarSection,
+} from "@/components/Sidebar.logic";
+import { SidebarRowContext, SidebarThreadRow, SortableThreadRow, type SidebarRowActions } from "@/components/sidebar/SidebarThreadRow";
+import { ThreadRowMenu } from "@/components/sidebar/ThreadRowMenu";
+import { ThreadStatusDot } from "@/components/ThreadStatusIndicators";
+import { undoLatestThreadAction } from "@/hooks/showThreadUndoNotice";
+import { useLayout } from "@/hooks/useLayout";
+import { cn } from "@/lib/utils";
+import { performThreadCommand, useSidebarPrefs, useSidebarThreads } from "@/state/sidebar";
 import { useShell } from "@/stream/stores";
 
+const SECTION_LABEL: Record<SidebarSection, string> = { pinned: "Pinned", active: "Active", snoozed: "Snoozed", settled: "Settled" };
+
+/** True when keystrokes belong to a text field (mod+z is that field's undo, not ours). */
+export function isTextEntry(el: Element | null): boolean {
+  if (!el) return false;
+  if (el instanceof HTMLTextAreaElement) return true;
+  if (el instanceof HTMLInputElement) return !["button", "checkbox", "radio", "submit", "reset"].includes(el.type);
+  return (el as HTMLElement).isContentEditable === true;
+}
+
 /**
- * The sidebar slot. T10 builds the real one (shelves, status dots, archived list, undo); this is the
- * plainest list that makes the shell usable meanwhile: live threads grouped by project.
+ * mod+z runs the latest sidebar undo when no text field has focus. T13's keybinding table takes this
+ * over; until then the sidebar registers it itself.
  */
+export function useUndoShortcut(): void {
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "z" || !(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+      if (isTextEntry(e.target as Element | null) || isTextEntry(document.activeElement)) return;
+      if (undoLatestThreadAction()) e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+}
+
 export function Sidebar() {
+  const desktop = useLayout() === "desktop";
   const loaded = useShell((s) => s.loaded);
-  const projects = useShell(useShallow((s) => Object.values(s.projects)));
-  const threads = useShell(useShallow((s) => Object.values(s.threads)));
-  const groups = useMemo(() => groupThreads(projects, threads), [projects, threads]);
+  const projects = useShell((s) => s.projects);
+  const threads = useSidebarThreads();
+  const threadList = useMemo(() => Object.values(threads), [threads]);
+  const tree = useMemo(() => buildProjectTree(Object.values(projects), threadList), [projects, threadList]);
+  const needsYou = useMemo(() => needsYouThreads(threadList), [threadList]);
+  const archivedCount = useMemo(() => threadList.filter((t) => t.shelf === "archived").length, [threadList]);
+  const filter = useSidebarPrefs((s) => s.filter);
+  const setFilter = useSidebarPrefs((s) => s.setFilter);
+  const [query, setQuery] = useState("");
+  const results = useMemo(() => searchSidebarThreads(threadList, projects, query), [threadList, projects, query]);
+  const { threadId: activeThreadId } = useParams({ strict: false }) as { threadId?: string };
+
+  const [menu, setMenu] = useState<{ threadId: string; anchor: HTMLElement } | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [snoozePick, setSnoozePick] = useState<string | null>(null);
+
+  useUndoShortcut();
+
+  useEffect(() => {
+    if (!desktop) return;
+    document.title = documentTitle(needsYou.length);
+    return () => {
+      document.title = "Sightr";
+    };
+  }, [desktop, needsYou.length]);
+
+  const run = useCallback((command: ShelfCommand) => void performThreadCommand(command), []);
+  const actions = useMemo<SidebarRowActions>(
+    () => ({
+      activeThreadId,
+      touch: !desktop,
+      renamingId,
+      openMenu: (threadId, anchor) => setMenu({ threadId, anchor }),
+      startRename: setRenamingId,
+      endRename: () => setRenamingId(null),
+      run,
+    }),
+    [activeThreadId, desktop, renamingId, run],
+  );
+
+  // Up/Down move focus between rows (screen order), as T3's thread traversal.
+  const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const target = e.target as HTMLElement;
+    if (!target.matches("[data-sidebar-row], [data-project-row]")) return;
+    const rows = [...e.currentTarget.querySelectorAll<HTMLElement>("[data-sidebar-row], [data-project-row]")];
+    const next = resolveAdjacentThreadId({ threadIds: rows, currentThreadId: target, direction: e.key === "ArrowDown" ? "next" : "previous" });
+    if (next && next !== target) {
+      e.preventDefault();
+      next.focus();
+    }
+  };
+
+  const flat: Thread[] | null = query.trim() ? results : filter === "needs-you" ? needsYou : null;
+  const menuThread = menu ? (threads[menu.threadId] ?? null) : null;
 
   return (
-    <nav aria-label="Threads" className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-sidebar text-sidebar-foreground">
-      <div className="flex items-center justify-between px-4 py-3">
-        <span className="font-semibold">Sightr</span>
-        <span className="flex gap-3 text-sm">
-          <Link to="/archived" className="text-muted-foreground hover:text-foreground">
-            Archived
-          </Link>
-          <Link to="/settings" className="text-muted-foreground hover:text-foreground">
+    <SidebarRowContext.Provider value={actions}>
+      <nav
+        aria-label="Threads"
+        className="flex min-h-0 flex-1 flex-col bg-sidebar text-sidebar-foreground"
+        onKeyDown={onKeyDown}
+      >
+        <div className="flex items-center justify-between px-4 pt-3 pb-2">
+          <span className="font-semibold">Sightr</span>
+          <Link to="/settings" className="text-sm text-muted-foreground hover:text-foreground">
             Settings
           </Link>
-        </span>
-      </div>
-      {!loaded && <p className="px-4 text-sm text-muted-foreground">Loading threads…</p>}
-      {loaded && groups.length === 0 && <p className="px-4 text-sm text-muted-foreground">No threads.</p>}
-      {groups.map(({ project, threads: list }) => (
-        <section key={project.id} className="pb-2">
-          <h2 className="px-4 py-1 text-xs font-medium text-muted-foreground">{project.label}</h2>
-          <ul>
-            {list.map((thread) => (
-              <li key={thread.id}>
-                <Link
-                  to="/thread/$threadId"
-                  params={{ threadId: thread.id }}
-                  className="flex items-center justify-between gap-2 px-4 py-1.5 text-sm hover:bg-sidebar-row-hover data-[status=active]:bg-sidebar-row-active"
-                >
-                  <span className="truncate">{thread.title}</span>
-                  <span className="shrink-0 font-mono text-2xs text-muted-foreground">{thread.status}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
-    </nav>
+        </div>
+        <div className="flex items-center gap-1.5 px-3 pb-2" role="group" aria-label="Filter">
+          <FilterChip pressed={filter === "all"} onClick={() => setFilter("all")}>
+            All
+          </FilterChip>
+          <FilterChip pressed={filter === "needs-you"} onClick={() => setFilter("needs-you")}>
+            Needs you
+            {needsYou.length > 0 ? <span className="font-mono tabular-nums">{needsYou.length}</span> : null}
+          </FilterChip>
+        </div>
+        <label className="mx-3 mb-2 flex items-center gap-2 rounded-lg border border-input bg-background px-2.5">
+          <Search className="size-3.5 text-muted-foreground" aria-hidden />
+          <input
+            type="search"
+            aria-label="Search threads"
+            placeholder="Search"
+            className="h-8 min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-placeholder"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setQuery("");
+            }}
+          />
+        </label>
+        <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+          {!loaded ? <p className="px-4 text-sm text-muted-foreground">Loading threads…</p> : null}
+          {loaded && flat !== null ? (
+            flat.length === 0 ? (
+              <p className="px-4 py-2 text-sm text-muted-foreground">{query.trim() ? "No matches." : "Nothing needs you."}</p>
+            ) : (
+              <ul aria-label={query.trim() ? "Search results" : "Needs you"}>
+                {flat.map((t) => (
+                  <SidebarThreadRow key={t.id} thread={t} projectLabel={projects[t.projectId]?.label} />
+                ))}
+              </ul>
+            )
+          ) : null}
+          {loaded && flat === null ? (
+            tree.length === 0 ? (
+              <p className="px-4 text-sm text-muted-foreground">No threads.</p>
+            ) : (
+              <ProjectTree tree={tree} desktop={desktop} />
+            )
+          ) : null}
+        </div>
+        <div className="border-t px-4 py-2">
+          <Link to="/archived" className="text-sm text-muted-foreground hover:text-foreground">
+            Archived{archivedCount > 0 ? ` (${archivedCount})` : ""}
+          </Link>
+        </div>
+      </nav>
+      <ThreadRowMenu
+        thread={menuThread}
+        anchor={menu?.anchor ?? null}
+        onClose={() => setMenu(null)}
+        run={run}
+        onRename={(id) => setTimeout(() => setRenamingId(id), 0)}
+        onPickSnooze={(id) => setSnoozePick(id)}
+      />
+      <CustomSnoozeDialog
+        open={snoozePick !== null}
+        onOpenChange={(open) => {
+          if (!open) setSnoozePick(null);
+        }}
+        onSnooze={(until) => {
+          if (snoozePick) run({ type: "thread.snooze", threadId: snoozePick, until });
+        }}
+      />
+    </SidebarRowContext.Provider>
   );
 }
 
-/** Projects in their herd order, each with its non-archived threads (pinned first, then newest activity). */
-export function groupThreads(projects: Project[], threads: Thread[]): { project: Project; threads: Thread[] }[] {
-  const byProject = new Map<string, Thread[]>();
-  for (const thread of threads) {
-    if (thread.shelf === "archived") continue;
-    const list = byProject.get(thread.projectId) ?? [];
-    list.push(thread);
-    byProject.set(thread.projectId, list);
-  }
-  return [...projects]
-    .sort((a, b) => a.order - b.order)
-    .filter((p) => byProject.has(p.id))
-    .map((project) => ({
-      project,
-      threads: (byProject.get(project.id) ?? []).sort(
-        (a, b) => Number(b.shelf === "pinned") - Number(a.shelf === "pinned") || b.lastActivityAt - a.lastActivityAt,
-      ),
-    }));
+function FilterChip({ pressed, onClick, children }: { pressed: boolean; onClick(): void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs",
+        pressed ? "border-you bg-you-soft text-foreground" : "border-transparent text-muted-foreground hover:bg-sidebar-row-hover",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ── The project tree, with drag ─────────────────────────────────────────────────────────────────
+
+function ProjectTree({ tree, desktop }: { tree: SidebarProjectNode[]; desktop: boolean }) {
+  // Desktop only; a phone swipes instead. No keyboard sensor: Space opens the row menu.
+  const pointer = useSensor(PointerSensor, { activationConstraint: { distance: 6 } });
+  const sensors = useSensors(...(desktop ? [pointer] : []));
+  const onDragStart = (e: DragStartEvent) => useSidebarDrag.setState({ dragging: String(e.active.id), overZone: null });
+  const onDragOver = (e: DragOverEvent) => useSidebarDrag.setState({ overZone: zoneFor(tree, e.over ? String(e.over.id) : null) });
+  const onDragEnd = (e: DragEndEvent) => void handleSidebarDrop(String(e.active.id), e.over ? String(e.over.id) : null);
+  const onDragCancel = () => useSidebarDrag.setState({ dragging: null, overZone: null });
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      modifiers={[restrictToVerticalAxis]}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+      onDragCancel={onDragCancel}
+    >
+      {tree.map((node) => (
+        <ProjectBlock key={node.project.id} node={node} desktop={desktop} />
+      ))}
+    </DndContext>
+  );
+}
+
+function ProjectBlock({ node, desktop }: { node: SidebarProjectNode; desktop: boolean }) {
+  const { project } = node;
+  const collapsed = useSidebarPrefs((s) => s.collapsedProjects.includes(project.id));
+  const toggle = useSidebarPrefs((s) => s.toggleProject);
+  const dragging = useSidebarDrag((s) => s.dragging !== null);
+  const hasPins = node.shelves.pinned.length > 0;
+  return (
+    <section aria-label={project.label} className={cn(node.nested && "ml-3 border-l border-line/60")}>
+      <button
+        type="button"
+        data-project-row=""
+        aria-expanded={!collapsed}
+        onClick={() => toggle(project.id)}
+        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        {collapsed ? <ChevronRight className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
+        {node.nested ? <GitBranch className="size-3.5" role="img" aria-label="Worktree" /> : null}
+        <span className="min-w-0 flex-1 truncate">{project.label}</span>
+        <span className="font-mono text-2xs tabular-nums">{project.number}</span>
+        {node.rollUp ? <ThreadStatusDot status={node.rollUp} showElapsed={false} /> : null}
+      </button>
+      {collapsed ? null : (
+        <>
+          {hasPins || dragging ? <ShelfList node={node} section="pinned" desktop={desktop} showLabel /> : null}
+          <ShelfList node={node} section="active" desktop={desktop} showLabel={dragging || hasPins} />
+          <CollapsedShelf node={node} section="snoozed" desktop={desktop} />
+          <CollapsedShelf node={node} section="settled" desktop={desktop} />
+          {node.worktrees.map((w) => (
+            <ProjectBlock key={w.project.id} node={w} desktop={desktop} />
+          ))}
+        </>
+      )}
+    </section>
+  );
+}
+
+function SectionZone({
+  projectId,
+  section,
+  children,
+  className,
+}: {
+  projectId: string;
+  section: SidebarSection;
+  children: ReactNode;
+  className?: string;
+}) {
+  const id = sectionDropId(projectId, section);
+  const { setNodeRef } = useDroppable({ id });
+  const over = useSidebarDrag((s) => s.overZone === id);
+  const dragging = useSidebarDrag((s) => s.dragging !== null);
+  return (
+    <div
+      ref={setNodeRef}
+      data-drop-zone={id}
+      data-over={over || undefined}
+      className={cn("border-l-2 border-transparent", dragging && over && "border-you", className)}
+    >
+      {children}
+    </div>
+  );
+}
+
+function ShelfList({
+  node,
+  section,
+  desktop,
+  showLabel,
+}: {
+  node: SidebarProjectNode;
+  section: "pinned" | "active";
+  desktop: boolean;
+  showLabel: boolean;
+}) {
+  const threads = node.shelves[section];
+  if (threads.length === 0 && !showLabel) return null;
+  return (
+    <SectionZone projectId={node.project.id} section={section}>
+      {showLabel ? <div className="px-4 pt-1 text-3xs font-medium uppercase tracking-wide text-muted-foreground">{SECTION_LABEL[section]}</div> : null}
+      <SortableContext id={`${node.project.id}:${section}`} items={threads.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+        <ul aria-label={`${node.project.label} ${SECTION_LABEL[section]}`}>
+          {threads.map((t) => (
+            <SortableThreadRow key={t.id} thread={t} draggable={desktop} />
+          ))}
+        </ul>
+      </SortableContext>
+    </SectionZone>
+  );
+}
+
+function CollapsedShelf({ node, section, desktop }: { node: SidebarProjectNode; section: "snoozed" | "settled"; desktop: boolean }) {
+  const threads = node.shelves[section];
+  const open = useSidebarPrefs((s) => s.openSections.includes(`${node.project.id}:${section}`));
+  const toggle = useSidebarPrefs((s) => s.toggleSection);
+  const dragging = useSidebarDrag((s) => s.dragging !== null);
+  const zone = sectionDropId(node.project.id, section);
+  const shake = useSidebarDrag((s) => s.shake === zone);
+  const rollUp = useMemo(() => rollUpStatus(threads), [threads]);
+  useEffect(() => {
+    if (!shake) return;
+    const id = setTimeout(() => useSidebarDrag.setState({ shake: null }), 400);
+    return () => clearTimeout(id);
+  }, [shake]);
+  if (threads.length === 0 && !dragging) return null;
+  const label = SECTION_LABEL[section];
+  return (
+    <SectionZone projectId={node.project.id} section={section}>
+      <button
+        type="button"
+        aria-expanded={open}
+        data-shake={shake || undefined}
+        onClick={() => toggle(node.project.id, section)}
+        className={cn(
+          "flex w-full items-center gap-1.5 px-4 py-1 text-left text-xs text-muted-foreground hover:text-foreground",
+          shake && "animate-shake-once",
+        )}
+      >
+        {open ? <ChevronDown className="size-3" aria-hidden /> : <ChevronRight className="size-3" aria-hidden />}
+        <span className="flex-1">
+          {label} <span className="font-mono tabular-nums">{threads.length}</span>
+        </span>
+        {rollUp && (rollUp === "approval" || rollUp === "input" || rollUp === "failed" || rollUp === "done") ? (
+          <ThreadStatusDot status={rollUp} showElapsed={false} />
+        ) : null}
+      </button>
+      {open ? (
+        <SortableContext id={`${node.project.id}:${section}`} items={threads.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+          <ul aria-label={`${node.project.label} ${label}`}>
+            {threads.map((t) => (
+              <SortableThreadRow key={t.id} thread={t} draggable={desktop} />
+            ))}
+          </ul>
+        </SortableContext>
+      ) : null}
+    </SectionZone>
+  );
 }

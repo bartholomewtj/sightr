@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { LockPrompt } from "@/components/LockPrompt";
 import { ConnectionBanner } from "@/components/shell/ConnectionBanner";
 import { V2Unavailable } from "@/components/shell/V2Unavailable";
+import { ToastStack } from "@/components/toast";
 import { useLockGate } from "@/hooks/useLockGate";
 import { shellStream } from "@/stream/shell-stream";
 import { useStreamHealth } from "@/stream/stores";
@@ -43,6 +44,7 @@ function OpenShell() {
       <div className="flex min-h-0 flex-1 flex-col">
         <Outlet />
       </div>
+      <ToastStack />
     </div>
   );
 }
