@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { ThreadStatus, TurnItem } from "../../shared/v2/contracts.ts";
 import type { PaneRead } from "../herdr-client.ts";
 import { conversationRoot, parseClaudeTranscript } from "../journal/claude.ts";
+import { parseCodexTranscript } from "../journal/codex.ts";
 import { TranscriptStore } from "../journal/store.ts";
 import type { AgentSessionRef, JournalAdapter } from "../journal/types.ts";
 import type { AgentView, EngineSnapshot } from "../state-engine.ts";
@@ -20,6 +21,7 @@ import {
   screenText,
 } from "./journal-ingest.ts";
 import { openThreadStore, type ThreadStore } from "./store.ts";
+import { entryItemIds } from "./turn-items.ts";
 
 // ── Harness ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -330,6 +332,29 @@ describe("journal ingest: runs", () => {
     expect(runs.at(-1)!.status).toBe("running");
     expect(runs.slice(0, -1).every((x) => x.status === "completed")).toBe(true);
   });
+});
+
+describe("journal ingest: Codex rollouts (T16)", () => {
+  // Conformance for the Codex adapter: its fixtures ingest to the same item ids whether the log is read
+  // in one pass or arrives in two, split at any line.
+  for (const name of ["codex-basic.jsonl", "codex-paginated.jsonl"]) {
+    test(`${name}: the same item ids however the log is split`, async () => {
+      const text = readFileSync(join(import.meta.dir, "..", "journal", "fixtures", name), "utf8");
+      const expected = parseCodexTranscript(text).flatMap(entryItemIds).sort();
+      const starts = [...text.matchAll(/\n/g)].map((m) => m.index! + 1).filter((at) => at < text.length);
+      for (const cut of [0, ...starts.filter((_, i) => i % 3 === 1)]) {
+        const r = rig({ parse: parseCodexTranscript });
+        r.logs.write("s1", text.slice(0, cut));
+        await r.ingestor.catchUp("t1");
+        r.logs.append("s1", text.slice(cut));
+        await r.ingestor.catchUp("t1");
+        const ids = itemIds(r).filter((id) => !id.startsWith("screen:") && !id.startsWith("session:"));
+        expect(ids.sort()).toEqual(expected);
+        expect(new Set(ids).size).toBe(ids.length);
+        r.ingestor.stop();
+      }
+    });
+  }
 });
 
 describe("journal ingest: session divider", () => {

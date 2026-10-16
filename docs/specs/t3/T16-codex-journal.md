@@ -1,6 +1,6 @@
 # T16 — Codex journal adapter
 
-Status: draft (T3-shape series). Depends on: T03 (journal ingest consumes adapters). No dependency on T06 to T08, but T08's capability table flips Codex `hasJournal` when this lands.
+Status: done on feat/v2 (2026-10-17). Depends on: T03 (journal ingest consumes adapters). No dependency on T06 to T08, but T08's capability table flips Codex `hasJournal` when this lands.
 
 ## Problem
 
@@ -11,11 +11,17 @@ plus a `screen` item per run (T3-shape README, "Ingest"). Herdr reports a Codex 
 
 ## What was and was not verified
 
-Codex is not installed on the drafting machine: there is no `codex` on PATH and no `~/.codex` directory, and no
-`CODEX_HOME` was set. **No rollout file was read.** Everything below about the on-disk layout and record shapes comes
-from outside knowledge of Codex CLI and is **unverified**. The builder's first step is to run Codex once in a scratch
-pane, read a few lines of one rollout file for field names only, and correct this spec (and the fixtures) where it
-differs. Do not copy conversation content into fixtures; invent text.
+Codex is not installed on the drafting machine or the build machine, and was not installed for this slice. **No
+rollout file was read.** At build time the layout and record shapes were instead **derived from the Codex source at
+github.com/openai/codex commit `4eb4a65407d98cebc4c83bf13be440b9fbc78a7c` (16 Oct 2026), not captured live**:
+`codex-rs/history/src/lib.rs` and `rollout_payload.rs` (RolloutLine, RolloutItem), `codex-rs/protocol/src/models.rs`
+(ResponseItem, ContentItem, FunctionCallOutputPayload), `codex-rs/rollout/src/{rollout_file_name,list,policy,
+compression,recorder,ordinal}.rs` (file names, lookup, what is persisted, `.zst`, timestamps, ordinals),
+`codex-rs/core/src/tools/{mod,context}.rs` (exec output text) and `codex-rs/core/src/context/` (injected user
+fragments). How herdr names the session was read from herdr's own Codex hook (`tmp/herdr-src`,
+`src/integration/assets/codex/herdr-agent-state.sh`): it reports the hook's `session_id` (else `CODEX_THREAD_ID`) as a
+kind-`id` ref, which is the thread uuid in the rollout filename. The fixtures use those shapes with invented text. The
+first live Codex session should be checked against them (see "Built").
 
 ## Change
 
@@ -56,8 +62,8 @@ The resolver:
 
 `stat` is `statFile`; `load` is `loadTail` (32 MB cap, newest end kept, as for every adapter).
 
-**Record shapes** (unverified; fixtures replace this table). Each line is a JSON object with a timestamp and a
-`type`, plus a `payload`:
+**Record shapes** (from source, see above; the draft's guesses held except where "Built" says otherwise). Each line
+is `{"timestamp":"…Z","ordinal"?:n,"type":"…","payload":{…}}`; `ordinal` appears only in paginated rollouts:
 
 | Record | Mapping to `TranscriptEntry` |
 |---|---|
@@ -136,3 +142,43 @@ new id is accepted once the descriptor exists. `registry.test.ts` gains `codex` 
   pane was running; `state-engine.ts` already passes both `id` and `path` kinds through.
 - The adapter could not be built from real files in this draft. If the first live capture shows rollouts keyed
   differently (for example no date directories, or a name without the uuid), only `resolve` changes.
+
+## Built
+
+Built on feat/v2 (2026-10-17) from the Codex source, not a live capture (see "What was and was not verified").
+`bridge/journal/codex.ts`, fixtures `bridge/journal/fixtures/codex-basic.jsonl` (legacy rollout) and
+`codex-paginated.jsonl` (ordinals, `compacted`, `item_completed`). Deviations:
+
+- **No merging of consecutive assistant records.** The spec says Claude's and Pi's adapters merge them; they do not
+  (one entry per record), and T03 reads the log incrementally, so a merged entry would change its id when a read window
+  starts inside it. One entry per response_item record keeps every id independent of the window. Runs already group a
+  turn in the timeline.
+- **Ids:** the item's own Responses API id (`msg_…`, `rs_…`, `fc_…`), else the line `ordinal` (`o<n>`), else
+  `<type>_<call id>`, else `h_<hash of timestamp|type|first 64 chars>`; a repeat in one parse gets `~n`.
+- **File names:** `rollout-YYYY-MM-DDThh-mm-ss-<thread id>.jsonl` (local time) and, for a reverted thread,
+  `…-<thread id>_<rollout id>.jsonl`; both match, and the newest name in the newest day wins (as Codex's own fallback
+  does). `.jsonl.zst` (Codex compresses rollouts idle for a week, and decompresses on resume) is not read. The match is a
+  regex built from the validated uuid, applied to listed names only. Resolved paths are cached per id, so a later revert
+  file for the same thread is not picked up until the cached file disappears.
+- **Exit status:** Codex's `success` flag is not serialized, so `isError` comes from the output text: `Exit code: N` or
+  `Process exited with code N` (N ≠ 0) in the header above `Output:`; the header is dropped from the shown result.
+  Older `{"output":…,"metadata":{"exit_code":N}}` outputs are read too.
+- **Tool names** stay Codex's own (`shell`, `shell_command`, `exec_command`, `write_stdin`, `apply_patch`,
+  `update_plan`, MCP names). `local_shell_call` becomes `shell`. T03's `TOOL_ITEM_TYPES` gained `shell_command`,
+  `exec_command` and `write_stdin` → `command_execution`, matching T3's Codex adapter (commandExecution); `apply_patch`
+  → `file_change` and `web_search` were already there. A shell argv (`["bash","-lc","ls"]`) reads as `ls`; an
+  apply_patch reads as the files it touches.
+- **Also mapped:** `web_search_call` (complete with no body, `unrecorded`), `image_generation_call`,
+  `tool_search_call`/`_output`, `custom_tool_call_output`, content-item outputs, raw `reasoning.content` when the summary
+  is empty, and a `compacted` record as a "Context compacted" note.
+- **Injected context** list (`CODEX_CONTEXT_PREFIXES`) is Codex's own matcher list: `<environment_context>`,
+  `# AGENTS.md instructions`, `<skill>`, `<hook_prompt`, `<user_shell_command>`, `<turn_aborted>`,
+  `<subagent_notification>`, `<agent_message_board_notification>`, `<codex_internal_context`, `<goal_context>`,
+  `<recommended_plugins>`, three legacy warnings, plus the older `<user_instructions>`. `developer`/`system` messages
+  are skipped too.
+- **Summary length** uses the shared `oneLine` cap (200 chars), as every other adapter does, not 160.
+- **No `event_msg` fallback:** Codex persists every response_item in both history modes (rollout/src/policy.rs), so
+  `event_msg` rows are always duplicates.
+- **Symlink test** uses a directory junction, which Windows allows without privilege, so it runs everywhere instead of
+  being skipped where `CAN_SYMLINK` is false.
+- **Not live-tested.** Codex is not installed here. Check the first real Codex pane's timeline against the pane.

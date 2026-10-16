@@ -13,8 +13,9 @@ export type ToolItemType = "command_execution" | "file_change" | "file_search" |
 
 /**
  * Tool name (lower-cased) → T3 item kind. Anything not listed, `read` included, is a `dynamic_tool`.
- * Names come from Claude (`Bash`, `Edit`, …), Pi (`bash`, `edit`, …), Cursor (`Shell`, …) and Grok
- * (`run_terminal_command`, `read_file`, …). The test pins it against every adapter fixture's names.
+ * Names come from Claude (`Bash`, `Edit`, …), Pi (`bash`, `edit`, …), Cursor (`Shell`, …), Grok
+ * (`run_terminal_command`, `read_file`, …) and Codex (`shell_command`, `exec_command`, `apply_patch`, …).
+ * The test pins it against every adapter fixture's names.
  */
 export const TOOL_ITEM_TYPES: Readonly<Record<string, ToolItemType>> = {
   bash: "command_execution",
@@ -24,6 +25,10 @@ export const TOOL_ITEM_TYPES: Readonly<Record<string, ToolItemType>> = {
   run_terminal_cmd: "command_execution",
   run_terminal_command: "command_execution",
   powershell: "command_execution",
+  // Codex (T16): its shell tools by every name a rollout records.
+  shell_command: "command_execution",
+  exec_command: "command_execution",
+  write_stdin: "command_execution",
 
   edit: "file_change",
   multiedit: "file_change",

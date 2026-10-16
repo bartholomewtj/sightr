@@ -327,6 +327,20 @@
       "note": "turn items -> timeline entries / work-log entries; Sightr run-end notices and reasoning durations"
     },
     {
+      "local": "src/pendingUserInput.ts",
+      "upstream": "apps/web/src/pendingUserInput.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "Sightr's UserInputQuestion type; projectPendingUserInputAnswer (thread-context links) left out"
+    },
+    {
+      "local": "src/pendingUserInput.test.ts",
+      "upstream": "apps/web/src/pendingUserInput.test.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted",
+      "note": "vitest; projectPendingUserInputAnswer cases left out"
+    },
+    {
       "local": "src/t3/client-runtime/work-log/presentation.ts",
       "upstream": "packages/client-runtime/src/work-log/presentation.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
@@ -408,7 +422,7 @@
       "upstream": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "one question, tap posts at once; digit shortcuts kept; no options -> Open terminal"
+      "note": "one question per request (T3 shape via shared/v2/request-question.ts); T3 draft + 200 ms auto-advance + multi-select toggles kept; advance button in the card; stepper, review answers, preview pane (T17); no options -> Open terminal"
     },
     {
       "local": "src/components/chat/QueuedRunsControl.tsx",

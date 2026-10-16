@@ -1,4 +1,5 @@
 import type { RuntimeRequest, TurnItemStatus } from "../../shared/v2/contracts.ts";
+import { requestQuestion } from "../../shared/v2/request-question.ts";
 import type { EventDraft, TurnItemDraft } from "./events.ts";
 
 // A runtime request shows in the thread's timeline as T3 shows one: an `approval_request` item
@@ -36,14 +37,7 @@ export function requestTurnItem(request: RuntimeRequest): TurnItemDraft {
       ...base,
       type: "user_input_request",
       requestId: request.id,
-      questions: [
-        {
-          id: "q1",
-          header: "Question",
-          question: request.prompt,
-          options: request.options.map((o) => ({ label: o.label, ...(o.description ? { description: o.description } : {}) })),
-        },
-      ],
+      questions: [requestQuestion(request)],
     };
   }
   return {

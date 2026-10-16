@@ -215,7 +215,7 @@ export interface UserInputQuestion {
   id: string;
   header: string;
   question: string;
-  options: { label: string; description?: string; value?: string }[];
+  options: readonly { label: string; description?: string; value?: string }[];
   multiSelect?: boolean;
   allowCustomAnswer?: boolean;
   initialAnswer?: string;
@@ -358,15 +358,35 @@ export interface RuntimeRequest {
   /** T04: a whistlr-marked operator decision. */
   via?: "whistlr";
   decision?: { thread: string; run: string };
-  /** T17: wizard steps, preview text, multi-select and answers. Shapes owned by T17. */
-  steps?: { prompt: string; options: RuntimeRequestOption[] }[];
-  preview?: string;
-  multiSelect?: boolean;
-  answers?: string[];
+  /**
+   * T17: the stepper chips of a multi-question ask (a wizard, or a preview / checkbox question that
+   * is one step of one). Each step is its own request; the client answers one at a time.
+   */
+  steps?: RuntimeRequestStep[];
+  /**
+   * T17: a checkbox question. `checked` is the box state per option (the first `checked.length`
+   * options are the boxes; any after them, e.g. "Chat about this", are plain options), and
+   * `advanceLabel` is the terminal's own `Submit` or `Next`. Answered with `optionIndices`.
+   */
+  multiSelect?: { checked: boolean[]; advanceLabel: string };
+  /**
+   * T17: a preview-select question. Only the pointed option's preview pane is on screen, so this is
+   * that option's pane (`lines`, borders included) and which option it belongs to.
+   */
+  preview?: { optionIndex: number; lines: string[] };
+  /** T17: the echoed answers on a wizard or multi-select review step. */
+  answers?: { question: string; answer: string }[];
 }
 
-/** What the shell snapshot carries per request: no options. */
-export type RuntimeRequestSummary = Omit<RuntimeRequest, "options" | "steps">;
+/** One chip of a multi-question ask's stepper (v1's `WizardStepChip`). */
+export interface RuntimeRequestStep {
+  label: string;
+  answered: boolean;
+  current: boolean;
+}
+
+/** What the shell snapshot carries per request: no options, steps or preview pane. */
+export type RuntimeRequestSummary = Omit<RuntimeRequest, "options" | "steps" | "preview">;
 
 export type QueuedMessageState = "queued" | "sending" | "held";
 

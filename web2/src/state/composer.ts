@@ -264,12 +264,20 @@ export async function interruptRun(threadId: string): Promise<void> {
 // ── Runtime requests ────────────────────────────────────────────────────────────────────────────
 
 /** Answer a request with one of its options. The option stays busy until the request leaves `pending`. */
-export async function respondToRequest(threadId: string, requestId: string, optionIndex: number): Promise<void> {
+/** `responding.optionIndex` while a checkbox step's wanted set is in flight (its advance button). */
+export const RESPONDING_ADVANCE = -1;
+
+/** Answer a request: one option by index, or a checkbox step's wanted set of boxes (T17). */
+export async function respondToRequest(threadId: string, requestId: string, answer: number | readonly number[]): Promise<void> {
   const current = getThreadComposer(threadId).responding;
   if (current && current.requestId === requestId) return;
+  const optionIndex = typeof answer === "number" ? answer : RESPONDING_ADVANCE;
   patchComposer(threadId, { responding: { requestId, optionIndex }, verdict: null });
   try {
-    await post("runtime-request.respond", { requestId, optionIndex });
+    await post(
+      "runtime-request.respond",
+      typeof answer === "number" ? { requestId, optionIndex: answer } : { requestId, optionIndices: [...answer] },
+    );
     patchComposer(threadId, { verdict: "Sent to the agent." });
   } catch (err) {
     patchComposer(threadId, { responding: null, verdict: refusalText(err) });

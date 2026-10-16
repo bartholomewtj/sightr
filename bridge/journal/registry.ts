@@ -13,6 +13,7 @@
 import { join } from "node:path";
 
 import { claudeJournal } from "./claude.ts";
+import { codexJournal } from "./codex.ts";
 import { cursorJournal } from "./cursor.ts";
 import { grokJournal } from "./grok.ts";
 import { piJournal } from "./pi.ts";
@@ -44,6 +45,7 @@ export function buildJournalRegistry(
     claudeJournal(roots.claude ?? []),
     piJournal(roots.pi ?? []),
     cursorJournal(roots.cursor ?? []),
+    codexJournal(roots.codex ?? []),
     // Grok is the one harness that has to work out which pane owns which log, so it is the one
     // that needs somewhere to write that down (journal/claims.ts).
     grokJournal(roots.grok ?? [], stateDir === null ? null : join(stateDir, "pane-claims.json")),

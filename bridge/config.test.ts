@@ -21,10 +21,12 @@ const KEYS = [
   "SIGHTR_PI_ROOT",
   "SIGHTR_GROK_ROOT",
   "SIGHTR_CURSOR_ROOT",
+  "SIGHTR_CODEX_ROOT",
   // Each harness's own home var participates in journal-root resolution, so the suite must own them
   // too — otherwise a developer with GROK_HOME set gets different results than CI.
   "PI_CODING_AGENT_DIR",
   "GROK_HOME",
+  "CODEX_HOME",
   "SIGHTR_SUBMIT_KEYS",
   "SIGHTR_WORK_ROOT",
   "SIGHTR_TRUSTED_USER",
@@ -81,7 +83,8 @@ describe("loadConfig", () => {
     expect(cfg.journalRoots.claude![0]).toEndWith(join(".claude", "projects"));
     expect(cfg.journalRoots.grok).toEqual([join(homedir(), ".grok", "sessions")]);
     expect(cfg.journalRoots.cursor).toEqual([join(homedir(), ".cursor", "projects")]);
-    expect(Object.keys(cfg.journalRoots).sort()).toEqual(["claude", "cursor", "grok", "pi"]);
+    expect(cfg.journalRoots.codex).toEqual([join(homedir(), ".codex", "sessions")]);
+    expect(Object.keys(cfg.journalRoots).sort()).toEqual(["claude", "codex", "cursor", "grok", "pi"]);
     expect(cfg.journalRoots.agy).toBeUndefined();
     expect(cfg.submitKeys).toEqual(["Enter"]);
     expect(cfg.trustedUser).toBe("");
@@ -193,6 +196,14 @@ describe("loadConfig", () => {
     const cfg = loadConfig();
     expect(cfg.journalRoots.pi).toEqual([join("/srv/pi", "sessions")]);
     expect(cfg.journalRoots.grok).toEqual([join("/srv/grok", "sessions")]);
+  });
+
+  test("Codex: SIGHTR_CODEX_ROOT, then CODEX_HOME, then ~/.codex/sessions", () => {
+    expect(loadConfig().journalRoots.codex).toEqual([join(homedir(), ".codex", "sessions")]);
+    process.env.CODEX_HOME = "/srv/codex";
+    expect(loadConfig().journalRoots.codex).toEqual([join("/srv/codex", "sessions")]);
+    process.env.SIGHTR_CODEX_ROOT = "/cx/a,/cx/b";
+    expect(loadConfig().journalRoots.codex).toEqual(["/cx/a", "/cx/b"]);
   });
 
   test("an explicit SIGHTR_* root beats the harness's home var", () => {
@@ -393,6 +404,7 @@ describe("configuration documentation", () => {
     expect(read.has("SIGHTR_PI_ROOT")).toBe(true);
     expect(read.has("SIGHTR_GROK_ROOT")).toBe(true);
     expect(read.has("SIGHTR_CURSOR_ROOT")).toBe(true);
+    expect(read.has("SIGHTR_CODEX_ROOT")).toBe(true);
     expect(missing).toEqual([]);
   });
 });

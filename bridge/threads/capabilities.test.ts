@@ -18,7 +18,7 @@ const TABLE: Record<string, Row> = {
   grok: { canInterrupt: false, canSwitchPermissionMode: false, canSwitchModel: false, canSetEffortLive: false, hasJournal: true, resumeBySession: true, launchModes: true },
   cursor: { canInterrupt: false, canSwitchPermissionMode: false, canSwitchModel: false, canSetEffortLive: false, hasJournal: true, resumeBySession: false, launchModes: false },
   agy: { canInterrupt: false, canSwitchPermissionMode: false, canSwitchModel: false, canSetEffortLive: false, hasJournal: false, resumeBySession: false, launchModes: true },
-  codex: { canInterrupt: false, canSwitchPermissionMode: false, canSwitchModel: false, canSetEffortLive: false, hasJournal: false, resumeBySession: true, launchModes: false },
+  codex: { canInterrupt: false, canSwitchPermissionMode: false, canSwitchModel: false, canSetEffortLive: false, hasJournal: true, resumeBySession: true, launchModes: false },
 };
 
 describe("capabilitiesFor (shared/agents.ts)", () => {

@@ -246,8 +246,9 @@ export const AGENTS = [
   { id: "agy", family: "agy", prefixes: ["agy", "antigravity"], label: "Antigravity CLI", brand: { bg: "#1B1B1F", fg: "#FFFFFF", mode: "text", text: "A" }, catalog: [], launch: AGY_LAUNCH, capabilities: AGY_CAPABILITIES },
   // Brand + slash catalog + journal + live TUI harness (command approval / trust).
   { id: "cursor", family: "cursor", prefixes: ["cursor"], label: "Cursor CLI", brand: { bg: "#141414", fg: "#FFFFFF", mode: "text", text: "C" }, catalog: CURSOR, journal: { rootEnv: "SIGHTR_CURSOR_ROOT", homeDefault: [".cursor"], subdir: ["projects"] }, launch: { kind: "cursor" }, capabilities: CURSOR_CAPABILITIES },
-  // Launch only: no adapter, catalog or journal yet (T16 adds the journal). Its flags are unchecked.
-  { id: "codex", family: "codex", prefixes: ["codex"], label: "Codex CLI", catalog: [], launch: { kind: "codex" }, capabilities: CODEX_CAPABILITIES },
+  // Journal from the rollout files (T16; record shapes read from Codex source, not a live capture). No
+  // catalog or brand yet, and its launch flags are unchecked.
+  { id: "codex", family: "codex", prefixes: ["codex"], label: "Codex CLI", catalog: [], journal: { rootEnv: "SIGHTR_CODEX_ROOT", homeEnv: "CODEX_HOME", homeDefault: [".codex"], subdir: ["sessions"] }, launch: { kind: "codex" }, capabilities: CODEX_CAPABILITIES },
 ] as const satisfies readonly AgentDescriptor[];
 
 export type AgentId = typeof AGENTS[number]["id"];

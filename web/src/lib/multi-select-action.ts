@@ -3,8 +3,16 @@
 
 import { type MultiSelectModel } from "./blocks";
 import { guardDialog, readDialog, sendBoundKeys, type DialogTarget } from "./dialog-guard";
+import {
+  cursorSubmitStep,
+  cursorToggleStep,
+  multiSelectAdvanceRecipe,
+  pointerWalkRecipe,
+  tabSpaceToggleRecipe,
+  type RecipeIO,
+  type WalkStep,
+} from "./dialog-recipes";
 import { defaultSleep, type ActionResult, type Sleep } from "./harness/guard";
-import { multiSelectIdentity } from "./harness/multi-select-model";
 
 // The multi-select action recipes — the generic race guard (lib/dialog-guard.ts) plus the extra
 // verified steps this dialog needs, because its Submit is a CLOSED-LOOP choreography (never a blind
@@ -102,7 +110,7 @@ async function dispatchIntent(
     }
     if (args.multi.phase === "checkbox" && args.multi.recipe === "pointer-space-s") {
       // `s` types into `Other:` when the pointer is on it, so step off that row first.
-      return runPointerWalk(args, (m) => (m.focusedN == null ? "Up" : { last: "s" }));
+      return runPointerWalk(args, cursorSubmitStep);
     }
     return runAdvanceMacro(args);
   }
@@ -114,11 +122,8 @@ async function dispatchIntent(
     }
     if (args.multi.recipe === "tab-space-enter") return runTabSpaceToggle(args, intent.n);
     if (args.multi.recipe === "pointer-space-s") {
-      const n = intent.n;
       // focusedN null = pointer on `Other:`, the bottom row: every option is above it.
-      return runPointerWalk(args, (m) =>
-        m.focusedN === n ? { last: "Space" } : m.focusedN == null || m.focusedN > n ? "Up" : "Down",
-      );
+      return runPointerWalk(args, cursorToggleStep(intent.n));
     }
     return guardedKey(args, [String(intent.n)]);
   }
@@ -147,181 +152,49 @@ async function guardedKey(args: MultiGuardArgs, keys: string[]): Promise<ActionR
   return sendBoundKeys(args, keys, guarded.region);
 }
 
-// The pointer settles fast after a nav key — a pointer move is a cheap redraw, unlike the note-focus
-// race the 350ms POLL_DELAY guards — so the Submit walk re-reads on this short cadence and advances
-// one row per read. (The old macro polled for "reached the bottom" AFTER every Down, so each
-// intermediate step burned the full ~2.8s poll timeout before giving up and stepping again — a
-// ~5-row walk stalled ~15s. Re-reading the actual pointer resolves each step in one settle.)
-const NAV_SETTLE_MS = 250;
+/** The recipe I/O for this pane: the browser's read through the pane's adapter, and sendKeys. */
+function multiIO(args: MultiGuardArgs): RecipeIO<MultiSelectModel> {
+  return {
+    read: async () => (await readDialog(multiTarget(args))).model,
+    send: (keys, region) => sendBoundKeys(args, keys, region),
+    sleep: args.sleep ?? defaultSleep,
+  };
+}
 
-/**
- * Grok checkbox toggle: Tab until the highlight sits on option `n`, then Space. A digit toggles
- * too, and a digit on a mis-read radio submits, so this path never sends one. Each step re-reads
- * `focusedN` (the colour highlight). When the highlight is on a row the card has scrolled off,
- * `focusedN` is null — Up is clamped toward option 1 and brings a row back into the buffer, then
- * Tab finishes the walk. Space is the last key; identity includes `checked`, so a flip by another
- * device aborts the walk before Space. A parked card (`Tab/Space:question`) gets one extra Tab
- * first — that footer's named key re-enters; Space before that is a no-op.
- */
+// The walks themselves live in lib/dialog-recipes.ts (the bridge runs the same ones for v2, T17).
+// Each wrapper here runs v1's entry guard first and hands the recipe the verified region.
+
+/** Grok checkbox toggle: Tab-walk to option `n`, then Space (see `tabSpaceToggleRecipe`). */
 async function runTabSpaceToggle(args: MultiGuardArgs, n: number): Promise<ActionResult> {
   if (args.multi.phase !== "checkbox" || args.multi.recipe !== "tab-space-enter") {
     return { status: "changed" };
   }
   const guarded = await guardDialog(multiTarget(args));
   if (!guarded.ok) return guarded.result;
-
-  const sleep = args.sleep ?? defaultSleep;
-  // Up back to a painted row, then Tab across the list. A short cap died while the highlight
-  // was still on a row the pane had not painted.
-  const maxSteps = args.multi.options.length * 2 + 4;
-  let expectedPrompt: string | undefined = guarded.region;
-  const sendMacroStep = async (keys: string[]) => {
-    const expected = expectedPrompt;
-    expectedPrompt = undefined;
-    const res = await sendBoundKeys(args, keys, expected);
-    return res.status === "sent" ? null : res;
-  };
-
-  if (args.multi.parked) {
-    const sent = await sendMacroStep(["Tab"]);
-    if (sent) return sent;
-    await sleep(NAV_SETTLE_MS);
-  }
-
-  for (let step = 0; step < maxSteps; step++) {
-    let fresh;
-    try {
-      fresh = await readDialog(multiTarget(args));
-    } catch {
-      await sleep(NAV_SETTLE_MS);
-      continue;
-    }
-    const m = fresh.model;
-    if (!m) {
-      await sleep(NAV_SETTLE_MS);
-      continue;
-    }
-    if (!multiSelectIdentity(m, args.multi) || m.phase !== "checkbox") return { status: "changed" };
-    if (m.recipe !== "tab-space-enter") return { status: "changed" };
-    if (m.focusedN === n) {
-      return (await sendMacroStep(["Space"])) ?? { status: "sent" };
-    }
-    // Null means the highlight is on a description or an option the card scrollbar hid.
-    // Up is clamped at option 1, so it walks that highlight back into the painted rows.
-    // A readable highlight still Tabs — that is the probed path and it must not change.
-    const sent = await sendMacroStep([m.focusedN == null ? "Up" : "Tab"]);
-    if (sent) return sent;
-    await sleep(NAV_SETTLE_MS);
-  }
-  return { status: "changed" };
+  return tabSpaceToggleRecipe(multiIO(args), args.multi, n, guarded.region);
 }
 
-/**
- * Cursor `pointer-space-s` walk: entry guard, then one arrow per fresh read until `step` names the
- * final key, which goes out only after a read that shows the pointer where it belongs. The same
- * identity check as every macro (checked state included) runs before each key, so a box flipped
- * by a second device aborts the walk. Keys go one per write — Cursor drops the rest of a batch.
- */
+/** Cursor `pointer-space-s` walk (see `pointerWalkRecipe`). */
 async function runPointerWalk(
   args: MultiGuardArgs,
-  step: (m: Extract<MultiSelectModel, { phase: "checkbox" }>) => "Up" | "Down" | { last: string },
+  step: (m: Extract<MultiSelectModel, { phase: "checkbox" }>) => WalkStep,
 ): Promise<ActionResult> {
   if (args.multi.phase !== "checkbox" || args.multi.recipe !== "pointer-space-s") {
     return { status: "changed" };
   }
   const guarded = await guardDialog(multiTarget(args));
   if (!guarded.ok) return guarded.result;
-
-  const sleep = args.sleep ?? defaultSleep;
-  const maxSteps = args.multi.options.length + 4;
-  let expectedPrompt: string | undefined = guarded.region;
-  const sendMacroStep = async (keys: string[]) => {
-    const expected = expectedPrompt;
-    expectedPrompt = undefined;
-    const res = await sendBoundKeys(args, keys, expected);
-    return res.status === "sent" ? null : res;
-  };
-
-  for (let i = 0; i < maxSteps; i++) {
-    let fresh;
-    try {
-      fresh = await readDialog(multiTarget(args));
-    } catch {
-      await sleep(NAV_SETTLE_MS);
-      continue;
-    }
-    const m = fresh.model;
-    if (!m) {
-      await sleep(NAV_SETTLE_MS);
-      continue;
-    }
-    if (!multiSelectIdentity(m, args.multi) || m.phase !== "checkbox") return { status: "changed" };
-    if (m.recipe !== "pointer-space-s") return { status: "changed" };
-    const next = step(m);
-    if (typeof next !== "string") return (await sendMacroStep([next.last])) ?? { status: "sent" };
-    const sent = await sendMacroStep([next]);
-    if (sent) return sent;
-    await sleep(NAV_SETTLE_MS);
-  }
-  return { status: "changed" };
+  return pointerWalkRecipe(multiIO(args), args.multi, step, guarded.region);
 }
 
 /**
- * The Submit macro (checkbox → review): entry guard → walk the pointer DOWN onto "Submit" → Enter.
- * Each step re-reads the ACTUAL pointer and stops the INSTANT it lands on "Submit" — which sits just
- * above the bottom "Chat about this" row, so a downward walk reaches it first (no overshoot, no
- * back-up). Enter is NEVER sent without a fresh read confirming the pointer is on "Submit", and every
- * read re-checks the dialog IDENTITY, so a drift / a checkbox screen that already advanced / a
- * vanished dialog aborts BEFORE any key. Reaching the review screen re-renders on the next poll, where
- * the user confirms (we do NOT auto-send "1").
+ * The Submit macro (checkbox → review): entry guard, then the verified walk onto the advance row and
+ * Enter (see `multiSelectAdvanceRecipe`). Reaching the review screen re-renders on the next poll,
+ * where the user confirms (we do NOT auto-send "1").
  */
 async function runAdvanceMacro(args: MultiGuardArgs): Promise<ActionResult> {
   if (args.multi.phase !== "checkbox") return { status: "changed" };
   const guarded = await guardDialog(multiTarget(args));
   if (!guarded.ok) return guarded.result;
-
-  const sleep = args.sleep ?? defaultSleep;
-  // Bound the walk: enough nudges to cross every navigable row (options + free-text + Submit + Chat)
-  // with slack for a couple of swallowed keys, so a wedged pane can't loop forever.
-  const maxSteps = args.multi.options.length + 6;
-  // Bind only the first write. The macro intentionally changes the dialog step by step, so reusing
-  // the original region would reject every valid later step. Enter stays protected by the identity
-  // check that runs before every macro write.
-  let expectedPrompt: string | undefined = guarded.region;
-  const sendMacroStep = async (keys: string[]) => {
-    const expected = expectedPrompt;
-    expectedPrompt = undefined;
-    const res = await sendBoundKeys(args, keys, expected);
-    return res.status === "sent" ? null : res;
-  };
-
-  for (let step = 0; step < maxSteps; step++) {
-    let fresh;
-    try {
-      fresh = await readDialog(multiTarget(args));
-    } catch {
-      await sleep(NAV_SETTLE_MS); // transient read failure — re-read within the bounded walk
-      continue;
-    }
-    const m = fresh.model;
-    if (!m) {
-      await sleep(NAV_SETTLE_MS); // TUI mid-redraw hid the tail — re-read without sending a key
-      continue;
-    }
-    // Drift guard: a successor dialog, or the checkbox screen already gone — abort before any key.
-    if (!multiSelectIdentity(m, args.multi) || m.phase !== "checkbox") return { status: "changed" };
-    if (m.pointer === "advance") {
-      // Verified on the advance row: activate it. What appears next — the following question of a
-      // wizard, or the review screen — is re-detected by whichever grammar owns it on the next poll.
-      // This macro deliberately does not predict another screen's shape.
-      return (await sendMacroStep(["Enter"])) ?? { status: "sent" };
-    }
-    // Nudge toward the advance row: Down for every row above it (options / free-text / none), and Up
-    // on the off chance the pointer starts on the bottom "Chat about this" row (advance is above it).
-    const sent = await sendMacroStep([m.pointer === "chat" ? "Up" : "Down"]);
-    if (sent) return sent;
-    await sleep(NAV_SETTLE_MS);
-  }
-  // Never landed on the advance row within the bounded walk — refresh rather than blind-send.
-  return { status: "changed" };
+  return multiSelectAdvanceRecipe(multiIO(args), args.multi, guarded.region);
 }

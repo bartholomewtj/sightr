@@ -14,12 +14,15 @@
 //      `===` the adapter's and checks every fixture.
 //   3. EXACT AGENT STRING. Never a prefix (the collie#99 reject). An agent with no adapter gets null.
 //
-// Nothing here invents keys. Options carry the keys the adapter's model already encodes; a dialog the
-// kit cannot answer with one tap (multi-select, wizard, preview, a focused free-text row) is published
-// with no options and the operator answers it in the Terminal tab.
+// Nothing here invents keys. Options carry the keys the adapter's model already encodes. A wizard step
+// is answered by its option's keys like any question. A checkbox (multi-select) step and a preview
+// select need a closed-loop recipe (lib/dialog-recipes.ts), which the bridge runs from a fresh parse
+// of the screen (`dialogModel`); their options carry the digit at most. A focused free-text row is
+// published with no options and the operator answers it in the Terminal tab (T17).
 
 import { normalizePromptRegion } from "../../../../shared/prompt-binding";
 import { parseLines, type Block, type StyledLine } from "../blocks";
+import { DIALOG_CONTRACT, dialogModelOf, type DialogKind, type DialogModels } from "./dialog-contract";
 import { detectNoEchoPrompt } from "../no-echo";
 import { agyBuildBlocks } from "./agy/index";
 import { claudeBuildBlocks } from "./claude/index";
@@ -28,8 +31,11 @@ import { isSkipLabel } from "./cursor/permission";
 import { grokBuildBlocks } from "./grok/index";
 import { isRejectLabel } from "./grok/permission";
 import type { MenuModel } from "./menu-model";
+import type { MultiSelectModel } from "./multi-select-model";
 import { piBuildBlocks } from "./pi/index";
+import type { PreviewSelectModel } from "./preview-model";
 import type { PromptModel } from "./prompt-model";
+import { WIZARD_CANCEL_KEYS, WIZARD_SUBMIT_KEYS, type WizardModel, type WizardStepChip } from "./wizard-model";
 
 /** The kinds of runtime request a dialog becomes (shared/v2/contracts.ts `RuntimeRequestKind`). */
 export type DialogRequestKind = "permission" | "trust" | "password" | "menu" | "question";
@@ -47,8 +53,20 @@ export interface DialogParse {
   kind: DialogRequestKind;
   prompt: string;
   options: DialogOption[];
-  /** The last BOUND_TEXT_LINES non-blank lines of the read, normalized. The bridge keeps it. */
+  /**
+   * The text the bridge binds its answer to, normalized. For a wizard, preview or checkbox dialog it
+   * is the model's own `region` (DIALOG_CONTRACT), the literal dialog on screen; for every other
+   * dialog the last BOUND_TEXT_LINES non-blank lines of the read.
+   */
   boundText: string;
+  /** T17: the stepper chips of a multi-question ask. */
+  steps?: WizardStepChip[];
+  /** T17: a checkbox step: box state per option (the first `checked.length` options) and the advance label. */
+  multiSelect?: { checked: boolean[]; advanceLabel: string };
+  /** T17: a preview select: the pointed option's preview pane. */
+  preview?: { optionIndex: number; lines: string[] };
+  /** T17: the echoed answers of a review step. */
+  answers?: { question: string; answer: string }[];
   /** A draftr operator decision: answered through `whistlr reply`, never by typing into the pane. */
   via?: "whistlr";
   decision?: { thread: string; run: string };
@@ -97,7 +115,7 @@ function isDialogBlock(block: Block): block is DialogBlock {
   return block.kind !== "raw" && block.kind !== "autocomplete";
 }
 
-function fromPrompt(agent: string, model: PromptModel): Omit<DialogParse, "boundText"> {
+function fromPrompt(agent: string, model: PromptModel): Lifted {
   if (model.decision) {
     return {
       kind: "question",
@@ -124,7 +142,7 @@ function fromPrompt(agent: string, model: PromptModel): Omit<DialogParse, "bound
   };
 }
 
-function fromMenu(model: MenuModel): Omit<DialogParse, "boundText"> {
+function fromMenu(model: MenuModel): Lifted {
   return {
     kind: "menu",
     prompt: model.title,
@@ -132,20 +150,132 @@ function fromMenu(model: MenuModel): Omit<DialogParse, "boundText"> {
   };
 }
 
-function fromBlock(agent: string, block: DialogBlock): Omit<DialogParse, "boundText"> {
+type Lifted = Omit<DialogParse, "boundText">;
+
+const REVIEW_PROMPT = "Review your answers";
+
+const stepsOf = (steps: readonly WizardStepChip[] | null | undefined) =>
+  steps && steps.length > 0 ? { steps: steps.map((s) => ({ label: s.label, answered: s.answered, current: s.current })) } : {};
+
+const answersOf = (answers: readonly { question: string; answer: string }[]) =>
+  answers.length > 0 ? { answers: answers.map((a) => ({ question: a.question, answer: a.answer })) } : {};
+
+/** A wizard step: one option's keys answer and advance; the review submits or cancels. */
+function fromWizard(model: WizardModel): Lifted {
+  if (model.phase === "review") {
+    const options: DialogOption[] = [];
+    // `null` = the harness will not submit from this screen yet (Pi with a question unanswered).
+    if (model.submitKeys !== null) options.push({ label: "Submit", keys: [...(model.submitKeys ?? WIZARD_SUBMIT_KEYS)] });
+    options.push({ label: "Cancel", keys: [...(model.cancelKeys ?? WIZARD_CANCEL_KEYS)], destructive: true });
+    return { kind: "question", prompt: REVIEW_PROMPT, options, ...stepsOf(model.steps), ...answersOf(model.answers) };
+  }
+  // While Pi's editor is open every key is typed into it, so no option can fire.
+  const options: DialogOption[] = model.feedback?.editing
+    ? []
+    : model.options.map((o) => ({
+        label: o.label,
+        keys: [...o.keys],
+        ...(o.escape ? { destructive: true } : {}),
+        ...(o.description ? { description: o.description } : {}),
+      }));
+  return { kind: "question", prompt: model.question, options, ...stepsOf(model.steps) };
+}
+
+/**
+ * A checkbox step: the boxes first (Claude's digit as keys; Grok and Cursor reach a box by a walk, so
+ * none), then "Chat about this", which aborts the ask. The review is Submit (1) and Cancel (2).
+ */
+function fromMultiSelect(model: MultiSelectModel): Lifted {
+  if (model.phase === "review") {
+    return {
+      kind: "question",
+      prompt: REVIEW_PROMPT,
+      options: [
+        { label: "Submit", keys: ["1"] },
+        { label: "Cancel", keys: ["2"], destructive: true },
+      ],
+      ...answersOf(model.answers),
+    };
+  }
+  const options: DialogOption[] = model.options.map((o) => ({
+    label: o.label,
+    keys: model.recipe === undefined ? [String(o.n)] : [],
+    ...(o.description ? { description: o.description } : {}),
+  }));
+  if (model.escape) options.push({ label: model.escape.label, keys: [String(model.escape.n)], destructive: true });
+  return {
+    kind: "question",
+    prompt: model.question,
+    options,
+    multiSelect: { checked: model.options.map((o) => o.checked), advanceLabel: model.advanceLabel },
+    ...stepsOf(model.steps),
+  };
+}
+
+/** A preview select: the digit only moves the pointer, so the bridge's recipe adds the verified Enter. */
+function fromPreview(model: PreviewSelectModel): Lifted {
+  const pointed = model.options.findIndex((o) => o.pointed);
+  return {
+    kind: "question",
+    prompt: model.question,
+    // While the note input has the keyboard every key is typed into it.
+    options: model.note.state === "editing" ? [] : model.options.map((o) => ({ label: o.label, keys: [String(o.n)] })),
+    ...(pointed >= 0 ? { preview: { optionIndex: pointed, lines: [...model.preview] } } : {}),
+    ...stepsOf(model.steps),
+  };
+}
+
+function fromBlock(agent: string, block: DialogBlock): Lifted {
   switch (block.kind) {
     case "prompt-select":
       return fromPrompt(agent, block.prompt);
     case "menu":
       return fromMenu(block.menu);
-    // Multi-step and checkbox dialogs need more than one tap: published without options (T17).
     case "wizard":
-      return { kind: "question", prompt: block.wizard.phase === "question" ? block.wizard.question : "Review your answers", options: [] };
+      return fromWizard(block.wizard);
     case "multi-select":
-      return { kind: "question", prompt: block.multi.phase === "checkbox" ? block.multi.question : "Review your answers", options: [] };
+      return fromMultiSelect(block.multi);
     case "preview-select":
-      return { kind: "question", prompt: block.preview.question, options: [] };
+      return fromPreview(block.preview);
   }
+}
+
+/** `text` normalized the way `boundText` is (SGR and trailing spaces removed, blank lines dropped). */
+export function normalizeBound(text: string): string {
+  return normalizePromptRegion(text).join("\n");
+}
+
+/** The literal region `model` binds to, normalized like `boundText`. */
+export function dialogRegion<K extends DialogKind>(kind: K, model: DialogModels[K]): string {
+  return normalizeBound((DIALOG_CONTRACT[kind].region as (m: DialogModels[K]) => string)(model));
+}
+
+function boundTextFor(block: DialogBlock, ansiText: string): string {
+  const region =
+    block.kind === "wizard"
+      ? dialogRegion("wizard", block.wizard)
+      : block.kind === "multi-select"
+        ? dialogRegion("multi-select", block.multi)
+        : block.kind === "preview-select"
+          ? dialogRegion("preview-select", block.preview)
+          : "";
+  return region !== "" ? region : boundTextOf(ansiText);
+}
+
+/**
+ * The tail `kind` dialog of `ansiText` as `agent`'s adapter lifts it, or null. The bridge's recipes
+ * re-derive the screen through this between keys, the way v1's race guard does (lib/dialog-guard.ts
+ * `dialogDetector`): the adapter's own pipeline, the last block of that kind.
+ */
+export function dialogModel<K extends DialogKind>(agent: string, ansiText: string, kind: K): DialogModels[K] | null {
+  const pipeline = dialogPipeline(agent);
+  if (!pipeline || ansiText.length === 0) return null;
+  const blocks = pipeline(parseLines(ansiText));
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const model = dialogModelOf(blocks[i]!, kind);
+    if (model !== null) return model;
+  }
+  return null;
 }
 
 /**
@@ -160,7 +290,7 @@ export function parseDialog(agent: string, ansiText: string): DialogParse | null
   if (boundText === "") return null;
   const lines = parseLines(ansiText);
   const block = pipeline(lines).findLast(isDialogBlock);
-  if (block) return { ...fromBlock(agent, block), boundText };
+  if (block) return { ...fromBlock(agent, block), boundText: boundTextFor(block, ansiText) };
   const password = detectNoEchoPrompt(lines);
   if (password !== null) return { kind: "password", prompt: password, options: [], boundText };
   return null;
