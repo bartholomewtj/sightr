@@ -1,13 +1,17 @@
 // The non-v2 bridge calls web2 needs: the lock endpoints (copied from web/src/lib/api.ts, same
 // `/api/lock/*` routes) and the request headers every web2 call sends.
-import { SEEN_HEADER } from "@shared/limits";
+import { BUILD_HEADER, SEEN_HEADER } from "@shared/limits";
 import type {
   ActionResponse,
   BridgeConfig,
+  BridgeSettingKey,
+  BridgeSettings,
+  BridgeSettingsView,
   FileSearchResponse,
   FilesResponse,
   FolderGitResponse,
   LockStatus,
+  NotifyPrefs,
   PaneFolderResponse,
   PaneReadResponse,
   SaveFileResponse,
@@ -150,10 +154,13 @@ function withTimeout(signal: AbortSignal | null | undefined, ms: number): AbortS
 /** A bridge refusal, with its status (v1's `ApiError`). */
 export class ApiError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  /** The bridge's own words for the refusal (its response body), when it gave any. */
+  readonly detail: string;
+  constructor(message: string, status: number, detail = "") {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -176,7 +183,7 @@ async function readJson<T>(path: string, init: RequestInit = {}, recover?: (stat
     const recovered = recover?.(res.status, detail);
     if (recovered !== null && recovered !== undefined) return recovered;
     noteIfLocked(res);
-    throw new ApiError(`${path} -> ${res.status} ${detail}`, res.status);
+    throw new ApiError(`${path} -> ${res.status} ${detail}`, res.status, detail.trim());
   }
   return (await res.json()) as T;
 }
@@ -304,4 +311,58 @@ export function fetchFolderGit(path: string, paneIds: string[], signal?: AbortSi
   q.set("path", path);
   for (const id of paneIds.slice(0, MAX_GIT_PANES)) q.append("pane", id);
   return readJson<FolderGitResponse>(`/api/files/git?${q}`, signal ? { signal } : {});
+}
+
+// ── T18: Settings (copied from web/src/lib/api.ts, same routes) ─────────────────────────────────
+
+/** True when an API request failed with the given HTTP status (v1's `isApiErrorStatus`). */
+export function isApiErrorStatus(error: unknown, status: number): boolean {
+  return error instanceof ApiError && error.status === status;
+}
+
+export function registerWebauthn(body: {
+  id: string;
+  clientDataJSON: string;
+  authenticatorData: string;
+  attestationObject: string;
+  name: string;
+}): Promise<{ ok: boolean }> {
+  return req<{ ok: boolean }>("/api/lock/webauthn/register", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function removeWebauthn(id: string): Promise<{ ok: boolean }> {
+  return req<{ ok: boolean }>("/api/lock/webauthn/remove", { method: "POST", body: JSON.stringify({ id }) });
+}
+
+export function clearLock(): Promise<{ ok: boolean }> {
+  return req<{ ok: boolean }>("/api/lock/clear-all", { method: "POST" });
+}
+
+/** The bridge-wide notification types (which statuses push). */
+export function getNotifyPrefs(): Promise<NotifyPrefs> {
+  return readJson<NotifyPrefs>("/api/notifications/prefs");
+}
+
+/** A partial patch; every device gets the merged result. */
+export function setNotifyPrefs(patch: Partial<NotifyPrefs>): Promise<NotifyPrefs> {
+  return readJson<NotifyPrefs>("/api/notifications/prefs", { method: "POST", body: JSON.stringify(patch) });
+}
+
+export function getBridgeSettings(): Promise<BridgeSettingsView> {
+  return readJson<BridgeSettingsView>("/api/settings");
+}
+
+/** Patch values and/or `reset` keys back to their `.env` value. */
+export function setBridgeSettings(patch: Partial<BridgeSettings> & { reset?: BridgeSettingKey[] }): Promise<BridgeSettingsView> {
+  return readJson<BridgeSettingsView>("/api/settings", { method: "POST", body: JSON.stringify(patch) });
+}
+
+/**
+ * The build id of the web2 bundle the bridge serves now (its `x-sightr-build` header on web2's own
+ * files), for Settings → Connection. Asks for `sw.js`: the service worker never precaches itself, so
+ * the answer comes from the bridge, not from a cache. null when the bridge does not say.
+ */
+export async function fetchServerBuild(base: string = import.meta.env.BASE_URL): Promise<string | null> {
+  const res = await fetch(`${base}sw.js`, { method: "HEAD", cache: "no-store", headers: { [XHR_HEADER]: XHR_HEADER_VALUE } });
+  return res.ok ? res.headers.get(BUILD_HEADER) : null;
 }

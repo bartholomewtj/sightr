@@ -13,6 +13,7 @@
 // - An expanded tool group is a plain bounded list, not a nested LegendList; a tool's detail is
 //   `ToolItemDetail` (the job of T3's V2ItemInspector) and is only mounted while open.
 // - No shimmer: the house look allows one motion, the working pulse (`animate-status-pulse`).
+// - Settings → Display → Show thinking off (T18) drops `reasoning` items before the rows are derived.
 // - Left out: minimap, find, citations, forks, diffs, revert, attachments previews, subagents,
 //   worktree setup, MCP apps, HTML renders, proposed plans.
 import { LegendList, type LegendListRef, type MaintainScrollAtEndOptions } from "@legendapp/list/react";
@@ -68,6 +69,7 @@ import {
   type WorkLogEntry,
 } from "~/session-logic";
 import { liveThoughtLine } from "@t3tools/client-runtime/work-log/presentation";
+import { useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useThread } from "@/stream/stores";
 import {
   loadOlderHistory,
@@ -135,7 +137,12 @@ export function MessagesTimeline({ threadId }: MessagesTimelineProps) {
   const history = useHistoryState(threadId);
   const followRequest = useTimelineStore((s) => s.followRequest);
 
-  const items = useMemo(() => (state ? orderedItems(state.items) : []), [state?.items]);
+  // Settings → Display → Show thinking (T18): off drops the thought rows; the run banner still times the work.
+  const { showThinking } = useDisplayPrefs();
+  const items = useMemo(() => {
+    const all = state ? orderedItems(state.items) : [];
+    return showThinking ? all : all.filter((item) => item.type !== "reasoning");
+  }, [state?.items, showThinking]);
   const runs = useMemo(
     () => (state ? Object.values(state.runs).sort((a, b) => a.ordinal - b.ordinal) : ([] as Run[])),
     [state?.runs],

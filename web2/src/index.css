@@ -17,9 +17,28 @@
    Signature "you": the one control or row that needs the operator gets `bg-you-soft border-you`.
    Nothing else does. `primary` is ink, not accent, so a default button is never a you-step. */
 
-/* Dark unless the operator pinned light (public/theme-init.js adds `.light`). */
-@custom-variant dark (&:where(:root:not(.light), :root:not(.light) *));
-@custom-variant light (&:where(:root.light, :root.light *));
+/* Dark unless the operator chose Light (`.light`) or System (`.system`, follows the OS). public/theme-init.js
+   adds the class before first paint; hooks/use-theme.ts keeps it in step after that. */
+@custom-variant dark {
+  &:where(:root:not(.light):not(.system), :root:not(.light):not(.system) *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root.system, :root.system *) {
+      @slot;
+    }
+  }
+}
+@custom-variant light {
+  &:where(:root.light, :root.light *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: light) {
+    &:where(:root.system, :root.system *) {
+      @slot;
+    }
+  }
+}
 
 :root {
   color-scheme: dark;
@@ -76,6 +95,10 @@
 
 :root.light {
   color-scheme: light;
+}
+
+:root.system {
+  color-scheme: light dark;
 }
 
 @theme {

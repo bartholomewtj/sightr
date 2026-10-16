@@ -5,6 +5,8 @@ import { createRoot } from "react-dom/client";
 import { startConnTelemetry } from "@v1/lib/conn-telemetry";
 
 import "./index.css";
+// The theme class and theme-color meta (Settings → Appearance); theme-init.js did the first paint.
+import "./hooks/use-theme";
 // Registers the /v2/ service worker (precache, install, push). No-op over plain HTTP.
 import "./lib/pwa";
 import { getRouter } from "./router";

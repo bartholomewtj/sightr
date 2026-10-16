@@ -509,6 +509,25 @@ describe("ChatComposer: a pending request replaces the box", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Sent to the agent."));
   });
 
+  it("the last answer's verdict does not carry over to the next request's card (T18)", async () => {
+    show({
+      thread: { status: "approval" },
+      requests: [request({ kind: "menu", prompt: "Pick", options: [{ label: "One", keys: ["Enter"] }, { label: "Two", keys: ["Down", "Enter"] }] })],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "One" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Sent to the agent."));
+    // The answered dialog leaves the screen and the next one comes up (a wizard's next step).
+    patchThread((cur) => ({
+      requests: {
+        r1: { ...cur.requests.r1!, status: "resolved" },
+        r2: request({ id: "r2", kind: "question", prompt: "Next?", options: [{ label: "A", keys: ["1"] }], createdAt: 2 }),
+      },
+    }));
+    expect(await screen.findByText("Next?")).toBeInTheDocument();
+    expect(screen.queryByText("Sent to the agent.")).toBeNull();
+    expect(screen.queryByText("Answered elsewhere.")).toBeNull();
+  });
+
   it("password: no input, no options, Open terminal", () => {
     show({ thread: { status: "approval" }, requests: [request({ kind: "password", prompt: "[sudo] password:", options: [] })] });
     const panel = screen.getByRole("region", { name: "The agent is asking" });

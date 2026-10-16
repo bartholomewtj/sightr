@@ -1,6 +1,6 @@
 <!doctype html>
-<!-- web2 is dark by default (style/tokens.md, recipe console). theme-init.js adds `light` before first
-     paint when the operator has pinned Light. -->
+<!-- web2 is dark by default (style/tokens.md, recipe console). theme-init.js adds `light` (pinned Light)
+     or `system` (follow the OS) before first paint. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -23,6 +23,7 @@
       /* index.css has not loaded yet; paper and muted from tokens.md console, dark and light. */
       :root { color-scheme: dark; }
       :root.light { color-scheme: light; }
+      :root.system { color-scheme: light dark; }
       .boot-splash {
         position: fixed;
         inset: 0;

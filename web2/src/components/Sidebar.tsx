@@ -28,6 +28,7 @@ import type { Thread } from "@shared/v2/contracts";
 
 import { openCommandPalette } from "@/commandPaletteBus";
 import { CustomSnoozeDialog } from "@/components/CustomSnoozeDialog";
+import { PushOnboarding } from "@/components/settings/PushOnboarding";
 import { handleSidebarDrop, sectionDropId, useSidebarDrag, zoneFor } from "@/components/Sidebar.drag";
 import {
   buildProjectTree,
@@ -156,6 +157,7 @@ export function Sidebar() {
           />
         </label>
         <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+          <PushOnboarding className="mx-3 mb-2" />
           {!loaded ? <p className="px-4 text-sm text-muted-foreground">Loading threads…</p> : null}
           {loaded && flat !== null ? (
             flat.length === 0 ? (

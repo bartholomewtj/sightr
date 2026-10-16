@@ -17,7 +17,6 @@ import {
   PencilIcon,
   RotateCwIcon,
   ServerOffIcon,
-  Settings2Icon,
   TriangleAlertIcon,
   WifiOffIcon,
   XIcon,
@@ -52,8 +51,6 @@ import {
   retryAttachment,
   saveQueuedEdit,
   sentMessage,
-  setEnterMode,
-  setFollowUp,
   settleUploads,
   startQueuedEdit,
   useComposerSettings,
@@ -62,7 +59,6 @@ import {
 } from "@/state/composer";
 import { useBridgeInfo, useStreamHealth, useThread } from "@/stream/stores";
 import { Button } from "../ui/button";
-import { Menu, MenuGroup, MenuGroupLabel, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../ui/menu";
 import {
   isLargePaste,
   MAX_COMPOSER_CHARS,
@@ -247,9 +243,10 @@ export function ChatComposer({ threadId }: { threadId: string }) {
     if (prior && prior !== request?.id) {
       const left = state?.requests[prior];
       const mine = getThreadComposer(threadId).responding?.requestId === prior;
+      // The last answer's word belongs to that request's card: never carry it under the next one.
       patchComposer(threadId, {
         responding: null,
-        ...(mine ? {} : { verdict: null }),
+        verdict: null,
         ...(!mine && left && left.status !== "pending" ? { notice: "Answered elsewhere." } : {}),
       });
     }
@@ -681,27 +678,6 @@ export function ChatComposer({ threadId }: { threadId: string }) {
                     <KeyboardIcon />
                   </Button>
                 ) : null}
-                <Menu>
-                  <MenuTrigger render={<Button size="icon-sm" variant="ghost-muted" aria-label="Composer settings" />}>
-                    <Settings2Icon />
-                  </MenuTrigger>
-                  <MenuPopup side="top" align="start">
-                    <MenuGroup>
-                      <MenuGroupLabel>Enter key</MenuGroupLabel>
-                      <MenuRadioGroup value={enterMode} onValueChange={(v) => setEnterMode(v as "enter" | "mod-enter")}>
-                        <MenuRadioItem value="enter">Enter sends; Shift+Enter adds a line</MenuRadioItem>
-                        <MenuRadioItem value="mod-enter">Mod+Enter sends; Enter adds a line</MenuRadioItem>
-                      </MenuRadioGroup>
-                    </MenuGroup>
-                    <MenuGroup>
-                      <MenuGroupLabel>While the agent works</MenuGroupLabel>
-                      <MenuRadioGroup value={followUp} onValueChange={(v) => setFollowUp(v as "queue" | "steer")}>
-                        <MenuRadioItem value="queue">Queue the message</MenuRadioItem>
-                        <MenuRadioItem value="steer">Steer (stop, then send)</MenuRadioItem>
-                      </MenuRadioGroup>
-                    </MenuGroup>
-                  </MenuPopup>
-                </Menu>
                 <span className="min-w-0 flex-1 truncate px-1 text-xs text-muted-foreground" aria-live="polite">
                   {armed ? `Destructive: ${armed}. Tap again to send.` : (buttons.primary.reason ?? "")}
                 </span>

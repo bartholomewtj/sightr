@@ -55,7 +55,11 @@ describe("shell stream", () => {
   it("reads the herdr link from the snapshot, synchronized and ping, and the device from the snapshot (T12)", () => {
     const { es } = start();
     es.emit("snapshot", { ...shellSnapshot(10), herdr: "connected", device: { enforced: true, device: "laptop", authorized: false } });
-    expect(useBridgeInfo.getState()).toEqual({ herdr: "connected", readOnly: true });
+    expect(useBridgeInfo.getState()).toEqual({
+      herdr: "connected",
+      readOnly: true,
+      device: { enforced: true, device: "laptop", authorized: false },
+    });
     es.emit("ping", { sequence: 10, herdr: "disconnected" });
     expect(useBridgeInfo.getState().herdr).toBe("disconnected");
     es.emit("synchronized", { sequence: 10, herdr: "connected" });

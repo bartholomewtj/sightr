@@ -11,11 +11,14 @@ import { useShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 import { __resetToasts } from "@/components/toast";
 import { __resetThreadUndoNotice } from "@/hooks/showThreadUndoNotice";
 import { __resetPaneCache } from "@/lib/api";
+import { __reloadDisplayPrefs } from "@/hooks/use-display-prefs";
+import { __reloadTheme } from "@/hooks/use-theme";
 import { __resetDraftPrune } from "@/lib/drafts";
 import { __resetFilesTree } from "@/lib/files-tree";
 import { clearLockRequired } from "@/lib/lock";
 import { __resetOperatorCommands } from "@/lib/operator-commands";
 import { __resetPasteHold } from "@/lib/paste-hold";
+import { __resetServerBuild } from "@/lib/server-build";
 import { __resetRightPanelStore } from "@/rightPanelStore";
 import { __resetComposerState } from "@/state/composer";
 import { __resetSidebarState } from "@/state/sidebar";
@@ -51,6 +54,9 @@ beforeEach(() => {
     // ignore
   }
   __resetConnTelemetry();
+  __reloadDisplayPrefs();
+  __reloadTheme();
+  __resetServerBuild();
   __resetShellStream();
   __resetThreadStream();
   __resetStreamStores();

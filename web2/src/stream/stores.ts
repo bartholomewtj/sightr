@@ -83,9 +83,11 @@ export function clearBlocked(): void {
 export interface BridgeInfo {
   herdr: HerdrLink | null;
   readOnly: boolean;
+  /** This device's access as the shell snapshot reports it (Settings → Connection, Bridge). */
+  device: V2DeviceAuth | null;
 }
 
-const initialBridgeInfo = (): BridgeInfo => ({ herdr: null, readOnly: false });
+const initialBridgeInfo = (): BridgeInfo => ({ herdr: null, readOnly: false, device: null });
 
 export const useBridgeInfo = create<BridgeInfo>(initialBridgeInfo);
 
@@ -96,7 +98,16 @@ export function noteHerdr(link: unknown): void {
 
 export function noteDevice(device: V2DeviceAuth | undefined): void {
   const readOnly = device !== undefined && device.enforced && !device.authorized;
-  if (useBridgeInfo.getState().readOnly !== readOnly) useBridgeInfo.setState({ readOnly });
+  const prev = useBridgeInfo.getState();
+  const next = device ?? null;
+  const same =
+    prev.device === next ||
+    (prev.device !== null &&
+      next !== null &&
+      prev.device.enforced === next.enforced &&
+      prev.device.device === next.device &&
+      prev.device.authorized === next.authorized);
+  if (prev.readOnly !== readOnly || !same) useBridgeInfo.setState({ readOnly, device: same ? prev.device : next });
 }
 
 export function noteReadOnly(): void {

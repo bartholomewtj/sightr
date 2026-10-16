@@ -10,7 +10,9 @@
     "apps/web/src/hooks/",
     "apps/web/src/",
     "packages/shared/src/",
-    "packages/contracts/src/"
+    "packages/contracts/src/",
+    "apps/web/src/components/settings/",
+    "apps/web/src/routes/"
   ],
   "files": [
     {
@@ -571,6 +573,36 @@
       "upstream": "apps/web/src/components/ui/autocomplete.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "verbatim"
+    },
+    {
+      "local": "src/components/settings/SettingsGroup.tsx",
+      "upstream": "apps/web/src/components/settings/SettingsGroup.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/settings/settingsLayout.tsx",
+      "upstream": "apps/web/src/components/settings/settingsLayout.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "adapted"
+    },
+    {
+      "local": "src/components/settings/NotificationSettings.tsx",
+      "upstream": "apps/web/src/components/settings/NotificationSettings.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/settings/ThemeSettings.tsx",
+      "upstream": "apps/web/src/components/settings/ThemeSettings.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/routes/settings.tsx",
+      "upstream": "apps/web/src/routes/settings.tsx",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "pattern"
     }
   ]
 }

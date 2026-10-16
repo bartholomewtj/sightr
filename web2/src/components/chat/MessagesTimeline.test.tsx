@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { QueuedMessage, Run, Thread, TurnItem } from "@shared/v2/contracts";
 
+import { setDisplayPref } from "@/hooks/use-display-prefs";
 import { applyThreadEvent, threadFromSnapshot } from "@/stream/apply";
 import { useThreadStore } from "@/stream/stores";
 import { followTimeline, loadOlderHistory, useHistoryState } from "@/state/timeline";
@@ -241,6 +242,28 @@ describe("MessagesTimeline: reasoning", () => {
     await show([user("u:0", "go", inRun), reasoning("t:0", "hmm", inRun)], { runs: [live] });
     expect(screen.getByText(/Thinking…/)).toBeInTheDocument();
   });
+
+  it("Settings → Show thinking off drops the thought rows (T18)", async () => {
+    act(() => setDisplayPref("showThinking", false));
+    await show(
+      [
+        user("u:0", "go", { ...inRun, createdAt: 1_000_000 }),
+        reasoning("t:0", "First I will check the tests.", { ...inRun, createdAt: 1_000_000 }),
+        command("c:0", "ls", { ...inRun, createdAt: 1_012_000, output: "x" }),
+        assistant("d:0", "ok", { ...inRun, createdAt: 1_013_000 }),
+      ],
+      { runs: [done] },
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+    await settle();
+    expect(screen.queryByRole("button", { name: /Thought for/ })).toBeNull();
+    expect(screen.queryByText("First I will check the tests.")).toBeNull();
+    act(() => setDisplayPref("showThinking", true));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Ran 1 command" }));
+    await settle();
+    expect(screen.getByRole("button", { name: "Thought for 12s" })).toBeInTheDocument();
+  });
 });
 
 describe("MessagesTimeline: virtualization", () => {
@@ -294,8 +317,8 @@ describe("MessagesTimeline: follow mode", () => {
     });
     await waitFor(() => expect(document.querySelector("[data-jump-to-latest]")).not.toBeNull());
     act(() => followTimeline());
-    await settle();
-    expect(document.querySelector("[data-jump-to-latest]")).toBeNull();
+    // Wait on the result, not a fixed delay: under load the scroll back to the end takes longer.
+    await waitFor(() => expect(document.querySelector("[data-jump-to-latest]")).toBeNull(), { timeout: 3000 });
   });
 });
 

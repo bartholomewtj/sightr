@@ -1,6 +1,6 @@
 # T18 — Settings, push and lock in web2
 
-Status: draft (T3-shape series). Depends on: T09 (`/settings` and `/pane/:paneId` routes, the v2 service worker's `push` handler, the lock prompt), T12 (Enter and Follow-up settings), T13 (shortcuts sheet). Read `README.md` in this folder first.
+Status: done on feat/v2 (2026-10-17)
 
 ## Problem
 
@@ -60,3 +60,51 @@ restyle them with the web2 tokens (T09), and import only leaf `@v1/lib/*` files,
   `web2/src/lib/v1/`, as T09's notes allow.
 - Before cutover the last UI to subscribe owns the device's push: subscribing in web2 replaces v1's row, and a later
   subscribe in v1 would replace web2's. That is the intended trade for never notifying twice.
+
+## Built
+
+- **Layout (T3 names).** One page, `web2/src/routes/settings.tsx`, in the spec's order, not T3's child routes
+  (`settings.general.tsx` …): a handful of rows read best as one scroll on the phone. Rows use T3's
+  `SettingsSection` / `SettingsRow` (`components/settings/settingsLayout.tsx`, adapted: no search targets,
+  scopes or inheritance; adds `disabled` and a small `SettingsChoice` radio group) on `SettingsGroup.tsx`
+  (verbatim). `ThemeSettings.tsx` and `NotificationSettings.tsx` take T3's names (pattern). All five rows are in
+  `web2/t3-upstream.json`; its `folders` now also list `components/settings/` and `routes/`. The v1 copies keep
+  v1 names: `DisplaySettings`, `ComposerSettings`, `LockSettings`, `BridgeSettings`, `ConnectionInfo`,
+  `PushOnboarding`, plus `hooks/use-theme.ts`, `use-display-prefs.ts`, `use-push.ts`, `use-notify-prefs.ts`,
+  `lib/push.ts`, `lib/server-build.ts`. New API helpers sit in `lib/api.ts`.
+- **Theme.** web2 is dark by default (T09), so the three-way is Dark / Light / System, not v1's System / Light /
+  Dark. Same key (`sightr:theme:v1`); web2 stores `"dark"`, `"light"` or `"system"`. `.system` on `<html>` sets
+  `color-scheme: light dark`, and index.css's `dark:` / `light:` variants follow the OS under it. v1 removes the
+  key for its System, so a v1 System user sees web2's dark until they pick System in web2. theme-init.js adds
+  `light` or `system` before paint.
+- **Display.** Only the rows with a web2 meaning: Show thinking (v1's `sightr:display-prefs:v6` field, other v1
+  fields kept as stored; off drops `reasoning` items in `MessagesTimeline`) and the Terminal tab's text size
+  (T13's `rightPanelStore.terminalFontSize`, not v1's mirror font size). Tap to type, Show terminal and Raw
+  terminal are v1 pane-screen prefs and are not shown. No desktop-mode control.
+- **Composer.** The composer's gear menu is gone; Settings is the only place for Enter and Queue/Steer (still
+  `state/composer.ts`). The Enter row shows the device default when nothing is stored.
+- **Push.** `lib/push.ts` subscribes through web2's registration (`register(<base>sw.js, {scope: <base>})`, vite's
+  base, so T15 needs no change) and only ever reads or unsubscribes a registration whose scope is web2's (v1's
+  `/` scope also covers `/v2/`). `replaces` names v1's endpoint via the shared `sightr:push-endpoint`. Boot
+  re-attach (`usePushSetup` in `__root`) differs from v1: it runs only when web2's own worker already holds a
+  subscription the bridge no longer has as this device's, so opening v2 never moves push off v1 by itself.
+  `PushOnboarding` sits at the top of the sidebar (v1 had it on the home list); it reads "seen" and read-only
+  from the shell stream instead of v1's device store. Tests use a fake Push stack (`src/test/push.ts`).
+- **Lock, bridge settings.** As v1, as rows. A bridge refusal now shows the bridge's reason ("Could not save
+  bridge settings: bad notifyDelayMs."); `ApiError` gained `detail`. Removing a device that fails says so.
+- **Connection.** `useBridgeInfo` now keeps the shell snapshot's `device`. Two build lines: this build
+  (`__BUILD_INFO__`) and the web2 build the bridge serves (`x-sightr-build` from a `HEAD <base>sw.js`; the worker
+  never precaches itself).
+- **Shortcuts, wheel, v1.** Settings sits outside `ChatShell`, so it mounts `KeyboardShortcutsDialog` itself.
+  `GestureWheelSettingsSlot` renders nothing until T19. "Open Sightr v1" links to `SIGHTR_V1_PATH` (`/`; T15
+  changes it).
+- **Leftovers taken in this run.** The composer's "Sent to the agent." verdict is cleared whenever the shown
+  request changes (ChatComposer), with a test. The user-input panel's "Open terminal" already opened the
+  Terminal tab after the T13 merge (`OpenTerminalButton` → `openRightPanelSurface`), covered by the existing
+  ChatComposer test. MessagesTimeline "re-follows on this client's own send" now waits on the result.
+- **Live check** (scratch bridge on 8796, own state and config dir, no VAPID keys, so no subscriptions were made
+  and no WebAuthn credential was registered): in `ca`, Light applied to `<html>` and stayed across pages; Mod+Enter
+  stored and the thread composer's `enterkeyhint` turned to `enter`; Notify delay 15 s saved to the scratch
+  `settings.json` with "Set here · .env is 30 s"; both build lines matched; phone width reflows. Screenshots in
+  the session scratchpad `t18-shots/`. `ca click <ref>` did not fire Base UI buttons (Save, Show shortcuts); a
+  real CDP mouse click did. The on-phone push tap check is left for Bart.

@@ -5,6 +5,7 @@ import { LockPrompt } from "@/components/LockPrompt";
 import { ConnectionBanner } from "@/components/shell/ConnectionBanner";
 import { V2Unavailable } from "@/components/shell/V2Unavailable";
 import { ToastStack } from "@/components/toast";
+import { usePushSetup } from "@/hooks/use-push";
 import { useLockGate } from "@/hooks/useLockGate";
 import { shellStream } from "@/stream/shell-stream";
 import { useStreamHealth } from "@/stream/stores";
@@ -34,6 +35,8 @@ function OpenShell() {
     stream.start();
     return () => stream.stop();
   }, []);
+  // Re-registers a push subscription web2 itself holds when the bridge no longer has it (T18).
+  usePushSetup();
   const blocked = useStreamHealth((s) => s.blocked);
   if (blocked) return <V2Unavailable blocked={blocked} />;
 
