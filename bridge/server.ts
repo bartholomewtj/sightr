@@ -30,6 +30,7 @@ import { CONTENT_TYPES, json, requireJsonBody, secure, text, failureText, decode
 import { serveStatic, isReservedAuthPath, reservedAuthPlaceholder } from "./static-assets.ts";
 import { readPane, paneHistory } from "./pane-read-routes.ts";
 import { replyPane, keysPane, closePane, renamePane, uploadPane } from "./pane-write-routes.ts";
+import { guardedSendPane } from "./guarded-send-route.ts";
 import { decisionReplyPane } from "./decision-reply-routes.ts";
 import { renameTab, renameWorkspace, closeTab, closeWorkspace, createTab, createWorkspace, removeWorktree, openWorktree } from "./tree-routes.ts";
 import { createWorktreeIndex } from "./worktrees.ts";
@@ -44,7 +45,7 @@ import { CONN_PATH } from "../shared/conn.ts";
 
 const MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024;
 const localServersRoute = createLocalServersRoute();
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|decision-reply))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|send|keys|upload|close|rename|history|decision-reply))?$/;
 const TAB_ACTION_ROUTE = /^\/api\/tab\/([^/]+)\/(rename|close)$/;
 const WORKSPACE_ACTION_ROUTE = /^\/api\/workspace\/([^/]+)\/(rename|close)$/;
 const WORKTREE_REMOVE_ROUTE = /^\/api\/workspace\/([^/]+)\/worktree\/remove$/;
@@ -221,6 +222,7 @@ export function startServer(opts: {
         if (action === "history" && req.method === "GET")
           return paneHistory(cfg, journals, transcripts, engine, herdr, paneId, url, req);
         if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, paneWrites, auditFor(req));
+        if (action === "send" && req.method === "POST") return guardedSendPane(herdr, cfg, engine, paneId, req, paneWrites, auditFor(req));
         if (action === "keys" && req.method === "POST") return keysPane(herdr, cfg, paneId, req, paneWrites, auditFor(req));
         if (action === "upload" && req.method === "POST") return uploadPane(cfg, paneId, req, auditFor(req));
         if (action === "close" && req.method === "POST") return closePane(herdr, paneId, req, paneWrites, auditFor(req));

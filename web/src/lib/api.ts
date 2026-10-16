@@ -7,6 +7,7 @@ import { markLive } from "./connection-health";
 import { fetchClassOf, SESSION_ID, timedFetch } from "./conn-telemetry";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { noteTyping } from "./typing";
+import type { ReplyOutcome } from "./guarded-send";
 import { SEEN_HEADER } from "@shared/limits";
 import { EVENTS_PATH } from "./sw-routes";
 import type {
@@ -438,6 +439,19 @@ export function sendReply(
     },
     recoverPromptChanged,
   );
+}
+
+/**
+ * A free-text reply through the bridge's guard (spec 24): pre-flight, sweep, type, verify, submit, all
+ * next to Herdr in one request. Answers the guard's outcome. Throws ApiError on a non-2xx, so a 404
+ * from an older bridge reaches the caller's fallback.
+ */
+export function sendGuarded(paneId: string, body: { text: string; force?: boolean }): Promise<ReplyOutcome> {
+  noteTyping();
+  return req<ReplyOutcome>(`/api/pane/${encodeURIComponent(paneId)}/send`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 /**

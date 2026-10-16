@@ -17,7 +17,7 @@ import { rstrip, lastNonBlankIndex } from "../scan";
 // Conservative: the whole shape has to match at the tail or the buffer is returned untouched (same
 // reference). Pure; no pane access, no network.
 
-import { PROMPT_TAIL_LINES } from "@shared/limits";
+import { PROMPT_TAIL_LINES } from "../../../../../shared/limits";
 import type { AnsiSegment } from "../../ansi";
 import type { StyledLine } from "../../blocks";
 import { findTailBox } from "../scan";

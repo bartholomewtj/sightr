@@ -37,8 +37,8 @@ import {
   gutterCardRange,
   lineText,
   } from "./markers";
-import { parseDecisionMarkerLine } from "@shared/decision-marker";
-import type { TranscriptAsk } from "@shared/wire";
+import { parseDecisionMarkerLine } from "../../../../../shared/decision-marker";
+import type { TranscriptAsk } from "../../../../../shared/wire";
 import { catalogSignature, matchAskQuestion } from "./ask-catalog";
 import { overlayChecks } from "./ask-checks";
 
