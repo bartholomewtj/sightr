@@ -488,3 +488,215 @@ describe("v1 keys route (regression)", () => {
     expect(pane.keyWrites).toEqual([]);
   });
 });
+
+// ── T17: wizard, checkbox and preview dialogs ───────────────────────────────────────────────────
+
+const TOPPINGS = ["Cheese", "Mushrooms", "Olives", "Peppers"];
+/** Rows the ❯ pointer walks on Claude's checkbox ask: the boxes, Type something, Submit, Chat. */
+const ROW_SUBMIT = TOPPINGS.length + 1;
+const ROW_CHAT = TOPPINGS.length + 2;
+
+/** Claude's single-question checkbox ask as plain text, in any box and pointer state. */
+function claudeCheckbox(checked: readonly boolean[], row: number): string {
+  const rows = ["❯ order a pizza", "", "─".repeat(60), `←  ${checked.some(Boolean) ? "☒" : "☐"} Toppings  ✔ Submit  →`, ""];
+  rows.push("Which pizza toppings do you want?", "");
+  TOPPINGS.forEach((label, i) => {
+    rows.push(`${row === i ? "❯" : " "} ${i + 1}. [${checked[i] ? "✔" : " "}] ${label}`, `     ${label} on top.`);
+  });
+  rows.push(`${row === TOPPINGS.length ? "❯" : " "} 5. [ ] Type something`, `${row === ROW_SUBMIT ? "❯" : " "}    Submit`);
+  rows.push("─".repeat(60), `${row === ROW_CHAT ? "❯" : " "} 6. Chat about this`, "", "Enter to select · ↑/↓ to navigate · Esc to cancel");
+  return rows.join("\n");
+}
+
+/** Wire `r.pane` to a Claude checkbox ask that reacts to keys like the TUI. */
+function claudeCheckboxSim(r: Rig, start: boolean[], row = 0) {
+  const state = { checked: [...start], row, submitted: false };
+  const draw = () => {
+    r.pane.screen = state.submitted ? fixture("claude--select-multiselect-review.txt") : claudeCheckbox(state.checked, state.row);
+  };
+  draw();
+  r.pane.onKey = (key) => {
+    // A digit toggles its box and leaves the pointer where it is (seen live on Claude Code 2.1.301).
+    if (/^[1-4]$/.test(key)) {
+      state.checked[Number(key) - 1] = !state.checked[Number(key) - 1];
+    } else if (key === "Down") state.row = Math.min(state.row + 1, ROW_CHAT);
+    else if (key === "Up") state.row = Math.max(state.row - 1, 0);
+    else if (key === "Enter" && state.row === ROW_SUBMIT) state.submitted = true;
+    draw();
+  };
+  return state;
+}
+
+const respondMany = (r: Rig, requestId: string, optionIndices: number[], commandId?: string) =>
+  r.ingestor.respond({ requestId, optionIndices }, commandId ? { commandId } : {});
+
+describe("T17 — checkbox (multi-select) asks", () => {
+  test("published with its boxes; the timeline item is a T3 multiSelect question", async () => {
+    const r = rig({ screen: claudeCheckbox([false, true, false, false], 0) });
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+    expect(req).toMatchObject({
+      kind: "question",
+      prompt: "Which pizza toppings do you want?",
+      multiSelect: { checked: [false, true, false, false], advanceLabel: "Submit" },
+    });
+    expect(req.options.map((o) => o.label)).toEqual([...TOPPINGS, "Chat about this"]);
+    expect(req.options.at(-1)).toMatchObject({ keys: ["6"], destructive: true });
+    // The binding is the dialog's own region, not a 12-line tail.
+    expect(r.store.requestBoundText(req.id)).toContain("Which pizza toppings do you want?");
+    expect(r.item(req.id)).toMatchObject({
+      type: "user_input_request",
+      questions: [{ id: "q1", header: "Question", question: "Which pizza toppings do you want?", multiSelect: true }],
+    });
+    const item = r.item(req.id)!;
+    expect(item.type === "user_input_request" && item.questions[0]!.options.map((o) => o.label)).toEqual(TOPPINGS);
+  });
+
+  test("optionIndices toggles only the boxes that differ, walks to Submit, verifies, then Enter", async () => {
+    const r = rig();
+    const sim = claudeCheckboxSim(r, [false, true, false, false]);
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+
+    const res = await respondMany(r, req.id, [2, 0], "cmd-m");
+    expect(res).toMatchObject({ ok: true, request: { status: "resolved", optionIndices: [0, 2] } });
+    // 1 on, 2 off, 3 on, then Down from the first row past Type something to Submit, and Enter.
+    expect(r.pane.keyWrites).toEqual([["1"], ["2"], ["3"], ["Down"], ["Down"], ["Down"], ["Down"], ["Down"], ["Enter"]]);
+    expect(sim).toMatchObject({ checked: [true, false, true, false], submitted: true });
+    expect(r.store.receipt("cmd-m")).toMatchObject({ result: { requestId: req.id, optionIndices: [0, 2] } });
+    await Bun.sleep(0);
+    expect(JSON.parse(r.audit.at(-1)!)).toMatchObject({
+      action: "keys",
+      detail: { keys: ["1", "2", "3", "Down", "Down", "Down", "Down", "Down", "Enter"], recipe: "multi-select" },
+    });
+  });
+
+  test("a box flipped at the desk during the walk: no Enter, prompt-changed, the request expires", async () => {
+    const r = rig();
+    const sim = claudeCheckboxSim(r, [false, false, false, false]);
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+    const press = r.pane.onKey!;
+    r.pane.onKey = (key) => {
+      press(key);
+      if (key === "Down") {
+        sim.checked[3] = true;
+        r.pane.screen = claudeCheckbox(sim.checked, sim.row);
+      }
+    };
+    expect(await respondMany(r, req.id, [0])).toEqual({ ok: false, code: "prompt-changed", reason: "prompt changed" });
+    expect(r.pane.keyWrites.flat()).not.toContain("Enter");
+    expect(r.store.getRequest(req.id)!.status).toBe("expired");
+  });
+
+  test("a screen that changed before the answer sends nothing", async () => {
+    const r = rig();
+    claudeCheckboxSim(r, [false, false, false, false]);
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+    r.pane.screen = claudeCheckbox([false, false, true, false], 2);
+    expect(await respondMany(r, req.id, [0])).toMatchObject({ ok: false, code: "prompt-changed" });
+    expect(r.pane.keyWrites).toEqual([]);
+  });
+
+  test("bad answers: a box by optionIndex, indices out of range or repeated, both fields", async () => {
+    const r = rig();
+    claudeCheckboxSim(r, [false, false, false, false]);
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+    expect(await respond(r, req.id, 0)).toMatchObject({ ok: false, code: "invalid", reason: "use-option-indices" });
+    expect(await respondMany(r, req.id, [4])).toMatchObject({ ok: false, code: "invalid", reason: "bad-option" });
+    expect(await respondMany(r, req.id, [1, 1])).toMatchObject({ ok: false, code: "invalid", reason: "bad-option" });
+    expect(await r.ingestor.respond({ requestId: req.id, optionIndex: 4, optionIndices: [0] })).toMatchObject({
+      ok: false,
+      code: "invalid",
+      reason: "both-answers",
+    });
+    expect(r.pane.keyWrites).toEqual([]);
+    // Chat about this is a plain option: its digit.
+    expect(await respond(r, req.id, 4)).toMatchObject({ ok: true });
+    expect(r.pane.keyWrites).toEqual([["6"]]);
+  });
+
+  test("optionIndices on a permission request is invalid", async () => {
+    const r = rig();
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+    expect(await respondMany(r, req.id, [0])).toMatchObject({ ok: false, code: "invalid", reason: "not-multi-select" });
+    expect(r.pane.keyWrites).toEqual([]);
+  });
+
+  test("the review step is Submit and Cancel with the echoed answers", async () => {
+    const r = rig({ screen: fixture("claude--select-multiselect-review.txt") });
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+    expect(req.answers).toEqual([{ question: "Which pizza toppings do you want?", answer: "Cheese, Pepperoni" }]);
+    expect(req.options.map((o) => o.label)).toEqual(["Submit", "Cancel"]);
+    expect(await respond(r, req.id, 0)).toMatchObject({ ok: true });
+    expect(r.pane.keyWrites).toEqual([["1"]]);
+  });
+});
+
+describe("T17 — wizard asks", () => {
+  test("a step carries the stepper and is answered by its digit", async () => {
+    const r = rig({ screen: fixture("claude--wizard-q2.txt") });
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+    expect(req.steps).toEqual([
+      { label: "Focus area", answered: true, current: false },
+      { label: "Scope", answered: false, current: true },
+      { label: "Workflow", answered: false, current: false },
+    ]);
+    expect(r.item(req.id)).toMatchObject({ questions: [{ id: "q2", header: "Scope" }] });
+    expect(await respond(r, req.id, 1)).toMatchObject({ ok: true, request: { optionIndex: 1 } });
+    expect(r.pane.keyWrites).toEqual([["2"]]);
+  });
+
+  test("the review submits with its own key", async () => {
+    const r = rig({ screen: fixture("claude--wizard-submit.txt") });
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+    expect(req.answers).toHaveLength(3);
+    expect(req.options).toEqual([
+      { label: "Submit", keys: ["1"] },
+      { label: "Cancel", keys: ["2"], destructive: true },
+    ]);
+    expect(await respond(r, req.id, 0)).toMatchObject({ ok: true });
+    expect(r.pane.keyWrites).toEqual([["1"]]);
+  });
+});
+
+describe("T17 — preview selects", () => {
+  const PREVIEW = fixture("claude--select-preview.txt");
+  /** The preview screen with the ❯ pointer moved from Boxy to Rounded. */
+  const pointedAtRounded = () => {
+    const lines = PREVIEW.split("\n");
+    const i = lines.findIndex((l) => l.includes(" 1.") && l.includes("Boxy"));
+    lines[i] = lines[i]!.replace("❯", " ");
+    lines[i + 1] = "❯" + lines[i + 1]!.slice(1);
+    return lines.join("\n");
+  };
+
+  test("the digit moves the pointer; Enter goes out only once a read shows it on that option", async () => {
+    const r = rig({ screen: PREVIEW });
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+    expect(req.preview).toMatchObject({ optionIndex: 0 });
+    expect(req.preview!.lines.length).toBeGreaterThan(3);
+    r.pane.onKey = (key) => {
+      if (key === "2") r.pane.screen = pointedAtRounded();
+      if (key === "Enter") r.pane.screen = DONE;
+    };
+    expect(await respond(r, req.id, 1, "cmd-p")).toMatchObject({ ok: true, request: { status: "resolved", optionIndex: 1 } });
+    expect(r.pane.keyWrites).toEqual([["2"], ["Enter"]]);
+  });
+
+  test("a pointer that never moves: no Enter, prompt-changed", async () => {
+    const r = rig({ screen: PREVIEW });
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+    expect(await respond(r, req.id, 2)).toMatchObject({ ok: false, code: "prompt-changed" });
+    expect(r.pane.keyWrites).toEqual([["3"]]);
+    expect(r.store.getRequest(req.id)!.status).toBe("expired");
+  });
+});

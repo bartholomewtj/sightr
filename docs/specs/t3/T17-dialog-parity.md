@@ -1,6 +1,8 @@
 # T17 — Dialog parity: multi-select, wizard and preview-select requests
 
-Status: draft (T3-shape series). Depends on: T04 (runtime requests, `respond`), T05 (command endpoint), T12 (`RequestPanel`). Read `README.md` in this folder first.
+Status: done on feat/v2 (2026-10-17)
+
+Depends on: T04 (runtime requests, `respond`), T05 (command endpoint), T12 (`RequestPanel`). Read `README.md` in this folder first.
 
 ## Problem
 
@@ -99,3 +101,49 @@ binding check, which does not fit.
   preview-select first, and leave multi-select to a follow-up.
 - `preview` holds only the pointed option's pane because the TUI draws only that one. Showing every option's preview
   would mean moving the pointer, which is a write.
+
+## Built
+
+- **Recipes leaf.** `web/src/lib/dialog-recipes.ts` holds `pollModel` (v1's `pollUntil` body), `previewSelectRecipe`,
+  `multiSelectAdvanceRecipe` (Claude's walk), `tabSpaceToggleRecipe`, `pointerWalkRecipe` and, for the bridge,
+  `multiSelectApplyRecipe` (toggle the differing boxes, verify each flip, then submit) and `tabSpaceSubmitRecipe`.
+  I/O is `{ read, send(keys, region?), sleep }`. v1's `multi-select-action.ts`, `preview-action.ts` and
+  `harness/guard.ts` call it; their tests pass unchanged. Its import test pins it to the model modules.
+- **Shapes (deviation).** `preview` is `{ optionIndex, lines }`, not `string[]`: the panel has to know which option
+  the pane belongs to. The contract's placeholder T17 fields are replaced by the spec's (`steps: RuntimeRequestStep[]`,
+  `multiSelect {checked, advanceLabel}`, `answers [{question, answer}]`). The shell summary also drops `preview`.
+- **T3 mirror.** `shared/v2/request-question.ts` maps a question request to T3's `OrchestrationV2UserInputQuestion`;
+  the bridge's `user_input_request` item and the web2 panel both use it. One request is one question: id `q<n>` and
+  header from the current stepper chip (`review` / `Review` on a review), `multiSelect: true` with only the boxes
+  as options, and each option's `value` is its index in `request.options`. `UserInputQuestion.options` is now
+  `readonly`, as T3's schema type is.
+- **Parse.** For wizard, checkbox and preview dialogs `boundText` is the model's normalized region (often more
+  than 12 lines). Claude's checkbox options carry the digit; Grok and Cursor boxes carry no keys (the recipe
+  walks). A wizard's escape row and both review Cancels are `destructive` (two taps): a review's Cancel aborts
+  like a menu's cancel. Pi's review offers no Submit while `submitKeys` is null. Pi's open editor and Claude's
+  focused preview note publish no options. `dialogModel(agent, text, kind)` and `dialogRegion` are exported for
+  the bridge.
+- **Respond.** After T04's binding check, a recipe request re-reads, parses through the thread's adapter, and
+  needs the fresh region to equal the stored `boundText`; that read stands in for binding the first write (v1
+  binds the first write instead). Codes: `optionIndices` on a non-checkbox request `not-multi-select`, a box
+  answered by `optionIndex` `use-option-indices`, both fields `both-answers`, bad or repeated indices
+  `bad-option`. "Chat about this" on a checkbox step is a plain `optionIndex`. A recipe that sees another screen
+  expires the request (as T04's stale path) and answers `prompt-changed`. Grok's submit reads and checks identity
+  before its Enter (v1 sends Enter right after its entry guard). The audit line carries every key sent and the
+  recipe name. Resolved requests store `optionIndices` sorted.
+- **web2.** `ComposerPendingUserInputPanel.tsx` follows T3's panel: keyed by request, T3's `pendingUserInput.ts`
+  (adopted, `projectPendingUserInputAnswer` left out) holds the draft, single choice shows its check and answers
+  200 ms later, checkbox taps (and 1–9) toggle a draft seeded from `multiSelect.checked`, and a button labelled
+  `advanceLabel` posts `optionIndices` (it needs one box, as T3's `canAdvance` does). Not taken from T3: the
+  collapse toggle, dismiss, and markdown for the question (terminal text). The stepper is
+  `ComposerPendingUserInputStepper.tsx`, read-only (no Back/Next, as the spec's "Not in this slice" says).
+  `respondToRequest` takes an option index or an index list; `RESPONDING_ADVANCE` (-1) marks the advance button
+  busy. `ChatComposer.tsx` is unchanged.
+- **Live (Claude Code 2.1.301, Haiku, scratch workspace).** Answered from web2: a single-question checkbox ask
+  (two boxes, Submit, then the review's Submit), a two-question wizard (a single-choice step, then a checkbox step
+  whose advance read Submit, then the review), and a preview select (moved from the first option to the second).
+  A Claude digit toggles its box without moving the pointer, so the Submit walk starts from wherever the pointer
+  was. Not live-checked: Grok and Cursor checkbox recipes, Pi wizards (fixtures and fakes only).
+- **Known.** The composer's "Sent to the agent." verdict from one answer stays under the next request's card
+  (T12 composer state; ChatComposer clears `responding` on a new request but not `verdict`).
+

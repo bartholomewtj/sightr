@@ -427,7 +427,7 @@ function eventFromRow(r: EventRow): StoredEvent {
 }
 
 function summary(request: RuntimeRequest): RuntimeRequestSummary {
-  const { options: _options, steps: _steps, ...rest } = request;
+  const { options: _options, steps: _steps, preview: _preview, ...rest } = request;
   return rest;
 }
 

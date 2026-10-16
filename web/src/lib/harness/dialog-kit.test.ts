@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 
 import { verifyExpectedPrompt } from "@shared/prompt-binding";
 import { parseLines, type Block } from "../blocks";
-import { BOUND_TEXT_LINES, boundTextOf, DIALOG_KIT_AGENTS, dialogPipeline, parseDialog } from "./dialog-kit";
+import { BOUND_TEXT_LINES, boundTextOf, DIALOG_KIT_AGENTS, dialogModel, dialogPipeline, dialogRegion, parseDialog } from "./dialog-kit";
+import { DIALOG_CONTRACT } from "./dialog-contract";
+import { WIZARD_CANCEL_KEYS, WIZARD_SUBMIT_KEYS } from "./wizard-model";
 import { ADAPTER_AGENTS, adapterFor } from "./registry";
 
 // The bridge parses a blocked pane's screen with parseDialog and answers it with the option's keys.
@@ -56,7 +58,8 @@ describe("parseDialog — agrees with the adapter on every fixture", () => {
     const p = parsed!;
     // The binding the bridge will re-check is on the screen it came from, inside the matcher's tail.
     expect(verifyExpectedPrompt(raw(file), p.boundText)).toEqual({ ok: true });
-    expect(p.boundText.split("\n").length).toBeLessThanOrEqual(BOUND_TEXT_LINES);
+    const regionBound = block.kind === "wizard" || block.kind === "multi-select" || block.kind === "preview-select";
+    if (!regionBound) expect(p.boundText.split("\n").length).toBeLessThanOrEqual(BOUND_TEXT_LINES);
     switch (block.kind) {
       case "prompt-select": {
         const model = block.prompt;
@@ -76,10 +79,71 @@ describe("parseDialog — agrees with the adapter on every fixture", () => {
         expect(p.prompt).toBe(block.menu.title);
         expect(p.options.map((o) => o.keys)).toEqual(block.menu.actions.map((a) => a.keys));
         break;
-      default:
-        // wizard / multi-select / preview-select: a question with no options until T17.
+      case "wizard": {
+        // T17: the model's region binds; each step is answered by its option's own keys.
+        const model = block.wizard;
         expect(p.kind).toBe("question");
-        expect(p.options).toEqual([]);
+        expect(p.boundText).toBe(dialogRegion("wizard", model));
+        expect(p.steps).toEqual(model.steps.length > 0 ? model.steps : undefined);
+        if (model.phase === "question") {
+          expect(p.prompt).toBe(model.question);
+          if (model.feedback?.editing) expect(p.options).toEqual([]);
+          else {
+            expect(p.options.map((o) => o.keys)).toEqual(model.options.map((o) => o.keys));
+            expect(p.options.map((o) => o.destructive === true)).toEqual(model.options.map((o) => o.escape));
+          }
+        } else {
+          expect(p.prompt).toBe("Review your answers");
+          expect(p.answers ?? []).toEqual(model.answers);
+          const submit = model.submitKeys === null ? [] : [model.submitKeys ?? WIZARD_SUBMIT_KEYS];
+          expect(p.options.map((o) => o.keys)).toEqual([...submit, model.cancelKeys ?? WIZARD_CANCEL_KEYS]);
+          expect(p.options.at(-1)!.destructive).toBe(true);
+        }
+        break;
+      }
+      case "multi-select": {
+        const model = block.multi;
+        expect(p.kind).toBe("question");
+        expect(p.boundText).toBe(dialogRegion("multi-select", model));
+        if (model.phase === "checkbox") {
+          expect(p.prompt).toBe(model.question);
+          expect(p.multiSelect).toEqual({ checked: model.options.map((o) => o.checked), advanceLabel: model.advanceLabel });
+          expect(p.options.slice(0, model.options.length).map((o) => o.label)).toEqual(model.options.map((o) => o.label));
+          // Claude toggles by digit; Grok and Cursor need the walk, so their boxes carry no keys.
+          expect(p.options.slice(0, model.options.length).map((o) => o.keys)).toEqual(
+            model.options.map((o) => (model.recipe === undefined ? [String(o.n)] : [])),
+          );
+          expect(p.options.length).toBe(model.options.length + (model.escape ? 1 : 0));
+          if (model.escape) expect(p.options.at(-1)).toMatchObject({ label: model.escape.label, destructive: true });
+          expect(p.steps).toEqual(model.steps ?? undefined);
+        } else {
+          expect(p.multiSelect).toBeUndefined();
+          expect(p.options.map((o) => [o.label, o.keys])).toEqual([
+            ["Submit", ["1"]],
+            ["Cancel", ["2"]],
+          ]);
+          expect(p.answers ?? []).toEqual(model.answers);
+        }
+        break;
+      }
+      case "preview-select": {
+        const model = block.preview;
+        expect(p.kind).toBe("question");
+        expect(p.prompt).toBe(model.question);
+        expect(p.boundText).toBe(dialogRegion("preview-select", model));
+        const pointed = model.options.findIndex((o) => o.pointed);
+        expect(p.preview).toEqual({ optionIndex: pointed, lines: model.preview });
+        if (model.note.state === "editing") expect(p.options).toEqual([]);
+        else expect(p.options.map((o) => o.keys)).toEqual(model.options.map((o) => [String(o.n)]));
+        expect(p.steps).toEqual(model.steps ?? undefined);
+        break;
+      }
+    }
+    // The bridge's recipes re-derive the same model from the same screen.
+    if (regionBound) {
+      const model = dialogModel(agent, raw(file), block.kind);
+      expect(model).not.toBeNull();
+      expect((DIALOG_CONTRACT[block.kind].commits as (a: unknown, b: unknown) => boolean)(model, block.kind === "wizard" ? block.wizard : block.kind === "multi-select" ? block.multi : block.preview)).toBe(true);
     }
   });
 });
@@ -124,17 +188,64 @@ describe("parseDialog — kinds and fields", () => {
     expect(grok.options[0]!.destructive).toBeUndefined();
   });
 
-  it("multi-step dialogs are questions with no options", () => {
-    for (const [agent, file] of [
-      ["claude", "claude--wizard-q1.txt"],
-      ["claude", "claude--select-multiselect-single.txt"],
-      ["claude", "claude--select-preview.txt"],
-      ["cursor", "cursor--ask-multi-fruit.txt"],
-      ["grok", "grok--ask-multi.txt"],
-    ] as const) {
-      const p = parseDialog(agent, raw(file));
-      expect({ file, kind: p?.kind, options: p?.options }).toEqual({ file, kind: "question", options: [] });
-    }
+  it("a Claude wizard step: digits answer, the stepper rides along, Chat about this aborts", () => {
+    const p = parseDialog("claude", raw("claude--wizard-q2.txt"))!;
+    expect(p).toMatchObject({ kind: "question", prompt: "What scope should this work have?" });
+    expect(p.options.map((o) => [o.label, o.keys, o.destructive === true])).toEqual([
+      ["Small", ["1"], false],
+      ["Medium", ["2"], false],
+      ["Large", ["3"], false],
+      ["Chat about this", ["5"], true],
+    ]);
+    expect(p.steps).toEqual([
+      { label: "Focus area", answered: true, current: false },
+      { label: "Scope", answered: false, current: true },
+      { label: "Workflow", answered: false, current: false },
+    ]);
+    expect(p.multiSelect).toBeUndefined();
+  });
+
+  it("a wizard review lists the answers with Submit and Cancel", () => {
+    const p = parseDialog("claude", raw("claude--wizard-submit.txt"))!;
+    expect(p.prompt).toBe("Review your answers");
+    expect(p.answers).toEqual([
+      { question: "Which focus area should we work on?", answer: "UI" },
+      { question: "What scope should this work have?", answer: "Medium" },
+      { question: "How should we approach the work?", answer: "Plan first" },
+    ]);
+    expect(p.options).toEqual([
+      { label: "Submit", keys: ["1"] },
+      { label: "Cancel", keys: ["2"], destructive: true },
+    ]);
+    // Pi submits with Enter and cancels with Escape.
+    expect(parseDialog("pi", raw("pi--ask-wizard-submit.txt"))!.options.map((o) => o.keys)).toEqual([["Enter"], ["Escape"]]);
+  });
+
+  it("a checkbox question carries its boxes, the advance label and Chat about this", () => {
+    const p = parseDialog("claude", raw("claude--select-multiselect-checked.txt"))!;
+    expect(p.multiSelect).toEqual({ checked: [false, true, true, false], advanceLabel: "Submit" });
+    expect(p.options.map((o) => o.label)).toEqual(["Cheese", "Mushrooms", "Olives", "Peppers", "Chat about this"]);
+    expect(p.options[4]).toMatchObject({ keys: ["6"], destructive: true });
+    expect(p.steps).toBeUndefined();
+    const step = parseDialog("claude", raw("claude--wizard-multiselect-q1.txt"))!;
+    expect(step.multiSelect).toEqual({ checked: [false, false, false, false], advanceLabel: "Next" });
+    expect(step.steps?.map((s) => s.label)).toEqual(["Toppings", "Crust"]);
+    const grok = parseDialog("grok", raw("grok--ask-multi-checked.txt"))!;
+    expect(grok.multiSelect).toEqual({ checked: [false, true, false], advanceLabel: "Submit" });
+    expect(grok.options.every((o) => o.keys.length === 0)).toBe(true);
+  });
+
+  it("a preview select carries the pointed option's pane", () => {
+    const p = parseDialog("claude", raw("claude--select-preview.txt"))!;
+    expect(p.options.map((o) => [o.label, o.keys])).toEqual([
+      ["Boxy", ["1"]],
+      ["Rounded", ["2"]],
+      ["Minimal", ["3"]],
+    ]);
+    expect(p.preview!.optionIndex).toBe(0);
+    expect(p.preview!.lines[0]).toMatch(/^┌─+┐$/);
+    // While the note input is focused nothing can be answered from Sightr.
+    expect(parseDialog("claude", raw("claude--select-preview-note-input.txt"))!.options).toEqual([]);
   });
 
   it("a draftr-marked card goes through whistlr: labels only, no keys", () => {

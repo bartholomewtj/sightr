@@ -10,16 +10,15 @@
 
 import { fetchPane } from "../api";
 import { parseLines, type StyledLine } from "../blocks";
+import { defaultSleep, pollModel, POLL_ATTEMPTS, POLL_DELAY_MS, type RecipeResult, type Sleep } from "../dialog-recipes";
 
 /**
  * The canonical result of a guarded action. `sent` = the keystrokes went through; `changed` = the
  * guard rejected the tap (the pane drifted underfoot) and the caller should refresh; `error` = a
- * transport/RPC failure the caller surfaces verbatim.
+ * transport/RPC failure the caller surfaces verbatim. The same union the shared recipes return
+ * (lib/dialog-recipes.ts), so a recipe result passes straight through.
  */
-export type ActionResult =
-  | { status: "sent" }
-  | { status: "changed" }
-  | { status: "error"; error: string };
+export type ActionResult = RecipeResult;
 
 /**
  * What {@link entryGuard} returns. Discriminated on `ok`, the same shape the bridge side uses for
@@ -31,14 +30,9 @@ export type GuardOutcome =
   | { ok: true; region: string }
   | { ok: false; result: ActionResult };
 
-/** Test seam for the verification polls' pacing. */
-export type Sleep = (ms: number) => Promise<void>;
-export const defaultSleep: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// Bounded verification polling between choreography steps (the TUI re-renders well under a
-// second; ~3s total before we give up and refresh).
-export const POLL_ATTEMPTS = 8;
-export const POLL_DELAY_MS = 350;
+// Test seam, pacing and the bounded verification poll live in the shared recipe leaf (the bridge runs
+// the same recipes); re-exported so v1 call sites keep one import site.
+export { defaultSleep, POLL_ATTEMPTS, POLL_DELAY_MS, type Sleep };
 
 /** Derive the on-screen dialog model from a fresh pane's styled lines (null = no dialog there). */
 type Detect<M> = (lines: StyledLine[]) => M | null;
@@ -128,24 +122,15 @@ export async function pollUntil<M>(
   accept: (m: M) => boolean,
   identity: (a: M, b: M) => boolean,
 ): Promise<"ok" | "drifted" | "timeout"> {
-  const sleep = args.sleep ?? defaultSleep;
-  let sawDialog = false;
-  for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
-    await sleep(POLL_DELAY_MS);
-    let fresh;
-    try {
-      fresh = await readModel(args.paneId, args.requestedLines, detect);
-    } catch {
-      continue; // transient read failure — the bounded loop is the timeout
-    }
-    if (!fresh.model) continue; // transient redraw hid the tail — keep polling
-    sawDialog = true;
-    if (accept(fresh.model)) return "ok";
-    if (!identity(fresh.model, tapped)) return "drifted"; // a different dialog now
-  }
-  // Exhausted. If we never saw the dialog at all it has vanished (a now-running agent) — treat as
-  // drift, NOT a retryable timeout, so no blind key is sent at whatever replaced it.
-  return sawDialog ? "timeout" : "drifted";
+  return pollModel(
+    {
+      read: async () => (await readModel(args.paneId, args.requestedLines, detect)).model,
+      sleep: args.sleep ?? defaultSleep,
+    },
+    tapped,
+    accept,
+    identity,
+  );
 }
 
 /**

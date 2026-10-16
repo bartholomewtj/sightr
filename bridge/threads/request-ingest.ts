@@ -9,7 +9,7 @@ import type { SleepFn } from "../pane-write-routes.ts";
 import type { AgentView, EngineSnapshot, StateEngine } from "../state-engine.ts";
 import type { EventDraft, ServerThread } from "./events.ts";
 import { requestEvents } from "./request-items.ts";
-import { createRespondHandler, type RespondHandler } from "./respond.ts";
+import { createRespondHandler, DIALOG_READ_LINES, type RespondHandler } from "./respond.ts";
 import type { ThreadStore } from "./store.ts";
 
 // Request ingest (T04): a thread that waits on the operator (`input` / `approval`, herdr `blocked`)
@@ -18,8 +18,8 @@ import type { ThreadStore } from "./store.ts";
 // request (the client shows the Terminal tab). The request is answered by `respond` (respond.ts),
 // which types the option's keys only after a fresh read still shows that text.
 
-/** Rows of the viewport read per poll. The parsers anchor at the tail, so this is plenty. */
-export const REQUEST_READ_LINES = 60;
+/** Rows of the viewport read per poll (respond.ts re-reads with the same count). */
+export const REQUEST_READ_LINES = DIALOG_READ_LINES;
 /**
  * After a respond resolves a request, the same screen does not open a new one for this long. The
  * read right after the keys can still catch the old dialog before the harness redraws; past this,
@@ -184,6 +184,10 @@ export function createRequestIngestor(deps: RequestIngestorDeps): RequestIngesto
       ...(run ? { runId: run.id } : {}),
       ...(parsed.via ? { via: parsed.via } : {}),
       ...(parsed.decision ? { decision: parsed.decision } : {}),
+      ...(parsed.steps ? { steps: parsed.steps } : {}),
+      ...(parsed.multiSelect ? { multiSelect: parsed.multiSelect } : {}),
+      ...(parsed.preview ? { preview: parsed.preview } : {}),
+      ...(parsed.answers ? { answers: parsed.answers } : {}),
     };
     commit(thread, pending, { fresh: request, boundText: parsed.boundText });
   };
