@@ -9,6 +9,7 @@ import {
   INLINE_HISTORY_PAGE,
   INLINE_HISTORY_STEP,
   INLINE_IDLE_RETRY_MS,
+  INLINE_SCREEN_REFRESH_MS,
   mergeNewest,
   useInlineHistory,
 } from "./use-inline-history";
@@ -292,6 +293,37 @@ describe("useInlineHistory refresh", () => {
       });
     });
     await waitFor(() => expect(result.current.entries.map((e) => e.uuid)).toEqual(["t1", "t2", "t3"]));
+  });
+
+  it("refetches the newest page when the pane's screen moves, at most once per window", async () => {
+    let hits = 0;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/history/, () => {
+        hits += 1;
+        return hits === 1 ? page(fixtureTranscript) : page([...fixtureTranscript, olderTurn(`t${hits + 1}`)]);
+      }),
+    );
+    const { result, rerender } = renderHook(
+      ({ screen }: { screen: string }) =>
+        useInlineHistory({ paneId: "w1:p1", enabled: true, status: "idle", screen, getScrollElement }),
+      { initialProps: { screen: "a" } },
+    );
+    await waitFor(() => expect(result.current.entries.map((e) => e.uuid)).toEqual(["t1", "t2"]));
+    // The same screen again is not a reason to ask.
+    rerender({ screen: "a" });
+    await act(async () => {});
+    expect(hits).toBe(1);
+    // The screen moves: the newest page is refetched straight away.
+    rerender({ screen: "b" });
+    await waitFor(() => expect(hits).toBe(2));
+    // It moves twice more inside the window: one trailing refetch, not two.
+    rerender({ screen: "c" });
+    rerender({ screen: "d" });
+    await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
+    expect(hits).toBe(2);
+    await waitFor(() => expect(hits).toBe(3), { timeout: INLINE_SCREEN_REFRESH_MS + 1000 });
+    await act(async () => { await new Promise((r) => setTimeout(r, 200)); });
+    expect(hits).toBe(3);
   });
 
   // Spec 09: a rewritten log or a session switch can hand back rows already on screen.

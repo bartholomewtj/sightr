@@ -5,6 +5,7 @@ import { applySnapshot, setSnapshotPushMode } from "@/lib/loaders";
 import { openSnapshotStream } from "@/lib/api";
 import { noteConn } from "@/lib/conn-telemetry";
 import type { HomeData } from "@/lib/loaders";
+import { useTyping } from "@/lib/typing";
 import { SSE_KEEPALIVE_MS } from "@shared/limits";
 
 // Adaptive polling, the React Router way: a timer that calls `revalidator.revalidate()`, which
@@ -19,6 +20,9 @@ import { SSE_KEEPALIVE_MS } from "@shared/limits";
 //    and it's kicked immediately on focus/online/visibility as an accelerator.
 const HOT_MS = 1500;
 const COLD_MS = 4000;
+// While the operator types into the open pane (lib/typing.ts), its mirror refreshes this often so
+// the keystrokes show up quickly. Only the open pane's read runs at this pace.
+export const TYPING_MS = 750;
 
 // Self-heal a wedged revalidation. Normally a tick no-ops while one is already in flight (see the
 // idle fast-path below), but a black-holed fetch can stay `loading` forever (its timeout aside — the
@@ -48,8 +52,14 @@ const SSE_WATCHDOG_TICK_MS = 5_000;
  *     A shell you've drilled into is implicitly "live" regardless of its status.
  *
  * Returns COLD_MS otherwise (home screen, idle herd, no pane open).
+ *
+ * Returns TYPING_MS, faster still, while the operator is typing into an open pane that exists.
  */
-export function intervalFor(data: HomeData | undefined, paneId?: string | null): number {
+export function intervalFor(data: HomeData | undefined, paneId?: string | null, typing = false): number {
+  if (typing && paneId) {
+    const allPanes = [...(data?.agents ?? []), ...(data?.shellPanes ?? [])];
+    if (allPanes.some((p) => p.paneId === paneId)) return TYPING_MS;
+  }
   const anyActive = data?.agents.some((a) => a.status === "blocked" || a.status === "working");
   if (anyActive) return HOT_MS;
 
@@ -154,7 +164,8 @@ export function usePolling(data: HomeData | undefined, paneId?: string | null): 
     loadingSince.current = null;
   }
 
-  const ms = intervalFor(data, paneId);
+  const typing = useTyping();
+  const ms = intervalFor(data, paneId, typing);
 
   useEffect(() => {
     if (pushConnected && !paneId) return;

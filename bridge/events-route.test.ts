@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createSnapshotEvents, eventsRoute, EVENT_COALESCE_MS, EVENT_KEEPALIVE_MS } from "./events-route.ts";
+import { createSnapshotEvents, eventsRoute, EVENT_COALESCE_MS, EVENT_KEEPALIVE_MS, snapshotKey } from "./events-route.ts";
 import type { Config } from "./config.ts";
 import type { SnapshotDeps } from "./snapshot-route.ts";
 
@@ -79,6 +79,30 @@ describe("snapshot events", () => {
     expect(own[0]).toContain('"own":true');
     expect(plain[0]).toContain('"shared":true');
     events.close();
+  });
+
+  test("a poll that changes nothing but ts is not pushed", async () => {
+    const clock = timers();
+    const sent: string[] = [];
+    let ts = 1;
+    let label = "a";
+    const events = createSnapshotEvents(async () => JSON.stringify({ bridge: "connected", label, ts: ts++ }), () => 0, clock.api);
+    events.attach({ send: (chunk) => sent.push(chunk), close: () => {} }, "phone");
+    const snapshots = () => sent.filter((c) => c.startsWith("event: snapshot")).length;
+    const poll = async (want: number) => { events.notify(); clock.fireLast(); await settle(() => snapshots() >= want, 40); };
+    await poll(1);
+    await poll(2);
+    expect(snapshots()).toBe(1);
+    label = "b";
+    await poll(2);
+    expect(snapshots()).toBe(2);
+    expect(sent.filter((c) => c.startsWith("event: snapshot")).at(-1)).toContain('"label":"b"');
+    events.close();
+  });
+
+  test("snapshotKey drops only a trailing ts", () => {
+    expect(snapshotKey('{"a":1,"ts":123}')).toBe('{"a":1}');
+    expect(snapshotKey('{"ts":1,"a":2}')).toBe('{"ts":1,"a":2}');
   });
 
   test("replaces an earlier stream for the same client", () => {

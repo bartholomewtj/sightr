@@ -473,36 +473,66 @@ export class HerdrClient {
     };
   }
 
-  async readPane(
+  /**
+   * Pane reads in flight, by pane and read shape. Several phones and tabs (and the engine's own sniff)
+   * often ask for the same screen at once; they share one round-trip instead of one each. Nothing is
+   * kept once the read settles, so sharing never serves an older screen than a fresh read would.
+   */
+  private readonly reads = new Map<string, Promise<PaneRead>>();
+
+  readPane(
     paneId: string,
     source: ReadSource,
     lines: number,
     format: ReadFormat = "text",
   ): Promise<PaneRead> {
-    const r = await this.request<{ read: PaneRead }>("pane.read", {
+    const key = `${paneId}\0${source}\0${lines}\0${format}`;
+    const inFlight = this.reads.get(key);
+    if (inFlight) return inFlight;
+    const read = this.request<{ read: PaneRead }>("pane.read", {
       pane_id: paneId,
       source,
       lines,
       // "text" = plain (no escapes); "ansi" = SGR color codes (verified: no cursor sequences),
       // parsed + escaped safely on the client to render a faithful, colored terminal mirror.
       format,
-    });
-    return r.read;
+    })
+      .then((r) => r.read)
+      .finally(() => {
+        if (this.reads.get(key) === read) this.reads.delete(key);
+      });
+    this.reads.set(key, read);
+    return read;
+  }
+
+  /**
+   * A write to the pane makes any read already in flight stale: it may have caught the screen before
+   * the keystroke. Forget them before and after the write, so a re-read issued after a key (the phone
+   * re-reads at once to show what was typed) starts its own round-trip instead of joining one that
+   * returns the old screen.
+   */
+  private write<T>(paneId: string, send: () => Promise<T>): Promise<T> {
+    this.forgetReads(paneId);
+    return send().finally(() => this.forgetReads(paneId));
+  }
+
+  private forgetReads(paneId: string): void {
+    for (const key of this.reads.keys()) if (key.startsWith(`${paneId}\0`)) this.reads.delete(key);
   }
 
   /** Type literal text into a pane's terminal (does not submit). */
   sendPaneText(paneId: string, text: string): Promise<void> {
-    return this.request<void>("pane.send_text", { pane_id: paneId, text });
+    return this.write(paneId, () => this.request<void>("pane.send_text", { pane_id: paneId, text }));
   }
 
   /** Send key names (e.g. ["Enter"]) to a pane — used to submit a reply. */
   sendPaneKeys(paneId: string, keys: string[]): Promise<void> {
-    return this.request<void>("pane.send_keys", { pane_id: paneId, keys });
+    return this.write(paneId, () => this.request<void>("pane.send_keys", { pane_id: paneId, keys }));
   }
 
   /** Close a pane, terminating its agent ("kill"). Resolves on Herdr's `{type:"ok"}` reply. */
   closePane(paneId: string): Promise<void> {
-    return this.request<void>("pane.close", { pane_id: paneId });
+    return this.write(paneId, () => this.request<void>("pane.close", { pane_id: paneId }));
   }
 
   /**

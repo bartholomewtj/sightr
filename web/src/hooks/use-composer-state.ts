@@ -4,6 +4,7 @@ import { useRevalidator } from "react-router";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
 import { useWheelPrefs } from "@/hooks/use-wheel-prefs";
+import { noteTyping } from "@/lib/typing";
 import { useDesktop } from "@/lib/desktop";
 import { usePasteHold } from "@/lib/paste-hold";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
@@ -126,6 +127,7 @@ export function useComposerState(args: ComposerStateArgs) {
       typeof next === "function" ? next(inputValueRef.current) : next;
     inputValueRef.current = value;
     setInput(value);
+    noteTyping();
     if (noEchoRef.current !== null) return;
     saveDraft(paneId, value);
   }
