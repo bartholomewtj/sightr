@@ -390,7 +390,7 @@
       "upstream": "apps/web/src/components/chat/ChatComposer.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "pattern",
-      "note": "T12: banner stack + queued list above a plain <textarea> (no Tiptap), slash menu, primary actions; the pending request replaces the box"
+      "note": "T12: banner stack + queued list above a plain <textarea> (no Tiptap), slash menu, primary actions; the pending request replaces the box; error/usage-limit banners, tasks badge and context meter from structured items"
     },
     {
       "local": "src/components/chat/ChatComposer.logic.ts",
@@ -512,6 +512,48 @@
       "upstream": "apps/web/src/components/chat/ThreadStatusLine.tsx",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "verbatim"
+    },
+    {
+      "local": "src/components/chat/ThreadErrorBanner.tsx",
+      "upstream": "apps/web/src/components/chat/ThreadErrorBanner.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "error from the latest run's error item; key = thread + item id, dismissal per device (localStorage); ComposerBannerStack row, tap-to-expand text instead of tooltip; no ChatGPT branch"
+    },
+    {
+      "local": "src/components/chat/UsageLimitRecoveryBanner.tsx",
+      "upstream": "apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "usage_limit error item (resetAt epoch ms); Snooze until reset = thread.snooze; no Resume at reset (no bridge feature); Dismiss added"
+    },
+    {
+      "local": "src/components/chat/ContextWindowMeter.tsx",
+      "upstream": "apps/web/src/components/chat/ContextWindowMeter.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "tap-to-open popover (no hover), no composerFloatingLayerProps; Compact closes the popover"
+    },
+    {
+      "local": "src/components/chat/ContextWindowMeter.logic.ts",
+      "upstream": "apps/web/src/components/chat/ContextWindowMeter.logic.ts",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "cost/compaction formatters verbatim; provider-instance and Claude resume-compaction helpers dropped; snapshot from Thread.contextUsage and formatContextWindowTokens from apps/web/src/lib/contextWindow.ts"
+    },
+    {
+      "local": "src/components/chat/ComposerTasksBadge.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerTasksBadge.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "fed by the newest todo_list item (ComposerStatus.logic); tap opens a bottom sheet instead of the inline drawer; no ComposerTasksDrawer"
+    },
+    {
+      "local": "src/components/chat/ChatHeader.tsx",
+      "upstream": "apps/web/src/components/chat/ChatHeader.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "resolveRenameCommit verbatim; title opens the sidebar ThreadRowMenu; Rename is a menu item (no double-click); no breadcrumb or parent link"
     },
     {
       "local": "src/t3/client-runtime/state/composerDispatch.ts",
