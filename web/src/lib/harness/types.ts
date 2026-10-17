@@ -39,6 +39,14 @@ export interface HarnessAdapter {
    */
   composerReady?(lines: StyledLine[]): boolean;
   /**
+   * The composer is on screen and holds the text, but the harness is refusing to SUBMIT it yet and
+   * has said so on screen (Pi during startup prints "Startup is still in progress" and puts the text
+   * back). While this is true the reply guard sends no submit key; it waits, bounded, and presses
+   * Enter once the screen moves on, and only while our text is still in the box. OPTIONAL; absence
+   * means the harness never holds a submit like this. Lives in composer-kit.ts too (the bridge's guard).
+   */
+  submitHeld?(lines: StyledLine[]): boolean;
+  /**
    * True when a blocking widget is on screen that this adapter does not lift to buttons — the dump
    * is the only place the operator can see it. Optional; absence means "never force the dump for
    * this reason". `composerReady === false` is broader (torn frames, missing box) and must not be

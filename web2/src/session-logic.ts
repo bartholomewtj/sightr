@@ -251,7 +251,8 @@ function projectedWorkEntry(item: TurnItem, reasoningTime: ReasoningTime | undef
         toolData: item,
       };
     case "system_notice":
-      return { ...common, label: item.message, sourceActivityKind: "runtime.warning" };
+      // Sightr: a notice that finished cleanly (a background command completing, "Stopped") is not a warning.
+      return item.status === "completed" ? { ...common, label: item.message } : { ...common, label: item.message, sourceActivityKind: "runtime.warning" };
     case "error": {
       const presentation = providerErrorPresentation(item);
       return {

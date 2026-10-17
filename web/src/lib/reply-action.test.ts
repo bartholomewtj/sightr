@@ -115,7 +115,15 @@ describe("adapter submit keys", () => {
     } finally { spy.mockRestore(); }
   });
 
-  it("uses one-shot send and performs no pane fetch when the adapter declares replyOneShot (e.g. pi)", async () => {
+  it("uses one-shot send and performs no pane fetch when the adapter declares replyOneShot", async () => {
+    const real = registry.adapterFor("pi")!;
+    const spy = vi.spyOn(registry, "adapterFor").mockReturnValue({
+      ...real,
+      composerReady: undefined,
+      submitHeld: undefined,
+      extractInputDraft: () => null,
+      replyOneShot: true,
+    });
     let fetched = false;
     server.use(
       http.get(/\/api\/pane\/[^/]+$/, () => {
@@ -130,9 +138,11 @@ describe("adapter submit keys", () => {
       agent: "pi",
       ...instant,
     });
-    expect(out).toEqual({ status: "sent" });
-    expect(calls).toEqual([{ text: "hello from pi", submit: true }]);
-    expect(fetched).toBe(false);
+    try {
+      expect(out).toEqual({ status: "sent" });
+      expect(calls).toEqual([{ text: "hello from pi", submit: true }]);
+      expect(fetched).toBe(false);
+    } finally { spy.mockRestore(); }
   });
 });
 

@@ -22,7 +22,13 @@ const foreignFixtures = allFixtures.filter(
     f.startsWith("cursor--"),
 );
 
-const neutralFixtures: string[] = [];
+/** Composer screens (no dialog): the editor at rest, with a draft, and during startup. */
+const neutralFixtures: string[] = [
+  "pi--draft-wrapped.txt",
+  "pi--idle-empty.txt",
+  "pi--startup-done-draft.txt",
+  "pi--startup-in-progress.txt",
+];
 const ownFixtures = allPiFixtures.filter((f) => !neutralFixtures.includes(f));
 
 describeAdapterConformance(piAdapter, {
@@ -32,9 +38,11 @@ describeAdapterConformance(piAdapter, {
 });
 
 describe("piAdapter metadata and capabilities", () => {
-  it("claims agent 'pi' and replyOneShot is true", () => {
+  it("claims agent 'pi' and reads its own editor (no one-shot send)", () => {
     expect(piAdapter.agent).toBe("pi");
-    expect(piAdapter.replyOneShot).toBe(true);
+    expect(piAdapter.replyOneShot).toBeUndefined();
+    expect(piAdapter.composerReady).toBeDefined();
+    expect(piAdapter.submitHeld).toBeDefined();
   });
 
   it("extractInputDraft returns null and extractStatusLines returns [] on pi--ask-radio.txt", () => {
