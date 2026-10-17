@@ -204,6 +204,11 @@ const CLAUDE_CAPABILITIES: AgentCapabilities = {
 
 const PI_CAPABILITIES: AgentCapabilities = {
   ...NOTHING_LIVE,
+  // Live 18 Oct 2026 (pi, claude-haiku-5-5), three runs: one Escape stops the turn, during a bash tool
+  // ("Command aborted", the loop stopped printing) and during streamed text ("Operation aborted"). herdr's
+  // agent_status went working → done within a second each time, the composer came back, and a prompt
+  // sent straight after started a new run, so steer (interrupt, wait for rest, send) holds too.
+  canInterrupt: true,
   interruptKeys: ["Escape"],
   // `/model` is a picker only (catalog `takesArg: false`), so there is no live model switch.
   resumeBySession: true,
