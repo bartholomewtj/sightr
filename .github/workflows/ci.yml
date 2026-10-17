@@ -49,3 +49,13 @@ jobs:
         run: cd web && bun run test
       - name: Build (web)
         run: cd web && bun run build
+
+      # web2 imports web/src, so it installs after web.
+      - name: Install (web2)
+        run: cd web2 && bun install --frozen-lockfile
+      - name: Harness-id lint (web2)
+        run: bun scripts/web2-harness-ids.ts
+      - name: Typecheck + test (web2)
+        run: cd web2 && bun run test
+      - name: Build (web2)
+        run: cd web2 && bun run build
