@@ -277,9 +277,9 @@
     {
       "local": "src/components/chat/MessagesTimeline.tsx",
       "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
-      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list"
+      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list; db5919d87: event rows draw V2LifecycleRow and ProposedPlanCard, DiffStatLabel on file-change rows"
     },
     {
       "local": "src/components/chat/WorkLog.tsx",
@@ -311,23 +311,23 @@
     {
       "local": "src/components/chat/ToolItemDetail.tsx",
       "upstream": "apps/web/src/components/chat/V2ItemInspector.tsx",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "pattern",
-      "note": "an open tool row's call and output; inline output, 200-line cap"
+      "note": "an open tool row's call and output; inline output, 200-line cap; db5919d87: diff stat + copy, failed-edit error text, todo checklist, dynamic-tool args list"
     },
     {
       "local": "src/components/ChatMarkdown.tsx",
       "upstream": "apps/web/src/components/ChatMarkdown.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "react-markdown + remark-gfm (+ remark-breaks); no Shiki, Mermaid, raw HTML, file links, images, citations; code-block Wrap lines toggle kept (starts on below sm)"
+      "note": "react-markdown + remark-gfm (+ remark-breaks); no Shiki, Mermaid, raw HTML, file links, images, citations; code-block Wrap lines toggle kept (starts on below sm unless Settings → Display → Code wrapping forces wrap or scroll)"
     },
     {
       "local": "src/session-logic.ts",
       "upstream": "apps/web/src/session-logic.ts",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
-      "note": "turn items -> timeline entries / work-log entries; Sightr run-end notices and reasoning durations"
+      "note": "turn items -> timeline entries / work-log entries; Sightr run-end notices and reasoning durations; db5919d87: todo_list work rows, proposed_plan/subagent/run_interrupt_result/compaction as event rows, 'Fetched <url>' for page fetches"
     },
     {
       "local": "src/pendingUserInput.ts",
@@ -463,6 +463,57 @@
       "note": "plain ARIA listbox for the slash trigger; T3's item/option-id shape; no ui/command"
     },
     {
+      "local": "src/components/chat/ComposerControl.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerControl.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/chat/CompactComposerControlsMenu.tsx",
+      "upstream": "apps/web/src/components/chat/CompactComposerControlsMenu.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "Access radio only, from capabilities.permissionModes (T08 live switch); trigger names the mode; bypass confirm lives in ChatComposer"
+    },
+    {
+      "local": "src/components/chat/ComposerImageThumbnail.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerImageThumbnail.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/lib/imageCompression.ts",
+      "upstream": "apps/web/src/lib/imageCompression.ts",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "thumbnail path only (createComposerImageThumbnail and its canvas helpers); no recompression budget"
+    },
+    {
+      "local": "src/components/chat/ZoomableImage.tsx",
+      "upstream": "apps/web/src/components/chat/ZoomableImage.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/chat/ExpandedImageDialog.tsx",
+      "upstream": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "staged composer images only: no video, assets, SnapShot, MediaActions or atom host; touch swipe pages"
+    },
+    {
+      "local": "src/components/chat/ComposerPromptLengthValidation.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerPromptLengthValidation.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/chat/ThreadStatusLine.tsx",
+      "upstream": "apps/web/src/components/chat/ThreadStatusLine.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim"
+    },
+    {
       "local": "src/t3/client-runtime/state/composerDispatch.ts",
       "upstream": "packages/client-runtime/src/state/composerDispatch.ts",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
@@ -514,7 +565,7 @@
       "upstream": "apps/web/src/rightPanelStore.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "pattern",
-      "note": "three fixed tabs, per-device open state, tab, width and font; phone sheet"
+      "note": "three fixed tabs, per-device open state, tab, width and font; phone sheet; openFile(threadId, rel path) opens the Files tab on a file"
     },
     {
       "local": "src/components/RightPanelTabs.tsx",
@@ -529,6 +580,20 @@
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
       "note": "bottom sheet, not kept mounted, back closes it (asks the Files editor first), tab strip, safe-area and soft-keyboard sizing"
+    },
+    {
+      "local": "src/components/chat/DiffStatLabel.tsx",
+      "upstream": "apps/web/src/components/chat/DiffStatLabel.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim",
+      "note": "Git tab +N/-M; text-diff-addition/deletion map to --ok/--warn in index.css"
+    },
+    {
+      "local": "src/components/DiffFilePathCopyButton.tsx",
+      "upstream": "apps/web/src/components/DiffFilePathCopyButton.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "no tooltip or MorphIcon; house toast; execCommand fallback via copyText"
     },
     {
       "local": "src/commandPaletteBus.ts",
@@ -606,9 +671,44 @@
       "mode": "pattern"
     },
     {
+      "local": "src/components/settings/FoldedSettingsSection.tsx",
+      "upstream": "apps/web/src/components/settings/FoldedSettingsSection.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "inside header kept; no settings-search target, open state controlled by the caller (section chips open Advanced); outside header dropped"
+    },
+    {
+      "local": "src/components/settings/OpenSourceLicenses.tsx",
+      "upstream": "apps/web/src/components/settings/OpenSourceLicenses.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "no licence manifest: web2/THIRD_PARTY.md (the T3 MIT notice) bundled as text in a fold, link to the repo"
+    },
+    {
+      "local": "src/components/settings/SettingsNav.tsx",
+      "upstream": "apps/web/src/components/settings/SettingsSidebarNav.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "phone: sticky row of section chips with a scroll-spy mark, not a sidebar"
+    },
+    {
+      "local": "src/components/settings/NewThreadSettings.tsx",
+      "upstream": "apps/web/src/components/settings/ProjectDefaultsSettings.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "per-device default harness, model, effort and permission mode per harness from pickersFor(); bypass is never a default; model list UI after ProviderModelsSection"
+    },
+    {
+      "local": "src/components/new-thread/ThreadDefaults.logic.ts",
+      "upstream": "apps/web/src/components/settings/ProviderModelsSection.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "favourite, hide and add custom model ids per harness; no descriptor editor, no reorder"
+    },
+    {
       "local": "src/components/chat/threadFind.ts",
       "upstream": "apps/web/src/components/chat/threadFind.ts",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
       "note": "T19: T3's match shape, step and count helpers kept; in-memory search of the thread's items with v1's matcher and a fold/group reveal plan replace the server search"
     },
@@ -675,9 +775,68 @@
       "upstream": "apps/web/src/components/BranchToolbarEnvModeSelector.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "pattern"
+    },
+    {
+      "local": "src/components/RenderErrorBoundary.tsx",
+      "upstream": "apps/web/src/components/RenderErrorBoundary.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ThreadNotificationCoordinator.tsx",
+      "upstream": "apps/web/src/components/ThreadNotificationCoordinator.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "transition rules and the in-app toast with an Open action kept; Effect atoms, sound and desktop Notification dropped; reads the shell store and sets the app badge"
+    },
+    {
+      "local": "src/components/toast.tsx",
+      "upstream": "apps/web/src/components/ui/toast.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "own stack above the composer; action button, keyed replace and touch swipe-dismiss added for thread alerts"
+    },
+    {
+      "local": "src/components/chat/ProposedPlanCard.tsx",
+      "upstream": "apps/web/src/components/chat/ProposedPlanCard.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "plan card with collapse/expand and Copy; no download/save-to-workspace menu, no environment props"
+    },
+    {
+      "local": "src/components/chat/V2LifecycleRow.tsx",
+      "upstream": "apps/web/src/components/chat/V2LifecycleRow.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "run_interrupt_result divider, compaction divider with the summary behind a tap, subagent row (status dot, model/tokens/duration) opening in place instead of a child thread or hover card"
+    },
+    {
+      "local": "src/proposedPlan.ts",
+      "upstream": "apps/web/src/proposedPlan.ts",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "plan preview/export helpers; relative import of proposedPlanText"
+    },
+    {
+      "local": "src/t3/shared/proposedPlanText.ts",
+      "upstream": "packages/shared/src/proposedPlanText.ts",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim"
     }
   ],
   "decisions": [
+    {
+      "upstream": "apps/web/src/components/DiffPanel.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "not ported: right-panel/GitPanel.tsx took its branch-range scope, wrap and collapse-all as Sightr code; the per-turn checkpoint scope, split view and @pierre/diffs are never taken"
+    },
+    {
+      "upstream": "apps/web/src/components/diffs/DiffFileStatus.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "hover-tooltip icon; the Git tab says inline that a truncated diff shows some files as counts only, and a file with no patch does not expand"
+    },
     {
       "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
       "commit": "db5919d87daf",
@@ -815,6 +974,12 @@
       "commit": "db5919d87daf",
       "verdict": "skip",
       "reason": "Expo app is never taken"
+    },
+    {
+      "upstream": "apps/web/src/components/ConnectionStatusDot.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "ConnectionBanner already shows reconnecting and lost; a dot adds only an always-green state and T3's version is built on multi-environment phases and a hover tooltip"
     }
   ]
 }

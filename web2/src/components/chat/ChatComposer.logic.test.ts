@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { capabilitiesFor, launchFor } from "@shared/agents";
 import { NO_CAPABILITIES, type QueuedMessage, type Run, type Thread, type TurnItem } from "@shared/v2/contracts";
 
 import {
+  agoLabel,
   composerMaxHeight,
   enterModeFor,
   firstLine,
@@ -11,11 +13,17 @@ import {
   isLargePaste,
   isNativeMaintenanceCommand,
   LARGE_PASTE_CHARS,
+  MAX_COMPOSER_CHARS,
   orderRequestOptions,
+  permissionModeBlock,
+  permissionModeOptions,
+  permissionModeRefusalText,
+  promptLengthMessage,
   queueHeldSummary,
   resolveComposerButtons,
   resolveEnterAction,
   slashQuery,
+  threadStatusLine,
   wantsEditNewest,
   workingMode,
   type ButtonInput,
@@ -279,5 +287,104 @@ describe("phone: Enter mode and the box's height", () => {
     expect(composerMaxHeight(24, 8, 120)).toBe(120);
     expect(composerMaxHeight(24, 8, 9999)).toBe(24 * 8 + 16);
     expect(composerMaxHeight(Number.NaN, 8, Number.NaN)).toBe(20 * 8 + 16);
+  });
+});
+
+describe("permissionModeOptions", () => {
+  it("lists the capability's modes in order with the launch table's labels; bypass is destructive", () => {
+    expect(permissionModeOptions(capabilitiesFor("claude"), launchFor("claude")?.modes)).toEqual([
+      { id: "manual", label: "Ask first", destructive: false },
+      { id: "acceptEdits", label: "Accept edits", destructive: false },
+      { id: "plan", label: "Plan", destructive: false },
+      { id: "auto", label: "Auto", destructive: false },
+      { id: "bypassPermissions", label: "Bypass permissions", destructive: true },
+    ]);
+  });
+
+  it("is null without the flag or the list (Pi, a shell), so nothing renders", () => {
+    expect(permissionModeOptions(capabilitiesFor("pi"), launchFor("pi")?.modes)).toBeNull();
+    expect(permissionModeOptions(NO_CAPABILITIES, undefined)).toBeNull();
+    expect(permissionModeOptions({ ...NO_CAPABILITIES, canSwitchPermissionMode: true }, undefined)).toBeNull();
+    expect(permissionModeOptions(undefined, undefined)).toBeNull();
+  });
+
+  it("an id the launch table does not name keeps its id", () => {
+    expect(permissionModeOptions({ ...NO_CAPABILITIES, canSwitchPermissionMode: true, permissionModes: ["yolo"] }, [])).toEqual([
+      { id: "yolo", label: "yolo", destructive: false },
+    ]);
+  });
+});
+
+describe("permissionModeBlock", () => {
+  const base = { hasRequest: false, busy: false, readOnly: false, linkLost: false };
+  const t = (status: Thread["status"], shelf: Thread["shelf"] = "active") => ({ status, shelf });
+  it("only a resting thread (idle, done) with nothing pending can switch", () => {
+    expect(permissionModeBlock({ ...base, thread: t("idle") })).toBeNull();
+    expect(permissionModeBlock({ ...base, thread: t("done") })).toBeNull();
+    expect(permissionModeBlock({ ...base, thread: t("working") })).toMatch(/working/);
+    expect(permissionModeBlock({ ...base, thread: t("starting") })).toMatch(/starting/);
+    expect(permissionModeBlock({ ...base, thread: t("failed") })).toMatch(/not at its prompt/);
+    expect(permissionModeBlock({ ...base, thread: t("approval") })).toBe("Answer the agent first.");
+    expect(permissionModeBlock({ ...base, thread: t("idle"), hasRequest: true })).toBe("Answer the agent first.");
+    expect(permissionModeBlock({ ...base, thread: t("idle", "archived") })).toBe("The pane is gone.");
+    expect(permissionModeBlock({ ...base, thread: t("idle"), readOnly: true })).toBe("This device is read-only.");
+    expect(permissionModeBlock({ ...base, thread: t("idle"), linkLost: true })).toBe("Not connected.");
+    expect(permissionModeBlock({ ...base, thread: t("idle"), busy: true })).toMatch(/last command/);
+    expect(permissionModeBlock({ ...base, thread: null })).toMatch(/Loading/);
+  });
+});
+
+describe("permissionModeRefusalText", () => {
+  const label = (id: string) => ({ bypassPermissions: "Bypass permissions", plan: "Plan" })[id] ?? id;
+  it("names the bridge's codes and the mode the footer showed", () => {
+    expect(permissionModeRefusalText("thread-busy", undefined, label)).toMatch(/working/);
+    expect(permissionModeRefusalText("needs-response", undefined, label)).toMatch(/answer/);
+    expect(permissionModeRefusalText("blocked", undefined, label)).toMatch(/Nothing changed/);
+    expect(permissionModeRefusalText("blocked", "plan", label)).toMatch(/It is now in Plan\./);
+    expect(permissionModeRefusalText("bypass-reached", "bypassPermissions", label)).toMatch(/It is now in Bypass permissions/);
+    expect(permissionModeRefusalText("mode-not-reached", "plan", label)).toMatch(/did not come up/);
+    expect(permissionModeRefusalText("unknown-mode", undefined, label)).toMatch(/Terminal/);
+    expect(permissionModeRefusalText("permission-mode-unsupported", undefined, label)).toMatch(/cannot be changed/);
+    expect(permissionModeRefusalText("bypass-needs-confirm", undefined, label)).toMatch(/confirmed/);
+    expect(permissionModeRefusalText("pane busy", undefined, label)).toBe("The mode did not change: pane busy.");
+    expect(permissionModeRefusalText(undefined, undefined, label)).toBe("The mode did not change.");
+  });
+});
+
+describe("promptLengthMessage", () => {
+  it("is null under the cap and a message at it", () => {
+    expect(promptLengthMessage("x".repeat(MAX_COMPOSER_CHARS - 1))).toBeNull();
+    expect(promptLengthMessage("x".repeat(MAX_COMPOSER_CHARS))).toBe("At the 64 KB limit. Attach longer text as a file.");
+  });
+});
+
+describe("threadStatusLine", () => {
+  const wake = () => "2h";
+  it("snoozed in the future, settled, or nothing", () => {
+    expect(threadStatusLine({ shelf: "snoozed", snoozedUntil: 10_000 }, 1_000, wake)).toMatchObject({ label: "Snoozed, wakes in 2h", command: "thread.unsnooze" });
+    expect(threadStatusLine({ shelf: "snoozed", snoozedUntil: 500 }, 1_000, wake)).toBeNull();
+    expect(threadStatusLine({ shelf: "settled", settledAt: 0 }, 3 * 60_000, wake)).toMatchObject({ label: "Settled 3m ago", command: "thread.unsettle" });
+    expect(threadStatusLine({ shelf: "settled" }, 0, wake)).toMatchObject({ label: "Settled" });
+    expect(threadStatusLine({ shelf: "active" }, 0, wake)).toBeNull();
+    expect(threadStatusLine({ shelf: "pinned" }, 0, wake)).toBeNull();
+    expect(threadStatusLine(null, 0, wake)).toBeNull();
+  });
+
+  it("agoLabel steps from minutes to days", () => {
+    expect(agoLabel(0, 30_000)).toBe("just now");
+    expect(agoLabel(0, 5 * 60_000)).toBe("5m ago");
+    expect(agoLabel(0, 2 * 3_600_000)).toBe("2h ago");
+    expect(agoLabel(0, 3 * 86_400_000)).toBe("3d ago");
+  });
+});
+
+describe("Stop and Steer for the shipped harnesses", () => {
+  it("Pi and Claude can Stop and Steer (canInterrupt && canQueueDrain)", () => {
+    for (const id of ["pi", "claude"]) {
+      const caps = capabilitiesFor(id);
+      const b = resolveComposerButtons({ ...input("working", { hasText: true, followUp: "steer" }), thread: { status: "working", shelf: "active", capabilities: caps } });
+      expect(b.primary.kind).toBe("steer");
+      expect(b.stop).toBe(true);
+    }
   });
 });

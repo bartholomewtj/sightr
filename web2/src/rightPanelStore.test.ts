@@ -49,6 +49,34 @@ describe("rightPanelStore", () => {
     expect(useRightPanelStore.getState()).toMatchObject({ activeSurfaceId: "terminal", width: 420 });
   });
 
+  it("keeps a Wrap choice per device, and follows the layout until one is made", () => {
+    useRightPanelStore.getState().setDiffWrap(false);
+    expect(JSON.parse(localStorage.getItem("sightr:v2:right-panel-state:v1") ?? "{}").state.diffWrap).toBe(false);
+    __resetRightPanelStore();
+    expect(useRightPanelStore.getState().diffWrap).toBe(false);
+    localStorage.setItem("sightr:v2:right-panel-state:v1", JSON.stringify({ state: { diffWrap: "yes" }, version: 1 }));
+    __resetRightPanelStore();
+    expect(useRightPanelStore.getState().diffWrap).toBeNull();
+  });
+
+  it("opens the Files tab on a path for one thread, in the panel or the sheet, and hands it over once", () => {
+    setViewportWidth(1280);
+    useRightPanelStore.setState({ isOpen: false, activeSurfaceId: "git" });
+    useRightPanelStore.getState().openFile("t1", "proj/src/a.ts");
+    const req = useRightPanelStore.getState().fileRequest!;
+    expect(req).toMatchObject({ threadId: "t1", path: "proj/src/a.ts", kind: "file" });
+    expect(useRightPanelStore.getState()).toMatchObject({ isOpen: true, activeSurfaceId: "files", sheet: null });
+    useRightPanelStore.getState().consumeFileRequest(req.id + 1);
+    expect(useRightPanelStore.getState().fileRequest).not.toBeNull();
+    useRightPanelStore.getState().consumeFileRequest(req.id);
+    expect(useRightPanelStore.getState().fileRequest).toBeNull();
+    setViewportWidth(390);
+    useRightPanelStore.getState().openFile("t1", "proj", "dir");
+    expect(useRightPanelStore.getState()).toMatchObject({ sheet: "files", fileRequest: { kind: "dir" } });
+    // Never persisted.
+    expect(JSON.parse(localStorage.getItem("sightr:v2:right-panel-state:v1") ?? "{}").state).not.toHaveProperty("fileRequest");
+  });
+
   it("hands one direct-typing request to the Terminal tab", () => {
     useRightPanelStore.getState().requestDirectTyping("t1", "Password:");
     const req = useRightPanelStore.getState().directTyping!;

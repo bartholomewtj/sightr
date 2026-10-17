@@ -1,4 +1,4 @@
-import type { Run, RunStatus, ThreadStatus, TurnItem } from "../../shared/v2/contracts.ts";
+import type { Run, RunStatus, ThreadStatus, ThreadTokenUsageSnapshot, TurnItem } from "../../shared/v2/contracts.ts";
 import type { HerdrClient } from "../herdr-client.ts";
 import { adapterFor } from "../journal/registry.ts";
 import type { TranscriptStore } from "../journal/store.ts";
@@ -110,6 +110,30 @@ export function runForTime(ts: number, runs: readonly Run[]): Run | null {
     return run.completedAt === undefined || ts <= run.completedAt + RUN_END_SLACK_MS ? run : null;
   }
   return null;
+}
+
+/**
+ * The thread's context use from the newest entry in `entries` that reported usage (T3's
+ * `contextUsage`), or null when none did.
+ */
+export function latestContextUsage(entries: readonly TranscriptEntry[]): ThreadTokenUsageSnapshot | null {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const usage = entries[i]!.usage;
+    if (usage === undefined) continue;
+    return {
+      usedTokens: usage.usedTokens,
+      ...(usage.inputTokens !== undefined ? { inputTokens: usage.inputTokens } : {}),
+      ...(usage.cachedInputTokens !== undefined ? { cachedInputTokens: usage.cachedInputTokens } : {}),
+      ...(usage.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
+      ...(usage.maxTokens !== undefined ? { maxTokens: usage.maxTokens } : {}),
+      ...(usage.cost !== undefined ? { cost: { amount: usage.cost, currency: "USD" } } : {}),
+    };
+  }
+  return null;
+}
+
+function sameUsage(a: ThreadTokenUsageSnapshot | undefined, b: ThreadTokenUsageSnapshot): boolean {
+  return a !== undefined && JSON.stringify(a) === JSON.stringify(b);
 }
 
 /** A screen read for a `screen` item: trailing blank lines dropped, the last `SCREEN_MAX_BYTES` kept. */
@@ -247,7 +271,7 @@ export function createJournalIngestor(deps: JournalIngestorDeps): JournalIngesto
 
     /** Upsert one entry's items. `runId` is used for items not yet stored. */
     const upsert = (entry: TranscriptEntry, runId: string | null, runOpen: boolean, createNew: boolean) => {
-      const fresh = entryItems(entry, { threadId: thread.id, runId, runOpen, createdAt: at, updatedAt: at });
+      const fresh = entryItems(entry, { threadId: thread.id, runId, runOpen, createdAt: at, updatedAt: at, harness: thread.harness });
       for (const item of fresh) {
         const existing = store.getTurnItem(item.id);
         if (existing === null) {
@@ -272,6 +296,7 @@ export function createJournalIngestor(deps: JournalIngestorDeps): JournalIngesto
           runOpen: itemOpen,
           createdAt: existing.createdAt,
           updatedAt: existing.updatedAt,
+          harness: thread.harness,
         }).find((i) => i.id === item.id)!;
         // A call the run's interrupt cut short stays interrupted rather than reading as done.
         if (existing.status === "interrupted" && again.status === "completed") again.status = "interrupted";
@@ -369,6 +394,10 @@ export function createJournalIngestor(deps: JournalIngestorDeps): JournalIngesto
     const fresh = saved === null || sessionChanged || read.reset;
     const backfill = saved === null && store.listRuns(thread.id, 1).length === 0;
     drafts.push(...itemDrafts(thread, read.entries, { fresh, backfill }));
+    const contextUsage = latestContextUsage(read.entries);
+    if (contextUsage !== null && !sameUsage(thread.contextUsage, contextUsage)) {
+      drafts.push({ type: "thread.updated", threadId: thread.id, payload: { patch: { contextUsage }, at: now() } });
+    }
     const offset: JournalOffset = {
       threadId: thread.id,
       path: read.path,
@@ -404,6 +433,8 @@ export function createJournalIngestor(deps: JournalIngestorDeps): JournalIngesto
     let status: Exclude<RunStatus, "running">;
     if (interrupted.has(run.id) || thread.shelf === "archived") status = "interrupted";
     else if (items.some((i) => i.type === "error")) status = "failed";
+    // The harness logged that the operator stopped it (Claude's interrupt marker, pressed in the terminal).
+    else if (items.at(-1)?.type === "run_interrupt_result") status = "interrupted";
     else status = "completed";
     interrupted.delete(run.id);
     const at = now();

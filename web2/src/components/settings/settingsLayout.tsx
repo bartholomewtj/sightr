@@ -4,7 +4,8 @@
 // `SettingsPageContainer` (the scrolling, readable-width column, T3's WorkspacePageContainer inlined).
 // Dropped: settings search targets, environment/project scopes, inheritance and reset buttons. Sightr
 // has one bridge and per-device settings; a row the device may not change takes `disabled`, which
-// greys it as T3's `aria-disabled` rows do. The page scroll keeps the bottom safe area clear.
+// greys it as T3's `aria-disabled` rows do. The page scroll keeps the bottom safe area clear. `SettingsChoice` buttons may shrink (tighter padding below `sm`) so
+// a four-way choice still fits a 360 px phone at the largest text size.
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 import { cn } from "../../lib/utils";
@@ -116,7 +117,7 @@ export function SettingsChoice<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex w-full gap-0.5 rounded-lg bg-input/40 p-0.5 @min-[32rem]/settings-row:w-auto">
+    <div role="radiogroup" aria-label={label} className="flex w-full min-w-0 gap-0.5 rounded-lg bg-input/40 p-0.5 @min-[32rem]/settings-row:w-auto">
       {options.map((option) => {
         const selected = option.value === value;
         return (
@@ -128,7 +129,7 @@ export function SettingsChoice<T extends string>({
             disabled={disabled}
             onClick={() => onChange(option.value)}
             className={cn(
-              "flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md px-3 text-sm whitespace-nowrap transition-colors sm:min-h-8 disabled:opacity-64",
+              "flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-sm whitespace-nowrap transition-colors sm:min-h-8 sm:px-3 disabled:opacity-64",
               selected ? "bg-primary font-medium text-primary-foreground" : "text-muted-foreground hover:text-foreground",
             )}
           >

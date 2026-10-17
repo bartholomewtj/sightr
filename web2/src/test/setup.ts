@@ -23,6 +23,8 @@ import { __resetRightPanelStore } from "@/rightPanelStore";
 import { __resetComposerState } from "@/state/composer";
 import { __resetDraftThread } from "@/state/draft-thread";
 import { __resetSidebarState } from "@/state/sidebar";
+import { __resetTextPrefs } from "@/state/text-prefs";
+import { __resetThreadDefaults } from "@/state/thread-defaults";
 import { __resetTimelineState } from "@/state/timeline";
 import { __resetShellStream } from "@/stream/shell-stream";
 import { __resetStreamStores } from "@/stream/stores";
@@ -58,6 +60,8 @@ beforeEach(() => {
   __resetConnTelemetry();
   __reloadDisplayPrefs();
   __reloadTheme();
+  __resetThreadDefaults();
+  __resetTextPrefs();
   __resetServerBuild();
   __resetShellStream();
   __resetThreadStream();

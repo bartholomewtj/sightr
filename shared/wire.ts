@@ -74,9 +74,33 @@ export interface FileSearchResponse { q: string; results: FileSearchResult[]; tr
 export interface FolderGitEntry { path: string; x: string; y: string; }
 /** Where a pane's working folder sits in the Files root: `""` is the root; null when it is outside it, or Files is off. */
 export interface PaneFolderResponse { path: string | null; }
+export type FolderGitUnavailable = "outside-root" | "not-a-repo" | "git-unavailable" | "timeout";
+/** One recent commit on HEAD. Counts skip files the Files refusal list hides. `ahead`: not on `base` yet. */
+export interface FolderGitCommit { sha: string; short: string; subject: string; author: string; time: number; parents: number; files: number; added: number; removed: number; ahead?: boolean; }
+/** Per-file line counts (`binary` files count no lines). */
+export interface FolderGitFileStat { path: string; added: number; removed: number; binary?: boolean; }
 export type FolderGitResponse =
-  | { available: false; reason: "outside-root" | "not-a-repo" | "git-unavailable" | "timeout" }
-  | { available: true; repo: string; rel: string; branch?: string; detached?: boolean; noCommits?: boolean; clean: boolean; entries: FolderGitEntry[]; hidden: number; statusTruncated: boolean; diff: string; diffTruncated: boolean; panes: string[] };
+  | { available: false; reason: FolderGitUnavailable }
+  | {
+      available: true; repo: string; rel: string; branch?: string; detached?: boolean; noCommits?: boolean; clean: boolean; entries: FolderGitEntry[]; hidden: number; statusTruncated: boolean; diff: string; diffTruncated: boolean; panes: string[];
+      /** The repo's root as a Files rel path (`""` is the Files root), so a changed file can be opened in Files. */
+      rootPath?: string;
+      /** The branch's upstream (`origin/main`), from `git status`. */
+      upstream?: string;
+      /** What the branch range compares with: the upstream, else origin's default branch, main or master. */
+      base?: string;
+      ahead?: number; behind?: number;
+      /** The last commits on HEAD, newest first. */
+      commits?: FolderGitCommit[];
+    };
+/** `/api/files/git/diff`: one commit (`scope=commit&sha=`) or the branch range `base...HEAD` (`scope=branch`), read-only. */
+export type FolderGitDiffResponse =
+  | { available: false; reason: FolderGitUnavailable | "no-base" | "bad-commit" }
+  | { available: true; scope: "commit" | "branch"; commit?: FolderGitCommit; base?: string; files: FolderGitFileStat[]; hidden: number; filesTruncated: boolean; diff: string; diffTruncated: boolean };
+/** `/api/files/resolve`: an absolute or pane-relative path as a Files rel path, or why not. */
+export type FileResolveResponse =
+  | { path: string; kind: "file" | "dir" }
+  | { path: null; reason: "outside-root" | "hidden" | "not-found" | "no-folder" | "bad-path" };
 
 /** One option of a pending Grok `ask_user_question`. Caps live in the journal parser. */
 export interface TranscriptAskOption {
@@ -98,20 +122,101 @@ export interface TranscriptAsk {
   questions: TranscriptAskQuestion[];
 }
 
+/**
+ * A provider failure the harness logged (Claude `isApiErrorMessage`, Pi `stopReason: "error"`), in
+ * the shape of T3's `OrchestrationV2ProviderFailure`. `resetAt` is epoch ms.
+ */
+export interface TranscriptError {
+  class: "usage_limit" | "provider_error" | "transport_error" | "permission_error" | "validation_error" | "unknown";
+  message: string;
+  code: string | null;
+  retryable: boolean | null;
+  resetAt?: number | null;
+}
+
+/** One step of a harness task list (Claude TodoWrite, Pi `todo`). */
+export interface TranscriptTodoStep {
+  id: string;
+  text: string;
+  status: "pending" | "running" | "completed";
+}
+
+/**
+ * The structured payload a tool call keeps beside its one-line summary (journal/structured.ts caps
+ * it). Every field is optional data the harness wrote; an old bridge's entries simply have none.
+ */
+export type TranscriptToolDetail =
+  | {
+      kind: "diff";
+      fileName: string;
+      /** A unified diff (`---`/`+++`/`@@` hunks). */
+      diff?: string;
+      additions?: number;
+      deletions?: number;
+      oldStr?: string;
+      newStr?: string;
+      truncated?: boolean;
+    }
+  | { kind: "todo"; steps: TranscriptTodoStep[]; truncated?: boolean }
+  | { kind: "plan"; markdown: string; truncated?: boolean }
+  | {
+      kind: "subagent";
+      agentId?: string;
+      title?: string;
+      prompt?: string;
+      status?: string;
+      model?: string;
+      durationMs?: number;
+      tokens?: string;
+      toolUses?: number;
+      truncated?: boolean;
+    };
+
+/** Token use an assistant entry reported (T3's `ThreadTokenUsageSnapshot` subset). */
+export interface TranscriptUsage {
+  /** What the context holds after this message: input (cached or not) plus output. */
+  usedTokens: number;
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
+  maxTokens?: number;
+  cost?: number;
+}
+
 export type TranscriptPart =
-  | { kind: "text"; text: string; truncated?: boolean }
+  | {
+      kind: "text";
+      text: string;
+      truncated?: boolean;
+      /** The text is a provider failure the harness logged, not speech. */
+      error?: TranscriptError;
+      /** The text is a lifecycle marker: the operator interrupted the run. */
+      notice?: "interrupted";
+    }
   | { kind: "thinking"; text: string; truncated?: boolean }
   | {
       kind: "tool";
       name: string;
       summary: string;
-      result?: { text: string; truncated?: boolean; isError?: boolean };
+      result?: { text: string; truncated?: boolean; isError?: boolean; exitCode?: number };
       /** The harness never records tool output (Cursor): the call is complete, with no body to open. */
       unrecorded?: true;
       /** Pending Grok `ask_user_question` arguments. Absent once the call has a result. */
       ask?: TranscriptAsk;
+      /** The call's own arguments, capped (journal/structured.ts). */
+      input?: unknown;
+      inputTruncated?: boolean;
+      /** Structured data from the call or its result (a diff, a task list, a plan, a subagent). */
+      detail?: TranscriptToolDetail;
     };
-export interface TranscriptEntry { uuid: string; ts: string; role: "user" | "assistant" | "summary" | "note"; parts: TranscriptPart[]; }
+export interface TranscriptEntry {
+  uuid: string;
+  ts: string;
+  role: "user" | "assistant" | "summary" | "note";
+  parts: TranscriptPart[];
+  /** Token use, on the assistant entries that report it. */
+  usage?: TranscriptUsage;
+}
 
 export interface SnapshotResponse {
   bridge: BridgeStatus; device?: DeviceAuth; agents: WirePane[]; shellPanes: WirePane[];

@@ -14,7 +14,7 @@ type Row = Pick<
 
 const TABLE: Record<string, Row> = {
   claude: { canInterrupt: true, canSwitchPermissionMode: true, canSwitchModel: false, canSetEffortLive: false, hasJournal: true, resumeBySession: true, launchModes: true },
-  pi: { canInterrupt: false, canSwitchPermissionMode: false, canSwitchModel: false, canSetEffortLive: false, hasJournal: true, resumeBySession: true, launchModes: true },
+  pi: { canInterrupt: true, canSwitchPermissionMode: false, canSwitchModel: false, canSetEffortLive: false, hasJournal: true, resumeBySession: true, launchModes: true },
   grok: { canInterrupt: false, canSwitchPermissionMode: false, canSwitchModel: false, canSetEffortLive: false, hasJournal: true, resumeBySession: true, launchModes: true },
   cursor: { canInterrupt: false, canSwitchPermissionMode: false, canSwitchModel: false, canSetEffortLive: false, hasJournal: true, resumeBySession: false, launchModes: false },
   agy: { canInterrupt: false, canSwitchPermissionMode: false, canSwitchModel: false, canSetEffortLive: false, hasJournal: false, resumeBySession: false, launchModes: true },
@@ -42,8 +42,9 @@ describe("capabilitiesFor (shared/agents.ts)", () => {
     expect(Object.values(NO_CAPABILITIES).every((v) => v === false)).toBe(true);
   });
 
-  test("interrupt keys only with canInterrupt; Claude's is the verified Escape", () => {
+  test("interrupt keys only with canInterrupt; Claude's and Pi's are the verified Escape", () => {
     expect(capabilitiesFor("claude").interruptKeys).toEqual(["Escape"]);
+    expect(capabilitiesFor("pi").interruptKeys).toEqual(["Escape"]);
     for (const a of AGENTS) {
       const caps = capabilitiesFor(a.id);
       if (!caps.canInterrupt) expect(caps.interruptKeys).toBeUndefined();
@@ -68,6 +69,13 @@ describe("capabilitiesFor (shared/agents.ts)", () => {
       modelCommand: "/model",
       effortCommand: "/effort",
     });
+  });
+
+  test("Pi can stop and steer (canInterrupt && canQueueDrain) but has no permission modes", () => {
+    const pi = capabilitiesFor("pi");
+    expect(pi.canInterrupt && pi.canQueueDrain).toBe(true);
+    expect(pi.canSwitchPermissionMode).toBe(false);
+    expect(pi.permissionModes).toBeUndefined();
   });
 
   test("a thread's record does not share arrays with the table", () => {

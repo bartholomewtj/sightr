@@ -32,6 +32,17 @@ export function clampRightPanelWidth(px: number): number {
   return Math.round(Math.min(RIGHT_PANEL_MAX, Math.max(RIGHT_PANEL_MIN, px)));
 }
 
+/**
+ * A request for the Files tab to open a path (T3's `openFile`): any file named anywhere (a Git row, a
+ * tool row's path) opens there. `path` is a Files rel path; the tab takes it once, for its thread.
+ */
+export interface FileOpenRequest {
+  id: number;
+  threadId: string;
+  path: string;
+  kind: "file" | "dir";
+}
+
 /** A request for the Terminal tab to arm direct typing (T12's password flow, or ctrl+`). */
 export interface DirectTypingRequest {
   id: number;
@@ -50,6 +61,9 @@ interface RightPanelStoreState {
   /** Phone: the one open sheet. Never persisted. */
   sheet: RightPanelKind | null;
   directTyping: DirectTypingRequest | null;
+  fileRequest: FileOpenRequest | null;
+  /** Diff lines wrap (true) or scroll sideways (false); null follows the layout (wrap on a phone). Per device. */
+  diffWrap: boolean | null;
   open: (kind: RightPanelKind) => void;
   toggle: (kind: RightPanelKind) => void;
   show: () => void;
@@ -61,6 +75,10 @@ interface RightPanelStoreState {
   closeSheet: () => void;
   requestDirectTyping: (threadId: string, prompt?: string) => void;
   consumeDirectTyping: (id: number) => void;
+  /** Open the Files tab on `path` (a Files rel path) for `threadId`: the desktop panel, or the sheet on a phone. */
+  openFile: (threadId: string, path: string, kind?: "file" | "dir") => void;
+  consumeFileRequest: (id: number) => void;
+  setDiffWrap: (wrap: boolean) => void;
 }
 
 /** localStorage behind try/catch: a private window keeps the state for the page only. */
@@ -97,6 +115,8 @@ const initial = () => ({
   terminalFontSize: TERMINAL_FONT_DEFAULT,
   sheet: null,
   directTyping: null,
+  fileRequest: null,
+  diffWrap: null,
 });
 
 export const useRightPanelStore = create<RightPanelStoreState>()(
@@ -120,12 +140,21 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       consumeDirectTyping: (id) => {
         if (get().directTyping?.id === id) set({ directTyping: null });
       },
+      openFile: (threadId, path, kind = "file") => {
+        set({ fileRequest: { id: nextRequestId++, threadId, path, kind } });
+        if (isDesktopLayout()) get().open("files");
+        else get().openSheet("files");
+      },
+      consumeFileRequest: (id) => {
+        if (get().fileRequest?.id === id) set({ fileRequest: null });
+      },
+      setDiffWrap: (wrap) => set({ diffWrap: wrap }),
     }),
     {
       name: RIGHT_PANEL_STORAGE_KEY,
       version: 1,
       storage: createJSONStorage(() => safeStorage),
-      partialize: (s) => ({ isOpen: s.isOpen, activeSurfaceId: s.activeSurfaceId, width: s.width, terminalFontSize: s.terminalFontSize }),
+      partialize: (s) => ({ isOpen: s.isOpen, activeSurfaceId: s.activeSurfaceId, width: s.width, terminalFontSize: s.terminalFontSize, ...(s.diffWrap === null ? {} : { diffWrap: s.diffWrap }) }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<RightPanelStoreState>;
         return {
@@ -134,6 +163,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           ...(p.activeSurfaceId && RIGHT_PANEL_KINDS.includes(p.activeSurfaceId) ? { activeSurfaceId: p.activeSurfaceId } : {}),
           ...(typeof p.width === "number" ? { width: clampRightPanelWidth(p.width) } : {}),
           ...(typeof p.terminalFontSize === "number" ? { terminalFontSize: clampTerminalFont(p.terminalFontSize) } : {}),
+          ...(typeof p.diffWrap === "boolean" ? { diffWrap: p.diffWrap } : {}),
         };
       },
     },
@@ -157,6 +187,13 @@ export function toggleRightPanelSurface(kind: RightPanelKind): void {
   if (isDesktopLayout()) store.toggle(kind);
   else if (store.sheet === kind) store.closeSheet();
   else store.openSheet(kind);
+}
+
+/** Whether diff lines wrap here: the device's choice, else on below the desktop layout (a phone). */
+export function useDiffWrap(): [boolean, (wrap: boolean) => void] {
+  const pref = useRightPanelStore((s) => s.diffWrap);
+  const setDiffWrap = useRightPanelStore((s) => s.setDiffWrap);
+  return [pref ?? !isDesktopLayout(), setDiffWrap];
 }
 
 /** The panel or a sheet is showing. */
