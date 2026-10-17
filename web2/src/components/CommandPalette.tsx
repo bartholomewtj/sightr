@@ -24,6 +24,7 @@ import {
   FolderIcon,
   FolderOpenIcon,
   GitBranchIcon,
+  InfoIcon,
   KeyboardIcon,
   MessageSquareIcon,
   PanelLeftIcon,
@@ -44,6 +45,7 @@ import type { Project, Thread } from "@shared/v2/contracts";
 import { timeAgoShort } from "@v1/lib/format";
 import { cn } from "~/lib/utils";
 import { closeCommandPalette, useCommandPaletteStore } from "@/commandPaletteBus";
+import { openThreadDetails } from "@/components/chat/ThreadDetailsPanel";
 import { openThreadFind } from "@/components/chat/useThreadFind";
 import { CustomSnoozeDialog } from "@/components/CustomSnoozeDialog";
 import { openShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
@@ -211,6 +213,7 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
       { value: "open-terminal", title: "Open Terminal", icon: icon(TerminalSquareIcon), shortcutCommand: "terminal.toggle", applies: applies.thread, run: () => openThreadTerminal(threadId) },
       { value: "open-files", title: "Open Files", icon: icon(FilesIcon), applies: applies.thread, run: () => openRightPanelSurface("files") },
       { value: "open-git", title: "Open Git", icon: icon(GitBranchIcon), applies: applies.thread, run: () => openRightPanelSurface("git") },
+      { value: "thread-details", title: "Thread details", icon: icon(InfoIcon), applies: applies.thread, run: () => { if (threadId) openThreadDetails(threadId); } },
       {
         value: "open-file",
         title: "Open file…",
