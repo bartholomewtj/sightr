@@ -377,6 +377,21 @@ describe("runtime-request.respond", () => {
     });
   });
 
+  test("Pi's ask (live 2026-10-18): a question card walked by arrows, answered by Down then Enter", async () => {
+    const r = rig({ agent: "pi", screen: fixture("pi--ask-radio-recommended.txt") });
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+    expect(req).toMatchObject({ kind: "question", prompt: "Pick an animal" });
+    expect(req.options.map((o) => [o.label, o.keys])).toEqual([
+      ["Cat (Recommended)", ["Enter"]],
+      ["Dog", ["Down", "Enter"]],
+    ]);
+    expect(r.store.getThread("t1")!.status).toBe("input");
+    const res = await respond(r, req.id, 1, "cmd-pi");
+    expect(res).toMatchObject({ ok: true, request: { status: "resolved", optionIndex: 1 } });
+    expect(r.pane.keyWrites).toEqual([["Down"], ["Enter"]]);
+  });
+
   test("stale: the screen changed since the read, so nothing is sent and the request expires", async () => {
     const r = rig();
     await r.ingestor.poll();

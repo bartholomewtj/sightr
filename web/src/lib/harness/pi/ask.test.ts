@@ -49,6 +49,23 @@ describe("pi ask detector", () => {
     expect(m.family).toBe("select");
   });
 
+  it("1b. pi--ask-radio-recommended.txt (live v2 test, 2026-10-18) lifts with descriptions and the Recommended label", () => {
+    // The real screen behind the missing v2 card: Pi's ask over its footer, a tool row above it.
+    const blocks = piBuildBlocks(load("pi--ask-radio-recommended.txt"));
+    expect(blocks.map((b) => b.kind)).toEqual(["raw", "prompt-select"]);
+    const prompt = blocks[1]!;
+    if (prompt.kind !== "prompt-select") throw new Error("expected prompt-select block");
+    const m = prompt.prompt;
+    expect(m.question).toBe("Pick an animal");
+    expect(m.options.map((o) => o.label)).toEqual(["Cat (Recommended)", "Dog"]);
+    expect(m.options.map((o) => o.description)).toEqual([
+      "Cats are low-maintenance and independent, a good default if you're unsure.",
+      "Dogs are more social and active, and need more daily attention.",
+    ]);
+    expect(m.options.map((o) => o.keys)).toEqual([["Enter"], ["Down", "Enter"]]);
+    expect(m.feedback).toEqual({ key: "3", focused: false, text: "", purpose: "free-text" });
+  });
+
   it("2. pi--ask-radio-moved.txt calculates relative arrow steps and different signature", () => {
     const radioLines = load("pi--ask-radio.txt");
     const movedLines = load("pi--ask-radio-moved.txt");
@@ -202,6 +219,7 @@ describe("pi ask detector", () => {
       "pi--ask-radio.txt",
       "pi--ask-radio-moved.txt",
       "pi--ask-radio-other-focused.txt",
+      "pi--ask-radio-recommended.txt",
       "pi--ask-wizard-q1.txt",
       "pi--ask-wizard-q2.txt",
       "pi--ask-wizard-other-focused.txt",
