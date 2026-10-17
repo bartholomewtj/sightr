@@ -382,6 +382,8 @@ interface RawRow {
   isCompactSummary?: unknown;
   /** The session's working directory when the row was written. */
   cwd?: unknown;
+  /** An `attachment` row's payload (`queued_command`: a prompt queued while the session was busy). */
+  attachment?: unknown;
   message?: { role?: unknown; content?: unknown } | unknown;
   /** Row-level structured result of the row's tool_result (Edit's structuredPatch, Agent's ids). */
   toolUseResult?: unknown;
@@ -424,6 +426,29 @@ export function parseClaudeTranscript(
   // (minutes later, for a background agent) lands on the call that launched it.
   const subagentsByCall = new Map<string, ToolPart>();
   const subagentsByAgent = new Map<string, ToolPart>();
+  // Hand-backs that arrived before their call's result named the agent (a foreground agent's report
+  // can be logged just ahead of its tool_result).
+  const earlyHandbacks = new Map<string, string>();
+
+  /** Fold a hand-back or task-notification onto its subagent call; true when the row is consumed. */
+  const foldSubagentRow = (raw: string): boolean => {
+    const handback = parseSubagentHandback(raw);
+    if (handback) {
+      const target = subagentsByAgent.get(handback.agentId);
+      if (!target) {
+        if (handback.report !== "") earlyHandbacks.set(handback.agentId, handback.report);
+        return false;
+      }
+      if (handback.report !== "") target.result = clamp(handback.report, MAX_RESULT_CHARS);
+      return true;
+    }
+    if (!isEnvelope("task-notification", stripAnsi(raw))) return false;
+    const n = parseTaskNotification(raw);
+    const call = (n.toolUseId ? subagentsByCall.get(n.toolUseId) : undefined) ?? (n.taskId ? subagentsByAgent.get(n.taskId) : undefined);
+    if (!call) return false;
+    applyTaskNotification(call, n);
+    return true;
+  };
 
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
@@ -447,29 +472,20 @@ export function parseClaudeTranscript(
       if (c !== null) entries.push({ uuid, ts, role: c.role, parts: [{ kind: "text", ...clamp(c.text, MAX_TEXT_CHARS) }] });
       continue;
     }
+    // A hand-back or task-notification that arrived while the session was busy is written as an
+    // `attachment` row (`queued_command`), not a user row. It only ever updates a subagent call.
+    const attachment = row.attachment as { type?: unknown; prompt?: unknown } | null | undefined;
+    if (type === "attachment" && attachment?.type === "queued_command" && typeof attachment.prompt === "string") {
+      foldSubagentRow(attachment.prompt);
+      continue;
+    }
     if (type !== "user" && type !== "assistant") continue;
     const cwd = str(row.cwd);
     const rowContent = (row.message as { content?: unknown } | null | undefined)?.content;
 
-    // A subagent's report handed back to this session (an `isMeta` row): it is the subagent's result.
-    if (type === "user" && typeof rowContent === "string") {
-      const handback = parseSubagentHandback(rowContent);
-      const target = handback ? subagentsByAgent.get(handback.agentId) : undefined;
-      if (handback && target) {
-        if (handback.report !== "") target.result = clamp(handback.report, MAX_RESULT_CHARS);
-        continue;
-      }
-      // A background agent stopping: its call's row turns completed (or failed) instead of a note.
-      if (isEnvelope("task-notification", stripAnsi(rowContent))) {
-        const n = parseTaskNotification(rowContent);
-        const call =
-          (n.toolUseId ? subagentsByCall.get(n.toolUseId) : undefined) ?? (n.taskId ? subagentsByAgent.get(n.taskId) : undefined);
-        if (call) {
-          applyTaskNotification(call, n);
-          continue;
-        }
-      }
-    }
+    // A subagent's report handed back to this session (an `isMeta` row), or a background agent
+    // stopping: either lands on the call that launched it instead of rendering on its own.
+    if (type === "user" && typeof rowContent === "string" && foldSubagentRow(rowContent)) continue;
     // `isMeta` user rows are addressed to the model, never typed by you: /context's markdown copy
     // (which rendered as a "You" bubble holding the skills table, #23), image metadata, caveats,
     // subagent hand-backs, permission grants.
@@ -572,7 +588,15 @@ export function parseClaudeTranscript(
               ...(exit ? { exitCode: Number(exit[1]) } : {}),
             };
             if (toolResultCount === 1 && !isError) applyClaudeToolUseResult(target, row.toolUseResult, cwd);
-            if (target.detail?.kind === "subagent" && target.detail.agentId) subagentsByAgent.set(target.detail.agentId, target);
+            if (target.detail?.kind === "subagent" && target.detail.agentId) {
+              const agentId = target.detail.agentId;
+              subagentsByAgent.set(agentId, target);
+              // A foreground agent's result only points at its hand-back ("…delivered to you as a message…").
+              if (target.result && HANDBACK_POINTER_RE.test(target.result.text.trim())) target.result = { text: "" };
+              const early = earlyHandbacks.get(agentId);
+              if (early !== undefined && (target.result?.text.trim() ?? "") === "") target.result = clamp(early, MAX_RESULT_CHARS);
+              earlyHandbacks.delete(agentId);
+            }
           } else if (resultText.trim() !== "") {
             // Orphan result (its call fell outside a tail-read window) — keep it, unattached, so the
             // window never silently drops output.

@@ -372,6 +372,23 @@ describe("Claude fixture with cwd and background agents → turn items", () => {
     expect(agent).toMatchObject({ type: "subagent", agentStatus: "async_launched", result: "" });
   });
 
+  test("a foreground agent's pointer result is replaced by its hand-back (queued as an attachment row)", () => {
+    const agent = byId(list, row(20));
+    expect(agent).toMatchObject({ type: "subagent", status: "completed", result: "The guide explains setup in three steps.", durationMs: 4100 });
+  });
+
+  test("a hand-back and task-notification queued while the session was busy finish a background agent", () => {
+    expect(byId(list, row(22))).toMatchObject({
+      type: "subagent",
+      agentStatus: "completed",
+      result: "Three files.",
+      tokens: "500",
+      toolUses: 2,
+      durationMs: 3000,
+    });
+    expect(list.some((i) => [24, 25, 26].some((n) => i.id === row(n)))).toBe(false);
+  });
+
   test("an MCP call keeps its raw tool name (web2 labels it)", () => {
     expect(byId(list, row(10))).toMatchObject({ type: "dynamic_tool", toolName: "mcp__claude-in-chrome__navigate", input: "https://example.com/" });
   });
