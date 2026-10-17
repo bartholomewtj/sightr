@@ -260,6 +260,69 @@ describe("journal ingest: runs", () => {
     expect(r.store.getThread("t1")!.status).toBe("failed");
   });
 
+  test("a Claude usage-limit row fails the run; the interrupt marker ends one interrupted, not as your message", async () => {
+    const r = rig();
+    r.logs.write("s1", "");
+    await r.ingestor.catchUp("t1");
+    r.logs.append("s1", claudeRow.user("u1", "go", T0 - 500));
+    await r.status("working");
+    const limitRow = {
+      type: "assistant",
+      uuid: "a1",
+      timestamp: new Date(T0 + 100).toISOString(),
+      isApiErrorMessage: true,
+      apiErrorStatus: 429,
+      error: "rate_limit",
+      apiErrorParams: { rate_limit_info: { status: "rejected", resetsAt: 1_800_003_600 } },
+      message: { role: "assistant", content: [{ type: "text", text: "You've hit your session limit · resets 2:10am" }] },
+    };
+    r.logs.append("s1", `${JSON.stringify(limitRow)}\n`);
+    await r.status("idle");
+    const failed = r.store.listRuns("t1").at(-1)!;
+    expect(failed.status).toBe("failed");
+    expect(items(r).find((i) => i.id === "a1:0")).toMatchObject({ type: "error", failure: { class: "usage_limit", resetAt: 1_800_003_600_000 } });
+
+    r.clock.now += 10_000;
+    r.logs.append("s1", claudeRow.user("u2", "again", r.clock.now - 500));
+    await r.status("working");
+    const interruptRow = {
+      type: "user",
+      uuid: "x1",
+      timestamp: new Date(r.clock.now + 100).toISOString(),
+      message: { role: "user", content: [{ type: "text", text: "[Request interrupted by user]" }] },
+    };
+    r.logs.append("s1", `${JSON.stringify(interruptRow)}\n`);
+    await r.status("idle");
+    const stopped = r.store.listRuns("t1").at(-1)!;
+    expect(stopped.status).toBe("interrupted");
+    expect(items(r).find((i) => i.id === "x1:0")).toMatchObject({ type: "run_interrupt_result", runId: stopped.id });
+    expect(items(r).filter((i) => i.type === "user_message").map((i) => i.id)).toEqual(["u1:0", "u2:0"]);
+  });
+
+  test("the newest assistant usage becomes Thread.contextUsage, once per change", async () => {
+    const r = rig();
+    const usageRow = (uuid: string, ms: number, input: number) =>
+      `${JSON.stringify({
+        type: "assistant",
+        uuid,
+        timestamp: new Date(ms).toISOString(),
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "ok" }],
+          usage: { input_tokens: input, cache_read_input_tokens: 1000, cache_creation_input_tokens: 0, output_tokens: 10 },
+        },
+      })}\n`;
+    r.logs.write("s1", claudeRow.user("u1", "hi", T0 - 1_000) + usageRow("a1", T0 - 900, 5));
+    await r.ingestor.catchUp("t1");
+    expect(r.store.getThread("t1")!.contextUsage).toEqual({ usedTokens: 1015, inputTokens: 1005, cachedInputTokens: 1000, outputTokens: 10 });
+    const seq = r.store.lastSequence();
+    await r.ingestor.catchUp("t1");
+    expect(r.store.lastSequence()).toBe(seq);
+    r.logs.append("s1", usageRow("a2", T0 - 800, 50));
+    await r.ingestor.catchUp("t1");
+    expect(r.store.getThread("t1")!.contextUsage?.usedTokens).toBe(1060);
+  });
+
   test("archive interrupts the open run, and so does a run T06 marked", async () => {
     const r = rig();
     r.logs.write("s1", "");

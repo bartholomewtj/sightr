@@ -176,6 +176,13 @@ export const MIGRATIONS: readonly Migration[] = [
       db.run(`ALTER TABLE projects ADD COLUMN repo_key TEXT`);
     },
   },
+  {
+    // Thread.contextUsage (T3's ThreadTokenUsageSnapshot), read from the journal's newest usage.
+    version: 3,
+    up(db) {
+      db.run(`ALTER TABLE threads ADD COLUMN context_usage_json TEXT`);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
@@ -263,6 +270,7 @@ interface ThreadRow {
   capabilities_json: string;
   permission_mode: string | null;
   model: string | null;
+  context_usage_json: string | null;
 }
 
 interface RunRow {
@@ -350,6 +358,7 @@ function threadFromRow(r: ThreadRow): ServerThread {
   if (r.session_ref_json !== null) t.sessionRef = JSON.parse(r.session_ref_json) as AgentSessionRef;
   if (r.permission_mode !== null) t.permissionMode = r.permission_mode;
   if (r.model !== null) t.model = r.model;
+  if (r.context_usage_json !== null) t.contextUsage = JSON.parse(r.context_usage_json) as Thread["contextUsage"] & object;
   return t;
 }
 
@@ -378,6 +387,7 @@ function threadParams(t: ServerThread) {
     capabilities_json: JSON.stringify(t.capabilities),
     permission_mode: t.permissionMode ?? null,
     model: t.model ?? null,
+    context_usage_json: t.contextUsage ? JSON.stringify(t.contextUsage) : null,
   };
 }
 

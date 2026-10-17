@@ -26,7 +26,21 @@
 import { readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+import type { TranscriptToolDetail, TranscriptUsage } from "../../shared/wire.ts";
 import { containedRealpath, exists, head, loadTail, readRange as readLogRange, rootList, statFile } from "./files.ts";
+import {
+  capInput,
+  diffDetail,
+  diffForNewFile,
+  diffFromHunks,
+  diffFromReplacements,
+  mergeSubagent,
+  planDetail,
+  providerFailure,
+  subagentDetail,
+  todoDetail,
+  todoStepStatus,
+} from "./structured.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
   AgentSessionRef,
@@ -35,6 +49,137 @@ import type {
   TranscriptPart,
   TranscriptSource,
 } from "./types.ts";
+
+type ToolPart = Extract<TranscriptPart, { kind: "tool" }>;
+
+/**
+ * Claude's interrupt marker: a user row Claude writes when the operator presses Esc
+ * (`[Request interrupted by user]`, or `… for tool use]` mid-call). It is a lifecycle marker, not
+ * speech, so it must not render as a "You" bubble or open a run.
+ */
+export function isInterruptMarker(text: string): boolean {
+  return /^\s*\[Request interrupted by user[^\]]*\]\s*$/.test(text);
+}
+
+function interruptPart(text: string): TranscriptPart {
+  return {
+    kind: "text",
+    text: /tool use/i.test(text) ? "Interrupted during a tool call" : "Interrupted",
+    notice: "interrupted",
+  };
+}
+
+const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+
+/** Claude's `[{old_string,new_string}]` (MultiEdit) as replacements. */
+function replacements(edits: unknown): { oldText: string; newText: string }[] {
+  if (!Array.isArray(edits)) return [];
+  return edits.flatMap((e) =>
+    e && typeof e === "object" && typeof (e as Record<string, unknown>).old_string === "string" &&
+    typeof (e as Record<string, unknown>).new_string === "string"
+      ? [{ oldText: (e as { old_string: string }).old_string, newText: (e as { new_string: string }).new_string }]
+      : [],
+  );
+}
+
+/** TodoWrite's `todos` (input) or `newTodos` (result) as steps. */
+function todoSteps(todos: unknown): TranscriptToolDetail | undefined {
+  if (!Array.isArray(todos)) return undefined;
+  const steps = todos.flatMap((t, i) => {
+    if (!t || typeof t !== "object") return [];
+    const o = t as Record<string, unknown>;
+    const text = (str(o.content) ?? str(o.subject) ?? str(o.activeForm) ?? "").trim();
+    const status = todoStepStatus(o.status);
+    if (text === "" || status === null) return [];
+    return [{ id: str(o.id) ?? String(i + 1), text, status }];
+  });
+  return todoDetail(steps);
+}
+
+/** What a call's own arguments already say (a diff before the result lands, a task list, a plan). */
+export function claudeCallDetail(name: string, input: unknown): TranscriptToolDetail | undefined {
+  if (input === null || typeof input !== "object") return undefined;
+  const o = input as Record<string, unknown>;
+  const file = str(o.file_path) ?? str(o.notebook_path) ?? "";
+  switch (name) {
+    case "Edit": {
+      const oldText = str(o.old_string);
+      const newText = str(o.new_string);
+      if (file === "" || oldText === undefined || newText === undefined) return undefined;
+      return diffDetail(file, diffFromReplacements(file, [{ oldText, newText }]));
+    }
+    case "MultiEdit":
+      return file === "" ? undefined : diffDetail(file, diffFromReplacements(file, replacements(o.edits)));
+    case "Write":
+      return file === "" || typeof o.content !== "string" ? undefined : diffDetail(file, diffForNewFile(file, o.content));
+    case "NotebookEdit":
+      return file === "" ? undefined : diffDetail(file, null, { newStr: str(o.new_source) ?? "" });
+    case "TodoWrite":
+      return todoSteps(o.todos);
+    case "ExitPlanMode":
+      return typeof o.plan === "string" && o.plan.trim() !== "" ? planDetail(o.plan) : undefined;
+    case "Agent":
+    case "Task":
+      return subagentDetail({ title: o.description, prompt: o.prompt, model: o.model });
+    default:
+      return undefined;
+  }
+}
+
+/** Refine a call's detail from the row-level `toolUseResult` Claude writes beside its tool_result. */
+export function applyClaudeToolUseResult(part: ToolPart, toolUseResult: unknown): void {
+  if (toolUseResult === null || typeof toolUseResult !== "object" || Array.isArray(toolUseResult)) return;
+  const r = toolUseResult as Record<string, unknown>;
+  switch (part.name) {
+    case "Edit":
+    case "MultiEdit":
+    case "Write": {
+      const file = str(r.filePath) ?? (part.detail?.kind === "diff" ? part.detail.fileName : "");
+      if (file === "") return;
+      const diff =
+        r.type === "create" && typeof r.content === "string"
+          ? diffForNewFile(file, r.content)
+          : diffFromHunks(file, r.structuredPatch);
+      if (diff !== null) part.detail = diffDetail(file, diff);
+      return;
+    }
+    case "TodoWrite": {
+      const steps = todoSteps(r.newTodos);
+      if (steps) part.detail = steps;
+      return;
+    }
+    case "Agent":
+    case "Task":
+      part.detail = mergeSubagent(
+        part.detail,
+        subagentDetail({
+          agentId: r.agentId,
+          title: r.description,
+          status: r.status,
+          model: r.resolvedModel ?? r.model,
+          durationMs: r.totalDurationMs,
+          tokens: r.totalTokens,
+          toolUses: r.totalToolUseCount,
+        }),
+      );
+      return;
+    default:
+      return;
+  }
+}
+
+/** A Claude assistant row's `usage` as context use; null for an empty (API error) row. */
+export function claudeUsage(usage: unknown): TranscriptUsage | null {
+  if (usage === null || typeof usage !== "object") return null;
+  const u = usage as Record<string, unknown>;
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
+  const input = n(u.input_tokens);
+  const cached = n(u.cache_read_input_tokens) + n(u.cache_creation_input_tokens);
+  const output = n(u.output_tokens);
+  const used = input + cached + output;
+  if (used === 0) return null;
+  return { usedTokens: used, inputTokens: input + cached, cachedInputTokens: n(u.cache_read_input_tokens), outputTokens: output };
+}
 
 /** A session uuid as Claude writes it — canonical 8-4-4-4-12 hex. Anything else never touches fs. */
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -122,6 +267,24 @@ interface RawRow {
   isSidechain?: unknown;
   isCompactSummary?: unknown;
   message?: { role?: unknown; content?: unknown } | unknown;
+  /** Row-level structured result of the row's tool_result (Edit's structuredPatch, Agent's ids). */
+  toolUseResult?: unknown;
+  /** An assistant row that is an API failure (rate limit, connection), not model speech. */
+  isApiErrorMessage?: unknown;
+  apiError?: unknown;
+  error?: unknown;
+  apiErrorStatus?: unknown;
+  apiErrorParams?: unknown;
+  quotaLimits?: unknown;
+}
+
+/** When a rate limit lifts, from the API error's own fields (`resetsAt` is epoch seconds). */
+function apiErrorResetAt(row: RawRow): number | null {
+  for (const holder of [(row.apiErrorParams as { rate_limit_info?: unknown } | undefined)?.rate_limit_info, row.quotaLimits]) {
+    const at = (holder as { resetsAt?: unknown } | null | undefined)?.resetsAt;
+    if (typeof at === "number" && Number.isFinite(at) && at > 0) return at < 1e12 ? at * 1000 : at;
+  }
+  return null;
 }
 
 /**
@@ -177,28 +340,60 @@ export function parseClaudeTranscript(
     // Set by a `user` row whose string content turns out to be injected plumbing rather than speech.
     let roleOverride: "note" | undefined;
 
+    // An API failure Claude logged as an assistant row ("You've hit your session limit · resets
+    // 2:10am", "API Error: Connection dropped"): its text is the failure, so it becomes an error part.
+    const apiFailure =
+      type === "assistant" && row.isApiErrorMessage === true
+        ? (text: string) =>
+            providerFailure(text, {
+              code: str(row.error) ?? str(row.apiError) ?? null,
+              resetAt: apiErrorResetAt(row),
+              at: Date.parse(ts) || 0,
+              usageLimit: row.apiErrorStatus === 429 && /limit/i.test(text),
+            })
+        : null;
+    // Claude writes one tool_result per row, with the row's `toolUseResult` beside it; with several
+    // the row-level value could belong to any of them, so it is only read when there is one.
+    const toolResultCount = Array.isArray(content)
+      ? content.filter((b) => b && typeof b === "object" && (b as { type?: unknown }).type === "tool_result").length
+      : 0;
+
     if (typeof content === "string") {
-      // A string content is the HUMAN-turn carrier — but Claude Code also routes injected plumbing
-      // through it, so classify before believing it (see classifyUserText).
-      const classified = classifyUserText(content);
-      if (classified === null) continue;
-      if (classified.role === "note") roleOverride = "note";
-      parts.push({ kind: "text", ...clamp(classified.text, MAX_TEXT_CHARS) });
+      if (type === "user" && isInterruptMarker(content)) {
+        roleOverride = "note";
+        parts.push(interruptPart(content));
+      } else {
+        // A string content is the HUMAN-turn carrier — but Claude Code also routes injected plumbing
+        // through it, so classify before believing it (see classifyUserText).
+        const classified = classifyUserText(content);
+        if (classified === null) continue;
+        if (classified.role === "note") roleOverride = "note";
+        parts.push({ kind: "text", ...clamp(classified.text, MAX_TEXT_CHARS) });
+      }
     } else if (Array.isArray(content)) {
       for (const block of content) {
         if (block === null || typeof block !== "object") continue;
         const b = block as Record<string, unknown>;
         if (b.type === "text" && typeof b.text === "string") {
-          if (b.text.trim() !== "")
-            parts.push({ kind: "text", ...clamp(stripAnsi(b.text), MAX_TEXT_CHARS) });
+          if (type === "user" && isInterruptMarker(b.text)) {
+            roleOverride = "note";
+            parts.push(interruptPart(b.text));
+          } else if (b.text.trim() !== "") {
+            const text = clamp(stripAnsi(b.text), MAX_TEXT_CHARS);
+            parts.push({ kind: "text", ...text, ...(apiFailure ? { error: apiFailure(text.text) } : {}) });
+          }
         } else if (b.type === "thinking" && typeof b.thinking === "string") {
           if (b.thinking.trim() !== "")
             parts.push({ kind: "thinking", ...clamp(stripAnsi(b.thinking), MAX_TEXT_CHARS) });
         } else if (b.type === "tool_use") {
-          const part: Extract<TranscriptPart, { kind: "tool" }> = {
+          const name = typeof b.name === "string" ? b.name : "tool";
+          const detail = claudeCallDetail(name, b.input);
+          const part: ToolPart = {
             kind: "tool",
-            name: typeof b.name === "string" ? b.name : "tool",
-            summary: summarizeToolInput(b.input),
+            name,
+            summary: name === "TodoWrite" && detail?.kind === "todo" ? `${detail.steps.length} tasks` : summarizeToolInput(b.input),
+            ...capInput(b.input),
+            ...(detail ? { detail } : {}),
           };
           if (typeof b.id === "string") pendingTools.set(b.id, part);
           parts.push(part);
@@ -212,10 +407,15 @@ export function parseClaudeTranscript(
           const resultText = stripAnsi(toolResultText(b.content));
           if (target) {
             pendingTools.delete(id);
+            const isError = b.is_error === true;
+            // Bash reports a non-zero exit as an error result that starts "Exit code N".
+            const exit = isError ? /^Exit code (\d+)/.exec(resultText) : null;
             target.result = {
               ...clamp(resultText, MAX_RESULT_CHARS),
-              ...(b.is_error === true ? { isError: true } : {}),
+              ...(isError ? { isError: true } : {}),
+              ...(exit ? { exitCode: Number(exit[1]) } : {}),
             };
+            if (toolResultCount === 1 && !isError) applyClaudeToolUseResult(target, row.toolUseResult);
           } else if (resultText.trim() !== "") {
             // Orphan result (its call fell outside a tail-read window) — keep it, unattached, so the
             // window never silently drops output.
@@ -240,7 +440,8 @@ export function parseClaudeTranscript(
         : type === "assistant"
           ? "assistant"
           : (roleOverride ?? "user");
-    entries.push({ uuid, ts, role, parts });
+    const usage = type === "assistant" ? claudeUsage((message as { usage?: unknown }).usage) : null;
+    entries.push({ uuid, ts, role, parts, ...(usage ? { usage } : {}) });
   }
 
   return entries;

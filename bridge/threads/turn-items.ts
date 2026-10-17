@@ -108,6 +108,24 @@ export interface ItemContext {
   /** `createdAt` for an entry with no timestamp (when the ingest first saw it). */
   createdAt: number;
   updatedAt: number;
+  /** The thread's harness, for a `subagent` item's `driver` (T3's provider kind). */
+  harness?: string;
+}
+
+/** A subagent's own status word (Claude `Agent`, Pi `subagent`) as the item status, when it overrides the call's. */
+function subagentItemStatus(agentStatus: string | undefined, toolStatus: TurnItemStatus): TurnItemStatus {
+  switch (agentStatus?.toLowerCase()) {
+    case "error":
+    case "failed":
+      return "failed";
+    // Pi reports a subagent that finished its turn as `stopped`; only these mean it was cut short.
+    case "cancelled":
+    case "killed":
+    case "aborted":
+      return toolStatus === "running" ? "running" : "interrupted";
+    default:
+      return toolStatus;
+  }
 }
 
 type ToolPart = Extract<TranscriptPart, { kind: "tool" }>;
@@ -121,12 +139,19 @@ export function toolStatus(part: ToolPart, runOpen: boolean): TurnItemStatus {
 
 const MAX_SEARCH_RESULTS = 200;
 
+/**
+ * Lines a search tool prints about its results rather than as one: Claude's Grep/Glob headers
+ * ("Found 3 files", "No files found", "Found 12 total occurrences across 4 files.") and truncation note.
+ */
+const SEARCH_CHROME_RE =
+  /^(?:Found \d+ (?:files?|lines?|matches?|total occurrences?)\b.*|No (?:files|matches) found\.?|\(Results are truncated.*\)|\[Showing results with pagination.*\])$/i;
+
 /** Grep/Glob output lines as T3 search results: `path:line:preview`, or a bare path. */
 export function searchResults(text: string): FileSearchResult[] {
   const results: FileSearchResult[] = [];
   for (const raw of text.split("\n")) {
     const line = raw.trim();
-    if (line === "") continue;
+    if (line === "" || SEARCH_CHROME_RE.test(line)) continue;
     const m = /^(.+?):(\d+):(.*)$/.exec(line);
     results.push(m ? { fileName: m[1]!, line: Number(m[2]), preview: m[3]! } : { fileName: line });
     if (results.length >= MAX_SEARCH_RESULTS) break;
@@ -143,7 +168,10 @@ export function entryItems(entry: TranscriptEntry, ctx: ItemContext): TurnItemDr
   const createdAt = parseEntryTime(entry.ts) ?? ctx.createdAt;
   const items: TurnItemDraft[] = [];
   entry.parts.forEach((part, index) => {
-    const truncated = part.kind === "tool" ? part.result?.truncated === true : part.truncated === true;
+    const truncated =
+      part.kind === "tool"
+        ? part.result?.truncated === true || part.inputTruncated === true || part.detail?.truncated === true
+        : part.truncated === true;
     const base = {
       id: `${key}:${index}`,
       threadId: ctx.threadId,
@@ -160,7 +188,15 @@ export function entryItems(entry: TranscriptEntry, ctx: ItemContext): TurnItemDr
       return;
     }
     if (part.kind === "text") {
-      if (entry.role === "user") {
+      if (part.error !== undefined) {
+        // A provider failure the harness logged (T3's `error` item; web2 draws the usage-limit row).
+        items.push({ ...base, status: "failed", type: "error", failure: part.error });
+      } else if (part.notice === "interrupted") {
+        items.push({ ...base, status: "completed", type: "run_interrupt_result", message: part.text });
+      } else if (entry.role === "summary") {
+        // The summary Claude writes when it compacts a session: a short divider, the text behind it.
+        items.push({ ...base, status: "completed", type: "compaction", driver: ctx.harness ?? null, summary: part.text });
+      } else if (entry.role === "user") {
         items.push({ ...base, status: "completed", type: "user_message", messageId: key, text: part.text, attachments: [] });
       } else if (entry.role === "assistant") {
         items.push({ ...base, status: "completed", type: "assistant_message", messageId: key, text: part.text, streaming: false });
@@ -177,6 +213,38 @@ export function entryItems(entry: TranscriptEntry, ctx: ItemContext): TurnItemDr
       startedAt: createdAt,
     };
     const result = part.result;
+    const detail = part.detail;
+    const errorText = result?.isError && result.text.trim() !== "" ? { errorText: result.text } : {};
+    // Structured kinds first: what the call carried decides the T3 item, whatever the tool is named.
+    if (detail?.kind === "todo" && !result?.isError) {
+      items.push({ ...tool, type: "todo_list", planId: `${key}:${index}`, steps: detail.steps });
+      return;
+    }
+    if (detail?.kind === "plan") {
+      items.push({ ...tool, type: "proposed_plan", planId: `${key}:${index}`, markdown: detail.markdown, streaming: false });
+      return;
+    }
+    if (detail?.kind === "subagent") {
+      items.push({
+        ...tool,
+        status: subagentItemStatus(detail.status, tool.status),
+        title: detail.title ?? (part.summary || part.name),
+        type: "subagent",
+        subagentId: detail.agentId ?? `${key}:${index}`,
+        origin: "provider_native",
+        driver: ctx.harness ?? "",
+        providerInstanceId: ctx.harness ?? "",
+        childThreadId: null,
+        prompt: detail.prompt ?? "",
+        result: result ? result.text : null,
+        ...(detail.model ? { model: detail.model } : {}),
+        ...(detail.status ? { agentStatus: detail.status } : {}),
+        ...(detail.durationMs !== undefined ? { durationMs: detail.durationMs } : {}),
+        ...(detail.tokens ? { tokens: detail.tokens } : {}),
+        ...(detail.toolUses !== undefined ? { toolUses: detail.toolUses } : {}),
+      });
+      return;
+    }
     switch (toolItemType(part.name)) {
       case "command_execution":
         items.push({
@@ -185,17 +253,31 @@ export function entryItems(entry: TranscriptEntry, ctx: ItemContext): TurnItemDr
           input: part.summary,
           ...(result ? { output: result.text } : {}),
           ...(result?.isError ? { outputIndicatesFailure: true } : {}),
+          ...(result?.exitCode !== undefined ? { exitCode: result.exitCode } : {}),
         });
         return;
-      case "file_change":
-        items.push({ ...tool, type: "file_change", fileName: part.summary });
+      case "file_change": {
+        const diff = detail?.kind === "diff" ? detail : undefined;
+        items.push({
+          ...tool,
+          type: "file_change",
+          fileName: diff?.fileName || part.summary,
+          ...(diff?.additions !== undefined ? { additions: diff.additions } : {}),
+          ...(diff?.deletions !== undefined ? { deletions: diff.deletions } : {}),
+          ...(diff?.diff ? { diffStr: diff.diff } : {}),
+          ...(diff?.oldStr ? { oldStr: diff.oldStr } : {}),
+          ...(diff?.newStr ? { newStr: diff.newStr } : {}),
+          ...errorText,
+        });
         return;
+      }
       case "file_search":
         items.push({
           ...tool,
           type: "file_search",
           ...(part.summary !== "" ? { pattern: part.summary } : {}),
           ...(result && !result.isError ? { results: searchResults(result.text) } : {}),
+          ...errorText,
         });
         return;
       case "web_search": {
@@ -204,7 +286,8 @@ export function entryItems(entry: TranscriptEntry, ctx: ItemContext): TurnItemDr
           ...tool,
           type: "web_search",
           ...(part.summary !== "" ? { patterns: [part.summary] } : {}),
-          ...(result ? { results: [{ ...(url ? { url } : {}), snippet: result.text }] } : {}),
+          ...(result && !result.isError ? { results: [{ ...(url ? { url } : {}), snippet: result.text }] } : {}),
+          ...errorText,
         });
         return;
       }
@@ -215,6 +298,7 @@ export function entryItems(entry: TranscriptEntry, ctx: ItemContext): TurnItemDr
           toolName: part.name,
           input: part.summary,
           ...(result ? { output: result.text } : {}),
+          ...(part.input !== undefined ? { rawInput: part.input } : {}),
         });
     }
   });
