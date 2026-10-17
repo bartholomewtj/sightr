@@ -104,6 +104,18 @@ import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { searchSlashCommandItems } from "./composerSlashCommandSearch";
 import { QueuedRunsControl, type QueuedRunsControlHandle } from "./QueuedRunsControl";
+import { activeComposerTasks, latestRunError } from "./ComposerStatus.logic";
+import { ComposerTasksBadge, ComposerTasksSheet } from "./ComposerTasksBadge";
+import { ContextWindowMeter } from "./ContextWindowMeter";
+import { contextWindowSnapshot, manualCompactionCommand } from "./ContextWindowMeter.logic";
+import {
+  dismissThreadErrorBanner,
+  getThreadErrorBannerKey,
+  isThreadErrorBannerDismissed,
+  threadErrorBannerItem,
+  useDismissedThreadErrors,
+} from "./ThreadErrorBanner";
+import { usageLimitRecoveryBannerItem } from "./UsageLimitRecoveryBanner";
 
 /** The file picker's accept list, as v1's composer. */
 export const ATTACH_ACCEPT =
@@ -228,6 +240,8 @@ export function ChatComposer({ threadId }: { threadId: string }) {
   /** A destructive permission mode picked from the menu, waiting for its confirm tap. */
   const [confirmMode, setConfirmMode] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<ExpandedImagePreview | null>(null);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const dismissedErrors = useDismissedThreadErrors((s) => s.keys);
   const listId = useId();
 
   const editing = composer.editing;
@@ -406,10 +420,8 @@ export function ChatComposer({ threadId }: { threadId: string }) {
 
   // ── Slash menu ──
   const query = editing ? null : slashQuery(text);
-  const commandItems = useMemo(
-    () => toCommandItems(commandsFor(thread?.harness, operatorCommands)),
-    [thread?.harness, operatorCommands],
-  );
+  const slashCatalog = useMemo(() => commandsFor(thread?.harness, operatorCommands), [thread?.harness, operatorCommands]);
+  const commandItems = useMemo(() => toCommandItems(slashCatalog), [slashCatalog]);
   const menuItems = useMemo(
     () => (query === null ? [] : searchSlashCommandItems(commandItems, query)),
     [commandItems, query],
@@ -593,6 +605,33 @@ export function ChatComposer({ threadId }: { threadId: string }) {
     if (ok && textRef.current === failed.text) setText("", false);
   }
 
+  // ── Context window (T3's ContextWindowMeter): Compact sends the harness's `/compact` as a message ──
+  const contextUsage = useMemo(() => contextWindowSnapshot(thread?.contextUsage), [thread?.contextUsage]);
+  const compactCommand = manualCompactionCommand(slashCatalog);
+  const compactButtons = resolveComposerButtons({ ...buttonInput, hasText: true, editing: false, uploading: false, alternate: false });
+  const compactBlocked =
+    thread?.status === "working"
+      ? "The agent is working. Compact when it stops."
+      : compactButtons.primary.kind !== "send" || compactButtons.primary.disabled
+        ? (compactButtons.primary.reason ?? "Compact is not available now.")
+        : null;
+  async function compact(): Promise<void> {
+    if (!compactCommand || compactBlocked) return;
+    // Its own message: the box's draft and staged files stay for the next send.
+    const keep = getThreadComposer(threadId).attachments;
+    const ok = await dispatchMessage({ threadId, text: compactCommand, attachments: [], mode: "start" });
+    if (!ok) return;
+    if (keep.length > 0) patchComposer(threadId, { attachments: keep });
+    saveDraft(threadId, textRef.current);
+  }
+
+  // ── Tasks (T3's ComposerTasksBadge): the agent's newest task list ──
+  const tasks = useMemo(() => (runs && items ? activeComposerTasks({ runs, items }) : null), [runs, items]);
+  const hasTasks = tasks !== null;
+  useEffect(() => {
+    if (!hasTasks) setTasksOpen(false);
+  }, [hasTasks]);
+
   /** The Keys dock's sender; the wheel's key slices use it too, so both send alike. */
   function sendDockKeys(keys: string[]): Promise<boolean> {
     if (!paneId) return Promise.resolve(false);
@@ -606,9 +645,35 @@ export function ChatComposer({ threadId }: { threadId: string }) {
     const runs = Object.values(state?.runs ?? {});
     return runs.length > 0 ? runs.reduce((a, b) => (b.ordinal > a.ordinal ? b : a)) : null;
   }, [state?.runs]);
+  // The error the latest run ended on (T3's ThreadErrorBanner / UsageLimitRecoveryBanner), dismissed per device.
+  const runError = useMemo(() => (runs && items ? latestRunError({ runs, items }) : null), [runs, items]);
+  const errorKey = getThreadErrorBannerKey(threadId, runError?.id ?? null);
   const banners: ComposerBannerStackItem[] = [];
   if (readOnly) banners.push({ id: "read-only", variant: "info", icon: <LockIcon />, title: "This device is read-only." });
-  if (latestRun?.status === "failed" && dismissedRun !== latestRun.id) {
+  if (runError && errorKey) {
+    if (!isThreadErrorBannerDismissed(errorKey, dismissedErrors)) {
+      const onDismiss = () => dismissThreadErrorBanner(errorKey);
+      banners.push(
+        runError.failure.class === "usage_limit"
+          ? usageLimitRecoveryBannerItem({
+              bannerKey: errorKey,
+              resetAt: runError.failure.resetAt ?? null,
+              stoppedAt: latestRun?.completedAt ?? runError.createdAt,
+              snoozedUntil: thread?.shelf === "snoozed" ? (thread.snoozedUntil ?? null) : null,
+              disabled: readOnly || linkLost,
+              onSnooze: (until) => performThreadCommand({ type: "thread.snooze", threadId, until }),
+              onDismiss,
+            })
+          : threadErrorBannerItem({
+              bannerKey: errorKey,
+              title: runError.title?.trim() || "The last run failed",
+              message: runError.failure.message,
+              errorClass: runError.failure.class,
+              onDismiss,
+            }),
+      );
+    }
+  } else if (latestRun?.status === "failed" && dismissedRun !== latestRun.id) {
     banners.push({
       id: "run-failed",
       variant: "warning",
@@ -685,6 +750,12 @@ export function ChatComposer({ threadId }: { threadId: string }) {
           onEditQueued={editQueued}
           onCancelEdit={cancelEdit}
         />
+        {tasks ? (
+          <>
+            <ComposerTasksBadge expanded={tasksOpen} onToggle={() => setTasksOpen((open) => !open)} progress={tasks.progress} steps={tasks.steps} />
+            <ComposerTasksSheet open={tasksOpen} onClose={() => setTasksOpen(false)} progress={tasks.progress} steps={tasks.steps} />
+          </>
+        ) : null}
         {request ? (
           // A tall card (a long menu, a preview) scrolls inside itself, so its buttons stay on screen and
           // the timeline keeps a strip above it.
@@ -898,6 +969,14 @@ export function ChatComposer({ threadId }: { threadId: string }) {
                     switching={composer.busy === "mode"}
                     size={layout === "phone" ? "xs" : "sm"}
                     onRuntimeModeChange={pickMode}
+                  />
+                ) : null}
+                {contextUsage ? (
+                  <ContextWindowMeter
+                    usage={contextUsage}
+                    onCompact={compactCommand ? () => void compact() : undefined}
+                    compactDisabled={compactBlocked !== null}
+                    compactDisabledReason={compactBlocked}
                   />
                 ) : null}
                 <span className="min-w-0 flex-1 truncate px-1 text-xs text-muted-foreground" aria-live={layout === "phone" ? undefined : "polite"}>
