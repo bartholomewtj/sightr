@@ -98,20 +98,101 @@ export interface TranscriptAsk {
   questions: TranscriptAskQuestion[];
 }
 
+/**
+ * A provider failure the harness logged (Claude `isApiErrorMessage`, Pi `stopReason: "error"`), in
+ * the shape of T3's `OrchestrationV2ProviderFailure`. `resetAt` is epoch ms.
+ */
+export interface TranscriptError {
+  class: "usage_limit" | "provider_error" | "transport_error" | "permission_error" | "validation_error" | "unknown";
+  message: string;
+  code: string | null;
+  retryable: boolean | null;
+  resetAt?: number | null;
+}
+
+/** One step of a harness task list (Claude TodoWrite, Pi `todo`). */
+export interface TranscriptTodoStep {
+  id: string;
+  text: string;
+  status: "pending" | "running" | "completed";
+}
+
+/**
+ * The structured payload a tool call keeps beside its one-line summary (journal/structured.ts caps
+ * it). Every field is optional data the harness wrote; an old bridge's entries simply have none.
+ */
+export type TranscriptToolDetail =
+  | {
+      kind: "diff";
+      fileName: string;
+      /** A unified diff (`---`/`+++`/`@@` hunks). */
+      diff?: string;
+      additions?: number;
+      deletions?: number;
+      oldStr?: string;
+      newStr?: string;
+      truncated?: boolean;
+    }
+  | { kind: "todo"; steps: TranscriptTodoStep[]; truncated?: boolean }
+  | { kind: "plan"; markdown: string; truncated?: boolean }
+  | {
+      kind: "subagent";
+      agentId?: string;
+      title?: string;
+      prompt?: string;
+      status?: string;
+      model?: string;
+      durationMs?: number;
+      tokens?: string;
+      toolUses?: number;
+      truncated?: boolean;
+    };
+
+/** Token use an assistant entry reported (T3's `ThreadTokenUsageSnapshot` subset). */
+export interface TranscriptUsage {
+  /** What the context holds after this message: input (cached or not) plus output. */
+  usedTokens: number;
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
+  maxTokens?: number;
+  cost?: number;
+}
+
 export type TranscriptPart =
-  | { kind: "text"; text: string; truncated?: boolean }
+  | {
+      kind: "text";
+      text: string;
+      truncated?: boolean;
+      /** The text is a provider failure the harness logged, not speech. */
+      error?: TranscriptError;
+      /** The text is a lifecycle marker: the operator interrupted the run. */
+      notice?: "interrupted";
+    }
   | { kind: "thinking"; text: string; truncated?: boolean }
   | {
       kind: "tool";
       name: string;
       summary: string;
-      result?: { text: string; truncated?: boolean; isError?: boolean };
+      result?: { text: string; truncated?: boolean; isError?: boolean; exitCode?: number };
       /** The harness never records tool output (Cursor): the call is complete, with no body to open. */
       unrecorded?: true;
       /** Pending Grok `ask_user_question` arguments. Absent once the call has a result. */
       ask?: TranscriptAsk;
+      /** The call's own arguments, capped (journal/structured.ts). */
+      input?: unknown;
+      inputTruncated?: boolean;
+      /** Structured data from the call or its result (a diff, a task list, a plan, a subagent). */
+      detail?: TranscriptToolDetail;
     };
-export interface TranscriptEntry { uuid: string; ts: string; role: "user" | "assistant" | "summary" | "note"; parts: TranscriptPart[]; }
+export interface TranscriptEntry {
+  uuid: string;
+  ts: string;
+  role: "user" | "assistant" | "summary" | "note";
+  parts: TranscriptPart[];
+  /** Token use, on the assistant entries that report it. */
+  usage?: TranscriptUsage;
+}
 
 export interface SnapshotResponse {
   bridge: BridgeStatus; device?: DeviceAuth; agents: WirePane[]; shellPanes: WirePane[];
