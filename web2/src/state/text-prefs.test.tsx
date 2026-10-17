@@ -45,10 +45,10 @@ describe("text size", () => {
 
   it("the Settings row changes it and marks the choice", () => {
     render(<DisplaySettings />);
-    expect(screen.getByRole("radio", { name: "Default" })).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
+    expect(screen.getByRole("radio", { name: "100%" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("radio", { name: "130%" }));
     expect(document.documentElement.style.fontSize).toBe("130%");
-    expect(screen.getByRole("radio", { name: "Larger" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "130%" })).toHaveAttribute("aria-checked", "true");
   });
 
   it("the Terminal tab keeps its own size control", () => {

@@ -149,7 +149,7 @@ function ModelsRow({ harness }: { harness: string }) {
           <li key={c.id} data-hidden={c.hidden || undefined} className="flex items-center gap-1 px-2">
             <span className={`min-w-0 flex-1 truncate py-2 pl-1 text-sm ${c.hidden ? "text-muted-foreground line-through" : ""}`}>
               {c.label}
-              {c.label !== c.id ? <span className="ml-2 font-mono text-xs text-muted-foreground">{c.id}</span> : null}
+              {c.label.toLowerCase() !== c.id ? <span className="ml-2 font-mono text-xs text-muted-foreground">{c.id}</span> : null}
             </span>
             {!c.hidden ? (
               <IconToggle

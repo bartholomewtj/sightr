@@ -13,10 +13,10 @@ import { setTextPref, useTextPrefs, type CodeWrap, type TextScale } from "@/stat
 import { SettingsChoice, SettingsRow } from "./settingsLayout";
 
 const SCALE_OPTIONS: ReadonlyArray<{ value: `${TextScale}`; label: string }> = [
-  { value: "90", label: "Small" },
-  { value: "100", label: "Default" },
-  { value: "115", label: "Large" },
-  { value: "130", label: "Larger" },
+  { value: "90", label: "90%" },
+  { value: "100", label: "100%" },
+  { value: "115", label: "115%" },
+  { value: "130", label: "130%" },
 ];
 
 const WRAP_OPTIONS: ReadonlyArray<{ value: CodeWrap; label: string }> = [
@@ -34,7 +34,7 @@ export function DisplaySettings() {
     <>
       <SettingsRow
         title="Text size"
-        description="Scales the whole app: chat, composer, lists and menus. The Terminal tab keeps its own size, below. This device only."
+        description="Scales the whole app: chat, composer, lists and menus. 100% is the browser's size. The Terminal tab keeps its own size, below. This device only."
         control={
           <SettingsChoice
             label="Text size"
