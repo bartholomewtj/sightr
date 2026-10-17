@@ -27,6 +27,7 @@ import { __resetTimelineState } from "@/state/timeline";
 import { __resetShellStream } from "@/stream/shell-stream";
 import { __resetStreamStores } from "@/stream/stores";
 import { __resetThreadStream } from "@/stream/thread-stream";
+import { __resetThreadViewStore } from "@/threadViewStore";
 import { __resetUiState } from "@/uiStateStore";
 
 import { FakeEventSource } from "./fake-event-source";
@@ -63,6 +64,7 @@ beforeEach(() => {
   __resetStreamStores();
   __resetUiState();
   __resetRightPanelStore();
+  __resetThreadViewStore();
   __resetCommandPalette();
   useShortcutsDialog.setState({ open: false });
   __resetPaneCache();

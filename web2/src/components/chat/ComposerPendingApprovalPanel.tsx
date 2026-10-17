@@ -9,7 +9,8 @@ import { KeyRoundIcon, ShieldIcon, TerminalSquareIcon } from "lucide-react";
 
 import type { RuntimeRequest } from "@shared/v2/contracts";
 import { cn } from "~/lib/utils";
-import { openRightPanelSurface, useRightPanelStore } from "@/rightPanelStore";
+import { useRightPanelStore } from "@/rightPanelStore";
+import { openThreadTerminal } from "@/threadViewStore";
 import { ComposerBanner } from "./ComposerBanner";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 
@@ -22,7 +23,8 @@ const KIND_LABEL: Record<RuntimeRequest["kind"], string> = {
 };
 
 /**
- * Opens the thread's Terminal tab (T13): the panel on desktop, a sheet on a phone. With `prompt` (a
+ * Opens the thread's Terminal tab (T13): the panel on desktop, a sheet on a phone, or the CLI view for a
+ * thread with no transcript. With `prompt` (a
  * password request) it also arms direct typing, and the strip names the prompt being answered.
  */
 export function OpenTerminalButton({ threadId, prompt }: { threadId: string; prompt?: string }) {
@@ -31,7 +33,7 @@ export function OpenTerminalButton({ threadId, prompt }: { threadId: string; pro
       type="button"
       onClick={() => {
         if (prompt !== undefined) useRightPanelStore.getState().requestDirectTyping(threadId, prompt);
-        openRightPanelSurface("terminal");
+        openThreadTerminal(threadId);
       }}
       className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border-2 border-border bg-card px-3 text-sm font-medium text-foreground hover:border-you sm:min-h-9"
     >

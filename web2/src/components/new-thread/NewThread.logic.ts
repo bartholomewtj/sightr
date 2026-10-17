@@ -29,7 +29,7 @@ export interface HarnessTile {
   note: string | null;
 }
 
-export const NO_JOURNAL_NOTE = "Timeline is limited; use the Terminal tab";
+export const NO_JOURNAL_NOTE = "No transcript; opens on the CLI";
 
 /** One tile per descriptor with a launch spec, in table order, then Terminal only. */
 export function harnessTiles(agents: readonly { id: string; label: string; launch?: unknown }[] = AGENTS): HarnessTile[] {

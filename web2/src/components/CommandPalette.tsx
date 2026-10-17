@@ -40,6 +40,7 @@ import { ThreadStatusDot } from "@/components/ThreadStatusIndicators";
 import { useLayout } from "@/hooks/useLayout";
 import { KEYBINDINGS } from "@/keybindings";
 import { openRightPanelSurface, useRightPanelStore } from "@/rightPanelStore";
+import { openThreadTerminal } from "@/threadViewStore";
 import { interruptRun } from "@/state/composer";
 import { performThreadCommand, useSidebarPrefs, useSidebarThreads } from "@/state/sidebar";
 import { useBridgeInfo, useShell } from "@/stream/stores";
@@ -170,7 +171,7 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
         applies: applies.desktop,
         run: () => useRightPanelStore.getState().toggleVisibility(),
       },
-      { value: "open-terminal", title: "Open Terminal", icon: icon(TerminalSquareIcon), shortcutCommand: "terminal.toggle", applies: applies.thread, run: () => openRightPanelSurface("terminal") },
+      { value: "open-terminal", title: "Open Terminal", icon: icon(TerminalSquareIcon), shortcutCommand: "terminal.toggle", applies: applies.thread, run: () => openThreadTerminal(threadId) },
       { value: "open-files", title: "Open Files", icon: icon(FilesIcon), applies: applies.thread, run: () => openRightPanelSurface("files") },
       { value: "open-git", title: "Open Git", icon: icon(GitBranchIcon), applies: applies.thread, run: () => openRightPanelSurface("git") },
       { value: "stop-run", title: "Stop run", icon: icon(CircleStopIcon), applies: applies.running, run: () => (t ? interruptRun(t.id) : undefined) },

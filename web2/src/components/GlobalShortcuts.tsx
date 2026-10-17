@@ -18,6 +18,7 @@ import { adjacentThread } from "@/lib/threadNavigation";
 import { selectRightPanelOpen, toggleRightPanelSurface, useRightPanelStore } from "@/rightPanelStore";
 import { domShortcutContext, registerShortcutHandler, runShortcutCommand } from "@/shortcutHandlers";
 import { useShell, useThreadStore } from "@/stream/stores";
+import { openThreadTerminal, toggleThreadTerminal } from "@/threadViewStore";
 import { useUiState } from "@/uiStateStore";
 
 /** Commands that may repeat while the key is held. */
@@ -57,18 +58,17 @@ export function GlobalShortcuts() {
       }),
       registerShortcutHandler("terminal.toggle", () => {
         if (!live.current.desktop && !live.current.threadId) return false;
-        toggleRightPanelSurface("terminal");
+        toggleThreadTerminal(live.current.threadId);
       }),
       registerShortcutHandler("rightPanel.files", () => toggleRightPanelSurface("files")),
       registerShortcutHandler("rightPanel.git", () => toggleRightPanelSurface("git")),
-      // The Terminal tab registers its own handler while mounted; this one opens it and asks it to arm.
+      // The Terminal tab (or the CLI view) registers its own handler while mounted; this one opens it and
+      // asks it to arm.
       registerShortcutHandler("terminal.directTyping", () => {
         const id = live.current.threadId;
         if (!id) return false;
-        const store = useRightPanelStore.getState();
-        if (live.current.desktop) store.open("terminal");
-        else store.openSheet("terminal");
-        store.requestDirectTyping(id);
+        openThreadTerminal(id);
+        useRightPanelStore.getState().requestDirectTyping(id);
       }),
       registerShortcutHandler("chat.new", () => go("/new")),
       // Find in the timeline (T19): the thread route registers over this; elsewhere the browser keeps the key.

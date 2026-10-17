@@ -79,7 +79,7 @@ describe("MessagesTimeline: states", () => {
     expect(screen.getByText("No messages yet. Type below to start.")).toBeInTheDocument();
     unmount();
     await show([], { thread: { capabilities: { ...threadFixture("t1").capabilities, hasJournal: false } } });
-    expect(screen.getByText("This harness has no transcript. Open the Terminal tab.")).toBeInTheDocument();
+    expect(screen.getByText("This harness has no transcript. Switch to CLI to see the terminal.")).toBeInTheDocument();
   });
 
   it("renders user and assistant messages", async () => {

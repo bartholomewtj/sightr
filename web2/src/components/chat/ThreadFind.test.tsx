@@ -196,7 +196,9 @@ describe("find in the thread route", () => {
   it("the header's search button opens the bar", async () => {
     renderApp("/v2/thread/t1");
     await waitFor(() => expect(FakeEventSource.instances.some((es) => es.url.startsWith("/api/v2/shell"))).toBe(true));
-    frame(() => FakeEventSource.instances.find((es) => es.url.startsWith("/api/v2/shell"))?.emit("snapshot", shellSnapshot(5)));
+    // A thread with a transcript: one without opens on the CLI, which has its own find.
+    const t1 = threadFixture("t1", { capabilities: { ...threadFixture("t1").capabilities, hasJournal: true } });
+    frame(() => FakeEventSource.instances.find((es) => es.url.startsWith("/api/v2/shell"))?.emit("snapshot", shellSnapshot(5, [t1])));
     fireEvent.click(await screen.findByRole("button", { name: "Find in thread" }));
     expect(await screen.findByRole("search", { name: "Find in thread" })).toBeInTheDocument();
   });
