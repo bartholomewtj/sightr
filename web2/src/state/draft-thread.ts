@@ -19,14 +19,15 @@ import {
   isDestructiveMode,
   nameFromMessage,
   phaseForThread,
-  pickersFor,
   splitSource,
   startRefusalText,
   tileFor,
   type SpawnPhase,
 } from "@/components/new-thread/NewThread.logic";
+import { cleanDefaults, defaultsFor, type HarnessDefaults } from "@/components/new-thread/ThreadDefaults.logic";
 import { uploadImage } from "@/lib/api";
 import { refusalText } from "@/state/composer";
+import { getThreadDefaults } from "@/state/thread-defaults";
 import { defaultCommandDeps, sendCommand, V2CommandError, type CommandDeps } from "@/stream/commands";
 import { onShellEvent } from "@/stream/shell-events";
 import { useShell } from "@/stream/stores";
@@ -145,21 +146,49 @@ function loadSaved(): { draft: DraftThread; start: DraftStart | null } {
 }
 
 interface LastUsed {
-  harness: string;
+  /** The harness's launch-table id. */
+  tile: string;
   permissionMode: string;
+  /** Absent in an entry saved before models were remembered: the harness default stands in. */
+  model?: string;
+  effort?: string;
 }
 
 function lastUsed(projectId: string): LastUsed | null {
   const all = readJson(LAST_KEY);
   const entry = isObj(all) ? all[projectId] : null;
   if (!isObj(entry)) return null;
-  const { harness: tile, permissionMode: mode } = entry;
-  return typeof tile === "string" ? { harness: tile, permissionMode: typeof mode === "string" ? mode : "" } : null;
+  const { harness: tile, permissionMode: mode, model, effort } = entry;
+  if (typeof tile !== "string") return null;
+  return {
+    tile,
+    permissionMode: typeof mode === "string" ? mode : "",
+    ...(typeof model === "string" ? { model } : {}),
+    ...(typeof effort === "string" ? { effort } : {}),
+  };
+}
+
+/**
+ * The model, effort and mode a draft opens with for a harness: what this project used last time with it,
+ * else the operator's default for the harness (Settings → New threads), else nothing chosen. Every value
+ * is checked against the launch table, and a bypass mode is never brought back: it is chosen fresh, with
+ * its two confirmations, every time.
+ */
+export function seedPickers(projectId: string | null, id: string): HarnessDefaults {
+  const defaults = defaultsFor(getThreadDefaults(), id);
+  const last = projectId ? lastUsed(projectId) : null;
+  if (!last || last.tile !== id) return defaults;
+  return cleanDefaults(id, {
+    model: last.model ?? defaults.model,
+    effort: last.effort ?? defaults.effort,
+    permissionMode: last.permissionMode,
+  });
 }
 
 function rememberLastUsed(projectId: string, used: LastUsed): void {
   const all = readJson(LAST_KEY);
-  writeJson(LAST_KEY, { ...(isObj(all) ? all : {}), [projectId]: used });
+  const { tile, ...rest } = used;
+  writeJson(LAST_KEY, { ...(isObj(all) ? all : {}), [projectId]: { harness: tile, ...rest } });
 }
 
 // ── Store ───────────────────────────────────────────────────────────────────────────────────────
@@ -213,29 +242,35 @@ const withId = (commandId: string): CommandDeps => ({ ...commandDeps(), newId: (
 
 // ── Draft edits ─────────────────────────────────────────────────────────────────────────────────
 
-/** Choose the project. A project newly chosen brings back the harness and mode last used in it here. */
+/**
+ * Choose the project. A project newly chosen brings back the harness, model, effort and mode last used in
+ * it here; with no history, a draft that has no harness yet opens on the default harness, if one is set.
+ */
 export function selectDraftProject(projectId: string): void {
   const { draft } = get();
   if (draft.projectId === projectId) return;
   const last = lastUsed(projectId);
-  if (last && tileFor(last.harness)) {
-    const tile = last.harness;
-    // A bypass mode is never brought back: it is chosen fresh, with its two confirmations, every time.
-    const known = pickersFor(tile).modes?.some((m) => m.id === last.permissionMode) ?? false;
-    const mode = known && !isDestructiveMode(tile, last.permissionMode) ? last.permissionMode : "";
-    set({ draft: { ...draft, projectId, harness: tile, model: "", effort: "", permissionMode: mode }, bypassArmed: null, startConfirm: false });
+  if (last && tileFor(last.tile)) {
+    set({ draft: { ...draft, projectId, harness: last.tile, ...seedPickers(projectId, last.tile) }, bypassArmed: null, startConfirm: false });
     return;
   }
-  set({ draft: { ...draft, projectId }, startConfirm: false });
+  set({ draft: withDefaultHarness({ ...draft, projectId }), bypassArmed: null, startConfirm: false });
 }
 
-/** Choose the harness. Every picker clears: options differ per harness. */
+/** A draft with no harness yet takes the operator's default harness and its default pickers. */
+function withDefaultHarness(draft: DraftThread): DraftThread {
+  const wanted = getThreadDefaults().harness;
+  if (draft.harness || !wanted || !tileFor(wanted)) return draft;
+  return { ...draft, harness: wanted, ...seedPickers(draft.projectId, wanted) };
+}
+
+/** Choose the harness. The pickers reset to what this project last used with it, else the defaults. */
 export function setDraftHarness(id: string): void {
   const { draft } = get();
   const current = draft.harness;
   if (current === id) return;
   set({
-    draft: { ...draft, harness: id, model: "", effort: "", permissionMode: "" },
+    draft: { ...draft, harness: id, ...seedPickers(draft.projectId, id) },
     bypassArmed: null,
     startConfirm: false,
   });
@@ -346,7 +381,7 @@ export async function createDraftProject(): Promise<void> {
 function projectCreated(projectId: string): void {
   set({ form: CLOSED_FORM });
   const { draft } = get();
-  set({ draft: { ...draft, projectId }, startConfirm: false });
+  set({ draft: withDefaultHarness({ ...draft, projectId }), startConfirm: false });
 }
 
 // ── Start ───────────────────────────────────────────────────────────────────────────────────────
@@ -400,7 +435,12 @@ export async function startDraft(): Promise<StartResult> {
   };
   ensureListening();
   set({ start, posting: true, startConfirm: false });
-  rememberLastUsed(built.payload.projectId!, { harness: tile.id, permissionMode: draft.permissionMode });
+  rememberLastUsed(built.payload.projectId!, {
+    tile: tile.id,
+    permissionMode: destructive ? "" : draft.permissionMode,
+    model: draft.model.trim(),
+    effort: draft.effort,
+  });
   try {
     await sendCommand("thread.create", built.payload, withId(commandId));
   } catch (err) {

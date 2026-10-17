@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FakeEventSource } from "@/test/fake-event-source";
 import { shellSnapshot } from "@/test/fixtures";
@@ -28,12 +28,17 @@ async function open(device?: { enforced: boolean; device: string | null; authori
 }
 
 const sectionTitles = () => screen.getAllByRole("region").map((r) => r.getAttribute("aria-label"));
+const openAdvanced = () => fireEvent.click(screen.getByRole("button", { name: /^Advanced/ }));
 
 describe("/settings", () => {
-  it("shows the sections in order, with Shortcuts on desktop", async () => {
+  it("shows the sections in order; Bridge, Connection, Shortcuts and v1 sit folded under Advanced", async () => {
     setViewportWidth(1280);
     await open();
-    expect(sectionTitles()).toEqual(["Display", "Composer", "Notifications", "Security", "Bridge", "Connection", "Shortcuts", "Gesture wheel", "Sightr v1"]);
+    expect(sectionTitles()).toEqual(["Display", "Composer", "Gesture wheel", "New threads", "Notifications", "Security", "About"]);
+    expect(screen.queryByRole("region", { name: "Bridge" })).toBeNull();
+    openAdvanced();
+    await screen.findByRole("region", { name: "Bridge" });
+    expect(sectionTitles()).toEqual(["Display", "Composer", "Gesture wheel", "New threads", "Notifications", "Security", "Bridge", "Connection", "Shortcuts", "Sightr v1", "About"]);
     fireEvent.click(screen.getByRole("button", { name: "Show shortcuts" }));
     expect(await screen.findByRole("table", { name: "Keyboard shortcuts" })).toBeInTheDocument();
   });
@@ -41,12 +46,15 @@ describe("/settings", () => {
   it("has no Shortcuts section on a phone, and no desktop-mode control anywhere", async () => {
     setViewportWidth(400);
     await open();
+    openAdvanced();
+    await screen.findByRole("region", { name: "Bridge" });
     expect(sectionTitles()).not.toContain("Shortcuts");
     expect(screen.queryByText(/desktop mode/i)).toBeNull();
   });
 
   it("links to Sightr v1 at /v1/, and back to the threads", async () => {
     await open();
+    openAdvanced();
     const v1 = within(screen.getByRole("region", { name: "Sightr v1" })).getByRole("link", { name: /Open Sightr v1/ });
     expect(v1).toHaveAttribute("href", "/v1/");
     expect(screen.getByRole("link", { name: "Back to threads" })).toHaveAttribute("href", expect.stringMatching(/^\/v2\/?$/));
@@ -54,6 +62,7 @@ describe("/settings", () => {
 
   it("read-only: every section shows, the bridge-side controls are disabled", async () => {
     await open({ enforced: true, device: "tablet", authorized: false });
+    openAdvanced();
     const bridge = screen.getByRole("region", { name: "Bridge" });
     await waitFor(() => expect(within(bridge).getByLabelText("Read lines")).toHaveValue(200));
     expect(within(bridge).getByLabelText("Read lines")).toBeDisabled();
@@ -66,5 +75,35 @@ describe("/settings", () => {
     const display = screen.getByRole("region", { name: "Display" });
     fireEvent.click(within(display).getByRole("radio", { name: "Light" }));
     expect(document.documentElement.classList.contains("light")).toBe(true);
+  });
+
+  it("section chips: one per section, a tap opens Advanced and scrolls to it", async () => {
+    setViewportWidth(360);
+    await open();
+    const nav = screen.getByRole("navigation", { name: "Settings sections" });
+    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual([
+      "Display",
+      "Composer",
+      "New threads",
+      "Notifications",
+      "Security",
+      "Advanced",
+      "About",
+    ]);
+    expect(screen.queryByRole("region", { name: "Bridge" })).toBeNull();
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    fireEvent.click(within(nav).getByRole("link", { name: "Advanced" }));
+    await screen.findByRole("region", { name: "Bridge" });
+    expect(within(nav).getByRole("link", { name: "Advanced" })).toHaveAttribute("aria-current", "location");
+    await waitFor(() => expect(scroll.mock.contexts.some((el) => (el as HTMLElement).id === "advanced")).toBe(true));
+    scroll.mockRestore();
+  });
+
+  it("About: the build, and a check-for-updates button", async () => {
+    await open();
+    const about = screen.getByRole("region", { name: "About" });
+    expect(within(about).getByText(new RegExp(`build ${__BUILD_INFO__.id}`))).toBeInTheDocument();
+    expect(within(about).getByRole("button", { name: "Check for updates" })).toBeEnabled();
+    expect(within(about).getByText("Open-source licences")).toBeInTheDocument();
   });
 });
