@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react";
 
 import type { NotifyPrefs } from "@shared/wire";
 import { Switch } from "~/components/ui/switch";
+import { setInAppAlerts, useInAppAlerts } from "@/hooks/use-alert-prefs";
 import { useNotifyPrefs } from "@/hooks/use-notify-prefs";
 import { usePushControl } from "@/hooks/use-push";
 import { availabilityNote, pushFailureText } from "@/lib/push";
@@ -59,6 +60,7 @@ export function NotificationSettings({ readOnly }: { readOnly: boolean }) {
           </div>
         }
       />
+      <InAppAlertsRow />
       {state?.availability !== "server-off" ? <NotifyWhenRows readOnly={readOnly} /> : null}
     </>
   );
@@ -85,5 +87,17 @@ function NotifyWhenRows({ readOnly }: { readOnly: boolean }) {
         />
       ))}
     </>
+  );
+}
+
+/** This device only, and never read-only: it changes nothing on the host. */
+function InAppAlertsRow() {
+  const on = useInAppAlerts();
+  return (
+    <SettingsRow
+      title="In-app alerts"
+      description="While the app is open: a toast when another thread needs you or finishes, and the count on the app icon. This device only."
+      control={<Switch checked={on} onCheckedChange={setInAppAlerts} aria-label="In-app alerts" />}
+    />
   );
 }

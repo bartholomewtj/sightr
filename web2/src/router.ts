@@ -1,5 +1,6 @@
 import { createRouter, type RouterHistory } from "@tanstack/react-router";
 
+import { RouteErrorFallback } from "./components/shell/ErrorFallback";
 import { routeTree } from "./routeTree.gen";
 
 /** The router basepath for vite's `base`: `/` → "/", `/v2/` → "/v2". Pure + exported for tests. */
@@ -21,6 +22,8 @@ export function getRouter(history?: RouterHistory) {
     ...(history ? { history } : {}),
     context: {},
     defaultPreload: "intent",
+    // A route that throws shows Reload and Back, not a blank app.
+    defaultErrorComponent: RouteErrorFallback,
   });
 }
 

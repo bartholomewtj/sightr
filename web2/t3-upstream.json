@@ -675,6 +675,26 @@
       "upstream": "apps/web/src/components/BranchToolbarEnvModeSelector.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "pattern"
+    },
+    {
+      "local": "src/components/RenderErrorBoundary.tsx",
+      "upstream": "apps/web/src/components/RenderErrorBoundary.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/ThreadNotificationCoordinator.tsx",
+      "upstream": "apps/web/src/components/ThreadNotificationCoordinator.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "transition rules and the in-app toast with an Open action kept; Effect atoms, sound and desktop Notification dropped; reads the shell store and sets the app badge"
+    },
+    {
+      "local": "src/components/toast.tsx",
+      "upstream": "apps/web/src/components/ui/toast.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "own stack above the composer; action button, keyed replace and touch swipe-dismiss added for thread alerts"
     }
   ],
   "decisions": [
@@ -815,6 +835,12 @@
       "commit": "db5919d87daf",
       "verdict": "skip",
       "reason": "Expo app is never taken"
+    },
+    {
+      "upstream": "apps/web/src/components/ConnectionStatusDot.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "ConnectionBanner already shows reconnecting and lost; a dot adds only an always-green state and T3's version is built on multi-environment phases and a hover tooltip"
     }
   ]
 }

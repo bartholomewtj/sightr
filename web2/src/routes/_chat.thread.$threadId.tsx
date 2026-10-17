@@ -7,6 +7,8 @@ import { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { TimelineFind } from "~/components/chat/ThreadFindBar";
 import { openThreadFind } from "~/components/chat/useThreadFind";
 import { openCommandPalette } from "@/commandPaletteBus";
+import { RenderErrorBoundary } from "@/components/RenderErrorBoundary";
+import { ErrorFallback } from "@/components/shell/ErrorFallback";
 import { BackToThreads } from "@/components/shell/BackToThreads";
 import { useShortcutHandler } from "@/shortcutHandlers";
 import { Button } from "~/components/ui/button";
@@ -24,8 +26,18 @@ import { useThread, useThreadStore } from "@/stream/stores";
 import { useThreadView, useThreadViewStore, type ThreadView } from "@/threadViewStore";
 
 export const Route = createFileRoute("/_chat/thread/$threadId")({
-  component: ThreadRouteView,
+  component: ThreadRoute,
 });
+
+/** One bad item must not blank the app: a render error shows the thread fallback; another thread resets it. */
+function ThreadRoute() {
+  const { threadId } = Route.useParams();
+  return (
+    <RenderErrorBoundary resetKeys={[threadId]} fallback={<ErrorFallback title="Something went wrong in this thread" />}>
+      <ThreadRouteView />
+    </RenderErrorBoundary>
+  );
+}
 
 /**
  * Opening a thread marks it read (T10), once per visit and only after the thread stream says
