@@ -99,8 +99,10 @@ describe("shortcuts sheet", () => {
     await boot();
     fireEvent.keyDown(document.body, { key: "?", shiftKey: true, code: "Slash" });
     const table = await screen.findByRole("table", { name: "Keyboard shortcuts" });
-    expect(within(table).getAllByRole("row")).toHaveLength(DEFAULT_KEYBINDINGS.length);
-    for (const rule of DEFAULT_KEYBINDINGS) expect(table.querySelector(`[data-shortcut="${rule.command}"]`)).not.toBeNull();
+    // The nine thread-jump rules (Ctrl+1 to Ctrl+9) read as one row.
+    const rules = DEFAULT_KEYBINDINGS.filter((r) => !/^thread\.jump\.[2-9]$/.test(r.command));
+    expect(within(table).getAllByRole("row")).toHaveLength(rules.length);
+    for (const rule of rules) expect(table.querySelector(`[data-shortcut="${rule.command}"]`)).not.toBeNull();
   });
 
   it("? in a text field types a question mark", async () => {

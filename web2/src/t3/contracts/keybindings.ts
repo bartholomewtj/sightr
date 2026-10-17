@@ -8,7 +8,20 @@ export const MAX_KEYBINDING_VALUE_LENGTH = 64;
 export const MAX_WHEN_EXPRESSION_DEPTH = 64;
 export const MAX_KEYBINDINGS_COUNT = 256;
 
-// Not taken: T3's thread-jump (mod+1..9) and model-picker commands.
+// Taken: T3's thread-jump commands (mod+1..9). Not taken: its model-picker jump commands.
+
+export const THREAD_JUMP_KEYBINDING_COMMANDS = [
+  "thread.jump.1",
+  "thread.jump.2",
+  "thread.jump.3",
+  "thread.jump.4",
+  "thread.jump.5",
+  "thread.jump.6",
+  "thread.jump.7",
+  "thread.jump.8",
+  "thread.jump.9",
+] as const;
+export type ThreadJumpKeybindingCommand = (typeof THREAD_JUMP_KEYBINDING_COMMANDS)[number];
 
 const THREAD_KEYBINDING_COMMANDS = [
   "thread.stop",
@@ -19,6 +32,7 @@ const THREAD_KEYBINDING_COMMANDS = [
   "thread.settle",
   "thread.pin",
   "thread.undo",
+  ...THREAD_JUMP_KEYBINDING_COMMANDS,
 ] as const;
 export type ThreadKeybindingCommand = (typeof THREAD_KEYBINDING_COMMANDS)[number];
 
