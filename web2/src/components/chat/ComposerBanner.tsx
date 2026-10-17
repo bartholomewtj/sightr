@@ -2,7 +2,7 @@
 // Changes: flat house surfaces (tokens.md rules out glass, blur and the seam mask), so Surface, Peek,
 // Dock and Column are gone; Root/Row/Icon/Content/Actions/Children/Scroll/Count/Body/ToggleIcon/Dismiss
 // keep T3's names and slots so adopted banner rows port with class edits only. Scroll is a plain
-// overflow box (no ScrollArea fade).
+// overflow box (no ScrollArea fade). Touch: list rows are 44 px and action buttons sit further apart.
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { ChevronDownIcon, XIcon } from "lucide-react";
@@ -111,7 +111,7 @@ function Actions({ className, ...props }: ComponentProps<"span">) {
   return (
     <span
       data-slot="composer-banner-actions"
-      className={cn("flex flex-wrap items-center justify-end gap-1", className)}
+      className={cn("flex flex-wrap items-center justify-end gap-1 pointer-coarse:gap-2", className)}
       {...props}
     />
   );
@@ -121,7 +121,11 @@ function Children({ className, render, ...props }: useRender.ComponentProps<"div
   return useRender({
     defaultTagName: "div",
     render,
-    props: mergeProps<"div">({ className: cn("grid gap-px [&_[data-composer-banner-row]]:min-h-5", className) }, props),
+    // Touch: a 44 px row, so its 44 px button hit areas (ui/button `pointer-coarse:after`) stay in their own row.
+    props: mergeProps<"div">(
+      { className: cn("grid gap-px [&_[data-composer-banner-row]]:min-h-5 pointer-coarse:[&_[data-composer-banner-row]]:min-h-11", className) },
+      props,
+    ),
   });
 }
 

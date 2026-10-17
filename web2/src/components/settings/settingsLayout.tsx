@@ -4,7 +4,7 @@
 // `SettingsPageContainer` (the scrolling, readable-width column, T3's WorkspacePageContainer inlined).
 // Dropped: settings search targets, environment/project scopes, inheritance and reset buttons. Sightr
 // has one bridge and per-device settings; a row the device may not change takes `disabled`, which
-// greys it as T3's `aria-disabled` rows do.
+// greys it as T3's `aria-disabled` rows do. The page scroll keeps the bottom safe area clear.
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 import { cn } from "../../lib/utils";
@@ -96,7 +96,7 @@ export function SettingsRow({
 export function SettingsPageContainer({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div className="flex-1 overflow-y-auto overscroll-y-contain" data-settings-page-scroll>
-      <div className={cn("mx-auto flex w-full max-w-4xl flex-col gap-8 px-4 pt-6 pb-12 sm:px-6", className)}>{children}</div>
+      <div className={cn("mx-auto flex w-full max-w-4xl flex-col gap-8 px-4 pt-6 pb-[max(env(safe-area-inset-bottom),3rem)] sm:px-6", className)}>{children}</div>
     </div>
   );
 }

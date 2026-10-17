@@ -502,6 +502,7 @@ async function submitOnly(io: GuardedSendIo, submitKeys?: string[]): Promise<Rep
  * prompt or an interrupt.
  */
 async function finishSubmit(kit: ComposerKit, io: GuardedSendIo, args: GuardedSendArgs): Promise<ReplyOutcome> {
+  if (kit.submitHeld) return finishHeldSubmit(kit, io, args);
   const first = await submitOnly(io, kit.submitKeys);
   if (first.status === "error" && !first.textDelivered) return first;
   if (await submitClearedDraft(kit, io, args)) {
@@ -523,18 +524,88 @@ function typedUnsubmitted(out: ReplyOutcome): boolean {
   return out.status === "error" && out.textDelivered === true;
 }
 
+/** How long, at most, the guard waits for a harness to stop holding a submit (Pi's startup). */
+export const SUBMIT_HELD_WAIT_MS = 20_000;
+/** Reads during that wait are at least this far apart. */
+const SUBMIT_HELD_STEP_MS = 250;
+/** Submit presses into a held box, at most. Each goes only while a fresh read shows our text. */
+export const MAX_HELD_PRESSES = 3;
+
+const NOT_SUBMITTED = "typed into the pane but not submitted — check the pane before resending";
+
+/**
+ * finishSubmit for a harness that can say "not yet" on screen (`submitHeld`, Pi's startup). Pi takes
+ * typing as soon as its editor is drawn, but an Enter before its startup ends only puts the text
+ * back and prints "Startup is still in progress"; nothing retries it. So: no submit key while the
+ * screen says held; once it moves on, press, and confirm the box emptied. Every press, the first
+ * included, goes only after a fresh read showed OUR text in the box, so an Enter can never land on an
+ * empty editor (a stray turn) or on whatever replaced the composer. The wait is bounded: a marker
+ * that is merely stale gets one press when the wait runs out.
+ */
+async function finishHeldSubmit(kit: ComposerKit, io: GuardedSendIo, args: GuardedSendArgs): Promise<ReplyOutcome> {
+  const step = Math.max(io.pollDelayMs, SUBMIT_HELD_STEP_MS);
+  const budget = { reads: Math.ceil(SUBMIT_HELD_WAIT_MS / step) };
+  let pressed = 0;
+  while (pressed < MAX_HELD_PRESSES) {
+    const state = await waitWhileHeld(kit, io, args, budget, step);
+    if (state === "gone") {
+      return pressed > 0
+        ? { status: "sent" }
+        : { status: "error", error: "The message left the input box before it was submitted — check the pane before resending", textDelivered: true };
+    }
+    // Unknown (no read succeeded), or still held after a press and the whole wait: stop pressing.
+    if (state === "unknown" || (state === "held" && pressed > 0)) break;
+    await submitOnly(io, pressed === 0 ? kit.submitKeys : ["Enter"]);
+    pressed += 1;
+    if (await submitClearedDraft(kit, io, args)) return { status: "sent" };
+  }
+  return { status: "error", error: NOT_SUBMITTED, textDelivered: true };
+}
+
+/**
+ * Read until the box can take a submit: `ready` (our text, not held), `gone` (our text is not in the
+ * box any more), `held` (our text, still held, wait spent), `unknown` (wait spent, no read succeeded).
+ * The first read is immediate; the budget is shared across the whole send.
+ */
+async function waitWhileHeld(
+  kit: ComposerKit,
+  io: GuardedSendIo,
+  args: GuardedSendArgs,
+  budget: { reads: number },
+  step: number,
+): Promise<"ready" | "gone" | "held" | "unknown"> {
+  let last: "held" | null = null;
+  for (let first = true; ; first = false) {
+    if (!first) {
+      if (budget.reads <= 0) return last ?? "unknown";
+      budget.reads -= 1;
+      await io.sleep(step);
+    }
+    let lines: ReturnType<typeof parseLines>;
+    try {
+      lines = parseLines(await io.read());
+    } catch {
+      continue;
+    }
+    if (!boxHoldsSend(kit, lines, args.text)) return "gone";
+    if (!kit.submitHeld?.(lines)) return "ready";
+    last = "held";
+  }
+}
+
+/** Whether this screen's composer still holds this send (the generic match, or the adapter's). */
+function boxHoldsSend(kit: ComposerKit, lines: ReturnType<typeof parseLines>, text: string): boolean {
+  if (kit.composerReady?.(lines) === false) return false;
+  const draft = kit.extractInputDraft(lines);
+  return draftCarriesSend(text, draft) || (draft !== null && kit.draftCarriesSend?.(text, draft) === true);
+}
+
 /** True when the box no longer holds this send — composer gone, empty, or a different remnant. */
 async function submitClearedDraft(kit: ComposerKit, io: GuardedSendIo, args: GuardedSendArgs): Promise<boolean> {
   for (let attempt = 0; attempt < io.pollAttempts; attempt++) {
     if (attempt > 0) await io.sleep(io.pollDelayMs);
     try {
-      const lines = parseLines(await io.read());
-      if (kit.composerReady?.(lines) === false) return true;
-      const draft = kit.extractInputDraft(lines);
-      const stillOurs =
-        draftCarriesSend(args.text, draft) ||
-        (draft !== null && kit.draftCarriesSend?.(args.text, draft) === true);
-      if (!stillOurs) return true;
+      if (!boxHoldsSend(kit, parseLines(await io.read()), args.text)) return true;
     } catch {
       continue;
     }

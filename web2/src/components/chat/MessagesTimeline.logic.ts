@@ -1206,7 +1206,9 @@ export function dayLabel(ms: number, now: number): string {
 /**
  * A `day` row before the first row of each new calendar day (the idea of v1's fold "divider"). Rows
  * with no time of their own (the working header) never start a day. The divider's id is the day, so it
- * stays put as rows arrive.
+ * stays put as rows arrive. Only a step forward starts a day: a row whose clock is behind the one
+ * before it (journal time against the bridge's, a run header stamped now) adds nothing, so a day's id
+ * can never repeat (a repeated LegendList key drops rows).
  */
 export function insertDayDividers(rows: MessagesTimelineRow[], now: number): MessagesTimelineRow[] {
   const out: MessagesTimelineRow[] = [];
@@ -1215,10 +1217,11 @@ export function insertDayDividers(rows: MessagesTimelineRow[], now: number): Mes
     const at = row.createdAt;
     if (typeof at === "number" && Number.isFinite(at) && at > 0 && row.kind !== "assistant-meta") {
       const day = localDayKey(at);
-      if (currentDay !== null && day !== currentDay) {
-        out.push({ kind: "day", id: `day:${day}`, createdAt: at, label: dayLabel(at, now) });
+      // `YYYY-MM-DD` keys order as strings.
+      if (currentDay === null || day > currentDay) {
+        if (currentDay !== null) out.push({ kind: "day", id: `day:${day}`, createdAt: at, label: dayLabel(at, now) });
+        currentDay = day;
       }
-      currentDay = day;
     }
     out.push(row);
   }

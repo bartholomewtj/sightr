@@ -46,7 +46,6 @@ import {
   patchComposer,
   readyAttachments,
   removeAttachment,
-  resolveEnterMode,
   respondToRequest,
   retryAttachment,
   saveQueuedEdit,
@@ -60,6 +59,9 @@ import {
 import { useBridgeInfo, useStreamHealth, useThread } from "@/stream/stores";
 import { Button } from "../ui/button";
 import {
+  composerMaxHeight,
+  enterModeFor,
+  isCompacting,
   isLargePaste,
   MAX_COMPOSER_CHARS,
   resolveComposerButtons,
@@ -110,6 +112,24 @@ function pendingRequests(requests: Record<string, RuntimeRequest> | undefined): 
     .sort((a, b) => a.createdAt - b.createdAt);
 }
 
+const COARSE_QUERY = "(pointer: coarse)";
+
+/** A touch screen is the primary pointer: Enter adds a line (the send button sends), the keyboard is on screen while typing. */
+function useCoarsePointer(): boolean {
+  const [coarse, setCoarse] = useState(
+    () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(COARSE_QUERY).matches,
+  );
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mql = window.matchMedia(COARSE_QUERY);
+    const on = () => setCoarse(mql.matches);
+    on();
+    mql.addEventListener("change", on);
+    return () => mql.removeEventListener("change", on);
+  }, []);
+  return coarse;
+}
+
 /** Ctrl/⌘ held anywhere on the page (T3's shortcut modifier state), for the live Queue/Steer label. */
 function useAlternateModifier(): boolean {
   const [held, setHeld] = useState(false);
@@ -146,7 +166,10 @@ export function ChatComposer({ threadId }: { threadId: string }) {
   const composer = useThreadComposer(threadId);
   const storedEnter = useComposerSettings((s) => s.enterMode);
   const followUp = useComposerSettings((s) => s.followUp);
-  const enterMode = resolveEnterMode(storedEnter, layout);
+  const coarse = useCoarsePointer();
+  // Phone first: on a touch screen (a phone, or a tablet wide enough for the desktop layout) Enter is a
+  // newline by default, so dictation and multi-line messages never send half-done.
+  const enterMode = enterModeFor(storedEnter, layout, coarse);
   const alternate = useAlternateModifier();
   const operatorCommands = useOperatorCommands();
   const operatorKeys = useOperatorKeys();
@@ -161,6 +184,9 @@ export function ChatComposer({ threadId }: { threadId: string }) {
   const queueRef = useRef<QueuedRunsControlHandle>(null);
   const firstOptionRef = useRef<HTMLButtonElement>(null);
   const boxFocused = useRef(false);
+  // The box has focus on a touch screen: the soft keyboard is up and covers the home indicator, so the
+  // safe-area padding under the composer would only be a gap above the keyboard.
+  const [typing, setTyping] = useState(false);
   const [armed, setArmed] = useState<string | null>(null);
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
   const [keysOpen, setKeysOpen] = useState(false);
@@ -176,6 +202,11 @@ export function ChatComposer({ threadId }: { threadId: string }) {
   const request = requests[0] ?? null;
   const uploading = composer.attachments.some((c) => c.status === "uploading");
   const hasContent = text.trim() !== "" || readyAttachments(composer.attachments).length > 0;
+  // T3 #20184: a `/compact` run cannot take steering; follow-ups queue (the bridge enforces it too).
+  const runs = state?.runs;
+  const items = state?.items;
+  const compacting = useMemo(() => (runs && items ? isCompacting({ runs, items }) : false), [runs, items]);
+  const canSteer = !compacting;
 
   const setText = (next: string, persist = true) => {
     textRef.current = next;
@@ -193,19 +224,27 @@ export function ChatComposer({ threadId }: { threadId: string }) {
     linkLost,
     readOnly,
     uploading,
+    canSteer,
   };
   const buttons = resolveComposerButtons({ ...buttonInput, alternate });
-  const canSteerQueued = thread?.status === "working" && workingMode("steer", false, thread.capabilities) === "steer";
+  const canSteerQueued = thread?.status === "working" && workingMode("steer", false, thread.capabilities, canSteer) === "steer";
 
-  // ── Autosize: grow to eight lines, then scroll ──
+  // ── Autosize: grow to eight lines (less when the keyboard leaves little room), then scroll ──
   useEffect(() => {
-    const el = boxRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const line = Number.parseFloat(getComputedStyle(el).lineHeight) || 20;
-    const max = line * MAX_LINES + 16;
-    el.style.height = `${Math.min(el.scrollHeight, max)}px`;
-    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+    const fit = () => {
+      const el = boxRef.current;
+      if (!el) return;
+      el.style.height = "auto";
+      const style = getComputedStyle(el);
+      const max = composerMaxHeight(Number.parseFloat(style.lineHeight), MAX_LINES, Number.parseFloat(style.maxHeight));
+      el.style.height = `${Math.min(el.scrollHeight, max)}px`;
+      el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+    };
+    fit();
+    // The keyboard opening resizes the viewport (`interactive-widget=resizes-content`), and the box's
+    // dvh cap with it.
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
   }, [text, request]);
 
   // ── The destructive guard disarms on its own ──
@@ -513,6 +552,8 @@ export function ChatComposer({ threadId }: { threadId: string }) {
     banners.push({ id: "link", variant: "error", priority: "urgent", icon: <WifiOffIcon />, title: "Not connected. Sending is paused." });
   }
 
+  const statusText = armed ? `Destructive: ${armed}. Tap Confirm to send.` : (buttons.primary.reason ?? "");
+
   const announce = request
     ? request.kind === "password"
       ? "The agent is asking for a password."
@@ -520,7 +561,11 @@ export function ChatComposer({ threadId }: { threadId: string }) {
     : "";
 
   return (
-    <div data-region="composer" className="border-t bg-background px-3 pt-2 pb-[max(env(safe-area-inset-bottom),0.5rem)]">
+    <div
+      data-region="composer"
+      data-typing={typing || undefined}
+      className="border-t bg-background px-3 pt-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] data-typing:pb-2"
+    >
       <div aria-live="assertive" className="sr-only">
         {announce}
       </div>
@@ -536,7 +581,14 @@ export function ChatComposer({ threadId }: { threadId: string }) {
           onCancelEdit={cancelEdit}
         />
         {request ? (
-          <section role="region" aria-label="The agent is asking" data-request-panel="true">
+          // A tall card (a long menu, a preview) scrolls inside itself, so its buttons stay on screen and
+          // the timeline keeps a strip above it.
+          <section
+            role="region"
+            aria-label="The agent is asking"
+            data-request-panel="true"
+            className="max-h-[min(40rem,70dvh)] overflow-y-auto overscroll-contain"
+          >
             {isWhistlrDecision(request) ? (
               // T19: a draftr decision goes through `whistlr reply`, never keys or runtime-request.respond.
               <ComposerDecisionPanel
@@ -658,17 +710,25 @@ export function ChatComposer({ threadId }: { threadId: string }) {
                 autoCapitalize="sentences"
                 enterKeyHint={enterMode === "enter" ? "send" : "enter"}
                 placeholder={editing ? "Edit the queued message" : "Message the agent"}
-                className="block w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-base text-foreground outline-none placeholder:text-placeholder disabled:opacity-64 sm:text-sm"
+                className="block max-h-[40dvh] w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-base text-foreground outline-none placeholder:text-placeholder disabled:opacity-64 pointer-fine:sm:text-sm"
                 onChange={onChange}
                 onKeyDown={onKeyDown}
                 onPaste={onPaste}
                 onFocus={() => {
                   boxFocused.current = true;
+                  if (coarse) setTyping(true);
                 }}
                 onBlur={() => {
                   boxFocused.current = false;
+                  setTyping(false);
                 }}
               />
+              {statusText && layout === "phone" ? (
+                // Phone: the toolbar has no room left for it, so the hint gets its own line.
+                <p className="px-3 pb-0.5 text-xs text-muted-foreground" aria-live="polite" data-composer-status="">
+                  {statusText}
+                </p>
+              ) : null}
               <div className="flex items-center gap-1 px-1.5 pb-1.5">
                 <input
                   ref={fileRef}
@@ -704,8 +764,8 @@ export function ChatComposer({ threadId }: { threadId: string }) {
                     <KeyboardIcon />
                   </Button>
                 ) : null}
-                <span className="min-w-0 flex-1 truncate px-1 text-xs text-muted-foreground" aria-live="polite">
-                  {armed ? `Destructive: ${armed}. Tap again to send.` : (buttons.primary.reason ?? "")}
+                <span className="min-w-0 flex-1 truncate px-1 text-xs text-muted-foreground" aria-live={layout === "phone" ? undefined : "polite"}>
+                  {layout === "phone" ? "" : statusText}
                 </span>
                 {layout === "phone" ? (
                   <GestureWheel
@@ -727,6 +787,7 @@ export function ChatComposer({ threadId }: { threadId: string }) {
                   confirmArmed={armed !== null}
                   interrupting={composer.busy === "interrupt"}
                   followUp={followUp}
+                  canSteer={canSteer}
                   onSubmit={(alt) => void submit(alt)}
                   onInterrupt={() => void interruptRun(threadId)}
                 />
@@ -751,6 +812,8 @@ function AttachmentChipView({ chip, onRetry, onRemove }: { chip: AttachmentChip;
       {chip.status === "uploading" ? <Loader2Icon className="size-3 animate-spin" aria-label="Uploading" /> : null}
       <span className="min-w-0 truncate" title={chip.error ?? chip.name}>
         {chip.name}
+        {/* A title is hover-only; a phone needs the reason on the chip. */}
+        {chip.status === "failed" && chip.error ? <span className="ms-1 opacity-80">· {chip.error}</span> : null}
       </span>
       {chip.status === "failed" ? (
         <Button size="xs" variant="ghost" onClick={onRetry}>

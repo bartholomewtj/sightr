@@ -5,6 +5,7 @@ import { KIT_AGENTS, composerFor } from "./composer-kit";
 // two ever held different functions, the bridge and the phone could judge one screen two ways.
 const FIELDS = [
   "composerReady",
+  "submitHeld",
   "extractInputDraft",
   "composerPrompt",
   "unbindableComposer",

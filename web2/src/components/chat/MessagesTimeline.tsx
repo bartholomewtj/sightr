@@ -14,6 +14,10 @@
 //   `ToolItemDetail` (the job of T3's V2ItemInspector) and is only mounted while open.
 // - No shimmer: the house look allows one motion, the working pulse (`animate-status-pulse`).
 // - Settings → Display → Show thinking off (T18) drops `reasoning` items before the rows are derived.
+// - Phone pass: an opened tool entry stays open when the list unmounts and remounts its row (T3 keeps
+//   this in its work-group view state; here a map held while the timeline is mounted); LegendList pins
+//   at any distance while following (threshold 1, as upstream) so the follow decision is ours alone;
+//   raw buttons get a 44 px coarse-pointer height; an expanded thought follows its live text.
 // - Left out: minimap, find, citations, forks, diffs, revert, attachments previews, subagents,
 //   worktree setup, MCP apps, HTML renders, proposed plans.
 import { LegendList, type LegendListRef, type MaintainScrollAtEndOptions } from "@legendapp/list/react";
@@ -55,7 +59,7 @@ import {
 
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import { Tooltip, TooltipPopup, TooltipScrollDismissArea, TooltipTrigger } from "~/components/ui/tooltip";
 import ChatMarkdown from "~/components/ChatMarkdown";
 import {
   deriveTimelineEntries,
@@ -109,6 +113,8 @@ interface TimelineRowSharedState {
   harness: string;
   onToggleTurnFold: (runId: string) => void;
   onToggleWorkGroup: (groupId: string) => void;
+  /** The operator's open/closed choice per tool entry, kept while the list unmounts its row. */
+  entryDisclosure: Map<string, boolean>;
 }
 
 interface TimelineRowActivityState {
@@ -180,14 +186,18 @@ export function MessagesTimeline({ threadId }: MessagesTimelineProps) {
     return stable.current.result;
   }, [derivedRows]);
 
+  // T3's `workGroupViewState.expandedEntries`: the operator's tool-entry toggles, for as long as this
+  // thread's timeline is mounted, so a row the list unmounts off-screen comes back as it was left.
+  const entryDisclosure = useMemo(() => new Map<string, boolean>(), [threadId]);
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       threadId,
       harness: thread?.harness ?? "",
       onToggleTurnFold: (runId) => toggleTurnFold(threadId, runId),
       onToggleWorkGroup: (groupId) => toggleWorkGroup(threadId, groupId),
+      entryDisclosure,
     }),
-    [threadId, thread?.harness],
+    [threadId, thread?.harness, entryDisclosure],
   );
   const activityState = useMemo<TimelineRowActivityState>(
     () => ({ isWorking, awaitingUser, queuedCount: state?.queue.length ?? 0, runningRunId: runningRun?.id ?? null }),
@@ -265,7 +275,9 @@ export function MessagesTimeline({ threadId }: MessagesTimelineProps) {
   if (state === null || (state.syncing && items.length === 0)) {
     return <TimelineSkeleton />;
   }
-  if (rows.length === 0) {
+  // With older pages still on the bridge an empty window is not an empty thread: keep the list, whose
+  // header offers "Load earlier messages" (T3 shows its placeholder only without history controls).
+  if (rows.length === 0 && historyCursor === null) {
     const noJournal = thread !== null && !thread.capabilities.hasJournal;
     return (
       <div className="flex h-full items-center justify-center px-6" data-timeline-empty="true">
@@ -279,7 +291,7 @@ export function MessagesTimeline({ threadId }: MessagesTimelineProps) {
   return (
     <TimelineRowCtx value={sharedState}>
       <TimelineRowActivityCtx value={activityState}>
-        <div ref={setTimelineEl} className="relative h-full min-h-0" data-timeline="true">
+        <TooltipScrollDismissArea ref={setTimelineEl} className="relative h-full min-h-0" data-timeline="true">
           <LegendList<MessagesTimelineRow>
             ref={listRef}
             data={rows}
@@ -291,7 +303,9 @@ export function MessagesTimeline({ threadId }: MessagesTimelineProps) {
             recycleItems={false}
             initialScrollAtEnd
             maintainScrollAtEnd={following && !find.isOpen ? TIMELINE_MAINTAIN_SCROLL_AT_END : false}
-            maintainScrollAtEndThreshold={0.1}
+            // `following` decides; a fraction of the viewport would disagree with the 80 px follow
+            // band on a short (keyboard-open) phone viewport and leave new rows unpinned with no pill.
+            maintainScrollAtEndThreshold={1}
             maintainVisibleContentPosition={MAINTAIN_VISIBLE_CONTENT_POSITION}
             onScroll={handleScroll}
             onStartReached={onStartReached}
@@ -315,7 +329,7 @@ export function MessagesTimeline({ threadId }: MessagesTimelineProps) {
               </Button>
             </div>
           ) : null}
-        </div>
+        </TooltipScrollDismissArea>
       </TimelineRowActivityCtx>
     </TimelineRowCtx>
   );
@@ -371,7 +385,7 @@ function TimelineHistoryControl(props: {
             disabled={props.loading}
             aria-label="Load earlier messages"
             onClick={props.onLoadEarlier}
-            className="w-full py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:cursor-default"
+            className="w-full py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:cursor-default pointer-coarse:min-h-11"
           >
             {props.loading ? "Loading earlier messages…" : "Load earlier messages"}
           </button>
@@ -613,7 +627,7 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
         type="button"
         aria-expanded={row.expanded}
         onClick={() => ctx.onToggleTurnFold(row.runId)}
-        className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+        className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70 pointer-coarse:min-h-11"
       >
         <span>{row.label}</span>
         {row.expanded ? <ChevronDownIcon className="size-3.5" /> : <ChevronRightIcon className="size-3.5" />}
@@ -764,7 +778,7 @@ function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "think
   return (
     <button
       type="button"
-      className="group/live-work flex min-h-6 w-full max-w-full cursor-pointer items-center rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+      className="group/live-work flex min-h-6 w-full max-w-full cursor-pointer items-center rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70 pointer-coarse:min-h-11"
       aria-expanded={row.expanded === true}
       onClick={() => ctx.onToggleWorkGroup(groupId)}
     >
@@ -821,7 +835,7 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
       type="button"
       className={cn(
         "group/live-work flex w-full max-w-full cursor-pointer rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
-        thoughtLine ? "flex-col items-start" : "min-h-6 items-center",
+        thoughtLine ? "flex-col items-start" : "min-h-6 items-center pointer-coarse:min-h-11",
       )}
       aria-label={failed ? `${label}, tool call failed` : undefined}
       aria-expanded={row.expanded}
@@ -927,7 +941,7 @@ function WorkGroupHeader(props: {
           <TimelineRowTimestamp createdAt={props.createdAt} />
           <ChevronRightIcon
             aria-hidden
-            className={cn("size-3 shrink-0 text-icon-muted opacity-70 transition-transform duration-200", props.expanded && "rotate-90")}
+            className={cn("size-3 shrink-0 text-icon-muted opacity-70 transition-transform duration-200 motion-reduce:transition-none", props.expanded && "rotate-90")}
           />
         </>
       }
@@ -1044,7 +1058,15 @@ function workEntryIconName(workEntry: WorkLogEntry): WorkEntryIconName {
 
 const failedToolIconClassName = "text-warning";
 
+/** "Usage limit reached." with T3's "Retry after <time>." when the failure carries `resetAt`. */
+function usageLimitLabel(resetAt: number | null | undefined, now = Date.now()): string {
+  if (!resetAt || !Number.isFinite(resetAt) || resetAt <= now) return "Usage limit reached.";
+  const sameDay = new Date(resetAt).toDateString() === new Date(now).toDateString();
+  return `Usage limit reached. Retry after ${sameDay ? formatClock(resetAt) : formatFull(resetAt)}.`;
+}
+
 function WorkEntryLogRow({ workEntry, displayLabel }: { workEntry: WorkLogEntry; displayLabel?: string | undefined }) {
+  const { entryDisclosure } = use(TimelineRowCtx);
   const item = workEntry.projectedItem;
   const isReasoning = workEntry.itemType === "reasoning";
   const showWarningIndicator = workEntry.sourceActivityKind === "runtime.warning";
@@ -1055,8 +1077,9 @@ function WorkEntryLogRow({ workEntry, displayLabel }: { workEntry: WorkLogEntry;
   const canExpand = isReasoning
     ? Boolean(workEntry.detail?.trim())
     : item !== undefined && toolItemHasDetail(item, previewText);
-  // A failed tool opens on its own (T11); the operator's toggle wins after that.
-  const [expanded, setExpanded] = useState(() => showFailedIndicator && canExpand);
+  // A failed tool opens on its own (T11); the operator's toggle wins after that, also when the list
+  // unmounts the row off-screen and mounts it again.
+  const [expanded, setExpanded] = useState(() => entryDisclosure.get(workEntry.id) ?? (showFailedIndicator && canExpand));
 
   if (item?.type === "error" && item.status === "failed") {
     const warning = item.failure.class === "usage_limit";
@@ -1065,7 +1088,7 @@ function WorkEntryLogRow({ workEntry, displayLabel }: { workEntry: WorkLogEntry;
         data-item-type="error"
         wrapLabel
         icon={<CircleAlertIcon className="size-4 text-warning" />}
-        label={<span className="text-sm font-medium text-warning">{warning ? "Usage limit reached." : workEntry.label}</span>}
+        label={<span className="text-sm font-medium text-warning">{warning ? usageLimitLabel(item.failure.resetAt) : workEntry.label}</span>}
         trailing={<TimelineRowTimestamp createdAt={workEntry.createdAt} alwaysVisible />}
       >
         {!warning ? (
@@ -1098,7 +1121,11 @@ function WorkEntryLogRow({ workEntry, displayLabel }: { workEntry: WorkLogEntry;
       : "text-foreground/80";
   const thoughtPreview = isReasoning && !expanded ? liveThoughtLine(workEntry.detail ?? "") : "";
   const accessibleText = showFailedIndicator ? `${previewText}, tool call failed` : previewText;
-  const toggle = () => setExpanded((value) => !value);
+  const toggle = () => {
+    entryDisclosure.set(workEntry.id, !expanded);
+    setExpanded(!expanded);
+  };
+  const thoughtStreaming = item?.type === "reasoning" && item.streaming;
   const rowToggleProps = canExpand
     ? {
         role: "button" as const,
@@ -1143,15 +1170,22 @@ function WorkEntryLogRow({ workEntry, displayLabel }: { workEntry: WorkLogEntry;
           <TimelineRowTimestamp createdAt={workEntry.createdAt} />
           <span className={cn("flex size-4 shrink-0 items-center justify-center", !canExpand && "invisible")} aria-hidden>
             <ChevronRightIcon
-              className={cn("size-3 shrink-0 text-icon-muted opacity-70 transition-transform duration-200", expanded && "rotate-90")}
+              className={cn("size-3 shrink-0 text-icon-muted opacity-70 transition-transform duration-200 motion-reduce:transition-none", expanded && "rotate-90")}
             />
           </span>
         </>
       }
     >
       {expanded && isReasoning ? (
-        <WorkLogDetails>
-          <ChatMarkdown className="text-foreground" text={workEntry.detail ?? ""} headingLevelOffset={MESSAGE_HEADING_LEVEL} lineBreaks />
+        // T3's ReasoningTraceContent: a thought still being written keeps its newest text in view.
+        <WorkLogDetails followLive={thoughtStreaming}>
+          <ChatMarkdown
+            className="text-foreground"
+            text={workEntry.detail ?? ""}
+            isStreaming={thoughtStreaming}
+            headingLevelOffset={MESSAGE_HEADING_LEVEL}
+            lineBreaks
+          />
         </WorkLogDetails>
       ) : null}
       {expanded && !isReasoning && item ? (

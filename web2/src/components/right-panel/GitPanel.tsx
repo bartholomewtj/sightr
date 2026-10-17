@@ -1,13 +1,18 @@
 /**
  * The Git tab (T13), read-only: v1's `/api/files/git` for the thread's folder. Branch, the changed
  * files with their status letters, and each file's diff on tap (v1's `parseDiff`). Refreshes on the
- * button and when the thread's run ends. No stage, commit, push or PR (out of scope, README).
+ * button, when the thread's run ends, and when the page returns to the foreground or the network is back. No stage, commit, push or PR (out of scope, README).
+ *
+ * Phone: paths wrap (a truncated path hides the file name), rows are thumb-sized on a touch screen, a
+ * diff scrolls sideways inside its own box without dragging the sheet, and the expanded file and the
+ * scroll position are remembered per thread so a closed and reopened sheet resumes where it was.
  */
 import { GitBranchIcon, RotateCwIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { FolderGitResponse } from "@shared/wire";
 import { Button } from "~/components/ui/button";
+import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { fetchFolderGit } from "@/lib/api";
 import { useSidebarThread } from "@/state/sidebar";
 import { useThread } from "@/stream/stores";
@@ -42,6 +47,14 @@ function useRunEnded(threadId: string, onEnd: () => void): void {
   }, [latest?.id, latest?.status]);
 }
 
+/** The file each thread's Git tab had expanded, kept across a closed sheet. */
+const expandedMemory = new Map<string, string | null>();
+
+/** Test helper. */
+export function __resetGitNav(): void {
+  expandedMemory.clear();
+}
+
 export function GitPanel({ threadId }: { threadId: string }) {
   const state = useThread(threadId);
   const shellThread = useSidebarThread(threadId);
@@ -52,10 +65,26 @@ export function GitPanel({ threadId }: { threadId: string }) {
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [refreshes, setRefreshes] = useState(0);
-  const [openFile, setOpenFile] = useState<string | null>(null);
+  const [openFile, setOpenFile] = useState<string | null>(() => expandedMemory.get(threadId) ?? null);
+  useEffect(() => {
+    expandedMemory.set(threadId, openFile);
+  }, [threadId, openFile]);
+  const scrollRef = useScrollMemory<HTMLDivElement>(`git:${threadId}`);
 
   const refresh = () => setRefreshes((n) => n + 1);
   useRunEnded(threadId, refresh);
+  // Back from sleep or another app (and the network returning): the status may have moved on meanwhile.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") setRefreshes((n) => n + 1);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onVisible);
+    };
+  }, []);
 
   useEffect(() => {
     if (folder.path === undefined || folder.path === null || !paneId) return;
@@ -97,7 +126,7 @@ export function GitPanel({ threadId }: { threadId: string }) {
           Refresh
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-3 text-sm">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-3 text-sm">
         {loading && !result ? <p className="text-muted-foreground">Checking…</p> : null}
         {error ? <p className="text-muted-foreground">Couldn't read git here.</p> : null}
         {result && !result.available ? <p>{UNAVAILABLE[result.reason]}</p> : null}
@@ -115,16 +144,16 @@ export function GitPanel({ threadId }: { threadId: string }) {
                       aria-expanded={lines ? expanded : undefined}
                       disabled={!lines}
                       onClick={() => setOpenFile(expanded ? null : e.path)}
-                      className="flex w-full items-center gap-3 px-2 py-1 text-left disabled:cursor-default"
+                      className="flex w-full items-start gap-3 px-2 py-1 text-left disabled:cursor-default pointer-coarse:py-2.5"
                     >
                       <code className="w-6 shrink-0 font-mono text-xs text-muted-foreground">
                         {e.x}
                         {e.y}
                       </code>
-                      <span className="min-w-0 flex-1 truncate font-mono text-xs">{e.path}</span>
+                      <span className="min-w-0 flex-1 wrap-anywhere font-mono text-xs">{e.path}</span>
                     </button>
                     {expanded && lines ? (
-                      <pre className="overflow-x-auto border-t py-1 font-mono text-xs leading-5">
+                      <pre className="overflow-x-auto overscroll-x-contain border-t py-1 font-mono text-xs leading-5">
                         {lines.map((line, i) => (
                           <div key={i} className="w-max min-w-full px-2" data-diff-line={line[0] ?? " "} style={lineStyle(line)}>
                             {line || " "}

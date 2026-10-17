@@ -17,6 +17,7 @@ import {
   createQueueDrainer,
   heldRow,
   isSettled,
+  openRunIsMaintenance,
   queueEvent,
   REAL_TIMERS,
   type DeliverResult,
@@ -33,6 +34,8 @@ import type { EffectContext, EffectHandler, EffectOutcome, EffectRegistry } from
 //   `/api/pane/:id/send` route runs), inside the pane write queue.
 // - queue: a row in `queued_messages`; the drainer (queue-drain.ts) sends it when the thread rests.
 // - steer: the interrupt key, a wait for the thread to rest (not holding the pane queue), then start.
+//   While the open run started from `/compact` (or `/logout`), a steer is a queue instead: the key
+//   would cancel the compaction (T3 #20184, `CommandPolicy.resolveMessageDispatchIntent`).
 //
 // A blocked thread never receives a dispatch, and no decision here reads a harness id: only the
 // thread's capability flags.
@@ -52,7 +55,18 @@ export const MAX_ATTACHMENTS = 10;
 export interface DispatchDeps {
   store: Pick<
     ThreadStore,
-    "append" | "onCommitted" | "getThread" | "listQueued" | "getQueued" | "pendingRequests" | "openRun" | "now" | "newId"
+    | "append"
+    | "onCommitted"
+    | "getThread"
+    | "listQueued"
+    | "getQueued"
+    | "pendingRequests"
+    | "openRun"
+    | "getTurnItem"
+    | "itemsForRun"
+    | "recentItems"
+    | "now"
+    | "newId"
   >;
   sender: GuardedSender;
   herdr: Pick<HerdrClient, "sendPaneKeys" | "sendPaneText">;
@@ -264,10 +278,13 @@ export function createDispatcher(deps: DispatchDeps): Dispatcher {
 
   // ── interrupt ──
 
-  type InterruptResult = { ok: true } | { ok: false; outcome: EffectOutcome };
+  type InterruptResult = { ok: true } | { ok: false; outcome: EffectOutcome } | { ok: false; maintenance: true };
 
-  /** One press of the thread's interrupt keys, in the pane's queue turn; marks the open run. */
-  const sendInterrupt = async (thread: ServerThread): Promise<InterruptResult> => {
+  /**
+   * One press of the thread's interrupt keys, in the pane's queue turn; marks the open run. With
+   * `steering`, a run found to have started from `/compact` by then is left alone (no key).
+   */
+  const sendInterrupt = async (thread: ServerThread, opts: { steering?: boolean } = {}): Promise<InterruptResult> => {
     const keys = thread.capabilities.interruptKeys ?? [];
     try {
       return await queue.run(paneKey(thread.paneId), async (): Promise<InterruptResult> => {
@@ -276,6 +293,7 @@ export function createDispatcher(deps: DispatchDeps): Dispatcher {
         if (!pane || (thread.terminalId && pane.terminalId && pane.terminalId !== thread.terminalId)) {
           return { ok: false, outcome: conflict("pane-gone") };
         }
+        if (opts.steering && openRunIsMaintenance(store, thread.id)) return { ok: false, maintenance: true };
         try {
           await sendKeysPaced(herdr, thread.paneId, keys, deps.sleep);
         } catch (err) {
@@ -324,12 +342,27 @@ export function createDispatcher(deps: DispatchDeps): Dispatcher {
     ]);
   };
 
+  /** The steer row becomes a plain queued follow-up at the back of the queue (a `/compact` run). */
+  const requeueSteer = (threadId: string, rowId: string) => {
+    const rows = store.listQueued(threadId);
+    const row = rows.find((r) => r.id === rowId);
+    if (!row || store.getThread(threadId) === null) return;
+    const rest = rows.filter((r) => r.id !== rowId);
+    const next: QueuedMessage = { ...row, mode: "queue", state: "queued", position: rest.length };
+    store.append([queueEvent(threadId, [...rest, next])]);
+    drainer.kick(threadId);
+  };
+
   const runSteer = async (threadId: string, rowId: string, press: boolean): Promise<void> => {
     const thread = store.getThread(threadId);
     if (!thread) return;
     // A Stop was just pressed: the run is already stopping, and a second key would do something else.
-    const pressed: InterruptResult = press ? await sendInterrupt(thread) : { ok: true };
+    const pressed: InterruptResult = press ? await sendInterrupt(thread, { steering: true }) : { ok: true };
     if (!pressed.ok) {
+      if ("maintenance" in pressed) {
+        requeueSteer(threadId, rowId);
+        return;
+      }
       const o = pressed.outcome;
       holdSteer(threadId, rowId, "interrupt-failed", o.ok ? undefined : o.error);
       return;
@@ -411,7 +444,7 @@ export function createDispatcher(deps: DispatchDeps): Dispatcher {
 
     if (c.mode === "start") return startNow();
 
-    if (c.mode === "queue") {
+    const enqueue = (): EffectOutcome | Promise<EffectOutcome> => {
       if (!caps.canQueueDrain) return refuse(409, "unsupported", "queue-unsupported");
       const rows = store.listQueued(thread.id);
       // Nothing ahead of it and nothing in the way: there is no reason to wait.
@@ -429,13 +462,18 @@ export function createDispatcher(deps: DispatchDeps): Dispatcher {
       const out = commit([queueEvent(thread.id, [...rows, row], "added")], ctx, thread.id);
       drainer.kick(thread.id);
       return out;
-    }
+    };
+
+    if (c.mode === "queue") return enqueue();
 
     // steer
     if (resting && !blocked) return startPath(thread, c.text, attachments, ctx);
     if (blocked) return conflict("needs-response");
     if (status !== "working") return conflict("thread-busy");
     if (!caps.canQueueDrain) return refuse(409, "unsupported", "queue-unsupported");
+    // A run started from `/compact` cannot take steering: the interrupt key would cancel the
+    // compaction. The follow-up waits in the queue like any other (T3 #20184).
+    if (openRunIsMaintenance(store, thread.id)) return enqueue();
     const stopping = pressedRecently(thread.id);
     const refusal = stopping ? null : interruptRefusal(thread);
     if (refusal) return refusal;
@@ -464,7 +502,7 @@ export function createDispatcher(deps: DispatchDeps): Dispatcher {
     const refusal = interruptRefusal(thread);
     if (refusal) return refusal;
     const pressed = await sendInterrupt(thread);
-    if (!pressed.ok) return pressed.outcome;
+    if (!pressed.ok) return "outcome" in pressed ? pressed.outcome : conflict("not-working");
     return commit([], ctx, thread.id);
   };
 

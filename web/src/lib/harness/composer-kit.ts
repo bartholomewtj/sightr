@@ -31,10 +31,13 @@ import {
   permissionModeOf as grokMode,
 } from "./grok/chrome";
 import { chipCarriesSend } from "./grok/chips";
+import { composerReady as piReady, extractInputDraft as piDraft, submitHeld as piHeld } from "./pi/chrome";
 
 /** The slice of a HarnessAdapter the reply guard uses. Same names and meanings (harness/types.ts). */
 export interface ComposerKit {
   composerReady?(lines: StyledLine[]): boolean;
+  /** The box holds the text but the harness refuses to submit yet (Pi's startup); see harness/types.ts. */
+  submitHeld?(lines: StyledLine[]): boolean;
   extractInputDraft(lines: StyledLine[]): string | null;
   composerPrompt?(lines: StyledLine[]): string | null;
   unbindableComposer?(lines: StyledLine[]): string | null;
@@ -46,9 +49,6 @@ export interface ComposerKit {
   permissionModeOf?(lines: StyledLine[]): string | null;
   defaultModeId?: string;
 }
-
-/** Pi's input box is not captured (replyOneShot); the adapter uses this too, so the two are one. */
-export const noInputDraft = (): null => null;
 
 const AGY: ComposerKit = {
   extractInputDraft: agyDraft,
@@ -82,7 +82,7 @@ const KITS: Record<string, ComposerKit> = {
     submitKeys: ["Right", "Enter"],
     permissionModeOf: cursorMode,
   },
-  pi: { extractInputDraft: noInputDraft, replyOneShot: true },
+  pi: { extractInputDraft: piDraft, composerReady: piReady, submitHeld: piHeld },
 };
 
 /** The agents this file knows, for the parity test. */

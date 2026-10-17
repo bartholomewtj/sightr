@@ -48,6 +48,58 @@ class FakeClaude {
   }
 }
 
+// Pi, from real captures. Pi takes typing as soon as its editor is drawn, but an Enter before its
+// startup ends puts the text back and prints "Startup is still in progress" (the live bug: the first
+// message of a new thread sat typed and unsubmitted).
+const PI_MESSAGE =
+  "List the files in the web2/src/components/chat folder that end in .logic.ts, then tell me which is largest. Keep it to two sentences.";
+const PI_IDLE = fixture("pi--idle-empty.txt");
+const PI_HELD = fixture("pi--startup-in-progress.txt");
+const PI_STARTED = fixture("pi--startup-done-draft.txt");
+/** The empty editor's one row: the cursor cell, then padding. */
+const PI_EMPTY_ROW = /^\x1b\[0m\x1b\[7m \x1b\[0m */m;
+
+class FakePi {
+  draft = "";
+  /** Reads before startup ends; each read is one tick of the clock. */
+  startupReads: number;
+  /** An Enter was refused, so the marker is in the chat. */
+  refused = false;
+  submitted: string[] = [];
+  texts: string[] = [];
+  keys: string[] = [];
+  constructor(startupReads = 0) {
+    this.startupReads = startupReads;
+  }
+  screen(): string {
+    if (this.startupReads > 0) this.startupReads--;
+    if (this.draft === "") return PI_IDLE;
+    if (this.refused) return (this.startupReads > 0 ? PI_HELD : PI_STARTED).replace(PI_MESSAGE, this.draft);
+    return PI_IDLE.replace(PI_EMPTY_ROW, `${this.draft}\x1b[0m\x1b[7m \x1b[0m`);
+  }
+  readPane(paneId: string) {
+    return Promise.resolve({ pane_id: paneId, text: this.screen(), truncated: false, revision: 0 });
+  }
+  sendPaneText(_paneId: string, text: string) {
+    this.texts.push(text);
+    this.draft += text;
+    return Promise.resolve();
+  }
+  sendPaneKeys(_paneId: string, keys: string[]) {
+    for (const k of keys) {
+      this.keys.push(k);
+      if (k !== "Enter" || this.draft === "") continue;
+      if (this.startupReads > 0) this.refused = true;
+      else {
+        this.submitted.push(this.draft);
+        this.draft = "";
+      }
+    }
+    return Promise.resolve();
+  }
+}
+const PI = { paneId: "w1:p1", agent: "pi", kind: "agent" as const };
+
 const cfg = { submitKeys: ["Enter"], readLines: 200, deviceAllowlist: [], notifyDelayMs: 0 } as unknown as Config;
 const engineWith = (pane: { paneId: string; agent: string; kind?: "agent" | "shell" }) =>
   ({ current: () => ({ agents: pane.kind === "shell" ? [] : [pane], shellPanes: pane.kind === "shell" ? [pane] : [], workspaces: [], tabs: [], bridge: "connected" }) }) as unknown as StateEngine;
@@ -64,7 +116,10 @@ const noSleep = async () => {};
 
 async function send(herdr: object, body: unknown, engine = CLAUDE, audit?: AuditLog) {
   const res = await guardedSendPane(herdr as unknown as HerdrClient, cfg, engine, "w1:p1", sendReq(body), createPaneQueue(), audit, noSleep);
-  return { status: res.status, body: res.status === 200 ? ((await res.json()) as { status: string; error?: string; noEcho?: string }) : await res.text() };
+  return {
+    status: res.status,
+    body: res.status === 200 ? ((await res.json()) as { status: string; error?: string; noEcho?: string; textDelivered?: boolean }) : await res.text(),
+  };
 }
 
 describe("POST /api/pane/:id/send", () => {
@@ -112,11 +167,48 @@ describe("POST /api/pane/:id/send", () => {
   });
 
   test("a harness with no readable box takes the one-shot send", async () => {
-    const pi = new FakeClaude();
-    const res = await send(pi, { text: "go" }, engineWith({ paneId: "w1:p1", agent: "pi", kind: "agent" }));
+    const other = new FakeClaude();
+    const res = await send(other, { text: "go" }, engineWith({ paneId: "w1:p1", agent: "codex", kind: "agent" }));
     expect(res.body).toEqual({ status: "sent" });
-    expect(pi.texts).toEqual(["go"]);
+    expect(other.texts).toEqual(["go"]);
+    expect(other.keys).toEqual(["Enter"]);
+  });
+
+  test("pi: types, sees the text in its editor, then submits once", async () => {
+    const pi = new FakePi();
+    const res = await send(pi, { text: PI_MESSAGE }, engineWith(PI));
+    expect(res.body).toEqual({ status: "sent" });
+    expect(pi.submitted).toEqual([PI_MESSAGE]);
     expect(pi.keys).toEqual(["Enter"]);
+  });
+
+  test("pi: an Enter refused during startup is pressed again once startup moves on", async () => {
+    const pi = new FakePi(60);
+    const res = await send(pi, { text: PI_MESSAGE }, engineWith(PI));
+    expect(res.body).toEqual({ status: "sent" });
+    expect(pi.refused).toBe(true);
+    expect(pi.submitted).toEqual([PI_MESSAGE]);
+    expect(pi.keys).toEqual(["Enter", "Enter"]);
+  });
+
+  test("pi: a startup that outlasts the wait gets no more Enters, and the text is reported in the box", async () => {
+    const pi = new FakePi(100_000);
+    const res = await send(pi, { text: PI_MESSAGE }, engineWith(PI));
+    expect(res.body).toEqual(expect.objectContaining({ status: "error", textDelivered: true }));
+    expect(pi.keys).toEqual(["Enter"]);
+    expect(pi.submitted).toEqual([]);
+    expect(pi.draft).toBe(PI_MESSAGE);
+  });
+
+  test("pi: text that never reaches the editor is never submitted", async () => {
+    const pi = new FakePi();
+    pi.sendPaneText = (_p: string, t: string) => {
+      pi.texts.push(t);
+      return Promise.resolve();
+    };
+    const res = await send(pi, { text: PI_MESSAGE }, engineWith(PI));
+    expect(res.body).toEqual(expect.objectContaining({ status: "stalled" }));
+    expect(pi.keys).toEqual([]);
   });
 
   test("a shell takes the one-shot send", async () => {

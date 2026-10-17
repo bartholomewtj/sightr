@@ -5,7 +5,13 @@
  * - On `error`, or when nothing arrives for {@link SILENCE_MS} (the watchdog of spec 77: a mobile
  *   network can drop a flow without either end hearing), the connection closes and reopens after a
  *   backoff of 1 s, 2 s, 4 s, 8 s, then 15 s, each ±20%. The backoff starts over after a frame arrives.
- * - A page returning to the foreground reconnects at once.
+ * - A page returning to the foreground reconnects at once; so does the network coming back (`online`)
+ *   and a page restored from the back/forward cache (`pageshow` with `persisted`). A phone waking
+ *   from sleep fires several of these within a moment, so wake triggers within {@link WAKE_COALESCE_MS}
+ *   of the last one are folded into it. `offline` closes the stream and arms the ordinary backoff,
+ *   so the banner reflects a dead radio at once instead of after the silence watchdog.
+ * - The post-error probe has a timeout ({@link PROBE_TIMEOUT_MS}): a black-holed network must not
+ *   hold the reconnect behind a `fetch` that never answers.
  * - The reopened URL carries the caller's cursor (`url()` is asked again each time). A browser only
  *   sends `Last-Event-ID` on its own retry, and this closes the source instead, so the cursor goes as
  *   `?after=` (T05 reads either).
@@ -24,6 +30,10 @@ export const SILENCE_MS = 45_000;
 export const BACKOFF_STEPS_MS = [1_000, 2_000, 4_000, 8_000] as const;
 export const BACKOFF_CAP_MS = 15_000;
 export const JITTER = 0.2;
+/** A wake trigger (foreground, `online`, `pageshow`) within this of the previous one is ignored. */
+export const WAKE_COALESCE_MS = 1_000;
+/** How long the post-error status probe may take before the drop counts as an unreachable bridge. */
+export const PROBE_TIMEOUT_MS = 8_000;
 /** Retry period while the bridge refuses v2 on this host. */
 export const BLOCKED_RETRY_MS = 60_000;
 
@@ -48,6 +58,8 @@ export interface ConnectionDeps {
   clearTimeout: (id: unknown) => void;
   /** Where `visibilitychange` is heard; omit to skip foreground reconnects. */
   document?: Document;
+  /** Where `online`, `offline` and `pageshow` are heard; omit to skip them. */
+  window?: Pick<Window, "addEventListener" | "removeEventListener">;
 }
 
 export const browserDeps = (): ConnectionDeps => ({
@@ -58,6 +70,7 @@ export const browserDeps = (): ConnectionDeps => ({
   setTimeout: (fn, ms) => globalThis.setTimeout(fn, ms),
   clearTimeout: (id) => globalThis.clearTimeout(id as ReturnType<typeof setTimeout>),
   document: typeof document === "undefined" ? undefined : document,
+  window: typeof window === "undefined" ? undefined : window,
 });
 
 export interface ConnectionOptions {
@@ -100,6 +113,7 @@ export function createConnection(opts: ConnectionOptions, deps: ConnectionDeps =
   let watchdog: unknown = null;
   let retry: unknown = null;
   let probe: AbortController | null = null;
+  let lastWakeAt = Number.NEGATIVE_INFINITY;
 
   const clear = (id: unknown) => {
     if (id !== null) deps.clearTimeout(id);
@@ -200,6 +214,7 @@ export function createConnection(opts: ConnectionOptions, deps: ConnectionDeps =
     probe?.abort();
     const controller = new AbortController();
     probe = controller;
+    const probeTimer = deps.setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
     let gone = false;
     try {
       const res = await deps.fetch(url, { headers: { [XHR_HEADER]: XHR_HEADER_VALUE }, signal: controller.signal });
@@ -220,6 +235,7 @@ export function createConnection(opts: ConnectionOptions, deps: ConnectionDeps =
     } catch {
       /* the bridge is unreachable: an ordinary reconnect */
     } finally {
+      deps.clearTimeout(probeTimer);
       if (controller === probe) probe = null;
     }
     if (!running) return;
@@ -231,8 +247,30 @@ export function createConnection(opts: ConnectionOptions, deps: ConnectionDeps =
     if (source === null && retry === null) schedule();
   }
 
+  /** The page or the network came back: reopen now, once per burst of wake events. */
+  function wake(): void {
+    if (!running) return;
+    const at = deps.now();
+    if (at - lastWakeAt < WAKE_COALESCE_MS) return;
+    lastWakeAt = at;
+    reconnectNow();
+  }
+
   function onVisibility(): void {
-    if (running && deps.document?.visibilityState === "visible") reconnectNow();
+    if (deps.document?.visibilityState === "visible") wake();
+  }
+
+  function onOnline(): void {
+    wake();
+  }
+
+  function onPageShow(event: Event): void {
+    if ((event as PageTransitionEvent).persisted) wake();
+  }
+
+  /** The radio is gone: nothing more will arrive, so say so now and keep the backoff armed. */
+  function onOffline(): void {
+    if (running && source) drop(true);
   }
 
   function reconnectNow(): void {
@@ -255,6 +293,9 @@ export function createConnection(opts: ConnectionOptions, deps: ConnectionDeps =
     probe = null;
     close(false, false);
     deps.document?.removeEventListener("visibilitychange", onVisibility);
+    deps.window?.removeEventListener("online", onOnline);
+    deps.window?.removeEventListener("offline", onOffline);
+    deps.window?.removeEventListener("pageshow", onPageShow);
   }
 
   return {
@@ -264,6 +305,9 @@ export function createConnection(opts: ConnectionOptions, deps: ConnectionDeps =
       attempt = 0;
       blocked = false;
       deps.document?.addEventListener("visibilitychange", onVisibility);
+      deps.window?.addEventListener("online", onOnline);
+      deps.window?.addEventListener("offline", onOffline);
+      deps.window?.addEventListener("pageshow", onPageShow);
       open();
     },
     stop,

@@ -14,6 +14,7 @@ import { setViewportWidth } from "@/test/media";
 import { frame, renderApp } from "@/test/render-app";
 import { server } from "@/test/setup";
 
+import { LONG_PRESS_MS } from "@/components/sidebar/useLongPress";
 import { handleSidebarDrop, sectionDropId, SNOOZE_DROP_MESSAGE, useSidebarDrag } from "./Sidebar.drag";
 
 const shellSource = () => FakeEventSource.instances.find((es) => es.url.startsWith("/api/v2/shell"));
@@ -343,6 +344,50 @@ describe("sidebar: phone swipe", () => {
     touch(row("Two"), "pointerMove", 250, 52);
     touch(row("Two"), "pointerUp", 250, 52);
     await waitFor(() => expect(posted).toEqual([expect.objectContaining({ type: "thread.pin", threadId: "t2" })]));
+  });
+});
+
+describe("sidebar: touch long press", () => {
+  const touch = (el: Element, type: "pointerDown" | "pointerMove" | "pointerUp", x: number, y: number) =>
+    fireEvent[type](el, { pointerId: 1, pointerType: "touch", clientX: x, clientY: y, button: 0 });
+  const held = () => new Promise((r) => setTimeout(r, LONG_PRESS_MS + 60));
+
+  it("a long press on a thread row opens its menu on any touch screen, and does not open the thread", async () => {
+    const { router } = await openShell([thread("t1", { title: "One" })], undefined, "/v2/", 1280);
+    touch(row("One"), "pointerDown", 20, 20);
+    await held();
+    expect(await screen.findByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
+    touch(row("One"), "pointerUp", 20, 20);
+    fireEvent.click(row("One"));
+    expect(router.history.location.pathname).not.toContain("/thread/");
+  });
+
+  it("moving the finger cancels the press", async () => {
+    await openShell([thread("t1", { title: "One" })], undefined, "/v2/", 800);
+    touch(row("One"), "pointerDown", 20, 20);
+    touch(row("One"), "pointerMove", 20, 60);
+    await held();
+    expect(screen.queryByRole("menuitem", { name: "Rename" })).not.toBeInTheDocument();
+  });
+
+  it("a long press on a project row opens Rename and does not collapse the project", async () => {
+    await openShell([thread("t1", { title: "One" })], undefined, "/v2/", 390);
+    const projectRow = screen.getByRole("button", { name: /^Sightr/ });
+    touch(projectRow, "pointerDown", 20, 20);
+    await held();
+    expect(await screen.findByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
+    touch(projectRow, "pointerUp", 20, 20);
+    fireEvent.click(projectRow);
+    expect(projectRow).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("a plain tap on a project row still collapses it", async () => {
+    await openShell([thread("t1", { title: "One" })], undefined, "/v2/", 390);
+    const projectRow = screen.getByRole("button", { name: /^Sightr/ });
+    touch(projectRow, "pointerDown", 20, 20);
+    touch(projectRow, "pointerUp", 20, 20);
+    fireEvent.click(projectRow);
+    expect(projectRow).toHaveAttribute("aria-expanded", "false");
   });
 });
 

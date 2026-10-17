@@ -62,6 +62,8 @@ export function ThreadFindBar({
           ref={inputRef}
           type="text"
           inputMode="search"
+          // A phone keyboard has no Shift+Enter; its return key reads "search" and steps to the next hit.
+          enterKeyHint="search"
           autoComplete="off"
           autoCapitalize="off"
           autoCorrect="off"

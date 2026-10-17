@@ -3,6 +3,7 @@ import { registerSW } from "virtual:pwa-register";
 import { createUpdater } from "@v1/lib/pwa-update";
 
 import { getServerBuild, subscribeServerBuild } from "./server-build";
+import { reloadWhenIdle } from "./reload-when-idle";
 import { isOwnScope, isOwnWorker } from "./sw-routes";
 
 // Registers web2's worker (`<base>sw.js`, scope `<base>`; `/` since the T15 cutover, the URL and scope
@@ -22,7 +23,8 @@ const controller = typeof navigator !== "undefined" ? navigator.serviceWorker?.c
 const updater = createUpdater({
   appBuild: __BUILD_INFO__.id,
   registration: () => registration,
-  reload: () => window.location.reload(),
+  // Not under the operator's thumbs: a half-typed message or armed direct typing holds the reload.
+  reload: () => void reloadWhenIdle(() => window.location.reload()),
   // Only web2's own registration: v1's at /v1/ is not ours to drop.
   unregisterAll: async () => {
     const all = await navigator.serviceWorker.getRegistrations();

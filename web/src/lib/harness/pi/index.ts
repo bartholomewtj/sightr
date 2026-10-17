@@ -2,7 +2,7 @@ import { type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
 import { liftRegion } from "../scan";
 import { detectPiPromptRegion, detectPiReviewRegion, detectPiWizardRegion } from "./ask";
-import { noInputDraft } from "../composer-kit";
+import { composerReady, extractInputDraft, submitHeld } from "./chrome";
 
 export function piBuildBlocks(lines: StyledLine[]): Block[] {
   const wizard = detectPiWizardRegion(lines) ?? detectPiReviewRegion(lines);
@@ -28,6 +28,7 @@ export const piAdapter: HarnessAdapter = {
   agent: "pi",
   buildBlocks: piBuildBlocks,
   extractStatusLines: () => [],
-  extractInputDraft: noInputDraft,
-  replyOneShot: true,
+  composerReady,
+  extractInputDraft,
+  submitHeld,
 };

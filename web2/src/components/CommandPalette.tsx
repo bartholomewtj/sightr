@@ -5,7 +5,8 @@
  * `CommandPalette.logic.ts`. Groups: Needs you and recent threads with no query, then Threads,
  * Projects and Actions as you type. Actions are the same functions the buttons call (shelf commands
  * and their undo toasts are T10's), and only those that apply to the open thread are offered.
- * A centred dialog on desktop; full height on a phone (the sidebar's search icon opens it there).
+ * A centred dialog on desktop; full height on a phone, below the status bar, with a Close button (the
+ * sidebar's and a thread header's palette button open it there).
  */
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -27,6 +28,7 @@ import {
   SettingsIcon,
   SquareCheckIcon,
   TerminalSquareIcon,
+  XIcon,
 } from "lucide-react";
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 
@@ -88,7 +90,11 @@ export function CommandPalette() {
           aria-label="Command palette"
           data-command-palette="true"
           data-testid="command-palette"
-          className={cn("overflow-hidden", !desktop && "h-[calc(100dvh-2rem)] max-h-none")}
+          className={cn(
+            "overflow-hidden",
+            !desktop &&
+              "mt-[env(safe-area-inset-top)] mb-[env(safe-area-inset-bottom)] h-[calc(100dvh-2rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] max-h-none",
+          )}
           onBackdropPointerDown={() => closeCommandPalette()}
         >
           {open ? <OpenCommandPaletteDialog desktop={desktop} onRename={setRenaming} onSnooze={setSnoozing} /> : null}
@@ -216,7 +222,7 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
       { value: "rename", title: "Rename thread", icon: icon(PencilIcon), applies: applies.writableThread, run: () => (t ? props.onRename(t) : undefined) },
       { value: "archived", title: "Open Archived", icon: icon(ArchiveIcon), run: () => void navigate({ to: "/archived" }) },
       { value: "settings", title: "Open Settings", icon: icon(SettingsIcon), run: () => void navigate({ to: "/settings" }) },
-      { value: "shortcuts", title: "Show keyboard shortcuts", icon: icon(KeyboardIcon), shortcutCommand: "shortcuts.open", run: () => openShortcutsDialog() },
+      { value: "shortcuts", title: "Show keyboard shortcuts", icon: icon(KeyboardIcon), shortcutCommand: "shortcuts.open", applies: applies.desktop, run: () => openShortcutsDialog() },
     ];
     const actionItems = buildActionItems(actionSpecs, ctx);
     const root = buildRootGroups({
@@ -256,6 +262,7 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
       footerActionLabel="Open"
       panelSize={props.desktop ? "list" : "fill"}
       inputProps={{ placeholder: getCommandPaletteInputPlaceholder(), onKeyDown: handleKeyDown }}
+      {...(props.desktop ? {} : { inputAccessory: <PaletteCloseButton /> })}
       mode="none"
       items={groups}
       itemToStringValue={(item: unknown) => (item as CommandPaletteActionItem).value}
@@ -270,6 +277,21 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
         onExecuteItem={executeItem}
       />
     </CommandPaletteContent>
+  );
+}
+
+/** Phone: Esc is not on the keyboard, so the palette carries its own Close. */
+function PaletteCloseButton() {
+  return (
+    <Button
+      size="icon-sm"
+      variant="ghost-muted"
+      aria-label="Close command palette"
+      className="absolute end-[var(--command-shell-inset)] top-1/2 -translate-y-1/2"
+      onClick={() => closeCommandPalette()}
+    >
+      <XIcon />
+    </Button>
   );
 }
 
@@ -297,7 +319,7 @@ function RenameThreadDialog({ thread, onClose }: { thread: Thread | null; onClos
         }
       }}
     >
-      <DialogPopup className="max-w-sm">
+      <DialogPopup className="max-w-sm max-sm:pb-[env(safe-area-inset-bottom)]">
         <DialogHeader>
           <DialogTitle>Rename thread</DialogTitle>
         </DialogHeader>
@@ -310,7 +332,7 @@ function RenameThreadDialog({ thread, onClose }: { thread: Thread | null; onClos
         >
           <input
             aria-label="Thread title"
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground"
+            className="h-9 rounded-lg border border-input bg-background px-3 text-base text-foreground sm:text-sm pointer-coarse:h-11"
             value={title}
             maxLength={200}
             onChange={(e) => setTitle(e.target.value)}

@@ -33,17 +33,18 @@ export function ConnectionBanner({ onRetry }: { onRetry?: () => void }) {
 
   const state = bannerState(status, now - downSince);
   if (state === "hidden") return null;
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
   if (state === "reconnecting") {
     return (
       // tokens.md has no amber: the quiet step is navy chrome, and warn is kept for "not connected".
       <div role="status" className="border-b border-border bg-muted px-4 py-1.5 text-sm text-info">
-        Reconnecting…
+        {offline ? "Offline. Waiting for the network…" : "Reconnecting…"}
       </div>
     );
   }
   return (
     <div role="alert" className="flex items-center gap-3 border-b border-destructive/40 bg-error-surface px-4 py-1.5 text-sm text-destructive">
-      <span className="flex-1">Not connected. Check the connection to the host.</span>
+      <span className="flex-1">{offline ? "Offline. Check this device's network." : "Not connected. Check the connection to the host."}</span>
       <Button size="xs" variant="outline" onClick={onRetry ?? (() => shellStream().reconnectNow())}>
         Retry
       </Button>

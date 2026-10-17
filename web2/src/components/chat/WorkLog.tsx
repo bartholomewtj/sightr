@@ -1,3 +1,6 @@
+// Adapted from T3 Code apps/web/src/components/chat/WorkLog.tsx @ e3b35d1b (MIT, see THIRD_PARTY.md).
+// One change: on a coarse pointer an interactive row's line is at least 44 px tall (`interactive`
+// in `WorkLogLine`), so a tool row is a full phone tap target. Everything else is upstream's.
 import {
   createContext,
   use,
@@ -50,12 +53,13 @@ type RowContent = {
   wrapLabel?: boolean;
 };
 
-function WorkLogLine({ icon, label, trailing, wrapLabel }: RowContent) {
+function WorkLogLine({ icon, label, trailing, wrapLabel, interactive = false }: RowContent & { interactive?: boolean }) {
   return (
     <div
       className={cn(
         "flex min-h-6 min-w-0 gap-1.5 text-sm leading-relaxed select-none [&_*]:select-none",
         wrapLabel ? "items-start" : "items-center",
+        interactive && "pointer-coarse:min-h-11",
       )}
     >
       <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
@@ -102,7 +106,7 @@ export function WorkLogButton({
   const className = useRowClassName(true);
   return (
     <button {...buttonProps} type="button" className={className}>
-      <WorkLogLine icon={icon} label={label} trailing={trailing} wrapLabel={wrapLabel} />
+      <WorkLogLine icon={icon} label={label} trailing={trailing} wrapLabel={wrapLabel} interactive />
     </button>
   );
 }
@@ -116,10 +120,11 @@ export function WorkLogRow({
   children,
   ...rowProps
 }: RowContent & Omit<ComponentProps<"div">, "className" | "style">) {
-  const className = useRowClassName(rowProps.onClick !== undefined);
+  const interactive = rowProps.onClick !== undefined;
+  const className = useRowClassName(interactive);
   return (
     <div {...rowProps} className={className}>
-      <WorkLogLine icon={icon} label={label} trailing={trailing} wrapLabel={wrapLabel} />
+      <WorkLogLine icon={icon} label={label} trailing={trailing} wrapLabel={wrapLabel} interactive={interactive} />
       {children}
     </div>
   );

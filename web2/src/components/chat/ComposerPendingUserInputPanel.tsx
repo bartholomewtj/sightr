@@ -215,7 +215,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                     disabled={locked}
                     onClick={() => pick(index)}
                     className={cn(
-                      "group flex min-h-11 w-full items-center gap-2 rounded-lg border-2 px-3 py-2 text-left text-sm outline-none transition-colors sm:min-h-9",
+                      "group flex min-h-11 w-full items-center gap-2 rounded-lg border-2 px-3 py-2 text-left text-sm outline-none transition-colors pointer-fine:sm:min-h-9",
                       "focus-visible:ring-2 focus-visible:ring-you/40 disabled:cursor-not-allowed",
                       destructive
                         ? "border-warn/50 bg-warning-surface text-warn hover:border-warn"
@@ -277,7 +277,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                 disabled={locked || !progress.canAdvance}
                 onClick={advance}
                 className={cn(
-                  "mt-1 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border-2 border-you bg-you px-3 py-2 text-sm font-semibold text-you-foreground transition-colors sm:min-h-9",
+                  "mt-1 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border-2 border-you bg-you px-3 py-2 text-sm font-semibold text-you-foreground transition-colors pointer-fine:sm:min-h-9",
                   "disabled:cursor-not-allowed disabled:opacity-60",
                 )}
               >

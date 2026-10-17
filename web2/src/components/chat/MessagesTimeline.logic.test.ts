@@ -125,6 +125,23 @@ describe("deriveMessagesTimelineRows (T3 row model on Sightr items)", () => {
     expect(kinds(rows)).toEqual(["message", "message"]);
   });
 
+  it("never repeats a day when a row's clock runs behind the one before it", () => {
+    const now = new Date(2026, 9, 16, 9, 0).getTime();
+    const yesterday = now - 24 * 60 * 60_000;
+    const rows = insertDayDividers(
+      rowsFor([
+        user("u:0", "a", { createdAt: yesterday }),
+        user("v:0", "b", { createdAt: now }),
+        user("w:0", "skewed", { createdAt: yesterday + 1_000 }),
+        user("x:0", "c", { createdAt: now + 1_000 }),
+      ]),
+      now,
+    );
+    expect(kinds(rows)).toEqual(["message", "day", "message", "message", "message"]);
+    const ids = rows.map((r) => r.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it("renders a session change and a screen capture as event rows", () => {
     const rows = rowsFor([user("u:0", "go"), session("s:0"), screen("x:0", "$ ls\nfile")]);
     expect(rows.filter((r) => r.kind === "event").map((r) => (r.kind === "event" ? r.projectedItem.type : null))).toEqual([

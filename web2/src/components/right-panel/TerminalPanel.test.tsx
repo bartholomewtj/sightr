@@ -156,6 +156,55 @@ describe("TerminalPanel", () => {
     });
   });
 
+  describe("on a touch screen", () => {
+    it("wraps the toolbar instead of overflowing a narrow phone, and types at 16 px so iOS does not zoom", async () => {
+      setViewportWidth(360);
+      render(<TerminalPanel threadId="t1" />);
+      const button = await screen.findByRole("button", { name: "Type into terminal" });
+      expect(button.parentElement?.className).toContain("flex-wrap");
+      fireEvent.click(button);
+      await screen.findByRole("button", { name: "Stop" });
+      expect(typeBox().className).toContain("text-base");
+      expect(typeBox().className).not.toMatch(/(^| )text-sm( |$)/);
+    });
+
+    it("keeps pinch for itself: the mirror scrolls but never zooms the page", async () => {
+      render(<TerminalPanel threadId="t1" />);
+      await screen.findByText(/\$ ready/);
+      const scroller = document.querySelector("[data-terminal-mirror]") as HTMLElement;
+      expect(scroller.className).toContain("touch-action:pan-x_pan-y");
+      expect(scroller.className).toContain("overscroll-y-contain");
+    });
+
+    it("pinching the mirror changes the font size", async () => {
+      render(<TerminalPanel threadId="t1" />);
+      await screen.findByText(/\$ ready/);
+      const scroller = document.querySelector("[data-terminal-mirror]") as HTMLElement;
+      const touch = (type: string, xs: number[]) => {
+        const e = new Event(type, { bubbles: true });
+        Object.defineProperty(e, "touches", { value: xs.map((clientX) => ({ clientX, clientY: 0 })) });
+        scroller.dispatchEvent(e);
+      };
+      expect(useRightPanelStore.getState().terminalFontSize).toBe(12);
+      act(() => {
+        touch("touchstart", [0, 100]);
+        touch("touchmove", [0, 125]);
+      });
+      expect(useRightPanelStore.getState().terminalFontSize).toBe(15);
+      act(() => touch("touchmove", [0, 20]));
+      expect(useRightPanelStore.getState().terminalFontSize).toBe(10);
+    });
+
+    it("copies the mirror's text", async () => {
+      const writeText = vi.fn(async () => undefined);
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+      render(<TerminalPanel threadId="t1" />);
+      await screen.findByText(/\$ ready/);
+      fireEvent.click(screen.getByRole("button", { name: "Copy output" }));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith("$ ready"));
+    });
+  });
+
   it("keeps the font size per device, 10 to 16 px", async () => {
     render(<TerminalPanel threadId="t1" />);
     const larger = await screen.findByRole("button", { name: "Larger text" });

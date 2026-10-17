@@ -5,6 +5,12 @@
  * the sandboxed open URL, ADR 0027). Edit and delete follow v1's `routes/files.tsx`: leaving dirty
  * edits asks first, delete needs a second tap, a read-only device gets neither. The client only joins
  * names; containment is the bridge's (ADR 0026). "Servers on this PC" (v1's Local tab) sits below.
+ *
+ * Phone: the sheet is not kept mounted, so the folder, the open file and each scroll position are
+ * remembered per thread (module state, this page's life) and come back when the sheet reopens. Names
+ * and paths wrap instead of truncating (the end of a path is the part that matters), rows and links
+ * grow to a thumb-sized target on a touch screen, fields stay 16 px (iOS zooms the page below that),
+ * and the file's action row sticks to the top of the scroller so Save is in reach while editing.
  */
 import { ArrowLeftIcon, ArrowUpIcon, ChevronDownIcon, ChevronRightIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, FileIcon, FolderIcon, GitBranchIcon, Trash2Icon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -15,6 +21,7 @@ import { cn } from "~/lib/utils";
 import ChatMarkdown from "@/components/ChatMarkdown";
 import { showToast } from "@/components/toast";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
+import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { deleteFile, downloadFileUrl, fetchFiles, fetchLocalServers, openFileUrl, saveFile, searchFiles, type LocalServersResponse } from "@/lib/api";
 import { isDeletedFile, noteDeletedFile, subscribeDeleted, useFilesTree } from "@/lib/files-tree";
 import { useSidebarThread } from "@/state/sidebar";
@@ -30,15 +37,28 @@ const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
 const parentOf = (path: string) => path.split("/").slice(0, -1).join("/");
 const baseName = (path: string) => path.split("/").pop() ?? path;
 
+/** Where each thread's Files tab was left (folder and open file), so a reopened sheet resumes there. */
+const navMemory = new Map<string, { base: string | null; openPath: string | null }>();
+
+/** Test helper. */
+export function __resetFilesNav(): void {
+  navMemory.clear();
+}
+
 export function FilesPanel({ threadId }: { threadId: string }) {
   const state = useThread(threadId);
   const shellThread = useSidebarThread(threadId);
   const thread = state?.thread ?? shellThread ?? null;
   const folder = usePaneFolder(thread?.paneId || null);
   const readOnly = useBridgeInfo((s) => s.readOnly);
-  const [base, setBase] = useState<string | null>(null);
-  const [openPath, setOpenPath] = useState<string | null>(null);
+  const [base, setBase] = useState<string | null>(() => navMemory.get(threadId)?.base ?? null);
+  const [openPath, setOpenPath] = useState<string | null>(() => navMemory.get(threadId)?.openPath ?? null);
   const leaveGuard = useRef<((go: () => void) => boolean) | null>(null);
+  // A restored folder outranks the thread's folder the first time it resolves; later changes still move the tab.
+  const restored = useRef(base !== null);
+  useEffect(() => {
+    navMemory.set(threadId, { base, openPath });
+  }, [threadId, base, openPath]);
 
   // Switching tabs or closing the panel asks the open editor first.
   useEffect(() => {
@@ -48,7 +68,12 @@ export function FilesPanel({ threadId }: { threadId: string }) {
 
   // The tab starts at the thread's folder, or the Files root when that is outside it.
   useEffect(() => {
-    if (folder.path !== undefined) setBase(folder.path ?? "");
+    if (folder.path === undefined) return;
+    if (restored.current) {
+      restored.current = false;
+      return;
+    }
+    setBase(folder.path ?? "");
   }, [folder.path]);
 
   /** Run `go` now, or once the operator chose to drop dirty edits. */
@@ -65,6 +90,7 @@ export function FilesPanel({ threadId }: { threadId: string }) {
     return (
       <FileDetail
         key={openPath}
+        scrollKey={`files:${threadId}:file`}
         path={openPath}
         readOnly={readOnly}
         guard={leaveGuard}
@@ -75,6 +101,7 @@ export function FilesPanel({ threadId }: { threadId: string }) {
   }
   return (
     <FilesBrowser
+      scrollKey={`files:${threadId}:browse`}
       base={base}
       outsideNote={folder.path === null}
       onUp={() => setBase(parentOf(base))}
@@ -125,6 +152,7 @@ function useFileSearch() {
 }
 
 function FilesBrowser(props: {
+  scrollKey: string;
   base: string;
   outsideNote: boolean;
   onUp: () => void;
@@ -132,6 +160,7 @@ function FilesBrowser(props: {
   onOpenFile: (path: string) => void;
 }) {
   const search = useFileSearch();
+  const scrollRef = useScrollMemory<HTMLDivElement>(`${props.scrollKey}:${props.base}`);
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-files-tab="">
       <div className="border-b p-2">
@@ -143,10 +172,11 @@ function FilesBrowser(props: {
           onChange={(e) => search.setQuery(e.target.value)}
           autoCapitalize="off"
           autoCorrect="off"
-          className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm text-foreground outline-none placeholder:text-placeholder"
+          enterKeyHint="search"
+          className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-base text-foreground outline-none placeholder:text-placeholder sm:h-8 sm:text-sm"
         />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
         {search.query.trim().length >= 2 ? (
           <SearchResults search={search} onOpenFolder={props.onOpenFolder} onOpenFile={props.onOpenFile} />
         ) : (
@@ -155,7 +185,7 @@ function FilesBrowser(props: {
               <Button size="icon-xs" variant="ghost-muted" aria-label="Up one folder" disabled={props.base === ""} onClick={props.onUp}>
                 <ArrowUpIcon />
               </Button>
-              <span className="min-w-0 flex-1 truncate font-mono" data-files-base={props.base}>
+              <span className="min-w-0 flex-1 wrap-anywhere font-mono" data-files-base={props.base}>
                 {props.base === "" ? "Files root" : props.base}
               </span>
             </div>
@@ -195,13 +225,13 @@ function SearchResults({
           <button
             key={r.path}
             type="button"
-            className="flex w-full items-center gap-2 border-b px-3 py-1.5 text-left text-sm hover:bg-accent"
+            className="flex w-full items-center gap-2 border-b px-3 py-1.5 text-left text-sm hover:bg-accent pointer-coarse:py-2.5"
             onClick={() => (r.kind === "dir" ? (search.setQuery(""), onOpenFolder(r.path)) : onOpenFile(r.path))}
           >
             {r.kind === "dir" ? <FolderIcon className="size-4 shrink-0" /> : <FileIcon className="size-4 shrink-0" />}
             <span className="min-w-0 flex-1">
-              <span className="block truncate">{r.name}</span>
-              {r.path.includes("/") ? <span className="block truncate text-xs text-muted-foreground">{parentOf(r.path)}</span> : null}
+              <span className="block wrap-anywhere">{r.name}</span>
+              {r.path.includes("/") ? <span className="block wrap-anywhere text-xs text-muted-foreground">{parentOf(r.path)}</span> : null}
             </span>
           </button>
         ))}
@@ -293,7 +323,7 @@ function FilesTree({ base, onOpenFile }: { base: string; onOpenFile: (path: stri
             role="treeitem"
             aria-expanded={entry.kind === "dir" ? open : undefined}
             data-file-row={path}
-            className="flex w-full items-center gap-1.5 border-b py-1.5 pe-2 text-left text-sm hover:bg-accent"
+            className="flex w-full items-center gap-1.5 border-b py-1.5 pe-2 text-left text-sm hover:bg-accent pointer-coarse:py-2.5"
             style={{ paddingLeft: depth * 14 + 8 }}
             onClick={() => (entry.kind === "dir" ? tree.toggle(path) : onOpenFile(path))}
           >
@@ -307,7 +337,7 @@ function FilesTree({ base, onOpenFile }: { base: string; onOpenFile: (path: stri
               <span className="size-3.5 shrink-0" />
             )}
             {entry.kind === "dir" ? <FolderIcon className="size-4 shrink-0" /> : <FileIcon className="size-4 shrink-0" />}
-            <span className="min-w-0 truncate">{entry.name}</span>
+            <span className="min-w-0 wrap-anywhere">{entry.name}</span>
             {entry.repo ? <GitBranchIcon aria-label="git checkout" className="size-3 shrink-0 text-muted-foreground" /> : null}
           </button>
         ) : null,
@@ -343,9 +373,9 @@ function LocalServers() {
               href={`http://${data.host}:${server.port}/`}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-3 border-b px-3 py-1.5 text-sm hover:bg-accent"
+              className="flex items-center gap-3 border-b px-3 py-1.5 text-sm hover:bg-accent pointer-coarse:py-2.5"
             >
-              <span className="min-w-0 flex-1 truncate">{server.name || `port ${server.port}`}</span>
+              <span className="min-w-0 flex-1 wrap-anywhere">{server.name || `port ${server.port}`}</span>
               <span className="shrink-0 font-mono text-xs text-muted-foreground">:{server.port}</span>
             </a>
           ))
@@ -357,6 +387,7 @@ function LocalServers() {
 // ── Detail ──────────────────────────────────────────────────────────────────────────────────────
 
 function FileDetail(props: {
+  scrollKey: string;
   path: string;
   readOnly: boolean;
   guard: { current: ((go: () => void) => boolean) | null };
@@ -372,6 +403,7 @@ function FileDetail(props: {
   const [deleting, setDeleting] = useState(false);
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
   const { confirm, pending } = usePendingConfirm();
+  const scrollRef = useScrollMemory<HTMLDivElement>(`${props.scrollKey}:${props.path}`);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -465,7 +497,7 @@ function FileDetail(props: {
         <Button size="icon-xs" variant="ghost-muted" aria-label="Back to files" onClick={props.onBack}>
           <ArrowLeftIcon />
         </Button>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">{baseName(props.path)}</span>
+        <span className="min-w-0 flex-1 wrap-anywhere text-sm font-medium">{baseName(props.path)}</span>
       </div>
       {pendingLeave ? (
         <div role="alertdialog" aria-label="Unsaved edits" className="flex flex-wrap items-center gap-2 border-b bg-card px-3 py-2 text-sm">
@@ -491,11 +523,11 @@ function FileDetail(props: {
       ) : null}
       {failed ? <p className="p-3 text-sm text-muted-foreground">Not found.</p> : null}
       {data ? (
-        <div className="min-h-0 flex-1 overflow-auto p-3">
-          <div className="mb-3 flex flex-wrap gap-1.5">
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto overscroll-y-contain p-3">
+          <div className="sticky -top-3 z-10 -mx-3 -mt-3 mb-3 flex flex-wrap gap-1.5 bg-background px-3 pt-3 pb-2">
             {data.openInBrowser ? (
               <a
-                className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm font-medium"
+                className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm font-medium pointer-coarse:min-h-11"
                 href={src}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -509,7 +541,7 @@ function FileDetail(props: {
               Copy path
             </Button>
             <a
-              className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm font-medium"
+              className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm font-medium pointer-coarse:min-h-11"
               href={downloadFileUrl(props.path)}
               download={data.name}
             >
@@ -565,7 +597,7 @@ function FileDetail(props: {
                   void onSave();
                 }
               }}
-              className="min-h-[40dvh] w-full resize-y whitespace-pre-wrap break-words rounded border bg-background p-2 font-mono text-sm"
+              className="min-h-[40dvh] w-full resize-y whitespace-pre-wrap break-words rounded border bg-background p-2 font-mono text-base sm:text-sm"
             />
           ) : (
             <FilePreview data={data} text={saved?.text ?? ""} src={src} />

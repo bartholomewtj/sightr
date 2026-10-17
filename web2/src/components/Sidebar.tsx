@@ -26,6 +26,7 @@ import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type Rea
 
 import type { Thread } from "@shared/v2/contracts";
 
+import { Button } from "~/components/ui/button";
 import { openCommandPalette } from "@/commandPaletteBus";
 import { CustomSnoozeDialog } from "@/components/CustomSnoozeDialog";
 import { PushOnboarding } from "@/components/settings/PushOnboarding";
@@ -43,6 +44,7 @@ import {
 } from "@/components/Sidebar.logic";
 import { SidebarRowContext, SidebarThreadRow, SortableThreadRow, type SidebarRowActions } from "@/components/sidebar/SidebarThreadRow";
 import { ProjectRenameField, ProjectRowMenu } from "@/components/sidebar/ProjectRowMenu";
+import { useLongPress } from "@/components/sidebar/useLongPress";
 import { ThreadRowMenu } from "@/components/sidebar/ThreadRowMenu";
 import { ThreadStatusDot } from "@/components/ThreadStatusIndicators";
 import { useLayout } from "@/hooks/useLayout";
@@ -129,30 +131,31 @@ export function Sidebar() {
         className="flex min-h-0 flex-1 flex-col bg-sidebar text-sidebar-foreground"
         onKeyDown={onKeyDown}
       >
-        <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
+        <div className="flex items-center justify-between gap-1 px-4 pt-3 pb-2">
           <span className="flex-1 font-semibold">Sightr</span>
           {/* T14: start a thread (mod+n, the palette and each project row's "+" too). */}
-          <Link
-            to="/new"
+          <Button
+            size="icon-sm"
+            variant="ghost-muted"
             aria-label="New thread"
             title={newKey ? `New thread (${newKey})` : "New thread"}
-            className="-m-1 rounded-md p-1 text-muted-foreground hover:bg-sidebar-row-hover hover:text-foreground"
+            render={<Link to="/new" />}
           >
-            <Plus className="size-4" aria-hidden />
-          </Link>
+            <Plus aria-hidden />
+          </Button>
           {/* T13: the command palette (mod+k on desktop; the only way in on a phone). */}
-          <button
-            type="button"
+          <Button
+            size="icon-sm"
+            variant="ghost-muted"
             aria-label="Command palette"
             title={paletteKey ? `Command palette (${paletteKey})` : "Command palette"}
             onClick={() => openCommandPalette()}
-            className="-m-1 rounded-md p-1 text-muted-foreground hover:bg-sidebar-row-hover hover:text-foreground"
           >
-            <Command className="size-4" aria-hidden />
-          </button>
-          <Link to="/settings" className="text-sm text-muted-foreground hover:text-foreground">
+            <Command aria-hidden />
+          </Button>
+          <Button size="sm" variant="ghost-muted" render={<Link to="/settings" />}>
             Settings
-          </Link>
+          </Button>
         </div>
         <div className="flex items-center gap-1.5 px-3 pb-2" role="group" aria-label="Filter">
           <FilterChip pressed={filter === "all"} onClick={() => setFilter("all")}>
@@ -163,13 +166,13 @@ export function Sidebar() {
             {needsYou.length > 0 ? <span className="font-mono tabular-nums">{needsYou.length}</span> : null}
           </FilterChip>
         </div>
-        <label className="mx-3 mb-2 flex items-center gap-2 rounded-lg border border-input bg-background px-2.5">
+        <label className="mx-3 mb-2 flex items-center gap-2 rounded-lg border border-input bg-background px-2.5 pointer-coarse:h-11">
           <Search className="size-3.5 text-muted-foreground" aria-hidden />
           <input
             type="search"
             aria-label="Search threads"
             placeholder="Search"
-            className="h-8 min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-placeholder"
+            className="h-8 min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-placeholder sm:text-sm pointer-coarse:h-full"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -177,7 +180,7 @@ export function Sidebar() {
             }}
           />
         </label>
-        <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-2">
           <PushOnboarding className="mx-3 mb-2" />
           {!loaded ? <p className="px-4 text-sm text-muted-foreground">Loading threads…</p> : null}
           {loaded && flat !== null ? (
@@ -199,8 +202,8 @@ export function Sidebar() {
             )
           ) : null}
         </div>
-        <div className="border-t px-4 py-2">
-          <Link to="/archived" className="text-sm text-muted-foreground hover:text-foreground">
+        <div className="border-t px-4 py-2 pb-[max(env(safe-area-inset-bottom),0.5rem)]">
+          <Link to="/archived" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground pointer-coarse:min-h-11">
             Archived{archivedCount > 0 ? ` (${archivedCount})` : ""}
           </Link>
         </div>
@@ -239,7 +242,7 @@ function FilterChip({ pressed, onClick, children }: { pressed: boolean; onClick(
       aria-pressed={pressed}
       onClick={onClick}
       className={cn(
-        "inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs",
+        "inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs pointer-coarse:h-11 pointer-coarse:px-4 pointer-coarse:text-sm",
         pressed ? "border-you bg-you-soft text-foreground" : "border-transparent text-muted-foreground hover:bg-sidebar-row-hover",
       )}
     >
@@ -287,6 +290,8 @@ function ProjectBlock({ node, desktop, actions }: { node: SidebarProjectNode; de
   const toggle = useSidebarPrefs((s) => s.toggleProject);
   const dragging = useSidebarDrag((s) => s.dragging !== null);
   const hasPins = node.shelves.pinned.length > 0;
+  // A touch long press is the project row's right click (Rename).
+  const press = useLongPress((el) => actions.openMenu(project.id, el));
   return (
     <section aria-label={project.label} data-project-id={project.id} className={cn(node.nested && "ml-3 border-l border-line/60")}>
       <div className="group/project flex items-center pr-2">
@@ -297,9 +302,16 @@ function ProjectBlock({ node, desktop, actions }: { node: SidebarProjectNode; de
             type="button"
             data-project-row=""
             aria-expanded={!collapsed}
-            onClick={() => toggle(project.id)}
+            onClick={() => {
+              if (!press.consumeClick()) toggle(project.id);
+            }}
+            onPointerDown={press.onPointerDown}
+            onPointerMove={press.onPointerMove}
+            onPointerUp={press.cancel}
+            onPointerCancel={press.cancel}
             onContextMenu={(e) => {
               e.preventDefault();
+              press.cancel();
               actions.openMenu(project.id, e.currentTarget);
             }}
             onKeyDown={(e) => {
@@ -308,7 +320,7 @@ function ProjectBlock({ node, desktop, actions }: { node: SidebarProjectNode; de
                 actions.openMenu(project.id, e.currentTarget);
               }
             }}
-            className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pl-3 text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            className="flex min-w-0 flex-1 touch-pan-y items-center gap-1.5 py-1.5 pl-3 text-left text-xs font-medium text-muted-foreground outline-none select-none [-webkit-touch-callout:none] hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring pointer-coarse:min-h-11 pointer-coarse:text-sm"
           >
             {collapsed ? <ChevronRight className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
             {node.nested ? <GitBranch className="size-3.5" role="img" aria-label="Worktree" /> : null}
@@ -318,17 +330,15 @@ function ProjectBlock({ node, desktop, actions }: { node: SidebarProjectNode; de
           </button>
         )}
         {/* T14: a new thread in this project. */}
-        <Link
-          to="/new"
-          search={{ project: project.id }}
+        <Button
+          size="icon-xs"
+          variant="ghost-muted"
           aria-label={`New thread in ${project.label}`}
-          className={cn(
-            "ml-1 rounded-sm p-0.5 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
-            desktop && "opacity-0 group-hover/project:opacity-100 focus-visible:opacity-100",
-          )}
+          className={cn("ml-1", desktop && "opacity-0 group-hover/project:opacity-100 focus-visible:opacity-100")}
+          render={<Link to="/new" search={{ project: project.id }} />}
         >
-          <Plus className="size-3.5" aria-hidden />
-        </Link>
+          <Plus aria-hidden />
+        </Button>
       </div>
       {collapsed ? null : (
         <>
@@ -422,7 +432,7 @@ function CollapsedShelf({ node, section, desktop }: { node: SidebarProjectNode; 
         data-shake={shake || undefined}
         onClick={() => toggle(node.project.id, section)}
         className={cn(
-          "flex w-full items-center gap-1.5 px-4 py-1 text-left text-xs text-muted-foreground hover:text-foreground",
+          "flex w-full items-center gap-1.5 px-4 py-1 text-left text-xs text-muted-foreground hover:text-foreground pointer-coarse:min-h-11 pointer-coarse:text-sm",
           shake && "animate-shake-once",
         )}
       >

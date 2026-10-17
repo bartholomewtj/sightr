@@ -10,15 +10,20 @@
  * v1's adapter registry (`adapterFor(thread.harness).extractStatusLines`) over the text the mirror
  * already read, so it costs no read of its own and names no harness here.
  *
+ * Phone touch: pinching the mirror changes its font size (`touch-action: pan-x pan-y` leaves the gesture
+ * to us, so the page never zooms under the keys), the toolbar wraps instead of overflowing a 360 px
+ * screen, and "Copy output" puts the mirror's text on the clipboard where selecting a live, re-rendering
+ * `<pre>` by long-press is unreliable.
+ *
  * Phone typing is compact: with the soft keyboard up, the mirror must keep the room. The toolbar and the
  * typing box share one row, the armed strip shows only for a held paste or a password prompt, and the
  * Keys pad gives way to a one-row key bar whose "More" opens the full pad.
  */
-import { ArrowDownIcon, KeyboardIcon, MinusIcon, PlusIcon, SearchIcon } from "lucide-react";
+import { ArrowDownIcon, CopyIcon, KeyboardIcon, MinusIcon, PlusIcon, SearchIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { MIRROR_INVERT, MIRROR_SPACE, styleFor } from "@v1/components/mirror-space";
-import { parseLines, trimTrailingBlank, type StyledLine } from "@v1/lib/blocks";
+import { lineText, parseLines, trimTrailingBlank, type StyledLine } from "@v1/lib/blocks";
 import { adapterFor } from "@v1/lib/harness/registry";
 import { cn } from "~/lib/utils";
 import { ThreadFindBar } from "~/components/chat/ThreadFindBar";
@@ -27,7 +32,9 @@ import { ctrlPresetsFor } from "@v1/lib/operator-keys";
 import { Button } from "~/components/ui/button";
 import { KeyBar } from "@/components/keys/key-bar";
 import { NavTray } from "@/components/keys/nav-tray";
+import { showToast } from "@/components/toast";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
+import { attachPinchZoom } from "@/hooks/use-pinch-zoom";
 import { useLayout } from "@/hooks/useLayout";
 import { MIRROR_COLD_MS, useMirror } from "@/hooks/useMirror";
 import { sendKeys } from "@/lib/api";
@@ -83,8 +90,19 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
   const [keysOpen, setKeysOpen] = useState(false);
   const [prompt, setPrompt] = useState<string | undefined>(undefined);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const following = useRef(true);
+  const fontRef = useRef(fontSize);
+  fontRef.current = fontSize;
+  // The mirror's scroller, with pinch-to-resize attached for as long as it is mounted.
+  const setScroller = useCallback(
+    (el: HTMLDivElement | null) => {
+      scrollRef.current = el;
+      if (!el) return;
+      return attachPinchZoom(el, { get: () => fontRef.current, set: setFontSize, min: TERMINAL_FONT_MIN, max: TERMINAL_FONT_MAX });
+    },
+    [setFontSize],
+  );
   const [atBottom, setAtBottom] = useState(true);
   const archived = thread?.shelf === "archived";
   const writable = !readOnly && !archived && paneId !== null;
@@ -168,6 +186,19 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
     const el = scrollRef.current;
     if (el && following.current) el.scrollTop = el.scrollHeight;
   }, [styled]);
+  // A font change reflows the mirror; keep the tail in view when that is where the operator was.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && following.current) el.scrollTop = el.scrollHeight;
+  }, [fontSize]);
+  const copyOutput = async () => {
+    try {
+      await navigator.clipboard.writeText(styled.map(lineText).join("\n"));
+      showToast("Output copied");
+    } catch {
+      showToast("Couldn't copy the output", "error");
+    }
+  };
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
@@ -215,7 +246,7 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
       placeholder={compact ? "Type…" : "Keys go straight to the pane"}
       className={cn(
         "block resize-none rounded-lg border border-primary/60 bg-background font-mono text-base text-foreground outline-none sm:text-sm",
-        !typing.active ? "sr-only" : desktop ? "w-full px-2 py-1.5" : "h-7 min-w-0 flex-1 overflow-hidden px-2 py-0.5 text-sm leading-6 [scrollbar-width:none]",
+        !typing.active ? "sr-only" : desktop ? "w-full px-2 py-1.5" : "h-7 min-w-0 flex-1 overflow-hidden px-2 py-0.5 text-base leading-6 [scrollbar-width:none]",
       )}
       onChange={typing.active ? typing.onChange : () => {}}
       onCompositionStart={typing.onCompositionStart}
@@ -234,7 +265,7 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-terminal-tab="">
-      <div className="flex items-center gap-1 border-b px-2 py-1">
+      <div className="flex flex-wrap items-center gap-1 border-b px-2 py-1">
         {writable ? (
           <Button
             size="xs"
@@ -267,6 +298,15 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
         </Button>
         {compact ? null : (
           <>
+        <Button
+          size="icon-xs"
+          variant="ghost-muted"
+          aria-label="Copy output"
+          disabled={styled.length === 0}
+          onClick={() => void copyOutput()}
+        >
+          <CopyIcon />
+        </Button>
         <Button
           size="icon-xs"
           variant="ghost-muted"
@@ -312,7 +352,7 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
       ) : null}
       <div className="relative min-h-0 flex-1">
         <div
-          ref={scrollRef}
+          ref={setScroller}
           onKeyDown={(e) => {
             // The table's `chat.find` stays out while the terminal has focus; the mirror takes mod+f itself.
             if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "f") {
@@ -324,7 +364,7 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
           tabIndex={0}
           aria-label="Terminal"
           onScroll={onScroll}
-          className="absolute inset-0 overflow-y-auto bg-[#0a0a0a] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          className="absolute inset-0 overflow-y-auto overscroll-y-contain bg-[#0a0a0a] outline-none [touch-action:pan-x_pan-y] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
           {canLoadOlder && mirror.text !== null ? (
             <div className="flex justify-center py-1">

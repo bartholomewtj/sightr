@@ -33,7 +33,9 @@ export function SpawnProgress({ start, now: clock = () => Date.now() }: { start:
   useEffect(() => {
     if (!open || !threadId) return;
     const id = setTimeout(() => {
-      void navigate({ to: "/thread/$threadId", params: { threadId } });
+      // Replace the draft screen: back from the new thread goes to where "New thread" was tapped, not
+      // to an empty draft.
+      void navigate({ to: "/thread/$threadId", params: { threadId }, replace: true });
       finishStart();
     }, READY_NAV_MS);
     return () => clearTimeout(id);

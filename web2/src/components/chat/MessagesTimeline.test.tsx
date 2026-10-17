@@ -11,7 +11,7 @@ import { followTimeline, loadOlderHistory, useHistoryState } from "@/state/timel
 import { thread as threadFixture } from "@/test/fixtures";
 import { installListLayout } from "@/test/list-layout";
 import { server } from "@/test/setup";
-import { assistant, command, reasoning, resetOrdinals, run, screen as screenItem, user } from "@/test/turn-items";
+import { assistant, command, edit, reasoning, resetOrdinals, run, screen as screenItem, user } from "@/test/turn-items";
 
 import { MessagesTimeline } from "./MessagesTimeline";
 
@@ -405,6 +405,121 @@ describe("MessagesTimeline: history paging", () => {
     }
     render(<Probe />);
     expect(status).toBe("idle");
+  });
+});
+
+describe("MessagesTimeline: phone pass", () => {
+  const foldedRun = () => [
+    user("u:0", "go", { ...inRun, createdAt: 1_000_000 }),
+    command("a:0", "npm test", { ...inRun, createdAt: 1_001_000, output: "ok 1" }),
+    command("b:0", "npm run lint", { ...inRun, createdAt: 1_002_000, output: "clean" }),
+    assistant("c:0", "done", { ...inRun, createdAt: 1_003_000 }),
+  ];
+
+  it("keeps an opened tool entry open after its row unmounts and mounts again", async () => {
+    await show(foldedRun(), { runs: [done] });
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Ran 2 commands" }));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "npm test" }));
+    await settle();
+    expect(screen.getByLabelText("Output")).toHaveTextContent("ok 1");
+    // Folding the run unmounts the entry's row, as scrolling it out of the window does.
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+    await settle();
+    expect(screen.queryByRole("button", { name: "npm test" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+    await settle();
+    expect(screen.getByRole("button", { name: "npm test" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "npm run lint" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("gives an interactive tool row a 44 px coarse-pointer line, and a plain row none", async () => {
+    await show(
+      [user("u:0", "go", inRun), command("a:0", "ls", { ...inRun, output: "x" }), command("b:0", "pwd", inRun), assistant("c:0", "ok", inRun)],
+      { runs: [done] },
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
+    await settle();
+    const header = screen.getByRole("button", { name: "Ran 2 commands" });
+    expect(header.firstElementChild?.className).toContain("pointer-coarse:min-h-11");
+    fireEvent.click(header);
+    await settle();
+    const open = screen.getByRole("button", { name: "ls" });
+    expect(open.firstElementChild?.className).toContain("pointer-coarse:min-h-11");
+    const plain = document.querySelector('[data-item-type="command_execution"]:not([role])')!;
+    expect(plain.firstElementChild?.className).not.toContain("pointer-coarse:min-h-11");
+  });
+
+  it("keeps the list (and its Load earlier control) when the loaded window is empty but history is not", async () => {
+    server.use(http.get("/api/v2/thread/t1/history", () => new Promise<never>(() => {})));
+    await show([], { historyCursor: "c1" });
+    expect(screen.queryByText("No messages yet. Type below to start.")).toBeNull();
+    // The list is up and its header is the history control (loading, as the top is already in view).
+    expect(document.querySelector("[data-timeline]")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Load earlier messages" })).toBeInTheDocument();
+  });
+
+  it("says when a usage limit resets", async () => {
+    const resetAt = Date.now() + 60 * 60_000;
+    const limit = {
+      ...user("e:0", "", inRun),
+      type: "error",
+      status: "failed",
+      failure: { class: "usage_limit", message: "limit", code: null, retryable: false, resetAt },
+    } as unknown as TurnItem;
+    await show([user("u:0", "go", inRun), limit], { runs: [run("r1", { status: "failed" })] });
+    // Same-day resets read as a clock time, later ones with the date; both carry the time.
+    const clock = new Date(resetAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    const label = await screen.findByText(/^Usage limit reached\. Retry after .+\.$/);
+    expect(label).toHaveTextContent(clock);
+  });
+
+  it("opens a long system notice to its full text", async () => {
+    const message = "The harness restarted the session because the context window was full; earlier turns were summarised.";
+    const notice = { ...user("n:0", "", inRun), type: "system_notice", message } as unknown as TurnItem;
+    await show([user("u:0", "go", inRun), notice, assistant("b:0", "ok", inRun)], { runs: [live] });
+    const row = screen.getByRole("button", { name: message });
+    fireEvent.click(row);
+    await settle();
+    expect(within(row).getByLabelText("Notice")).toHaveTextContent(message);
+  });
+
+  it("colours a diff's added and removed lines, and wraps a long path", async () => {
+    const change = {
+      ...edit("f:0", "src/a/very/long/path/that/would/not/fit/on/a/phone/component-with-a-long-name.tsx", { ...inRun, status: "failed" }),
+      diffStr: "@@ -1 +1 @@\n-old line\n+new line",
+    } as TurnItem;
+    await show([user("u:0", "go", inRun), change, assistant("b:0", "ok", inRun)], { runs: [run("r1", { status: "failed" })] });
+    const diff = await screen.findByLabelText("Diff");
+    expect(diff.querySelector('[data-diff-line="+"]')).toHaveTextContent("+new line");
+    expect(diff.querySelector('[data-diff-line="-"]')).toHaveTextContent("-old line");
+    expect(diff.textContent).toBe("@@ -1 +1 @@\n-old line\n+new line");
+    const path = document.querySelector('[data-tool-detail="file_change"] span');
+    expect(path).toHaveTextContent(/component-with-a-long-name\.tsx$/);
+    expect(path?.className).toContain("wrap-anywhere");
+  });
+
+  it("marks an opened thought that is still streaming, so its details follow the new text", async () => {
+    const now = Date.now();
+    await show(
+      [
+        user("u:0", "go", { ...inRun, createdAt: now - 60_000 }),
+        { ...reasoning("t:0", "Checking the tests first.", { ...inRun, createdAt: now - 50_000 }), streaming: true } as TurnItem,
+        command("c:0", "ls", { ...inRun, createdAt: now - 40_000, output: "x" }),
+        command("d:0", "pwd", { ...inRun, createdAt: now - 30_000, status: "running" }),
+      ],
+      { runs: [live] },
+    );
+    // The live row opens its group; the thought is an entry there.
+    fireEvent.click(screen.getByRole("button", { name: /Running pwd/ }));
+    await settle();
+    const thought = document.querySelector('[data-item-type="reasoning"][role="button"]') as HTMLElement;
+    expect(thought).not.toBeNull();
+    fireEvent.click(thought);
+    await settle();
+    expect(thought.querySelector(".chat-markdown[data-streaming]")).not.toBeNull();
   });
 });
 

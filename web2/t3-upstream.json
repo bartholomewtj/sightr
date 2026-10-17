@@ -132,7 +132,7 @@
     {
       "local": "src/components/ui/toggle-group.tsx",
       "upstream": "apps/web/src/components/ui/toggle-group.tsx",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "verbatim"
     },
     {
@@ -144,7 +144,7 @@
     {
       "local": "src/components/ui/tooltip.tsx",
       "upstream": "apps/web/src/components/ui/tooltip.tsx",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "verbatim"
     },
     {
@@ -285,7 +285,8 @@
       "local": "src/components/chat/WorkLog.tsx",
       "upstream": "apps/web/src/components/chat/WorkLog.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
-      "mode": "verbatim"
+      "mode": "adapted",
+      "note": "phone: an interactive row's line is pointer-coarse:min-h-11 (44 px tap target); otherwise upstream"
     },
     {
       "local": "src/components/chat/WorkLog.test.tsx",
@@ -305,7 +306,7 @@
       "upstream": "apps/web/src/components/chat/MessageCopyButton.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "lucide-react icons; try/catch clipboard with a status line instead of the anchored toast"
+      "note": "lucide-react icons; try/catch clipboard with a status line instead of the anchored toast; execCommand fallback when the Clipboard API is missing or refuses"
     },
     {
       "local": "src/components/chat/ToolItemDetail.tsx",
@@ -319,7 +320,7 @@
       "upstream": "apps/web/src/components/ChatMarkdown.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "react-markdown + remark-gfm (+ remark-breaks); no Shiki, Mermaid, raw HTML, file links, images, citations"
+      "note": "react-markdown + remark-gfm (+ remark-breaks); no Shiki, Mermaid, raw HTML, file links, images, citations; code-block Wrap lines toggle kept (starts on below sm)"
     },
     {
       "local": "src/session-logic.ts",
@@ -401,9 +402,9 @@
     {
       "local": "src/components/chat/ComposerPrimaryActions.tsx",
       "upstream": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
-      "note": "labelled Send/Queue/Steer/Update pill + T3's Stop and Ctrl/\u2318-click alternate; no plan/resume/compact/pending-question states"
+      "note": "labelled Send/Queue/Steer/Update pill + T3's Stop and Ctrl/⌘-click alternate and canSteer; 44 px on a coarse pointer; no plan/resume/compact/pending-question states"
     },
     {
       "local": "src/components/chat/ComposerPendingApprovalPanel.tsx",
@@ -464,13 +465,13 @@
     {
       "local": "src/t3/client-runtime/state/composerDispatch.ts",
       "upstream": "packages/client-runtime/src/state/composerDispatch.ts",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "verbatim"
     },
     {
       "local": "src/t3/client-runtime/state/composerDispatch.test.ts",
       "upstream": "packages/client-runtime/src/state/composerDispatch.test.ts",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
       "note": "imports vitest instead of vite-plus/test"
     },
@@ -527,7 +528,7 @@
       "upstream": "apps/web/src/components/RightPanelSheet.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "bottom sheet, not kept mounted, back closes it"
+      "note": "bottom sheet, not kept mounted, back closes it (asks the Files editor first), tab strip, safe-area and soft-keyboard sizing"
     },
     {
       "local": "src/commandPaletteBus.ts",
@@ -674,6 +675,146 @@
       "upstream": "apps/web/src/components/BranchToolbarEnvModeSelector.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "pattern"
+    }
+  ],
+  "decisions": [
+    {
+      "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "defer",
+      "reason": "React Compiler memo removal only; revisit after T23"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/QueuedRunsControl.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "defer",
+      "reason": "React Compiler memo removal only; revisit after T23"
+    },
+    {
+      "upstream": "apps/web/src/components/Sidebar.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "defer",
+      "reason": "React Compiler rewrite; no new behaviour; revisit after T23"
+    },
+    {
+      "upstream": "apps/web/src/components/CommandPalette.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "defer",
+      "reason": "React Compiler rewrite; revisit after T23"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/ChatComposer.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "defer",
+      "reason": "Compaction canSteer taken in T22; memo-free rewrite waits on T23"
+    },
+    {
+      "upstream": "apps/web/src/components/ChatMarkdown.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "Streaming re-render fix targets renderer context, task lists and server config Sightr's copy does not have"
+    },
+    {
+      "upstream": "apps/web/src/components/Sidebar.logic.ts",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "Changed hooks are not in Sightr's adapted copy"
+    },
+    {
+      "upstream": "apps/web/src/components/ThreadStatusIndicators.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "Effect atom PR-snapshot setter removed; never taken"
+    },
+    {
+      "upstream": "apps/web/src/routes/__root.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "Welcome-route flag; Sightr has no welcome bootstrap"
+    },
+    {
+      "upstream": "apps/web/src/components/BranchToolbar.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "useEffectEvent refactor, no behaviour change"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/composerFocusRedirect.ts",
+      "commit": "db5919d87daf",
+      "verdict": "defer",
+      "reason": "Type-to-focus, desktop only; parity work later"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/useChatShortcuts.ts",
+      "commit": "db5919d87daf",
+      "verdict": "defer",
+      "reason": "Shortcut command map; pattern look with T23"
+    },
+    {
+      "upstream": "apps/web/src/hooks/useIncrementalTimelineEntries.ts",
+      "commit": "db5919d87daf",
+      "verdict": "defer",
+      "reason": "Incremental timeline derivation; only if phone timeline shows re-render cost"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/useQueuedRunEdit.ts",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "Sightr has queued.edit; T3 version needs contexts Sightr lacks"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/usePendingThreadRequests.ts",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "Runtime requests come from the bridge (T04/T12)"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/RightPanelSurfaceContent.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "Browser/device surfaces; Sightr panel is Terminal/Files/Git"
+    },
+    {
+      "upstream": "apps/web/src/hooks/useRightPanelSurfaceClose.ts",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "Browser/device surfaces; Sightr panel is Terminal/Files/Git"
+    },
+    {
+      "upstream": "apps/web/src/hooks/useProactivePanels.ts",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "Agent-opened browser/device panels; not in Sightr"
+    },
+    {
+      "upstream": "apps/web/src/components/PersistentThreadTerminals.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "Server-hosted PTYs; the herdr pane is the terminal"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/useWorktreeSetup.ts",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "Worktrees are never taken"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/useProjectScriptEditing.ts",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "No project scripts in Sightr"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/useUsageLimitsPanel.ts",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "Needs provider usage data herdr panes don't expose"
+    },
+    {
+      "upstream": "apps/web/src/components/settings/MobileAppSettingsRow.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "Expo app is never taken"
     }
   ]
 }

@@ -1,5 +1,5 @@
 /**
- * The project row's menu (right click or `Space` on the row): Rename. The inline field mirrors the
+ * The project row's menu (right click, `Space` on the row, or a long press on touch): Rename. The inline field mirrors the
  * thread row's: Enter sends `project.rename`, Escape cancels, an empty name is refused.
  */
 import { useEffect, useRef, useState } from "react";
@@ -30,7 +30,9 @@ export function ProjectRowMenu({
     >
       {open ? (
         <MenuPopup anchor={anchor} align="start" side="bottom" aria-label={`Actions for ${project.label}`}>
-          <MenuItem onClick={() => onRename(project.id)}>Rename</MenuItem>
+          <MenuItem className="pointer-coarse:min-h-11" onClick={() => onRename(project.id)}>
+            Rename
+          </MenuItem>
         </MenuPopup>
       ) : null}
     </Menu>
@@ -56,7 +58,7 @@ export function ProjectRenameField({ label, onDone, onCommit }: { label: string;
         aria-label="Project name"
         aria-invalid={invalid || undefined}
         className={cn(
-          "h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:border-ring",
+          "h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-base text-foreground outline-none focus-visible:border-ring sm:text-sm pointer-coarse:h-10",
           invalid && "border-warn",
         )}
         value={value}

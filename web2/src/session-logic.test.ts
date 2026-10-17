@@ -57,4 +57,12 @@ describe("deriveTimelineEntries", () => {
     const entries = deriveTimelineEntries({ items: [command("a:0", "ls", { output: "x" })], runs: [] });
     expect(entries[0]).toMatchObject({ kind: "work", entry: { command: "ls", tone: "tool", itemType: "command_execution" } });
   });
+  it("warns on a failed system notice, not on one that finished cleanly", () => {
+    const notice = (id: string, status: "completed" | "failed") =>
+      ({ id, threadId: "t1", runId: null, ordinal: 0, status, title: null, startedAt: null, completedAt: null, createdAt: 1, updatedAt: 1, type: "system_notice", message: "Background command completed (exit code 0)" }) as never;
+    const [ok, bad] = deriveTimelineEntries({ items: [notice("n:0", "completed"), notice("n:1", "failed")], runs: [] });
+    expect(ok).toMatchObject({ kind: "work", entry: { itemType: "system_notice" } });
+    expect((ok as { entry: { sourceActivityKind?: string } }).entry.sourceActivityKind).toBeUndefined();
+    expect((bad as { entry: { sourceActivityKind?: string } }).entry.sourceActivityKind).toBe("runtime.warning");
+  });
 });

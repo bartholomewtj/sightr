@@ -25,6 +25,43 @@ export const MAX_DRAIN_FAILURES = 3;
 
 export const isSettled = (status: ThreadStatus): boolean => status === "idle" || status === "done";
 
+/**
+ * A harness command that cannot take steering input: an interrupt during it cancels it (seen in
+ * Claude, Codex and Pi for `/compact`). T3's `isNativeMaintenanceCommand`
+ * (apps/server/src/orchestration-v2/CommandPolicy.ts @ db5919d87), same rule.
+ */
+export function isNativeMaintenanceCommand(message: { text: string; attachments?: readonly ChatAttachment[] }): boolean {
+  return (message.attachments ?? []).length === 0 && ["/compact", "/logout"].includes(message.text.trim().toLowerCase());
+}
+
+/** How many of the newest items to search for the open run's message when T03 has not linked it yet. */
+const UNLINKED_USER_ITEM_SCAN = 50;
+
+/**
+ * Did the thread's open run start from a maintenance command (`/compact`)? A steer then becomes a
+ * queued follow-up: it must never press the interrupt key into it (T3 #20184, `resolveMessageDispatchIntent`).
+ * The run's message is its `userItemId`, else a `user_message` attributed to it, else the newest
+ * `user_message` not yet claimed by a run (dispatch's own item, before T03 adopts it).
+ */
+export function openRunIsMaintenance(
+  store: Pick<ThreadStore, "openRun" | "getTurnItem" | "itemsForRun" | "recentItems">,
+  threadId: string,
+): boolean {
+  const run = store.openRun(threadId);
+  if (!run) return false;
+  const linked = run.userItemId ? store.getTurnItem(run.userItemId) : null;
+  const message =
+    (linked?.type === "user_message" ? linked : undefined) ??
+    store.itemsForRun(run.id).find((i) => i.type === "user_message") ??
+    store
+      .recentItems(threadId, UNLINKED_USER_ITEM_SCAN)
+      .filter((i) => i.type === "user_message")
+      .at(-1);
+  if (!message || message.type !== "user_message") return false;
+  if (message.runId !== null && message.runId !== run.id) return false;
+  return isNativeMaintenanceCommand(message);
+}
+
 export interface DrainTimers {
   setTimeout(fn: () => void, ms: number): unknown;
   clearTimeout(handle: unknown): void;

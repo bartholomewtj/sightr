@@ -35,7 +35,7 @@ export function OpenTerminalButton({ threadId, prompt }: { threadId: string; pro
         if (prompt !== undefined) useRightPanelStore.getState().requestDirectTyping(threadId, prompt);
         openThreadTerminal(threadId);
       }}
-      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border-2 border-border bg-card px-3 text-sm font-medium text-foreground hover:border-you sm:min-h-9"
+      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border-2 border-border bg-card px-3 text-sm font-medium text-foreground hover:border-you pointer-fine:sm:min-h-9"
     >
       <TerminalSquareIcon className="size-4" aria-hidden="true" />
       Open terminal

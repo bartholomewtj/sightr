@@ -1,5 +1,6 @@
 // Adapted from T3 Code apps/web/src/components/sidebar/SidebarThreadUndoNotice.tsx @ e3b35d1b (MIT, see THIRD_PARTY.md).
-// Changes: "Settled · Undo" (one thread at a time), a fixed shortcut label instead of T3's keybinding atom.
+// Changes: "Settled · Undo" (one thread at a time), a fixed shortcut label instead of T3's keybinding atom,
+// and a 44 px Undo target on touch.
 import { undoLatestThreadAction, useThreadUndoNotice } from "@/hooks/showThreadUndoNotice";
 
 const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -18,7 +19,7 @@ export function SidebarThreadUndoNotice() {
       </span>
       <button
         type="button"
-        className="font-medium text-house-accent underline-offset-4 hover:underline"
+        className="-my-2 font-medium text-house-accent underline-offset-4 hover:underline pointer-coarse:min-h-11 pointer-coarse:px-3"
         onClick={undoLatestThreadAction}
         title={isMac() ? "⌘Z" : "Ctrl+Z"}
       >

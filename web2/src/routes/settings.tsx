@@ -4,10 +4,11 @@
 // built from T3's SettingsSection / SettingsRow (components/settings/settingsLayout.tsx). Each section
 // uses the bridge endpoint v1 uses for the same setting (no new bridge route). Read-only devices see
 // every section and can change only the per-device ones.
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeftIcon, ExternalLinkIcon, KeyboardIcon } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { ExternalLinkIcon, KeyboardIcon } from "lucide-react";
 
 import { Button } from "~/components/ui/button";
+import { BackToThreads } from "@/components/shell/BackToThreads";
 import { KeyboardShortcutsDialog, openShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 import { BridgeSettings } from "@/components/settings/BridgeSettings";
 import { ComposerSettings } from "@/components/settings/ComposerSettings";
@@ -36,9 +37,7 @@ function SettingsRouteView() {
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background text-foreground">
       <header className="flex items-center gap-2 border-b px-3 py-2">
-        <Button size="icon-sm" variant="ghost" aria-label="Back to threads" render={<Link to="/" />}>
-          <ArrowLeftIcon />
-        </Button>
+        <BackToThreads />
         <h1 className="text-base font-semibold">Settings</h1>
       </header>
       <SettingsPageContainer>
