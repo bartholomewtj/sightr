@@ -270,7 +270,7 @@ export function MessagesTimeline({ threadId }: MessagesTimelineProps) {
     return (
       <div className="flex h-full items-center justify-center px-6" data-timeline-empty="true">
         <p className="text-center text-sm text-muted-foreground">
-          {noJournal ? "This harness has no transcript. Open the Terminal tab." : "No messages yet. Type below to start."}
+          {noJournal ? "This harness has no transcript. Switch to CLI to see the terminal." : "No messages yet. Type below to start."}
         </p>
       </div>
     );

@@ -8,8 +8,10 @@ import { TimelineFind } from "~/components/chat/ThreadFindBar";
 import { openThreadFind } from "~/components/chat/useThreadFind";
 import { useShortcutHandler } from "@/shortcutHandlers";
 import { Button } from "~/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
 import { RightPanelSheet } from "@/components/RightPanelSheet";
 import { RIGHT_PANEL_ICON, RightPanelSurface } from "@/components/RightPanelTabs";
+import { TerminalPanel } from "@/components/right-panel/TerminalPanel";
 import { useLayout } from "@/hooks/useLayout";
 import { useThreadStream } from "@/hooks/useThreadStream";
 import { canUnarchive } from "@/lib/archived";
@@ -17,6 +19,7 @@ import { noteOpenThread } from "@/state/draft-thread";
 import { performThreadCommand, useSidebarThread } from "@/state/sidebar";
 import { RIGHT_PANEL_KINDS, RIGHT_PANEL_LABEL, useRightPanelStore } from "@/rightPanelStore";
 import { useThread, useThreadStore } from "@/stream/stores";
+import { useThreadView, useThreadViewStore, type ThreadView } from "@/threadViewStore";
 
 export const Route = createFileRoute("/_chat/thread/$threadId")({
   component: ThreadRouteView,
@@ -49,9 +52,13 @@ function ThreadRouteView() {
   useMarkReadOnOpen(threadId, synchronized, shellThread?.unreadDone ?? state?.thread?.unreadDone);
   const archived = (shellThread ?? state?.thread)?.shelf === "archived";
   const archiveReason = (shellThread ?? state?.thread)?.archiveReason;
-  // T19: mod+f (`chat.find`, not while the terminal has the keys) opens find over the timeline.
+  // A thread with no transcript opens on its terminal (the CLI); the toggle flips it to the timeline.
+  const { view, cliFirst } = useThreadView(threadId);
+  const cli = view === "cli";
+  // T19: mod+f (`chat.find`, not while the terminal has the keys) opens find over the timeline. The CLI
+  // has its own find (the mirror takes mod+f while focused).
   useShortcutHandler("chat.find", () => {
-    if (missing) return false;
+    if (missing || cli) return false;
     openThreadFind(threadId);
   });
 
@@ -64,23 +71,30 @@ function ThreadRouteView() {
           </Link>
         )}
         <h1 className="min-w-0 flex-1 truncate font-semibold">{title}</h1>
-        {state?.syncing && <span className="text-xs text-muted-foreground">Syncing…</span>}
-        {!missing ? (
+        {state?.syncing && !cli && <span className="text-xs text-muted-foreground">Syncing…</span>}
+        {cliFirst && !missing ? <ThreadViewToggle threadId={threadId} view={view} /> : null}
+        {!missing && !cli ? (
           <Button size="icon-sm" variant="ghost-muted" aria-label="Find in thread" onClick={() => openThreadFind(threadId)}>
             <SearchIcon />
           </Button>
         ) : null}
-        {!desktop && !missing ? <PhonePanelButtons /> : null}
+        {!desktop && !missing ? <PhonePanelButtons cli={cli} /> : null}
       </header>
       {!desktop ? <PhonePanelSheet threadId={threadId} /> : null}
       {missing ? (
         <p className="p-4 text-sm text-muted-foreground">This thread no longer exists on the bridge.</p>
       ) : (
         <>
-          <div data-region="timeline" className="relative min-h-0 flex-1">
-            <MessagesTimeline threadId={threadId} />
-            <TimelineFind threadId={threadId} />
-          </div>
+          {cli ? (
+            <div data-region="cli" className="flex min-h-0 flex-1 flex-col">
+              <TerminalPanel threadId={threadId} />
+            </div>
+          ) : (
+            <div data-region="timeline" className="relative min-h-0 flex-1">
+              <MessagesTimeline threadId={threadId} />
+              <TimelineFind threadId={threadId} />
+            </div>
+          )}
           {archived ? (
             // Read-only: the composer (T12) is replaced.
             <div data-region="composer" className="flex items-center gap-3 border-t px-4 py-3 text-sm text-muted-foreground">
@@ -102,13 +116,35 @@ function ThreadRouteView() {
   );
 }
 
-/** Phone: Terminal, Files and Git open as one full-height sheet at a time (T13). */
-function PhonePanelButtons() {
+/** Thread or CLI as the main view, for a thread with no transcript. */
+function ThreadViewToggle({ threadId, view }: { threadId: string; view: ThreadView }) {
+  const setView = useThreadViewStore((s) => s.setView);
+  return (
+    <ToggleGroup
+      aria-label="Main view"
+      value={[view]}
+      onValueChange={(next: unknown[]) => {
+        const picked = next[0];
+        if (picked === "thread" || picked === "cli") setView(threadId, picked);
+      }}
+    >
+      <ToggleGroupItem value="cli">CLI</ToggleGroupItem>
+      <ToggleGroupItem value="thread">Thread</ToggleGroupItem>
+    </ToggleGroup>
+  );
+}
+
+/**
+ * Phone: Terminal, Files and Git open as one full-height sheet at a time (T13). With the CLI as the main
+ * view the Terminal button would only repeat it, so it goes.
+ */
+function PhonePanelButtons({ cli }: { cli: boolean }) {
   const sheet = useRightPanelStore((s) => s.sheet);
   const openSheet = useRightPanelStore((s) => s.openSheet);
+  const kinds = cli ? RIGHT_PANEL_KINDS.filter((kind) => kind !== "terminal") : RIGHT_PANEL_KINDS;
   return (
     <div className="-mr-1 flex items-center" role="group" aria-label="Thread tools">
-      {RIGHT_PANEL_KINDS.map((kind) => {
+      {kinds.map((kind) => {
         const Icon = RIGHT_PANEL_ICON[kind];
         return (
           <Button key={kind} size="icon-sm" variant="ghost-muted" aria-label={RIGHT_PANEL_LABEL[kind]} aria-pressed={sheet === kind} onClick={() => openSheet(kind)}>

@@ -20,6 +20,7 @@ import {
   useRightPanelStore,
   type RightPanelKind,
 } from "@/rightPanelStore";
+import { useThreadView, useThreadViewStore } from "@/threadViewStore";
 
 import { FilesPanel } from "./right-panel/FilesPanel";
 import { guardPanelLeave } from "./right-panel/leaveGuard";
@@ -34,9 +35,27 @@ export const RIGHT_PANEL_ICON: Record<RightPanelKind, typeof TerminalSquareIcon>
 
 /** The tab's content for a thread. Shared by the desktop panel and the phone sheet. */
 export function RightPanelSurface({ kind, threadId }: { kind: RightPanelKind; threadId: string }) {
-  if (kind === "terminal") return <TerminalPanel threadId={threadId} />;
+  if (kind === "terminal") return <TerminalSurface threadId={threadId} />;
   if (kind === "files") return <FilesPanel threadId={threadId} />;
   return <GitPanel threadId={threadId} />;
+}
+
+/**
+ * The Terminal tab, unless the thread's main view is already the CLI (a thread with no transcript):
+ * then a second mirror of the same pane would read it twice and race the first for ctrl+`.
+ */
+function TerminalSurface({ threadId }: { threadId: string }) {
+  const { view } = useThreadView(threadId);
+  const setView = useThreadViewStore((s) => s.setView);
+  if (view !== "cli") return <TerminalPanel threadId={threadId} />;
+  return (
+    <div className="flex flex-col items-start gap-2 p-4 text-sm text-muted-foreground" data-terminal-in-main="">
+      <p>This thread's terminal is the main view.</p>
+      <Button size="xs" variant="outline" onClick={() => setView(threadId, "thread")}>
+        Show the thread there instead
+      </Button>
+    </div>
+  );
 }
 
 const KEY_STEP = 16;

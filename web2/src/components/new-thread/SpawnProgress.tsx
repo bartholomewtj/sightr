@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { cn } from "@/lib/utils";
-import { openRightPanelSurface } from "@/rightPanelStore";
+import { openThreadTerminal } from "@/threadViewStore";
 import { editAndRetry, finishStart, readyToOpen, retryFirstMessage, type DraftStart } from "@/state/draft-thread";
 import { useShell } from "@/stream/stores";
 
@@ -42,7 +42,7 @@ export function SpawnProgress({ start, now: clock = () => Date.now() }: { start:
   const openTerminal = () => {
     if (!threadId) return;
     void navigate({ to: "/thread/$threadId", params: { threadId } });
-    openRightPanelSurface("terminal");
+    openThreadTerminal(threadId);
   };
 
   const slow = running && now - start.startedAt >= STILL_STARTING_MS;

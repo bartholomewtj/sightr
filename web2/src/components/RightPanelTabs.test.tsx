@@ -2,6 +2,8 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { NO_CAPABILITIES } from "@shared/v2/contracts";
+
 import { useRightPanelStore } from "@/rightPanelStore";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { shellSnapshot, thread } from "@/test/fixtures";
@@ -31,11 +33,13 @@ beforeEach(() => {
   );
 });
 
-async function boot(path: string, width: number) {
+/** `hasJournal: false` boots a thread with no transcript (a bare shell), which opens on the CLI. */
+async function boot(path: string, width: number, { hasJournal = true }: { hasJournal?: boolean } = {}) {
   setViewportWidth(width);
   const app = renderApp(path);
   await waitFor(() => expect(shellSource()).toBeDefined());
-  frame(() => shellSource()?.emit("snapshot", shellSnapshot(5, [thread("t1", { title: "Fix the build" })])));
+  const t1 = thread("t1", { title: "Fix the build", capabilities: { ...NO_CAPABILITIES, hasJournal } });
+  frame(() => shellSource()?.emit("snapshot", shellSnapshot(5, [t1])));
   await screen.findByRole("heading", { name: "Fix the build" });
   return app;
 }
@@ -82,6 +86,42 @@ describe("right panel: desktop", () => {
     await waitFor(() => expect(useRightPanelStore.getState().activeSurfaceId).toBe("terminal"));
   });
 
+  it("opens a thread with no transcript on the CLI; the panel's Terminal tab defers to it", async () => {
+    await boot("/v2/thread/t1", 1280, { hasJournal: false });
+    const cli = region("cli") as HTMLElement;
+    expect(await within(cli).findByText(/\$ mirror/)).toBeInTheDocument();
+    expect(region("timeline")).toBeNull();
+    // Still a composer under the CLI, so a whole command can be typed and sent.
+    expect(region("composer")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "CLI" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: "Find in thread" })).toBeNull();
+    const panel = region("right-panel") as HTMLElement;
+    expect(within(panel).getByText("This thread's terminal is the main view.")).toBeInTheDocument();
+    expect(within(panel).queryByText(/\$ mirror/)).toBeNull();
+
+    // The panel's button moves the timeline back to the main view and the terminal into the panel.
+    fireEvent.click(within(panel).getByRole("button", { name: "Show the thread there instead" }));
+    await waitFor(() => expect(region("timeline")).not.toBeNull());
+    expect(region("cli")).toBeNull();
+    expect(await within(region("right-panel") as HTMLElement).findByText(/\$ mirror/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Thread" })).toHaveAttribute("aria-pressed", "true");
+
+    // ctrl+j (terminal.toggle) on such a thread flips the main view rather than the panel.
+    fireEvent.keyDown(document.body, { key: "j", ctrlKey: true });
+    await waitFor(() => expect(region("cli")).not.toBeNull());
+    expect(region("right-panel")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Thread" }));
+    await waitFor(() => expect(region("timeline")).not.toBeNull());
+  });
+
+  it("keeps the timeline and toggle-free header for a thread with a transcript", async () => {
+    await boot("/v2/thread/t1", 1280);
+    expect(region("timeline")).not.toBeNull();
+    expect(region("cli")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Main view" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Find in thread" })).toBeInTheDocument();
+  });
+
   it("says Open a thread with no thread open", async () => {
     setViewportWidth(1280);
     renderApp("/v2/");
@@ -106,5 +146,16 @@ describe("right panel: phone", () => {
     });
     await waitFor(() => expect(useRightPanelStore.getState().sheet).toBeNull());
     expect(router.history.location.pathname).toBe("/v2/thread/t1");
+  });
+
+  it("opens a thread with no transcript on the CLI, with no Terminal sheet button", async () => {
+    await boot("/v2/thread/t1", 390, { hasJournal: false });
+    expect(await within(region("cli") as HTMLElement).findByText(/\$ mirror/)).toBeInTheDocument();
+    const tools = screen.getByRole("group", { name: "Thread tools" });
+    expect(within(tools).queryByRole("button", { name: "Terminal" })).toBeNull();
+    expect(within(tools).getByRole("button", { name: "Files" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Thread" }));
+    await waitFor(() => expect(region("timeline")).not.toBeNull());
+    expect(within(tools).getByRole("button", { name: "Terminal" })).toBeInTheDocument();
   });
 });

@@ -75,7 +75,8 @@ import { isWhistlrDecision, replyToDecision } from "@/state/decision-reply";
 import { GestureWheel } from "@/components/keys/gesture-wheel";
 import { useWheelPrefs } from "@/hooks/use-wheel-prefs";
 import { useOperatorWheel } from "@/lib/operator-commands";
-import { openRightPanelSurface, useRightPanelStore } from "@/rightPanelStore";
+import { useRightPanelStore } from "@/rightPanelStore";
+import { openThreadTerminal } from "@/threadViewStore";
 import { wheelSlicesFor } from "@v1/lib/wheel";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
@@ -711,9 +712,9 @@ export function ChatComposer({ threadId }: { threadId: string }) {
                     slices={wheelSlicesFor(operatorWheel, wheelPicks, ctrlPresetsFor(thread?.harness, operatorKeys))}
                     onKeys={sendDockKeys}
                     onType={() => {
-                      // Type: the Terminal tab, with direct typing armed (T13).
+                      // Type: the Terminal tab (or the CLI view), with direct typing armed (T13).
                       useRightPanelStore.getState().requestDirectTyping(threadId);
-                      openRightPanelSurface("terminal");
+                      openThreadTerminal(threadId);
                     }}
                     typeActive={false}
                     onTap={() => setKeysOpen((open) => !open)}
