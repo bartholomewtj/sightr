@@ -60,6 +60,7 @@ a build where they disagree.
 - Pi: the first message of a new thread sat typed but unsubmitted while Pi was still starting. Sightr now reads Pi's input box, confirms the text arrived, and presses Enter again once "Startup is still in progress" clears.
 - A system notice that finished cleanly (a background command completing, "Stopped") no longer shows as a red warning in the timeline.
 - A timeline row stamped earlier than the one before it produced two day dividers with the same key, which made the list drop rows.
+- Pi: a question Pi asks with its ask tool now shows as a card with its options. Herdr reports a Pi pane as working for the whole tool call, so the bridge never looked at the screen; it now reads a working Pi pane for dialogs, and tapping an option sends its keys.
 
 ## [1.2.1] - 2026-10-03
 
