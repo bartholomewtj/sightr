@@ -9,6 +9,8 @@
 //   T3's hover card (`SubagentTimelineTooltip`) becomes a details panel, because a phone has no hover.
 // - Handoff, fork, thread-created and interrupt-request rows are left out (no herdr source).
 // - Phone pass: the subagent row and the compaction toggle are 44 px targets on a coarse pointer.
+// - With no result yet (a background agent) the subagent row's second line is its prompt, not a bare
+//   status; the bridge turns the row completed or failed when the agent's task-notification lands.
 import type { TurnItem } from "@shared/v2/contracts";
 import { BotIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { useState } from "react";
@@ -123,7 +125,8 @@ function SubagentRow({ item }: { item: Extract<TurnItem, { type: "subagent" }> }
   const status = subagentStatusLabel(item);
   const failed = item.status === "failed";
   const result = item.result?.trim() ?? "";
-  const detail = result ? plainDetail(result) : (item.progress?.trim() ?? "");
+  // Until a result lands (a background agent) the row says what the agent was asked to do.
+  const detail = result ? plainDetail(result) : item.progress?.trim() || plainDetail(item.prompt);
   const title = item.title?.trim() || "Subagent";
   const facts = subagentFacts(item);
   return (

@@ -10,9 +10,11 @@
 // - Sightr rows: `event` carries `session` and `screen` items; `day` dividers between calendar days
 //   (`insertDayDividers`).
 // - Follow re-arms within 80 px of the end (T11), not 40.
+// - A dynamic tool's row leads with `dynamicToolDisplayName` (an MCP tool as "<tool> · <server>").
 import type { Run, TurnItem } from "@shared/v2/contracts";
 
 import {
+  dynamicToolDisplayName,
   formatDuration,
   workEntryDisplayIndicatesToolFailure,
   workEntryIndicatesToolNeutralStatus,
@@ -140,10 +142,9 @@ export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string
   const detailIsSearchOutput =
     (action === "code-search" || action === "search") && /[\r\n]/.test(compactDetail ?? "");
   if (compactDetail && !providerRetry && action !== "read" && !detailIsSearchOutput) {
-    // Sightr: a dynamic tool's detail is its input summary; lead with the tool name.
-    return item?.type === "dynamic_tool" && item.toolName
-      ? `${item.toolName} ${compactDetail.replace(/\s+/g, " ")}`
-      : compactDetail;
+    // Sightr: a dynamic tool's detail is its input summary; lead with the tool name ("<tool> · <server>" for MCP).
+    const toolName = item?.type === "dynamic_tool" ? dynamicToolDisplayName(item.toolName) : null;
+    return toolName ? `${toolName} ${compactDetail.replace(/\s+/g, " ")}` : compactDetail;
   }
   const [firstPath] = entry.changedFiles ?? [];
   if (firstPath) {

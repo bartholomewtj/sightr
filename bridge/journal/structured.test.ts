@@ -114,7 +114,8 @@ describe("Claude fixture → turn items", () => {
 
   test("an Edit carries the diff from structuredPatch and its counts", () => {
     const edit = byId(list, "c0000000-0000-4000-8000-000000000002:0");
-    expect(edit).toMatchObject({ type: "file_change", status: "completed", fileName: "C:\\demo\\src\\greet.ts", additions: 2, deletions: 1 });
+    // The row's cwd is C:\demo, so the path is workspace-relative.
+    expect(edit).toMatchObject({ type: "file_change", status: "completed", fileName: "src/greet.ts", additions: 2, deletions: 1 });
     if (edit.type !== "file_change") throw new Error("type");
     expect(edit.diffStr).toContain("@@ -3,3 +3,4 @@");
     expect(edit.diffStr).toContain('+export const farewell = "bye";');
@@ -300,5 +301,95 @@ describe("Pi fixture → turn items", () => {
       cost: 0.00140365,
     });
     expect(entries.find((e) => e.uuid === "m0000010")!.usage).toBeUndefined();
+  });
+});
+
+describe("Claude fixture with cwd and background agents → turn items", () => {
+  const entries = parseClaudeTranscript(fixture("claude-subagents.jsonl"));
+  const list = items(entries, "claude");
+  const row = (n: number) => `d0000000-0000-4000-8000-${String(n).padStart(12, "0")}:0`;
+
+  test("an edit under the session's cwd shows a workspace-relative path with forward slashes", () => {
+    const edit = byId(list, row(2));
+    expect(edit).toMatchObject({ type: "file_change", fileName: "docs/notes.md", additions: 1, deletions: 1 });
+    if (edit.type !== "file_change") throw new Error("type");
+    expect(edit.diffStr).toContain("+++ b/docs/notes.md");
+    // The capped arguments stay verbatim.
+    expect(edit.title).toBe("Edit");
+    const part = entries.find((e) => e.uuid === row(2).slice(0, -2))!.parts[0]!;
+    expect(part.kind === "tool" && (part.input as { file_path: string }).file_path).toBe("C:\\work\\demo\\docs\\notes.md");
+  });
+
+  test("a path outside the cwd is left as it is", () => {
+    expect(byId(list, row(4))).toMatchObject({ type: "dynamic_tool", input: "C:\\Other\\outside.txt" });
+  });
+
+  test("Grep hits under the cwd are relative; the matched text keeps its backslashes", () => {
+    expect(byId(list, row(6))).toMatchObject({
+      type: "file_search",
+      results: [{ fileName: "docs/notes.md", line: 2, preview: "two edited \\ back" }],
+    });
+  });
+
+  test("a background Agent hides the launch boilerplate and takes the hand-back as its result", () => {
+    const agent = byId(list, row(8));
+    expect(agent).toMatchObject({
+      type: "subagent",
+      title: "Survey the docs",
+      subagentId: "a111111111111111a",
+      prompt: "List the docs and say which are stale.",
+      status: "completed",
+      agentStatus: "completed",
+      tokens: "30216",
+      toolUses: 4,
+      durationMs: 12706,
+      result: "Two docs: notes.md is current.\n\n- README.md is stale.",
+    });
+    if (agent.type !== "subagent") throw new Error("type");
+    expect(agent.result).not.toContain("Async agent launched");
+  });
+
+  test("the hand-back and the matched task-notification leave no rows of their own", () => {
+    expect(list.some((i) => i.id === row(12) || i.id === row(13))).toBe(false);
+  });
+
+  test("a failed background agent turns failed and keeps the notification's result", () => {
+    expect(byId(list, row(14))).toMatchObject({
+      type: "subagent",
+      status: "failed",
+      agentStatus: "failed",
+      result: "The agent hit an error: network unreachable.",
+    });
+  });
+
+  test("a task-notification for a call outside the window stays a note", () => {
+    expect(byId(list, row(17))).toMatchObject({ type: "system_notice", message: 'Background command "bun test" completed (exit code 0)' });
+  });
+
+  test("before its notification lands, a background agent reads as launched with an empty result", () => {
+    const head = fixture("claude-subagents.jsonl").split("\n").slice(0, 9).join("\n");
+    const agent = byId(items(parseClaudeTranscript(head), "claude"), row(8));
+    expect(agent).toMatchObject({ type: "subagent", agentStatus: "async_launched", result: "" });
+  });
+
+  test("a foreground agent's pointer result is replaced by its hand-back (queued as an attachment row)", () => {
+    const agent = byId(list, row(20));
+    expect(agent).toMatchObject({ type: "subagent", status: "completed", result: "The guide explains setup in three steps.", durationMs: 4100 });
+  });
+
+  test("a hand-back and task-notification queued while the session was busy finish a background agent", () => {
+    expect(byId(list, row(22))).toMatchObject({
+      type: "subagent",
+      agentStatus: "completed",
+      result: "Three files.",
+      tokens: "500",
+      toolUses: 2,
+      durationMs: 3000,
+    });
+    expect(list.some((i) => [24, 25, 26].some((n) => i.id === row(n)))).toBe(false);
+  });
+
+  test("an MCP call keeps its raw tool name (web2 labels it)", () => {
+    expect(byId(list, row(10))).toMatchObject({ type: "dynamic_tool", toolName: "mcp__claude-in-chrome__navigate", input: "https://example.com/" });
   });
 });

@@ -496,7 +496,8 @@ describe("MessagesTimeline: phone pass", () => {
     expect(diff.querySelector('[data-diff-line="+"]')).toHaveTextContent("+new line");
     expect(diff.querySelector('[data-diff-line="-"]')).toHaveTextContent("-old line");
     expect(diff.textContent).toBe("@@ -1 +1 @@\n-old line\n+new line");
-    const path = document.querySelector('[data-tool-detail="file_change"] span');
+    // Inside a thread the path is a link into the Files tab.
+    const path = document.querySelector('[data-tool-detail="file_change"] [data-open-file]');
     expect(path).toHaveTextContent(/component-with-a-long-name\.tsx$/);
     expect(path?.className).toContain("wrap-anywhere");
   });

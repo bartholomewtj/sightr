@@ -8,7 +8,7 @@
  * `<OpenFileLink threadId={id} path={raw} />`, or call `openPrintedPath(threadId, raw)` from an
  * existing control. A known Files rel path skips the bridge: `useRightPanelStore.getState().openFile`.
  */
-import type { ReactNode } from "react";
+import { createContext, use, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { showToast } from "@/components/toast";
@@ -25,6 +25,42 @@ export const RESOLVE_REFUSED: Record<Extract<FileResolveResponse, { path: null }
   "no-folder": "This thread's folder isn't known, so a relative path can't be found.",
   "bad-path": "That doesn't look like a file path.",
 };
+
+/**
+ * The thread whose Files tab a printed path opens in. The timeline provides it, so markdown deep in a
+ * message (ChatMarkdown's inline code) can link a path without threading props; outside a thread
+ * (null) paths stay plain text.
+ */
+export const OpenFileThreadContext = createContext<string | null>(null);
+
+export function useOpenFileThread(): string | null {
+  return use(OpenFileThreadContext);
+}
+
+/** Extensions an agent's bare file name (`notes.md`, `package.json`) carries; a dotted word (`e.g.`, `foo.bar()`) does not. */
+const FILE_EXTENSIONS = new Set(
+  "ts tsx js jsx mjs cjs json jsonl md mdx txt toml yaml yml css scss html htm py rs go java kt swift c h cc cpp hpp cs rb php sh ps1 bat sql xml svg png jpg jpeg gif webp lock env ini cfg conf log csv tsv vue svelte astro gradle proto graphql".split(
+    " ",
+  ),
+);
+
+/**
+ * True when inline code an agent printed reads as a file path: no spaces or code punctuation, not a
+ * URL, and either has a folder separator (`src/a.ts`, `C:\x\y`) or ends in a known file extension
+ * (`notes.md`), with an optional `:line(:col)`. The bridge decides whether it can open.
+ */
+export function looksLikeFilePath(raw: string): boolean {
+  const text = raw.trim();
+  if (text.length < 3 || text.length > 300) return false;
+  if (/\s|[()[\]{}<>=;"'`$|&*?!,@#^%+]/.test(text) || /:\/\//.test(text) || text.startsWith("-")) return false;
+  const { path } = splitPathLine(text);
+  if (/^\.{1,2}$/.test(path) || path.endsWith(".")) return false;
+  const name = path.split(/[\\/]/).pop() ?? "";
+  const ext = /\.([A-Za-z][A-Za-z0-9]{0,9})$/.exec(name)?.[1]?.toLowerCase();
+  const hasSeparator = /[\\/]/.test(path) && /[A-Za-z0-9_]/.test(name);
+  if (hasSeparator) return ext !== undefined || /^(?:\.{0,2}\/|[A-Za-z]:[\\/]|~\/)?[\w.-]+(?:[\\/][\w.-]+)+$/.test(path);
+  return ext !== undefined && FILE_EXTENSIONS.has(ext) && /^[\w.-]+$/.test(name);
+}
 
 /** `src/a.ts:12:3` → `{ path: "src/a.ts", line: 12 }`. A Windows drive colon is never taken for a line. */
 export function splitPathLine(raw: string): { path: string; line?: number } {

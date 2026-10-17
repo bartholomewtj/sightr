@@ -2,6 +2,8 @@
 // Same group actions, labels and failure rules. Left out, because no herdr harness produces them: T3's
 // own MCP tools (`resolveT3McpToolDefinition` is always null here, so `resolveWorkEntryToolPresentation`
 // is too), tool sources/integrations, viewed images, the command-output extractors and compaction labels.
+// Sightr: a `web_search` whose pattern is a URL (Claude WebFetch) is its own group action, `fetch`,
+// summarised "Fetched <host>" / "Fetched N pages" rather than "Searched the web N times".
 import type { TurnItem } from "@shared/v2/contracts";
 
 import { classifyToolActivity } from "@t3tools/shared/toolActivity";
@@ -41,6 +43,7 @@ export type ToolGroupAction =
   | "command"
   | "code-search"
   | "search"
+  | "fetch"
   | "other"
   | "update";
 
@@ -152,8 +155,25 @@ function workLogEntryIsLocalCodeSearch(entry: WorkLogPresentationEntry): boolean
   );
 }
 
+/** Sightr: the URL a `web_search` item fetched (Claude WebFetch records the URL as its pattern), else null. */
+export function pageFetchUrl(entry: Pick<WorkLogPresentationEntry, "itemType" | "structuredPayload">): string | null {
+  const item = entry.structuredPayload;
+  if (entry.itemType !== "web_search" || item?.type !== "web_search") return null;
+  const first = item.patterns?.[0];
+  return first && /^https?:\/\//i.test(first) ? first : null;
+}
+
+function urlHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 export function toolGroupAction(entry: WorkLogPresentationEntry): ToolGroupAction {
   if (entry.requestKind === "file-read" || entry.viewedImagePath !== undefined) return "read";
+  if (pageFetchUrl(entry) !== null) return "fetch";
   if (entry.itemType === "approval_request" || entry.itemType === "user_input_request") {
     return workLogEntryIsToolLike(entry) ? "other" : "update";
   }
@@ -212,8 +232,18 @@ function toolGroupActionCount(
   return changedFiles.size + editsWithoutFileDetails;
 }
 
-function toolGroupActionLabel(action: ToolGroupAction, count: number): string {
+function toolGroupActionLabel(
+  action: ToolGroupAction,
+  count: number,
+  entries: ReadonlyArray<WorkLogPresentationEntry> = [],
+): string {
   switch (action) {
+    case "fetch": {
+      // Sightr: page fetches are not web searches. One host reads "Fetched <host>".
+      const hosts = new Set(entries.map((e) => urlHost(pageFetchUrl(e) ?? "")));
+      if (hosts.size === 1 && count === 1) return `Fetched ${[...hosts][0]}`;
+      return hosts.size === 1 ? `Fetched ${count} pages from ${[...hosts][0]}` : `Fetched ${count} pages`;
+    }
     case "read":
       return `Read ${count} ${count === 1 ? "file" : "files"}`;
     case "edit":
@@ -267,7 +297,7 @@ export function summarizeToolGroup(entries: ReadonlyArray<WorkLogPresentationEnt
     index,
     count: group.entries.length,
     priority: summaryActionPriority(action),
-    label: toolGroupActionLabel(group.action, toolGroupActionCount(group.action, group.entries)),
+    label: toolGroupActionLabel(group.action, toolGroupActionCount(group.action, group.entries), group.entries),
     failedCount: group.entries.filter(workEntryDisplayIndicatesToolFailure).length,
   }));
   const selected = [...summaries]
