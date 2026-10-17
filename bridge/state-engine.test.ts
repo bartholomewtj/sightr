@@ -1018,6 +1018,8 @@ describe("StateEngine — dialog sniff", () => {
   const CURSOR_PERMISSION = plain("cursor--permission-command.txt");
   const CURSOR_DONE = plain("cursor--done.txt");
   const AGY_PERMISSION = plain("agy--permission-bash.txt");
+  // Live 2026-10-18: Pi's ask frame; Herdr called the pane `working` the whole time.
+  const PI_ASK = plain("pi--ask-radio-recommended.txt");
 
   class DialogHerdr {
     panes: FakePane[] = [];
@@ -1081,7 +1083,7 @@ describe("StateEngine — dialog sniff", () => {
     herdr.panes = [at("w1:p1", "idle", "cursor", 1)];
     herdr.texts.set("w1:p1", CURSOR_PERMISSION);
     await poll();
-    expect(herdr.reads).toEqual([["w1:p1", "visible", 40, "text"]]);
+    expect(herdr.reads).toEqual([["w1:p1", "visible", 60, "text"]]);
   });
 
   test("an unchanged revision reuses a clean verdict until the TTL, then re-checks", async () => {
@@ -1162,6 +1164,43 @@ describe("StateEngine — dialog sniff", () => {
     expect(agent("w1:p4").status).toBe("idle");
     expect(agent("w1:p5").status).toBe("idle");
     expect(agent("w1:p6").status).toBe("done");
+  });
+
+  test("a working Pi pane showing its ask frame publishes blocked, and the transition fires", async () => {
+    // Pi's ask is a tool call, so Herdr's Pi integration reports `working` until it returns. Before
+    // this, the v2 thread stayed "Working" with no card and never reached Needs you.
+    const { herdr, poll, agent, transitions } = makeDialogEngine();
+    herdr.panes = [at("w1:p1", "working", "pi", 10)];
+    herdr.texts.set("w1:p1", "");
+    await poll();
+    expect(agent("w1:p1").status).toBe("working");
+    herdr.texts.set("w1:p1", PI_ASK);
+    await poll(); // same revision: a working pane is read every poll, never on the TTL
+    expect(agent("w1:p1").status).toBe("blocked");
+    expect(agent("w1:p1").dialogDetected).toBe(true);
+    expect(transitions).toEqual([{ pane: "w1:p1", from: "working", to: "blocked" }]);
+    expect(herdr.reads).toEqual([
+      ["w1:p1", "visible", 60, "text"],
+      ["w1:p1", "visible", 60, "text"],
+    ]);
+  });
+
+  test("answering the Pi ask goes back to working; a resting Pi pane is never read", async () => {
+    const { herdr, poll, agent, readsOf, transitions } = makeDialogEngine();
+    herdr.panes = [at("w1:p1", "working", "pi", 10)];
+    herdr.texts.set("w1:p1", PI_ASK);
+    await poll();
+    expect(agent("w1:p1").status).toBe("blocked");
+    herdr.texts.set("w1:p1", "");
+    await poll();
+    expect(agent("w1:p1").status).toBe("working");
+    expect("dialogDetected" in agent("w1:p1")).toBe(false);
+    herdr.panes = [at("w1:p1", "idle", "pi", 10)];
+    herdr.texts.set("w1:p1", PI_ASK);
+    await poll();
+    expect(readsOf("w1:p1")).toBe(2);
+    // The first sighting fires nothing; the answer does.
+    expect(transitions).toEqual([{ pane: "w1:p1", from: "blocked", to: "working" }]);
   });
 
   test("Antigravity under both agent strings", async () => {

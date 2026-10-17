@@ -84,11 +84,13 @@ The bridge does not call `agent.send`; a reply is `pane.send_text` then `pane.se
     screen, and should be a deliberate, user-initiated read.
   - **The bridge reads resting Cursor / Antigravity panes to surface dialogs.** Herdr reports
     `cursor`, `agy` and `antigravity` panes as `done` / `idle` while a permission, trust, ask or
-    select card waits on screen, so the poll reads their viewport (`visible`, 40 lines, `text`)
+    select card waits on screen, so the poll reads their viewport (`visible`, 60 lines, `text`)
     and publishes `blocked` (with `dialogDetected: true`) when one is found. A pane is re-read when
     its raw status or `revision` moves, every poll while a dialog is detected, and otherwise every
     10 s — `revision` alone can't be trusted to follow the screen (see the stub note below)
-    (`bridge/state-engine.ts` → `sniffDialogs`).
+    (`bridge/state-engine.ts` → `sniffDialogs`). **Pi** is the reverse case: Herdr's Pi integration
+    reports `working` for a whole tool call, and Pi's `askuserquestion` is one, so a `working` Pi pane
+    is read every poll for its ask frame (`dialog-sniff.ts` `sniffsDialogsAt`, live 2026-10-18).
   **`format: "text"` returns clean plain text (no ANSI escapes)** → safe to render, no XSS surface.
 - `pane.send_text` writes literal text only; to submit a reply, follow with an Enter keypress
   (`pane.send_keys {keys: ["Enter"]}`) — submit-key name needs live confirmation per agent.

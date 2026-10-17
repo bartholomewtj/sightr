@@ -221,6 +221,22 @@ describe("parseDialog — kinds and fields", () => {
     expect(parseDialog("pi", raw("pi--ask-wizard-submit.txt"))!.options.map((o) => o.keys)).toEqual([["Enter"], ["Escape"]]);
   });
 
+  it("the live Pi ask (2026-10-18) is a question card walked by arrows, the free-text row left out", () => {
+    const p = parseDialog("pi", raw("pi--ask-radio-recommended.txt"))!;
+    expect(p.kind).toBe("question");
+    expect(p.prompt).toBe("Pick an animal");
+    expect(p.options.map((o) => [o.label, o.keys])).toEqual([
+      ["Cat (Recommended)", ["Enter"]],
+      ["Dog", ["Down", "Enter"]],
+    ]);
+    expect(p.options.every((o) => o.description !== undefined && o.destructive === undefined)).toBe(true);
+    // Bound to the frame and Pi's footer, not to the transcript above it.
+    const bound = p.boundText.split("\n");
+    expect(bound).toContain("> 1. Cat (Recommended)");
+    expect(bound).toContain(" ↑↓ navigate • Enter select • Esc cancel");
+    expect(bound.at(-1)).toMatch(/^↑4 ↓443 .*1\.1%\/1\.0M \(auto\)/);
+  });
+
   it("a checkbox question carries its boxes, the advance label and Chat about this", () => {
     const p = parseDialog("claude", raw("claude--select-multiselect-checked.txt"))!;
     expect(p.multiSelect).toEqual({ checked: [false, true, true, false], advanceLabel: "Submit" });

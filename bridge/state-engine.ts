@@ -17,7 +17,7 @@ import {
   type BeaconIdentity,
 } from "./beacon/decorate.ts";
 import { readBeacons, type BeaconSweepDeps } from "./beacon/reader.ts";
-import { hasBlockingDialog, sniffsDialogs } from "../web/src/lib/harness/dialog-sniff.ts";
+import { hasBlockingDialog, sniffsDialogsAt } from "../web/src/lib/harness/dialog-sniff.ts";
 
 export interface AgentView extends PaneCommon {
   agentSession?: AgentSessionRef;
@@ -86,7 +86,7 @@ const RESTING_STATUS: ReadonlySet<AgentStatus> = new Set(["idle", "done", "unkno
  * for the same reason as {@link SESSION_NAME_READ_LINES}: it is the rendered viewport and can never
  * make Herdr scroll the operator's pane. Every dialog these detectors lift sits at the buffer tail.
  */
-const DIALOG_SNIFF_READ_LINES = 40;
+const DIALOG_SNIFF_READ_LINES = 60;
 /** How stale a dialog verdict may get on a pane Herdr reports no `revision` for. */
 export const DIALOG_SNIFF_TTL_MS = 10_000;
 
@@ -560,12 +560,14 @@ export class StateEngine {
   }
 
   /**
-   * Publish `blocked` for a resting Cursor / Antigravity pane whose screen holds a dialog (see
-   * web/src/lib/harness/dialog-sniff.ts). Herdr's detector calls those panes `done` / `idle` while a
-   * permission, trust, ask or prompt-select card waits, so without this the herd, the toast and the
-   * push all said "done" until the pane was opened.
+   * Publish `blocked` for a resting Cursor / Antigravity pane, or a working Pi pane, whose screen
+   * holds a dialog (see web/src/lib/harness/dialog-sniff.ts). Herdr's detector calls those Cursor /
+   * Antigravity panes `done` / `idle` while a permission, trust, ask or prompt-select card waits, and
+   * Pi panes `working` while an ask frame waits, so without this the herd, the toast and the push
+   * (and v2's request ingest, which only reads blocked threads) never said "needs you".
    *
-   * Candidates: an agent the sniffer knows, at a RESTING raw status, with no live beacon status. A
+   * Candidates: an agent the sniffer knows, at a raw status its sniffer names
+   * (`sniffsDialogsAt`), with no live beacon status. A
    * candidate is read only when its Herdr revision or raw status moved since the last verdict (a pane
    * with no revision falls back to {@link DIALOG_SNIFF_TTL_MS}); otherwise the cached verdict
    * stands. A failed read keeps the prior verdict and stamps nothing, so the next poll retries; it
@@ -580,8 +582,7 @@ export class StateEngine {
     const candidates = new Set<string>();
     for (const a of agents) {
       if (
-        sniffsDialogs(a.agent) &&
-        RESTING_STATUS.has(a.status) &&
+        sniffsDialogsAt(a.agent, a.status) &&
         matchingBeacon(a, identities.get(a.paneId))?.status === undefined
       ) {
         candidates.add(a.paneId);
@@ -605,6 +606,10 @@ export class StateEngine {
           // fast cadence anyway), and a clean verdict is re-checked on the TTL even when the revision
           // hasn't moved.
           if (entry.dialog) return true;
+          // A `working` candidate (Pi: its ask is a tool call) is read every poll. Its screen moves
+          // all turn and `revision` does not follow it, so a cached clean verdict would hold the
+          // card back for up to the TTL. One visible read per working Pi pane per (fast) poll.
+          if (a.status === "working") return true;
           const rev = revisions.get(a.paneId);
           if (rev !== undefined && entry.revision !== rev) return true;
           return now - entry.at >= DIALOG_SNIFF_TTL_MS;
