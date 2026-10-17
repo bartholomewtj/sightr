@@ -11,7 +11,8 @@
 //   they open in a new tab with `rel="noopener noreferrer"`. Anything else renders as its text.
 // - Images are not loaded; an image becomes a link to its URL (or its alt text).
 // - Code blocks keep T3's "Wrap lines" toggle (`data-wrap`); it starts on below the `sm` breakpoint
-//   (T3 starts from its word-wrap setting), so a phone reads a long line without sideways scrolling.
+//   (T3 starts from its word-wrap setting), so a phone reads a long line without sideways scrolling;
+//   Settings → Display → Code wrapping (state/text-prefs.ts) can force wrap or scroll for every block.
 //   The header is `data-thread-find-ignore`, as upstream's.
 import { memo, useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { WrapTextIcon } from "lucide-react";
@@ -20,6 +21,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
 import { cn } from "~/lib/utils";
+import { codeStartsWrapped, getTextPrefs } from "@/state/text-prefs";
 
 import { MessageCopyButton } from "./chat/MessageCopyButton";
 import { Button } from "./ui/button";
@@ -80,13 +82,18 @@ function extractFenceLanguage(className: unknown): string {
   return CODE_FENCE_LANGUAGE_REGEX.exec(value)?.[1] ?? "text";
 }
 
-/** Phones start with code wrapped (T3's `readInitialWordWrapSetting`, from the viewport here). */
+/**
+ * Code blocks start wrapped on a phone (T3's `readInitialWordWrapSetting`, from the viewport here), unless
+ * the device's "Code wrapping" setting (Settings → Display) says wrap or scroll for every block.
+ */
 function readInitialWordWrapSetting(): boolean {
+  let phone = false;
   try {
-    return typeof window !== "undefined" && window.matchMedia?.("(max-width: 639px)").matches === true;
+    phone = typeof window !== "undefined" && window.matchMedia?.("(max-width: 639px)").matches === true;
   } catch {
-    return false;
+    phone = false;
   }
+  return codeStartsWrapped(getTextPrefs().codeWrap, phone);
 }
 
 export function MarkdownCodeBlockFrame({
