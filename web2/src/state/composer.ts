@@ -93,6 +93,8 @@ export interface AttachmentChip {
   /** Where the agent can read it, once uploaded. */
   path?: string;
   error?: string;
+  /** The staged file is an image: the chip shows a thumbnail and opens the viewer. */
+  image?: boolean;
 }
 
 export interface ComposerError {
@@ -109,8 +111,8 @@ export interface EditingQueued {
 }
 
 export interface ThreadComposer {
-  /** A send, queue edit or interrupt is waiting for its reply: the button stays disabled. */
-  busy: "send" | "edit" | "interrupt" | null;
+  /** A send, queue edit, interrupt or mode switch is waiting for its reply: the button stays disabled. */
+  busy: "send" | "edit" | "interrupt" | "mode" | null;
   editing: EditingQueued | null;
   attachments: AttachmentChip[];
   error: ComposerError | null;
@@ -263,6 +265,30 @@ export async function interruptRun(threadId: string): Promise<void> {
     showToast(refusalText(err), "error");
   } finally {
     patchComposer(threadId, { busy: null });
+  }
+}
+
+// ── Permission mode (T08) ───────────────────────────────────────────────────────────────────────
+
+/**
+ * Post `thread.permissionMode.set`. The bridge cycles the harness's mode key and reads its footer; the
+ * thread's `permissionMode` changes through the stream when it lands. A refusal sets the error banner
+ * with `describe`'s words (the caller knows the mode labels). Resolves true on the bridge's reply.
+ */
+export async function setPermissionMode(
+  threadId: string,
+  mode: string,
+  opts: { confirmBypass?: boolean; describe: (err: unknown) => string },
+): Promise<boolean> {
+  if (getThreadComposer(threadId).busy) return false;
+  patchComposer(threadId, { busy: "mode", error: null });
+  try {
+    await post("thread.permissionMode.set", { threadId, mode, ...(opts.confirmBypass ? { confirmBypass: true } : {}) });
+    patchComposer(threadId, { busy: null });
+    return true;
+  } catch (err) {
+    patchComposer(threadId, { busy: null, error: { text: opts.describe(err) } });
+    return false;
   }
 }
 
@@ -468,10 +494,15 @@ export function addAttachments(threadId: string, paneId: string, added: readonly
   const chips: AttachmentChip[] = added.map((file) => {
     const id = `a${nextChip++}`;
     files.set(id, file);
-    return { id, name: file.name || "attachment", status: "uploading" };
+    return { id, name: file.name || "attachment", status: "uploading", ...(file.type.startsWith("image/") ? { image: true } : {}) };
   });
   patchComposer(threadId, { attachments: [...getThreadComposer(threadId).attachments, ...chips] });
   for (const chip of chips) startUpload(threadId, paneId, chip.id);
+}
+
+/** The staged file behind a chip, while it is staged (thumbnails and the viewer read it). */
+export function attachmentFile(id: string): File | undefined {
+  return files.get(id);
 }
 
 export function retryAttachment(threadId: string, paneId: string, id: string): void {
