@@ -141,6 +141,7 @@ describe("harness and pickers", () => {
     fireEvent.click(radio("Permission mode", "Plan"));
     fireEvent.click(screen.getByRole("button", { name: "Command" }));
     expect(screen.getByTestId("draft-command")).toHaveTextContent("claude --model haiku --permission-mode plan");
+    fireEvent.click(radio("Model", "Other…"));
     fireEvent.change(screen.getByRole("textbox", { name: "Other model id" }), { target: { value: "claude-opus-5-5" } });
     expect(screen.getByTestId("draft-command")).toHaveTextContent("claude --model claude-opus-5-5 --permission-mode plan");
   });
