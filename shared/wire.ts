@@ -74,9 +74,33 @@ export interface FileSearchResponse { q: string; results: FileSearchResult[]; tr
 export interface FolderGitEntry { path: string; x: string; y: string; }
 /** Where a pane's working folder sits in the Files root: `""` is the root; null when it is outside it, or Files is off. */
 export interface PaneFolderResponse { path: string | null; }
+export type FolderGitUnavailable = "outside-root" | "not-a-repo" | "git-unavailable" | "timeout";
+/** One recent commit on HEAD. Counts skip files the Files refusal list hides. `ahead`: not on `base` yet. */
+export interface FolderGitCommit { sha: string; short: string; subject: string; author: string; time: number; parents: number; files: number; added: number; removed: number; ahead?: boolean; }
+/** Per-file line counts (`binary` files count no lines). */
+export interface FolderGitFileStat { path: string; added: number; removed: number; binary?: boolean; }
 export type FolderGitResponse =
-  | { available: false; reason: "outside-root" | "not-a-repo" | "git-unavailable" | "timeout" }
-  | { available: true; repo: string; rel: string; branch?: string; detached?: boolean; noCommits?: boolean; clean: boolean; entries: FolderGitEntry[]; hidden: number; statusTruncated: boolean; diff: string; diffTruncated: boolean; panes: string[] };
+  | { available: false; reason: FolderGitUnavailable }
+  | {
+      available: true; repo: string; rel: string; branch?: string; detached?: boolean; noCommits?: boolean; clean: boolean; entries: FolderGitEntry[]; hidden: number; statusTruncated: boolean; diff: string; diffTruncated: boolean; panes: string[];
+      /** The repo's root as a Files rel path (`""` is the Files root), so a changed file can be opened in Files. */
+      rootPath?: string;
+      /** The branch's upstream (`origin/main`), from `git status`. */
+      upstream?: string;
+      /** What the branch range compares with: the upstream, else origin's default branch, main or master. */
+      base?: string;
+      ahead?: number; behind?: number;
+      /** The last commits on HEAD, newest first. */
+      commits?: FolderGitCommit[];
+    };
+/** `/api/files/git/diff`: one commit (`scope=commit&sha=`) or the branch range `base...HEAD` (`scope=branch`), read-only. */
+export type FolderGitDiffResponse =
+  | { available: false; reason: FolderGitUnavailable | "no-base" | "bad-commit" }
+  | { available: true; scope: "commit" | "branch"; commit?: FolderGitCommit; base?: string; files: FolderGitFileStat[]; hidden: number; filesTruncated: boolean; diff: string; diffTruncated: boolean };
+/** `/api/files/resolve`: an absolute or pane-relative path as a Files rel path, or why not. */
+export type FileResolveResponse =
+  | { path: string; kind: "file" | "dir" }
+  | { path: null; reason: "outside-root" | "hidden" | "not-found" | "no-folder" | "bad-path" };
 
 /** One option of a pending Grok `ask_user_question`. Caps live in the journal parser. */
 export interface TranscriptAskOption {

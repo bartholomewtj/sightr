@@ -374,6 +374,58 @@ describe("workdir", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
 
+  test("routes history diffs: refuses traversal, bad scopes and non-hex shas", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sightr-workdir-git-diff-"));
+    try {
+      const w = createWorkdir(cfg(root), helpers);
+      const ask = (q: string) => w.handle(new Request(`http://x/api/files/git/diff?${q}`), new URL(`http://x/api/files/git/diff?${q}`));
+      for (const path of ["../escape", "/abs", ".env", "missing", "a/../../b"]) expect((await ask(`path=${encodeURIComponent(path)}&scope=branch`)).status).toBe(404);
+      expect((await ask("path=&scope=worktree")).status).toBe(400);
+      expect((await ask("path=")).status).toBe(400);
+      const bad = await ask(`path=&scope=commit&sha=${encodeURIComponent("--output=/tmp/x")}`);
+      expect(bad.status).toBe(200); expect(await bad.json()).toEqual({ available: false, reason: "bad-commit" }); expect(bad.headers.get("cache-control")).toBe("no-store");
+      expect(await (await ask("path=&scope=branch")).json()).toEqual({ available: false, reason: "not-a-repo" });
+      const gated = createWorkdir(cfg(root), { ...helpers, guard: () => new Response("forbidden", { status: 403 }) });
+      expect((await gated.handle(new Request("http://x/api/files/git/diff?path=&scope=branch"), new URL("http://x/api/files/git/diff?path=&scope=branch"))).status).toBe(403);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  test("resolves a printed path to a Files rel path, refusing outside, hidden and traversal", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sightr-workdir-resolve-"));
+    const outside = await mkdtemp(join(tmpdir(), "sightr-workdir-resolve-out-"));
+    try {
+      await mkdir(join(root, "proj", "src"), { recursive: true }); await writeFile(join(root, "proj", "src", "a.ts"), "x"); await writeFile(join(root, "proj", ".env"), "SECRET"); await writeFile(join(outside, "secret.txt"), "s");
+      const cwds: Record<string, string> = { p: join(root, "proj"), o: outside };
+      const w = createWorkdir(cfg(root), { ...helpers, paneCwd: (id: string) => cwds[id] ?? null });
+      const ask = async (path: string, pane?: string) => {
+        const q = `path=${encodeURIComponent(path)}${pane ? `&pane=${pane}` : ""}`;
+        const res = await w.handle(new Request(`http://x/api/files/resolve?${q}`), new URL(`http://x/api/files/resolve?${q}`));
+        expect(res.headers.get("cache-control")).toBe("no-store");
+        return res.json();
+      };
+      expect(await ask(join(root, "proj", "src", "a.ts"))).toEqual({ path: "proj/src/a.ts", kind: "file" });
+      expect(await ask("src/a.ts", "p")).toEqual({ path: "proj/src/a.ts", kind: "file" });
+      expect(await ask("./src", "p")).toEqual({ path: "proj/src", kind: "dir" });
+      expect(await ask(join(root, "proj", "src", "a.ts").split("\\").join("/"))).toEqual({ path: "proj/src/a.ts", kind: "file" });
+      // Outside the root: absolute, through `..` from the pane, and a pane whose folder is outside.
+      expect(await ask(join(outside, "secret.txt"))).toEqual({ path: null, reason: "outside-root" });
+      expect(await ask("../../../../../../etc/passwd", "p")).toEqual({ path: null, reason: "outside-root" });
+      expect(await ask(`../../${outside.split(/[\\/]/).pop()}/secret.txt`, "p")).toEqual({ path: null, reason: "outside-root" });
+      expect(await ask("secret.txt", "o")).toEqual({ path: null, reason: "outside-root" });
+      // Hidden names are refused by name, inside the root, whether they exist or not.
+      expect(await ask(".env", "p")).toEqual({ path: null, reason: "hidden" });
+      expect(await ask("node_modules/x/index.js", "p")).toEqual({ path: null, reason: "hidden" });
+      expect(await ask("src/../.env", "p")).toEqual({ path: null, reason: "hidden" });
+      expect(await ask("src/missing.ts", "p")).toEqual({ path: null, reason: "not-found" });
+      expect(await ask("src/a.ts")).toEqual({ path: null, reason: "no-folder" });
+      expect(await ask("src/a.ts", "ghost")).toEqual({ path: null, reason: "no-folder" });
+      for (const bad of ["", "   ", "a\u0000b", "src/a\n.ts", "C:relative", "x".repeat(5000)]) expect(await ask(bad, "p")).toEqual({ path: null, reason: "bad-path" });
+      if (CAN_SYMLINK) { await symlink(join(outside, "secret.txt"), join(root, "proj", "link.txt")); expect(await ask("link.txt", "p")).toEqual({ path: null, reason: "not-found" }); }
+      const gated = createWorkdir(cfg(root), { ...helpers, guard: () => new Response("forbidden", { status: 403 }) });
+      expect((await gated.handle(new Request("http://x/api/files/resolve?path=a"), new URL("http://x/api/files/resolve?path=a"))).status).toBe(403);
+    } finally { await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
+  });
+
   test("is inert without a root", () => {
     const w = createWorkdir(cfg(""), helpers); expect(w.enabled).toBe(false); expect(w.owns("/api/files")).toBe(false); expect(w.owns("/api/files/search")).toBe(false);
   });

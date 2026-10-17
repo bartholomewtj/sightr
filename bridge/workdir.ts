@@ -3,7 +3,7 @@
 // Dot names are refused deliberately: a simple fail-closed rule is safer than an allow-list.
 import { readdir, realpath, stat, lstat, unlink, open } from "node:fs/promises";
 import { constants } from "node:fs";
-import { basename, extname, join, relative, sep } from "node:path";
+import { basename, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Config } from "./config.ts";
 import type { AuditLog } from "./audit.ts";
 import { containedRealpath } from "./containment.ts";
@@ -141,6 +141,41 @@ export async function relInRoot(root: string, abs: string): Promise<string | nul
 
 export async function resolveInRoot(root: string, segs: string[]): Promise<string | null> {
   return containedRealpath(join(root, ...segs), root);
+}
+
+export const RESOLVE_MAX_CHARS = 4096;
+
+function lexicallyInside(path: string, root: string): boolean {
+  const a = resolve(path), b = resolve(root);
+  if (process.platform === "win32") { const al = a.toLowerCase(), bl = b.toLowerCase(); return al === bl || al.startsWith(bl.endsWith(sep) ? bl : bl + sep); }
+  return a === b || a.startsWith(b.endsWith(sep) ? b : b + sep);
+}
+
+/**
+ * `/api/files/resolve`: a path as an agent printed it (absolute, git-bash `/c/...` on Windows, or
+ * relative to the pane's folder) as a Files rel path. Outside the root and hidden names are refused
+ * on the string alone, before the filesystem is touched, so a refusal never says whether something
+ * outside exists; inside the root, absent and symlinked-out are the same "not-found" (containment.ts).
+ */
+export async function resolveFilePath(workRoot: string, raw: string, cwd: string | null): Promise<Wire.FileResolveResponse> {
+  let p = raw.trim();
+  if (!p || p.length > RESOLVE_MAX_CHARS || /[\u0000-\u001f]/.test(p) || /^[A-Za-z]:(?![\\/])/.test(p)) return { path: null, reason: "bad-path" };
+  if (process.platform === "win32") { const m = /^\/([A-Za-z])(\/.*)?$/.exec(p); if (m) p = `${m[1]!.toUpperCase()}:${m[2] ?? "/"}`; }
+  let abs: string;
+  if (isAbsolute(p)) abs = resolve(p);
+  else if (cwd === null) return { path: null, reason: "no-folder" };
+  else abs = resolve(cwd, p);
+  const realRoot = await realpath(workRoot).catch(() => null);
+  const via = [resolve(workRoot), ...(realRoot ? [realRoot] : [])].find((r) => lexicallyInside(abs, r));
+  if (!via) return { path: null, reason: "outside-root" };
+  const lexical = relative(via, abs).split(sep).filter(Boolean);
+  if (lexical.some((seg) => isRefusedName(seg))) return { path: null, reason: "hidden" };
+  const rel = await relInRoot(workRoot, abs);
+  if (rel === null) return { path: null, reason: "not-found" };
+  const real = await resolveInRoot(workRoot, rel === "" ? [] : rel.split("/"));
+  const info = real ? await stat(real).catch(() => null) : null;
+  if (!info || (!info.isFile() && !info.isDirectory())) return { path: null, reason: "not-found" };
+  return { path: rel, kind: info.isDirectory() ? "dir" : "file" };
 }
 
 export interface WorkdirHelpers {
@@ -340,6 +375,27 @@ export function createWorkdir(cfg: Config, h: WorkdirHelpers) {
         if (!info?.isDirectory()) return notFound(h);
         const panes = url.searchParams.getAll("pane").slice(0, MAX_PANE_IDS).map((paneId) => ({ paneId, cwd: h.paneCwd(paneId) })).filter((p): p is { paneId: string; cwd: string } => p.cwd !== null);
         const res = h.json(await folderGit.inspect(real, panes), req.headers.get("accept-encoding"));
+        res.headers.set("cache-control", "no-store");
+        return res;
+      }
+      if (url.pathname === "/api/files/git/diff") {
+        // Read-only history diffs for the repo around a Files folder: one commit, or the branch range.
+        const segs = parseRelPath(url.searchParams.get("path") ?? "");
+        if (!segs) return notFound(h);
+        const real = await resolveInRoot(cfg.workRoot, segs);
+        if (!real || !(await stat(real).catch(() => null))?.isDirectory()) return notFound(h);
+        const scope = url.searchParams.get("scope");
+        if (scope !== "commit" && scope !== "branch") return h.text("scope must be commit or branch", 400);
+        const q = scope === "commit" ? { scope, sha: url.searchParams.get("sha") ?? "" } as const : { scope } as const;
+        const res = h.json(await folderGit.diff(real, q), req.headers.get("accept-encoding"));
+        res.headers.set("cache-control", "no-store");
+        return res;
+      }
+      if (url.pathname === "/api/files/resolve") {
+        // A path an agent printed (absolute, or relative to the pane's folder) as a Files rel path, so
+        // any file mentioned anywhere can open in Files. Containment is relInRoot's; the client still
+        // never sees an absolute path, and refusals are decided before the filesystem is touched.
+        const res = h.json(await resolveFilePath(cfg.workRoot, url.searchParams.get("path") ?? "", h.paneCwd(url.searchParams.get("pane") ?? "")), req.headers.get("accept-encoding"));
         res.headers.set("cache-control", "no-store");
         return res;
       }
