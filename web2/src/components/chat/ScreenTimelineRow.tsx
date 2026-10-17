@@ -61,7 +61,7 @@ export const ScreenTimelineRow = memo(function ScreenTimelineRow({ text, capture
       {hidden > 0 ? (
         <button
           type="button"
-          className="px-1 text-xs text-muted-foreground hover:text-foreground"
+          className="px-1 text-xs text-muted-foreground hover:text-foreground pointer-coarse:min-h-11"
           aria-expanded={showAll}
           onClick={() => setShowAll((value) => !value)}
         >

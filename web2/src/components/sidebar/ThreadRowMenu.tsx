@@ -9,6 +9,8 @@ import type { Thread } from "@shared/v2/contracts";
 import type { ShelfCommand } from "@/components/Sidebar.logic";
 import { resolveSnoozePresets } from "@/components/Sidebar.snooze";
 
+const TOUCH_ITEM = "pointer-coarse:min-h-11";
+
 export function ThreadRowMenu({
   thread,
   anchor,
@@ -36,38 +38,38 @@ export function ThreadRowMenu({
     >
       {open ? (
         <MenuPopup anchor={anchor} align="start" side="bottom" aria-label={`Actions for ${thread.title}`}>
-          <MenuItem onClick={() => onRename(threadId)}>Rename</MenuItem>
+          <MenuItem className={TOUCH_ITEM} onClick={() => onRename(threadId)}>Rename</MenuItem>
           {thread.shelf === "pinned" ? (
-            <MenuItem onClick={() => run({ type: "thread.unpin", threadId })}>Unpin</MenuItem>
+            <MenuItem className={TOUCH_ITEM} onClick={() => run({ type: "thread.unpin", threadId })}>Unpin</MenuItem>
           ) : (
-            <MenuItem onClick={() => run({ type: "thread.pin", threadId })}>Pin</MenuItem>
+            <MenuItem className={TOUCH_ITEM} onClick={() => run({ type: "thread.pin", threadId })}>Pin</MenuItem>
           )}
           {thread.unreadDone ? (
-            <MenuItem onClick={() => run({ type: "thread.markRead", threadId })}>Mark read</MenuItem>
+            <MenuItem className={TOUCH_ITEM} onClick={() => run({ type: "thread.markRead", threadId })}>Mark read</MenuItem>
           ) : (
-            <MenuItem onClick={() => run({ type: "thread.markUnread", threadId })}>Mark unread</MenuItem>
+            <MenuItem className={TOUCH_ITEM} onClick={() => run({ type: "thread.markUnread", threadId })}>Mark unread</MenuItem>
           )}
           <MenuSeparator />
           <MenuGroup>
             <MenuGroupLabel>Snooze</MenuGroupLabel>
             {presets.map((p) => (
-              <MenuItem key={p.id} onClick={() => run({ type: "thread.snooze", threadId, until: p.snoozedUntil })}>
+              <MenuItem key={p.id} className={TOUCH_ITEM} onClick={() => run({ type: "thread.snooze", threadId, until: p.snoozedUntil })}>
                 <span className="flex-1">{p.label}</span>
                 <span className="font-mono text-2xs text-muted-foreground">{p.whenLabel}</span>
               </MenuItem>
             ))}
-            <MenuItem onClick={() => onPickSnooze(threadId)}>Pick time…</MenuItem>
+            <MenuItem className={TOUCH_ITEM} onClick={() => onPickSnooze(threadId)}>Pick time…</MenuItem>
             {thread.shelf === "snoozed" ? (
-              <MenuItem onClick={() => run({ type: "thread.unsnooze", threadId })}>Wake now</MenuItem>
+              <MenuItem className={TOUCH_ITEM} onClick={() => run({ type: "thread.unsnooze", threadId })}>Wake now</MenuItem>
             ) : null}
           </MenuGroup>
           <MenuSeparator />
           {thread.shelf === "settled" ? (
-            <MenuItem onClick={() => run({ type: "thread.unsettle", threadId })}>Unsettle</MenuItem>
+            <MenuItem className={TOUCH_ITEM} onClick={() => run({ type: "thread.unsettle", threadId })}>Unsettle</MenuItem>
           ) : (
-            <MenuItem onClick={() => run({ type: "thread.settle", threadId })}>Settle</MenuItem>
+            <MenuItem className={TOUCH_ITEM} onClick={() => run({ type: "thread.settle", threadId })}>Settle</MenuItem>
           )}
-          <MenuItem variant="destructive" onClick={() => run({ type: "thread.archive", threadId })}>
+          <MenuItem variant="destructive" className={TOUCH_ITEM} onClick={() => run({ type: "thread.archive", threadId })}>
             Archive
           </MenuItem>
         </MenuPopup>

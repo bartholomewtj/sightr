@@ -137,7 +137,7 @@ export function BridgeSettings({ readOnly = false, device }: { readOnly?: boolea
                         setError(null);
                         void send({ reset: [setting] });
                       }}
-                      className="rounded px-1.5 py-0.5 font-medium text-foreground underline underline-offset-2 disabled:opacity-50"
+                      className="rounded px-1.5 py-0.5 font-medium text-foreground underline underline-offset-2 disabled:opacity-50 pointer-coarse:min-h-11"
                     >
                       Use .env
                     </button>
@@ -157,7 +157,7 @@ export function BridgeSettings({ readOnly = false, device }: { readOnly?: boolea
                   setSaved(false);
                   setDraft({ ...draft, [key]: e.target.value });
                 }}
-                className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm text-foreground outline-none focus:border-ring disabled:opacity-64 @min-[32rem]/settings-row:w-56"
+                className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-base text-foreground sm:text-sm pointer-coarse:h-11 outline-none focus:border-ring disabled:opacity-64 @min-[32rem]/settings-row:w-56"
               />
             }
           />

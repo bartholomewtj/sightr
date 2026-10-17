@@ -3,7 +3,8 @@
  * `ComposerCommandItem`s with an active row the box's arrow keys move, `composerSuggestionOptionId`
  * for `aria-activedescendant`, and pointer-down that never steals the box's focus. Only the slash
  * trigger exists here (no paths, skills, pull requests or threads), and it is a plain ARIA listbox,
- * not T3's `ui/command`.
+ * not T3's `ui/command`. Phone: 44 px rows on a coarse pointer, and the list never takes more than a
+ * third of the viewport, so the box stays above the keyboard.
  */
 import { memo, useLayoutEffect, useRef } from "react";
 
@@ -53,7 +54,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   return (
     <div
       ref={listRef}
-      className="max-h-72 overflow-y-auto rounded-xl border bg-card p-1 shadow-sm"
+      className="max-h-[min(18rem,35dvh)] overflow-y-auto overscroll-contain rounded-xl border bg-card p-1 shadow-sm"
       data-composer-command-drawer="true"
     >
       {props.items.length > 0 ? (
@@ -69,7 +70,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
                 aria-selected={active}
                 data-composer-item-id={item.id}
                 className={cn(
-                  "flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 sm:min-h-9",
+                  "flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 pointer-fine:sm:min-h-9",
                   active ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
                   armed && "bg-warning-surface text-warning",
                 )}

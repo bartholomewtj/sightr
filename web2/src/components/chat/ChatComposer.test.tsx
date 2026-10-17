@@ -2,7 +2,7 @@ import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@t
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { NO_CAPABILITIES, type QueuedMessage, type Run, type RuntimeRequest, type Thread } from "@shared/v2/contracts";
+import { NO_CAPABILITIES, type QueuedMessage, type Run, type RuntimeRequest, type Thread, type TurnItem } from "@shared/v2/contracts";
 import { undoLatestThreadAction, useThreadUndoNotice } from "@/hooks/showThreadUndoNotice";
 import { loadDraft, saveDraft } from "@/lib/drafts";
 import { __setComposerDeps, setFollowUp } from "@/state/composer";
@@ -24,6 +24,7 @@ interface Setup {
   queue?: QueuedMessage[];
   requests?: RuntimeRequest[];
   runs?: Run[];
+  items?: TurnItem[];
 }
 
 let posts: Record<string, unknown>[] = [];
@@ -54,7 +55,7 @@ function setThread(opts: Setup = {}, sequence = 1): void {
         sequence,
         thread: threadFixture("t1", { capabilities: ALL, ...opts.thread }),
         runs: opts.runs ?? [],
-        items: [],
+        items: opts.items ?? [],
         requests: opts.requests ?? [],
         queue: opts.queue ?? [],
         historyCursor: null,
@@ -143,6 +144,36 @@ describe("ChatComposer: the primary button", () => {
     type("now");
     expect(primary()).toHaveAccessibleName("Steer");
     expect(localStorage.getItem("sightr:v2:composer:follow-up")).toBe("steer");
+  });
+
+  it("while a /compact run works, a follow-up queues even with Steer set or Ctrl held, and says why (T3 #20184)", async () => {
+    act(() => setFollowUp("steer"));
+    const compact: TurnItem = {
+      id: "u1",
+      threadId: "t1",
+      runId: "run1",
+      ordinal: 1,
+      status: "completed",
+      title: null,
+      startedAt: null,
+      completedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+      type: "user_message",
+      messageId: "u1",
+      text: "/compact",
+      attachments: [],
+    };
+    show({
+      thread: { status: "working" },
+      runs: [{ id: "run1", threadId: "t1", ordinal: 1, userItemId: "u1", status: "running", startedAt: 1 }],
+      items: [compact],
+    });
+    type("after the compaction");
+    expect(primary()).toHaveAccessibleName("Queue");
+    expect(screen.getByText(/Compacting/)).toBeInTheDocument();
+    fireEvent.click(primary()!, { ctrlKey: true });
+    await waitFor(() => expect(commands("message.dispatch")[0]).toMatchObject({ mode: "queue" }));
   });
 
   it("Ctrl-click and mod+Enter do the other follow-up", async () => {
@@ -271,7 +302,7 @@ describe("ChatComposer: destructive text", () => {
     type("rm -rf ./build");
     fireEvent.click(primary()!);
     expect(posts).toHaveLength(0);
-    expect(primary()).toHaveAccessibleName("Tap again to send");
+    expect(primary()).toHaveAccessibleName("Confirm");
     expect(screen.getByText(/Destructive: rm -r/)).toBeInTheDocument();
     fireEvent.click(primary()!);
     await waitFor(() => expect(commands("message.dispatch")).toHaveLength(1));

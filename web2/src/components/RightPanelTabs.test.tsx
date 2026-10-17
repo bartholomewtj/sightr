@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { NO_CAPABILITIES } from "@shared/v2/contracts";
 
+import { __resetFilesNav } from "@/components/right-panel/FilesPanel";
 import { useRightPanelStore } from "@/rightPanelStore";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { shellSnapshot, thread } from "@/test/fixtures";
@@ -16,6 +17,7 @@ const region = (name: string) => document.querySelector(`[data-region="${name}"]
 let paneReads = 0;
 
 beforeEach(() => {
+  __resetFilesNav();
   paneReads = 0;
   server.use(
     http.get("/api/pane/:id", () => {
@@ -157,5 +159,58 @@ describe("right panel: phone", () => {
     fireEvent.click(screen.getByRole("button", { name: "Thread" }));
     await waitFor(() => expect(region("timeline")).not.toBeNull());
     expect(within(tools).getByRole("button", { name: "Terminal" })).toBeInTheDocument();
+  });
+
+  it("switches tabs inside the sheet without closing it", async () => {
+    await boot("/v2/thread/t1", 390);
+    fireEvent.click(screen.getByRole("button", { name: "Files" }));
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(within(sheet).getByRole("tab", { name: "Terminal" }));
+    expect(await within(sheet).findByText(/\$ mirror/)).toBeInTheDocument();
+    expect(within(sheet).getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(useRightPanelStore.getState().sheet).toBe("terminal");
+  });
+
+  it("closes with the close button", async () => {
+    await boot("/v2/thread/t1", 390);
+    fireEvent.click(screen.getByRole("button", { name: "Git" }));
+    const sheet = await screen.findByRole("dialog");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Close Git" }));
+    await waitFor(() => expect(useRightPanelStore.getState().sheet).toBeNull());
+  });
+
+  it("asks before the back gesture or a tab switch drops unsaved edits, and keeps the next back armed", async () => {
+    const { router } = await boot("/v2/thread/t1", 390);
+    fireEvent.click(screen.getByRole("button", { name: "Files" }));
+    const sheet = await screen.findByRole("dialog");
+    fireEvent.click(await within(sheet).findByRole("treeitem", { name: /readme\.txt/ }));
+    fireEvent.click(await within(sheet).findByRole("button", { name: "Edit" }));
+    fireEvent.change(within(sheet).getByLabelText("Edit readme.txt"), { target: { value: "changed" } });
+
+    // The system back gesture is held by the editor's guard.
+    await act(async () => {
+      window.history.back();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(await within(sheet).findByRole("alertdialog", { name: "Unsaved edits" })).toBeInTheDocument();
+    expect(useRightPanelStore.getState().sheet).toBe("files");
+    expect((window.history.state as Record<string, unknown> | null)?.sightrSheet).toBe(true);
+
+    fireEvent.click(within(sheet).getByRole("button", { name: "Stay" }));
+    fireEvent.click(within(sheet).getByRole("tab", { name: "Terminal" }));
+    expect(await within(sheet).findByRole("alertdialog", { name: "Unsaved edits" })).toBeInTheDocument();
+    expect(useRightPanelStore.getState().sheet).toBe("files");
+
+    // Discarding goes through, and the next back is the sheet's own entry, not the thread's.
+    fireEvent.click(within(sheet).getByRole("button", { name: "Discard edits" }));
+    await waitFor(() => expect(useRightPanelStore.getState().sheet).toBe("terminal"));
+    await act(async () => {
+      window.history.back();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    await waitFor(() => expect(useRightPanelStore.getState().sheet).toBeNull());
+    expect(router.history.location.pathname).toBe("/v2/thread/t1");
   });
 });

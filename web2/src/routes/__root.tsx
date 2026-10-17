@@ -2,6 +2,7 @@ import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { LockPrompt } from "@/components/LockPrompt";
+import { useNavTrail } from "@/components/shell/BackToThreads";
 import { ConnectionBanner } from "@/components/shell/ConnectionBanner";
 import { V2Unavailable } from "@/components/shell/V2Unavailable";
 import { ToastStack } from "@/components/toast";
@@ -37,6 +38,8 @@ function OpenShell() {
   }, []);
   // Re-registers a push subscription web2 itself holds when the bridge no longer has it (T18).
   usePushSetup();
+  // Remembers whether the entry behind this one is the list, for the header back buttons.
+  useNavTrail();
   const blocked = useStreamHealth((s) => s.blocked);
   if (blocked) return <V2Unavailable blocked={blocked} />;
 

@@ -65,6 +65,19 @@ describe("useMirror", () => {
     expect(fetchPaneMock).toHaveBeenCalledTimes(2);
   });
 
+  it("reads at once when the network comes back, but not while hidden", async () => {
+    renderHook(() => useMirror("p1", { hot: false }));
+    await tick(0);
+    expect(fetchPaneMock).toHaveBeenCalledTimes(1);
+    act(() => void window.dispatchEvent(new Event("online")));
+    await tick(0);
+    expect(fetchPaneMock).toHaveBeenCalledTimes(2);
+    setVisibility("hidden");
+    act(() => void window.dispatchEvent(new Event("online")));
+    await tick(0);
+    expect(fetchPaneMock).toHaveBeenCalledTimes(2);
+  });
+
   it("aborts the read in flight on unmount and reads no more", async () => {
     let signal: AbortSignal | undefined;
     fetchPaneMock.mockImplementation((_p: string, _l: number, s: AbortSignal) => {

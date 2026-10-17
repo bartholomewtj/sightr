@@ -1,6 +1,6 @@
 // Adapted from T3 Code apps/web/src/components/CommandPaletteResults.tsx @ e3b35d1b (MIT, see THIRD_PARTY.md).
 // Changes: the plain (non-virtualized) list only, since a herd is a few dozen threads; no thread
-// content-match excerpt and no submenu rows. Row markup and classes are T3's.
+// content-match excerpt and no submenu rows; 44 px rows on touch. Row markup and classes are T3's.
 import { type ResolvedKeybindingsConfig } from "@t3tools/contracts";
 
 import { shortcutLabelForCommand } from "../keybindings";
@@ -73,7 +73,7 @@ function RowBody({ item }: { item: CommandPaletteActionItem }) {
 
 function DisabledCommandPaletteResultRow(props: { item: CommandPaletteActionItem }) {
   return (
-    <div className="flex min-h-8 select-none items-center gap-2 rounded-sm px-2 py-1.5 text-base opacity-64 sm:min-h-7 sm:text-sm">
+    <div className="flex min-h-8 select-none items-center gap-2 rounded-sm px-2 py-1.5 text-base opacity-64 sm:min-h-7 sm:text-sm pointer-coarse:min-h-11">
       {props.item.icon}
       <RowBody item={props.item} />
       {props.item.titleTrailingContent}
@@ -92,6 +92,7 @@ function CommandPaletteResultRow(props: {
     <CommandItem
       value={props.item.value}
       active={props.isActive}
+      className="pointer-coarse:min-h-11"
       data-palette-item={props.item.value}
       onMouseDown={(event) => {
         event.preventDefault();

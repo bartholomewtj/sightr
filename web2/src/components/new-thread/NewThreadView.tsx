@@ -2,12 +2,12 @@
 // message) and, after Start, the spawn progress. Laid out as T3's draft view: the hero headline with the
 // project in it, the pickers, the "where" row, then the composer. On a phone it is a full screen with a
 // back button; on desktop it fills the Chat region.
-import { Link } from "@tanstack/react-router";
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { BranchToolbar } from "@/components/BranchToolbar";
+import { BackToThreads } from "@/components/shell/BackToThreads";
 import { DraftHeroHeadline } from "@/components/chat/DraftHeroHeadline";
 import { ProviderModelPicker } from "@/components/chat/ProviderModelPicker";
 import { TraitsPicker } from "@/components/chat/TraitsPicker";
@@ -50,11 +50,7 @@ export function NewThreadView({ projectId }: { projectId?: string }) {
   return (
     <section aria-label="New thread" className="flex min-h-0 flex-1 flex-col">
       <header className="flex items-center gap-2 border-b px-3 py-2">
-        {!desktop && (
-          <Link to="/" aria-label="Back to threads" className="-ml-1 rounded-md p-1 text-muted-foreground hover:bg-accent">
-            <ChevronLeft className="size-5" />
-          </Link>
-        )}
+        {!desktop && <BackToThreads />}
         <h2 className="min-w-0 flex-1 truncate font-semibold">New thread</h2>
         {!start || start.phase === "failed" ? (
           <Button size="sm" variant="ghost" onClick={discardDraft}>
@@ -62,7 +58,7 @@ export function NewThreadView({ projectId }: { projectId?: string }) {
           </Button>
         ) : null}
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 pt-6 pb-[max(env(safe-area-inset-bottom),1.5rem)]">
         {start ? (
           <SpawnProgress start={start} />
         ) : (
@@ -127,7 +123,7 @@ function CommandLine({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="w-full text-xs text-muted-foreground">
-      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 hover:text-foreground">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 hover:text-foreground pointer-coarse:min-h-11">
         {open ? <ChevronDown className="size-3.5" aria-hidden /> : <ChevronRight className="size-3.5" aria-hidden />}
         Command
       </button>

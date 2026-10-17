@@ -54,9 +54,14 @@ export function DraftFirstMessage({ onSubmit }: { onSubmit(): void }) {
             }}
           />
           {files.map((file, i) => (
-            <span key={`${file.name}:${i}`} className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs">
+            <span key={`${file.name}:${i}`} className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs pointer-coarse:py-0 pointer-coarse:pe-0">
               {file.name || "attachment"}
-              <button type="button" aria-label={`Remove ${file.name || "attachment"}`} onClick={() => removeDraftAttachment(i)}>
+              <button
+                type="button"
+                aria-label={`Remove ${file.name || "attachment"}`}
+                onClick={() => removeDraftAttachment(i)}
+                className="inline-flex items-center justify-center pointer-coarse:size-11"
+              >
                 <XIcon className="size-3" />
               </button>
             </span>

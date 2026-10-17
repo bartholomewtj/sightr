@@ -37,6 +37,8 @@ export function ModelPickerContent({
         onChange={(e) => onChange(e.target.value)}
         spellCheck={false}
         autoCapitalize="off"
+        autoCorrect="off"
+        autoComplete="off"
         aria-invalid={error ? true : undefined}
         className="max-w-72"
       />

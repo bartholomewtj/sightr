@@ -79,7 +79,7 @@ export function ChoiceGroup({
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cn(
               "rounded-md border text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
-              variant === "tiles" ? "flex items-start gap-2 p-2.5" : "px-2.5 py-1 text-sm",
+              variant === "tiles" ? "flex items-start gap-2 p-2.5 pointer-coarse:min-h-11" : "px-2.5 py-1 text-sm pointer-coarse:min-h-11 pointer-coarse:px-3",
               checked ? "border-foreground bg-accent text-foreground" : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
               choice.tone === "warn" && (checked ? "border-warn text-warn" : "text-warn"),
             )}

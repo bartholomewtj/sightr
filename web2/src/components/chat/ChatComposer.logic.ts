@@ -3,7 +3,7 @@
  * beside ChatComposer: what the primary button is, what a key press does, when the slash menu opens.
  * No React and no stores, so every row of the spec's button table is a plain test.
  */
-import type { QueuedMessage, RuntimeRequestOption, Thread } from "@shared/v2/contracts";
+import type { ChatAttachment, QueuedMessage, Run, RuntimeRequestOption, Thread, TurnItem } from "@shared/v2/contracts";
 import { resolveComposerDispatchMode } from "@t3tools/client-runtime/state/composer-dispatch";
 
 import type { EnterMode, FollowUp } from "@/state/composer";
@@ -45,6 +45,11 @@ export interface ButtonInput {
   linkLost: boolean;
   readOnly: boolean;
   uploading: boolean;
+  /**
+   * False while the open run cannot take steering input (it started from `/compact`): a follow-up
+   * queues whatever the setting or the modifier says (T3 #20184). Default true.
+   */
+  canSteer?: boolean;
 }
 
 const disabledSend = (reason: string | null, label = "Send"): PrimaryAction => ({ kind: "send", label, disabled: true, reason });
@@ -55,10 +60,18 @@ export function followUpCapabilities(caps: Thread["capabilities"] | undefined): 
   return { queue, steer: queue && caps?.canInterrupt === true };
 }
 
-/** The send mode while the agent works, after the setting, the modifier and the thread's capabilities. */
-export function workingMode(followUp: FollowUp, alternate: boolean, caps: Thread["capabilities"] | undefined): "queue" | "steer" | null {
+/**
+ * The send mode while the agent works, after the setting, the modifier, the thread's capabilities
+ * and whether the open run can take steering now (`canSteer`, false during `/compact`).
+ */
+export function workingMode(
+  followUp: FollowUp,
+  alternate: boolean,
+  caps: Thread["capabilities"] | undefined,
+  canSteer = true,
+): "queue" | "steer" | null {
   const can = followUpCapabilities(caps);
-  const wanted = resolveComposerDispatchMode({ running: true, activeTurnDefault: followUp, alternateModifier: alternate });
+  const wanted = resolveComposerDispatchMode({ running: true, activeTurnDefault: followUp, alternateModifier: alternate, canSteer });
   if (wanted === "steer" && can.steer) return "steer";
   if (can.queue) return "queue";
   return null;
@@ -94,7 +107,8 @@ export function resolveComposerButtons(input: ButtonInput): ComposerButtons {
         if (canStop) return { ...none, primary: { kind: "stop", label: "Stop", disabled: false, reason: null } };
         return { ...none, primary: disabledSend("The agent is working.") };
       }
-      const mode = workingMode(input.followUp, input.alternate, caps);
+      const canSteer = input.canSteer !== false;
+      const mode = workingMode(input.followUp, input.alternate, caps, canSteer);
       if (mode === null) {
         // A plain shell thread: no queue, no steer. Stop alone, or nothing.
         if (canStop) return { ...none, primary: { kind: "stop", label: "Stop", disabled: false, reason: null } };
@@ -106,7 +120,11 @@ export function resolveComposerButtons(input: ButtonInput): ComposerButtons {
           kind: mode,
           label,
           disabled: input.busy || input.uploading,
-          reason: input.uploading ? "Waiting for uploads…" : null,
+          reason: input.uploading
+            ? "Waiting for uploads…"
+            : !canSteer && followUpCapabilities(caps).steer
+              ? "Compacting. Your message waits in the queue."
+              : null,
         },
         stop: canStop,
         requestPanel: false,
@@ -130,6 +148,39 @@ export function resolveComposerButtons(input: ButtonInput): ComposerButtons {
         },
       };
   }
+}
+
+// ── Compaction ──────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A harness command that cannot take steering input: an interrupt during it cancels it. T3's
+ * `isNativeMaintenanceCommand` (apps/server/src/orchestration-v2/CommandPolicy.ts @ db5919d87); the
+ * bridge applies the same rule (bridge/threads/queue-drain.ts).
+ */
+export function isNativeMaintenanceCommand(message: { text: string; attachments?: readonly ChatAttachment[] }): boolean {
+  return (message.attachments ?? []).length === 0 && ["/compact", "/logout"].includes(message.text.trim().toLowerCase());
+}
+
+/**
+ * Is the thread compacting: its newest run is `running` and started from a maintenance command
+ * (T3's `isCompacting`, which feeds `canSteer: !isCompacting`). The run's message is its
+ * `userItemId`, else a `user_message` attributed to it, else the newest one no run has claimed yet.
+ */
+export function isCompacting(state: { runs: Record<string, Run>; items: Record<string, TurnItem> } | null | undefined): boolean {
+  if (!state) return false;
+  let latest: Run | null = null;
+  for (const run of Object.values(state.runs)) if (!latest || run.ordinal > latest.ordinal) latest = run;
+  if (!latest || latest.status !== "running") return false;
+  const run = latest;
+  type UserItem = Extract<TurnItem, { type: "user_message" }>;
+  const users = Object.values(state.items).filter((i): i is UserItem => i.type === "user_message");
+  const linked = run.userItemId ? state.items[run.userItemId] : undefined;
+  const message =
+    (linked?.type === "user_message" ? linked : undefined) ??
+    users.find((i) => i.runId === run.id) ??
+    users.filter((i) => i.runId === null).sort((a, b) => a.createdAt - b.createdAt || a.ordinal - b.ordinal).at(-1);
+  if (!message || (message.runId !== null && message.runId !== run.id)) return false;
+  return isNativeMaintenanceCommand(message);
 }
 
 // ── Keys ────────────────────────────────────────────────────────────────────────────────────────
@@ -163,6 +214,25 @@ export function resolveEnterAction(e: KeyLike, mode: EnterMode): KeyAction {
   }
   if (!mod) return "newline";
   return e.altKey ? "submit-alternate" : "submit";
+}
+
+/**
+ * The Enter mode in force: the stored choice, else the device default. A touch screen defaults to
+ * `mod-enter` (Enter is a newline, the button sends) even at a desktop-wide layout (a tablet), so a
+ * soft keyboard's Enter or a dictated line break never sends half a message.
+ */
+export function enterModeFor(stored: EnterMode | null, layout: "desktop" | "phone", coarsePointer: boolean): EnterMode {
+  if (stored) return stored;
+  return layout === "desktop" && !coarsePointer ? "enter" : "mod-enter";
+}
+
+/**
+ * The box's tallest autosize: `lines` lines plus its padding, or the CSS `max-height` (a dvh cap, so
+ * the box shrinks when the keyboard leaves little room) when that is lower. NaN inputs fall back.
+ */
+export function composerMaxHeight(lineHeight: number, lines: number, cssMaxHeight: number): number {
+  const byLines = (Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 20) * lines + 16;
+  return Number.isFinite(cssMaxHeight) && cssMaxHeight > 0 ? Math.min(byLines, cssMaxHeight) : byLines;
 }
 
 /** Should Alt+ArrowUp open the newest queued message for editing (empty box, caret at the start). */

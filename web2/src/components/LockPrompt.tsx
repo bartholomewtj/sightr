@@ -60,7 +60,7 @@ export function LockPrompt({ onUnlocked }: { onUnlocked: () => void }) {
   }
 
   return (
-    <main className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 p-6 text-center">
+    <main className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 text-center pt-[max(env(safe-area-inset-top),1.5rem)] pb-[max(env(safe-area-inset-bottom),1.5rem)] pl-[max(env(safe-area-inset-left),1.5rem)] pr-[max(env(safe-area-inset-right),1.5rem)]">
       <h1 className="text-2xl font-semibold">Sightr is locked</h1>
       <p className="max-w-sm text-muted-foreground">
         {can

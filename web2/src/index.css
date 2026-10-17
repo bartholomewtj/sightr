@@ -205,6 +205,14 @@
 @utility pb-safe {
   padding-bottom: max(env(safe-area-inset-bottom), 0px);
 }
+/* A full-height bottom sheet (RightPanelSheet): stops under the status bar (the viewport's own 3rem top
+   gap, or the safe-area inset when that is taller), pads for the home indicator unless the soft keyboard
+   covers it, and lifts and shrinks above the keyboard on iOS (--kb-inset, lib/keyboard-inset.ts; 0 elsewhere). */
+@utility sheet-fill {
+  height: calc(100dvh - max(3rem, env(safe-area-inset-top)) - var(--kb-inset, 0px));
+  margin-bottom: var(--kb-inset, 0px);
+  padding-bottom: calc(env(safe-area-inset-bottom) * (1 - var(--kb-open, 0)));
+}
 @utility pl-safe {
   padding-left: max(env(safe-area-inset-left), 0px);
 }
@@ -225,11 +233,52 @@
   body {
     @apply font-sans text-foreground;
   }
+  /* Phone: no grey flash on tap, no double-tap-to-zoom delay on controls, text keeps its size on rotate. */
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  a,
+  button,
+  summary,
+  label,
+  select,
+  input,
+  textarea,
+  [role="button"],
+  [role="tab"],
+  [role="treeitem"] {
+    touch-action: manipulation;
+  }
   code,
   kbd,
   pre,
   samp {
     font-family: var(--font-mono);
+  }
+}
+
+/* ── Phone (touch) ───────────────────────────────────────────────────────────────────────────────
+   Unlayered on purpose: it wins over Tailwind's layered utilities, so a hand-sized `text-sm` field
+   cannot make iOS zoom the page on focus. The primitives under ui/ already size themselves with
+   `pointer-coarse:` and `text-base sm:text-sm`; this is the net under anything that does not. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* No 300 ms double-tap-to-zoom wait on taps; pinch zoom still works. */
+  touch-action: manipulation;
+}
+@media (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="file"], [type="color"]),
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+  /* The palette's Up/Down/Enter/Esc hints are for a keyboard. */
+  [data-slot="command-footer"],
+  [data-slot="command-shortcut"] {
+    display: none;
   }
 }
 
@@ -450,4 +499,37 @@
   border-radius: 0.5rem;
   outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
   outline-offset: 2px;
+}
+
+/* ── Phone ergonomics (touch) ─────────────────────────────────────────────────────────────────────
+   T3's primitives are verbatim and size menu, select and command rows for a mouse (min-h-8 / 32 px).
+   Lift them to a thumb-sized row on a coarse pointer here instead of editing the primitives. */
+@media (pointer: coarse) {
+  [data-slot="menu-item"],
+  [data-slot="menu-checkbox-item"],
+  [data-slot="menu-radio-item"],
+  [data-slot="menu-sub-trigger"],
+  [data-slot="select-item"],
+  [data-slot="command-item"],
+  [data-slot="autocomplete-item"] {
+    min-height: 2.5rem;
+  }
+}
+
+/* The command palette is capped at 26.25rem (max-h-105); on a phone with the keyboard up that is taller
+   than what is left. dvh follows the visible area (Android resizes the layout viewport for the keyboard). */
+@media (max-width: 639px) {
+  [data-slot="command-dialog-popup"] {
+    max-height: min(26.25rem, calc(100dvh - 2rem));
+  }
+}
+
+/* iOS Safari zooms the page when a field under 16 px takes focus and never zooms back. Keep fields at
+   16 px there (Android and desktop leave sizes alone). */
+@supports (-webkit-touch-callout: none) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
 }

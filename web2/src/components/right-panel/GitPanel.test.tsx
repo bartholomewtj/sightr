@@ -9,7 +9,7 @@ import { useThreadStore } from "@/stream/stores";
 import { thread, threadSnapshot } from "@/test/fixtures";
 import { server } from "@/test/setup";
 
-import { GitPanel } from "./GitPanel";
+import { __resetGitNav, GitPanel } from "./GitPanel";
 
 const DIFF = ["diff --git a/src/a.ts b/src/a.ts", "index 1..2 100644", "--- a/src/a.ts", "+++ b/src/a.ts", "@@ -1 +1 @@", "-old", "+new", ""].join("\n");
 
@@ -43,6 +43,7 @@ function openThread(runs: Run[] = []) {
 }
 
 beforeEach(() => {
+  __resetGitNav();
   gitCalls = [];
   answer = dirty;
   server.use(
@@ -76,6 +77,36 @@ describe("GitPanel", () => {
     expect(document.querySelector('[data-diff-line="-"]')).toHaveTextContent("-old");
     // An untracked file has no diff to open.
     expect(screen.getByRole("button", { name: /notes\.md/ })).toBeDisabled();
+  });
+
+  it("keeps the expanded file when the sheet is closed and reopened", async () => {
+    const first = render(<GitPanel threadId="t1" />);
+    fireEvent.click(await screen.findByRole("button", { name: /src\/a\.ts/ }));
+    first.unmount();
+    render(<GitPanel threadId="t1" />);
+    expect(await screen.findByRole("button", { name: /src\/a\.ts/ })).toHaveAttribute("aria-expanded", "true");
+    expect(document.querySelector('[data-diff-line="+"]')).toHaveTextContent("+new");
+  });
+
+  it("wraps long paths instead of cutting the file name off, and scrolls a diff sideways on its own", async () => {
+    render(<GitPanel threadId="t1" />);
+    const row = await screen.findByRole("button", { name: /src\/a\.ts/ });
+    expect(row.querySelector("span.wrap-anywhere")).toHaveTextContent("src/a.ts");
+    expect(row.querySelector("span.truncate")).toBeNull();
+    fireEvent.click(row);
+    const pre = document.querySelector("pre");
+    expect(pre?.className).toContain("overflow-x-auto");
+    expect(pre?.className).toContain("overscroll-x-contain");
+  });
+
+  it("re-reads when the network comes back or the page returns to the foreground", async () => {
+    render(<GitPanel threadId="t1" />);
+    await screen.findByText("main · proj");
+    expect(gitCalls).toHaveLength(1);
+    act(() => void window.dispatchEvent(new Event("online")));
+    await waitFor(() => expect(gitCalls).toHaveLength(2));
+    act(() => void document.dispatchEvent(new Event("visibilitychange")));
+    await waitFor(() => expect(gitCalls).toHaveLength(3));
   });
 
   it("says when the folder is not a git repository", async () => {

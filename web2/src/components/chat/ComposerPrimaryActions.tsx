@@ -1,8 +1,10 @@
-// Adapted from T3 Code apps/web/src/components/chat/ComposerPrimaryActions.tsx @ e3b35d1b (MIT, see THIRD_PARTY.md).
+// Adapted from T3 Code apps/web/src/components/chat/ComposerPrimaryActions.tsx @ db5919d87 (MIT, see THIRD_PARTY.md).
 // Changes: the button's state comes from ChatComposer.logic's table (thread status, capabilities and
 // the queue), so the props are that result; labelled pill buttons (Send / Queue / Steer / Update)
 // instead of an icon-only circle, for phones; T3's square Stop button and its Ctrl/⌘-click alternate
-// kept. No pending-question, plan, resume, compact or worktree states.
+// kept, and T3's `canSteer` (no steer hint while a `/compact` runs). 44 px pill and Stop on a coarse
+// pointer; the destructive guard's pill reads "Confirm". No pending-question, plan, resume,
+// compact-before-send or worktree states.
 import { memo, type MouseEvent } from "react";
 import { ArrowUpIcon, CheckIcon, CornerUpRightIcon, ListPlusIcon } from "lucide-react";
 
@@ -11,7 +13,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { ComposerButtons } from "./ChatComposer.logic";
 
 const pillClassName =
-  "inline-flex h-10 shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-primary px-4 font-medium text-sm text-primary-foreground shadow-xs outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 disabled:shadow-none sm:h-8";
+  "inline-flex h-10 shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-primary px-4 font-medium text-sm text-primary-foreground shadow-xs outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 disabled:shadow-none pointer-fine:sm:h-8 pointer-coarse:h-11";
 
 interface ComposerPrimaryActionsProps {
   buttons: ComposerButtons;
@@ -19,6 +21,8 @@ interface ComposerPrimaryActionsProps {
   confirmArmed: boolean;
   interrupting: boolean;
   followUp: "queue" | "steer";
+  /** False while the active run cannot take steering input (compaction): no Ctrl/⌘-click hint. */
+  canSteer?: boolean;
   onSubmit: (alternate: boolean) => void;
   onInterrupt: () => void;
 }
@@ -28,6 +32,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   confirmArmed,
   interrupting,
   followUp,
+  canSteer = true,
   onSubmit,
   onInterrupt,
 }: ComposerPrimaryActionsProps) {
@@ -36,7 +41,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     <button
       key="interrupt"
       type="button"
-      className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs transition-colors duration-150 hover:bg-destructive disabled:opacity-64 sm:size-8"
+      className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs transition-colors duration-150 hover:bg-destructive disabled:opacity-64 pointer-fine:sm:size-8 pointer-coarse:size-11"
       disabled={interrupting}
       onClick={onInterrupt}
       aria-label={interrupting ? "Stopping" : "Stop"}
@@ -54,8 +59,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
 
   const working = primary.kind === "queue" || primary.kind === "steer";
   const other = followUp === "queue" ? "steer" : "queue";
-  const tooltip = primary.reason ?? (working ? `Click to ${primary.kind}, Ctrl/⌘-click to ${other}` : primary.label);
-  const label = confirmArmed ? "Tap again to send" : primary.label;
+  const tooltip = primary.reason ?? (working && canSteer ? `Click to ${followUp}, Ctrl/⌘-click to ${other}` : primary.label);
+  // Short, so the pill still fits a 360 px toolbar; the status line says what is being confirmed.
+  const label = confirmArmed ? "Confirm" : primary.label;
 
   return (
     <div className="flex items-center gap-2">

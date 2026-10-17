@@ -8,7 +8,9 @@ import { createProject, createThread, thread } from "../test/thread-fixtures.ts"
 import { createHerdIngestor } from "./herd-ingest.ts";
 import {
   createQueueDrainer,
+  isNativeMaintenanceCommand,
   normalizeQueue,
+  openRunIsMaintenance,
   queueEvent,
   type DeliverResult,
   type DrainTimers,
@@ -70,13 +72,15 @@ function rig(status: ThreadStatus = "working") {
   const store = openThreadStore(":memory:", { now: () => T0, log: () => {} });
   store.append([createProject(), createThread(thread("t1", { status, capabilities: CAPS }))]);
   const sent: string[] = [];
+  const intents: string[] = [];
   const results: DeliverResult[] = [];
   let ready = true;
   const timers = new FakeTimers();
   const drainer = createQueueDrainer({
     store,
-    deliver: async (_t, text) => {
+    deliver: async (_t, text, _attachments, intent) => {
       sent.push(text);
+      intents.push(intent);
       return results.shift() ?? { kind: "sent", events: [] };
     },
     composerReady: async () => ready,
@@ -96,6 +100,7 @@ function rig(status: ThreadStatus = "working") {
     store,
     drainer,
     sent,
+    intents,
     results,
     timers,
     setStatus,
@@ -113,6 +118,75 @@ describe("normalizeQueue", () => {
       ["b", 1],
       ["c", 2],
     ]);
+  });
+});
+
+const userItem = (id: string, runId: string | null, text: string, attachments: QueuedMessage["attachments"] = []) => ({
+  type: "turn-item.updated" as const,
+  threadId: "t1",
+  payload: {
+    item: {
+      id,
+      threadId: "t1",
+      runId,
+      status: "completed" as const,
+      title: null,
+      startedAt: null,
+      completedAt: null,
+      createdAt: T0,
+      updatedAt: T0,
+      type: "user_message" as const,
+      messageId: id,
+      text,
+      attachments,
+    },
+  },
+});
+const runStarted = (id: string, userItemId?: string) => ({
+  type: "run.started" as const,
+  threadId: "t1",
+  payload: { run: { id, threadId: "t1", ordinal: 1, ...(userItemId ? { userItemId } : {}), status: "running" as const, startedAt: T0 } },
+});
+
+describe("maintenance commands (T3 #20184)", () => {
+  test("isNativeMaintenanceCommand: /compact and /logout, trimmed, any case, no attachments", () => {
+    expect(isNativeMaintenanceCommand({ text: "/compact", attachments: [] })).toBe(true);
+    expect(isNativeMaintenanceCommand({ text: "  /Compact\n", attachments: [] })).toBe(true);
+    expect(isNativeMaintenanceCommand({ text: "/logout", attachments: [] })).toBe(true);
+    expect(isNativeMaintenanceCommand({ text: "/compact keep the plan", attachments: [] })).toBe(false);
+    expect(isNativeMaintenanceCommand({ text: "/compact", attachments: [{ path: "C:\\a.png", name: "a.png" }] })).toBe(false);
+  });
+
+  test("openRunIsMaintenance reads the open run's message: linked, attributed, or the newest unclaimed one", () => {
+    const linked = rig();
+    expect(openRunIsMaintenance(linked.store, "t1")).toBe(false);
+    linked.store.append([userItem("u1", "run1", "/compact"), runStarted("run1", "u1")]);
+    expect(openRunIsMaintenance(linked.store, "t1")).toBe(true);
+    linked.store.append([{ type: "run.ended", threadId: "t1", payload: { runId: "run1", status: "completed", completedAt: T0 } }]);
+    expect(openRunIsMaintenance(linked.store, "t1")).toBe(false);
+
+    const attributed = rig();
+    attributed.store.append([runStarted("run1"), userItem("u1", "run1", "/compact")]);
+    expect(openRunIsMaintenance(attributed.store, "t1")).toBe(true);
+
+    const unclaimed = rig();
+    unclaimed.store.append([userItem("u1", null, "/compact"), runStarted("run1")]);
+    expect(openRunIsMaintenance(unclaimed.store, "t1")).toBe(true);
+
+    const plain = rig();
+    plain.store.append([userItem("u1", null, "fix the tests"), runStarted("run1")]);
+    expect(openRunIsMaintenance(plain.store, "t1")).toBe(false);
+  });
+
+  test("a resumed steer row during /compact waits for the settle and goes as a queued turn", async () => {
+    const r = rig();
+    r.store.append([userItem("u1", "run1", "/compact"), runStarted("run1", "u1")]);
+    r.store.append([queueEvent("t1", [row("s", 0, { mode: "steer", state: "queued" })], "resumed")]);
+    await flush(r.drainer);
+    expect(r.sent).toEqual([]);
+    await r.setStatus("idle");
+    expect(r.sent).toEqual(["text s"]);
+    expect(r.intents).toEqual(["queued_turn"]);
   });
 });
 

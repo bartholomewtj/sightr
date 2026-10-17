@@ -1,11 +1,13 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { ChevronLeft, SearchIcon } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { CommandIcon, SearchIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { ChatComposer } from "~/components/chat/ChatComposer";
 import { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { TimelineFind } from "~/components/chat/ThreadFindBar";
 import { openThreadFind } from "~/components/chat/useThreadFind";
+import { openCommandPalette } from "@/commandPaletteBus";
+import { BackToThreads } from "@/components/shell/BackToThreads";
 import { useShortcutHandler } from "@/shortcutHandlers";
 import { Button } from "~/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
@@ -65,17 +67,19 @@ function ThreadRouteView() {
   return (
     <section aria-label={title} className="flex min-h-0 flex-1 flex-col">
       <header className="flex items-center gap-2 border-b px-3 py-2">
-        {!desktop && (
-          <Link to="/" aria-label="Back to threads" className="-ml-1 rounded-md p-1 text-muted-foreground hover:bg-accent">
-            <ChevronLeft className="size-5" />
-          </Link>
-        )}
+        {!desktop && <BackToThreads />}
         <h1 className="min-w-0 flex-1 truncate font-semibold">{title}</h1>
         {state?.syncing && !cli && <span className="text-xs text-muted-foreground">Syncing…</span>}
         {cliFirst && !missing ? <ThreadViewToggle threadId={threadId} view={view} /> : null}
         {!missing && !cli ? (
           <Button size="icon-sm" variant="ghost-muted" aria-label="Find in thread" onClick={() => openThreadFind(threadId)}>
             <SearchIcon />
+          </Button>
+        ) : null}
+        {/* Phone: the palette is the way to New thread, Settings and this thread's actions (rename, snooze, pin ...). */}
+        {!desktop ? (
+          <Button size="icon-sm" variant="ghost-muted" aria-label="Command palette" onClick={() => openCommandPalette()}>
+            <CommandIcon />
           </Button>
         ) : null}
         {!desktop && !missing ? <PhonePanelButtons cli={cli} /> : null}

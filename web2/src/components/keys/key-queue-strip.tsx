@@ -49,7 +49,7 @@ export function KeyQueueStrip({
             onClick={() => onRemove(i)}
             aria-label={`Remove ${label}`}
             className={cn(
-              "inline-flex h-8 items-center gap-1 rounded-md border border-border bg-muted/50 px-2 text-xs font-medium",
+              "inline-flex h-8 items-center gap-1 rounded-md border border-border bg-muted/50 px-2 text-xs font-medium pointer-coarse:h-11 pointer-coarse:px-3",
               isDangerKey(key) && "border-destructive/40 text-destructive",
             )}
           >
@@ -81,7 +81,7 @@ export function KeyQueueStrip({
           disabled={disabled}
           onChange={(e) => onBaseChar(e.target.value)}
           aria-label="Type a key to combine"
-          className="h-8 w-14 rounded-md border border-input bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring disabled:opacity-50"
+          className="h-8 w-14 rounded-md border border-input bg-transparent px-2 text-sm pointer-coarse:h-11 pointer-coarse:w-16 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring disabled:opacity-50"
         />
       )}
 

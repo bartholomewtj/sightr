@@ -1,7 +1,7 @@
 // Copied from web/src/components/direct-typing-strip.tsx (T13: the Terminal tab). Changes: `prompt`
 // names the password prompt the operator is answering (T12's "Open terminal" hand-off); `compact`
 // (a phone with its keyboard up) shows the strip only when it has something to say: a held paste or
-// a password prompt. Its plain "Typing into terminal … Stop" line repeats the armed Stop button.
+// a password prompt (buttons grow to a thumb-sized target on a touch screen). Its plain "Typing into terminal … Stop" line repeats the armed Stop button.
 import { Keyboard } from "lucide-react";
 import type { PointerEvent } from "react";
 import { usePasteHold } from "@/lib/paste-hold";
@@ -37,21 +37,21 @@ export function DirectTypingStrip({
       </span>
       {!disabled && hold?.kind === "text" && (
         <>
-          <button type="button" {...buttonProps} onClick={hold.onSend} className="shrink-0 rounded-md px-2 py-0.5 font-medium underline-offset-2 transition-colors hover:underline active:bg-muted">Send</button>
-          <button type="button" {...buttonProps} onClick={hold.onDiscard} className="shrink-0 rounded-md px-2 py-0.5 font-medium underline-offset-2 transition-colors hover:underline active:bg-muted">Discard</button>
+          <button type="button" {...buttonProps} onClick={hold.onSend} className="shrink-0 rounded-md px-2 py-0.5 pointer-coarse:px-3 pointer-coarse:py-2.5 font-medium underline-offset-2 transition-colors hover:underline active:bg-muted">Send</button>
+          <button type="button" {...buttonProps} onClick={hold.onDiscard} className="shrink-0 rounded-md px-2 py-0.5 pointer-coarse:px-3 pointer-coarse:py-2.5 font-medium underline-offset-2 transition-colors hover:underline active:bg-muted">Discard</button>
         </>
       )}
       {!disabled && hold?.kind === "path" && (
         <>
-          <button type="button" {...buttonProps} onClick={hold.onSend} className="shrink-0 rounded-md px-2 py-0.5 font-medium underline-offset-2 transition-colors hover:underline active:bg-muted">Type path</button>
-          <button type="button" {...buttonProps} onClick={hold.onDiscard} className="shrink-0 rounded-md px-2 py-0.5 font-medium underline-offset-2 transition-colors hover:underline active:bg-muted">Discard</button>
+          <button type="button" {...buttonProps} onClick={hold.onSend} className="shrink-0 rounded-md px-2 py-0.5 pointer-coarse:px-3 pointer-coarse:py-2.5 font-medium underline-offset-2 transition-colors hover:underline active:bg-muted">Type path</button>
+          <button type="button" {...buttonProps} onClick={hold.onDiscard} className="shrink-0 rounded-md px-2 py-0.5 pointer-coarse:px-3 pointer-coarse:py-2.5 font-medium underline-offset-2 transition-colors hover:underline active:bg-muted">Discard</button>
         </>
       )}
       {!disabled && hold === null && (
         <button
           type="button"
           onClick={onStop}
-          className="shrink-0 rounded-md px-2 py-0.5 font-medium underline-offset-2 transition-colors hover:underline active:bg-muted"
+          className="shrink-0 rounded-md px-2 py-0.5 pointer-coarse:px-3 pointer-coarse:py-2.5 font-medium underline-offset-2 transition-colors hover:underline active:bg-muted"
         >
           Stop
         </button>

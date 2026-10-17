@@ -5,6 +5,7 @@ import type { ArchiveReason } from "@shared/v2/contracts";
 import { timeAgo } from "@v1/lib/format";
 
 import { Button } from "~/components/ui/button";
+import { BackToThreads } from "@/components/shell/BackToThreads";
 import { AgentIcon } from "@/components/AgentIcon";
 import { ARCHIVED_PAGE, archivedThreads, canUnarchive } from "@/lib/archived";
 import { performThreadCommand, useSidebarThreads } from "@/state/sidebar";
@@ -31,17 +32,17 @@ function Archived() {
   const [shown, setShown] = useState(ARCHIVED_PAGE);
   const page = list.slice(0, shown);
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-3 overflow-y-auto p-4">
-      <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">
-        Back to threads
-      </Link>
-      <h1 className="text-xl font-semibold">Archived</h1>
+    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-3 overflow-y-auto overscroll-y-contain p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+      <div className="-mt-1 flex items-center gap-2">
+        <BackToThreads />
+        <h1 className="text-xl font-semibold">Archived</h1>
+      </div>
       {list.length === 0 ? (
         <p className="text-sm text-muted-foreground">No archived threads.</p>
       ) : (
         <ul aria-label="Archived threads" className="divide-y rounded-lg border">
           {page.map((t) => (
-            <li key={t.id} className="flex items-center gap-3 px-4 py-2">
+            <li key={t.id} className="flex items-center gap-3 px-4 py-2 pointer-coarse:min-h-14">
               <AgentIcon agent={t.harness} className="size-5" />
               <Link to="/thread/$threadId" params={{ threadId: t.id }} className="min-w-0 flex-1 hover:underline">
                 <span className="block truncate text-sm">{t.title}</span>

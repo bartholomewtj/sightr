@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import {
   NO_CAPABILITIES,
+  type ChatAttachment,
   type Command,
   type QueuedMessage,
   type RuntimeRequest,
@@ -226,6 +227,31 @@ const failed = (events: ThreadEvent[]) =>
   events.filter((e): e is Extract<ThreadEvent, { type: "dispatch.failed" }> => e.type === "dispatch.failed").map((e) => e.payload);
 const changes = (events: ThreadEvent[]) =>
   events.flatMap((e) => (e.type === "queue.updated" && e.payload.change ? [e.payload.change] : []));
+
+/** A `user_message` item (the text that opened a run), as the journal or dispatch writes it. */
+function compactItem(id: string, runId: string | null, text: string, attachments: ChatAttachment[] = []): ThreadEvent {
+  return {
+    type: "turn-item.updated",
+    threadId: "t1",
+    payload: {
+      item: {
+        id,
+        threadId: "t1",
+        runId,
+        status: "completed",
+        title: null,
+        startedAt: null,
+        completedAt: null,
+        createdAt: T0,
+        updatedAt: T0,
+        type: "user_message",
+        messageId: id,
+        text,
+        attachments,
+      },
+    },
+  } as ThreadEvent;
+}
 
 function pendingRequest(): RuntimeRequest {
   return {
@@ -577,6 +603,54 @@ describe("steer", () => {
     await r.run({ type: "message.dispatch", threadId: "t1", text: "just send", mode: "steer" });
     expect(r.pane.keys).toEqual(["Enter"]);
     expect(r.pane.submitted).toEqual(["just send"]);
+  });
+
+  test("a steer while the open run started from /compact becomes a queued row and presses no interrupt key", async () => {
+    const r = rig({ status: "working" });
+    r.store.append([
+      compactItem("u1", "run1", "/compact"),
+      { type: "run.started", threadId: "t1", payload: { run: { id: "run1", threadId: "t1", ordinal: 1, userItemId: "u1", status: "running", startedAt: T0 } } },
+    ]);
+    const out = await r.run({ type: "message.dispatch", threadId: "t1", text: "after it, do this", mode: "steer" });
+    expect(out).toEqual(expect.objectContaining({ ok: true }));
+    expect(r.pane.keys).toEqual([]);
+    expect(r.marked).toEqual([]);
+    expect(r.queue().map((q) => [q.text, q.mode, q.state])).toEqual([["after it, do this", "queue", "queued"]]);
+    expect(changes(r.events)).toEqual(["added"]);
+
+    await r.setStatus("idle");
+    expect(r.pane.submitted).toEqual(["after it, do this"]);
+    expect(r.pane.keys).toEqual(["Enter"]);
+  });
+
+  test("an unlinked /compact message (trimmed, any case) still counts; one with attachments does not", async () => {
+    const r = rig({ status: "working" });
+    r.store.append([
+      compactItem("u1", null, "  /COMPACT \n"),
+      { type: "run.started", threadId: "t1", payload: { run: { id: "run1", threadId: "t1", ordinal: 1, status: "running", startedAt: T0 } } },
+    ]);
+    await r.run({ type: "message.dispatch", threadId: "t1", text: "later", mode: "steer" });
+    expect(r.pane.keys).toEqual([]);
+    expect(r.queue().map((q) => q.mode)).toEqual(["queue"]);
+
+    const s = rig({ status: "working" });
+    s.store.append([
+      compactItem("u1", "run1", "/compact", [{ path: "C:\\a.png", name: "a.png" }]),
+      { type: "run.started", threadId: "t1", payload: { run: { id: "run1", threadId: "t1", ordinal: 1, userItemId: "u1", status: "running", startedAt: T0 } } },
+    ]);
+    await s.run({ type: "message.dispatch", threadId: "t1", text: "steer now", mode: "steer" });
+    expect(s.pane.keys).toEqual(["Escape"]);
+    expect(s.queue().map((q) => [q.mode, q.state])).toEqual([["steer", "sending"]]);
+  });
+
+  test("a /compact from an older run does not stop a steer into the current one", async () => {
+    const r = rig({ status: "working" });
+    r.store.append([
+      compactItem("u0", "run0", "/compact"),
+      { type: "run.started", threadId: "t1", payload: { run: { id: "run1", threadId: "t1", ordinal: 2, status: "running", startedAt: T0 } } },
+    ]);
+    await r.run({ type: "message.dispatch", threadId: "t1", text: "steer now", mode: "steer" });
+    expect(r.pane.keys).toEqual(["Escape"]);
   });
 
   test("steer with an open runtime request is refused", async () => {

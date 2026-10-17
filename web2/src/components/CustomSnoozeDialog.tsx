@@ -29,7 +29,7 @@ export function CustomSnoozeDialog({
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogPopup className="max-w-sm">
+      <DialogPopup className="max-w-sm max-sm:pb-[env(safe-area-inset-bottom)]">
         <DialogHeader>
           <DialogTitle>Snooze until</DialogTitle>
         </DialogHeader>
@@ -43,7 +43,7 @@ export function CustomSnoozeDialog({
           <input
             type="datetime-local"
             aria-label="Wake time"
-            className="h-9 rounded-lg border border-input bg-background px-3 font-mono text-sm text-foreground"
+            className="h-9 rounded-lg border border-input bg-background px-3 font-mono text-base text-foreground sm:text-sm pointer-coarse:h-11"
             value={value}
             min={toDateTimeLocal(Date.now())}
             onChange={(e) => setValue(e.target.value)}

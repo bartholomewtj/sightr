@@ -273,7 +273,7 @@ export function NavTray({ onSend, presets = CONTROL_PRESETS, onQueueChange, disa
             <button
               type="button"
               onClick={() => setCtrlOpen((o) => !o)}
-              className="flex items-center gap-1 px-1 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+              className="flex items-center gap-1 px-1 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground pointer-coarse:min-h-11 pointer-coarse:pe-3"
             >
               Presets
               <ChevronDown className={cn("size-3 transition-transform", ctrlOpen && "rotate-180")} />
@@ -319,7 +319,7 @@ export function NavTray({ onSend, presets = CONTROL_PRESETS, onQueueChange, disa
             <button
               type="button"
               onClick={() => setFkeysOpen((o) => !o)}
-              className="flex items-center gap-1 px-1 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+              className="flex items-center gap-1 px-1 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground pointer-coarse:min-h-11 pointer-coarse:pe-3"
             >
               F keys
               <ChevronDown className={cn("size-3 transition-transform", fkeysOpen && "rotate-180")} />

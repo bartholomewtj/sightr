@@ -132,7 +132,7 @@
     {
       "local": "src/components/ui/toggle-group.tsx",
       "upstream": "apps/web/src/components/ui/toggle-group.tsx",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "verbatim"
     },
     {
@@ -144,7 +144,7 @@
     {
       "local": "src/components/ui/tooltip.tsx",
       "upstream": "apps/web/src/components/ui/tooltip.tsx",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "verbatim"
     },
     {
@@ -285,7 +285,8 @@
       "local": "src/components/chat/WorkLog.tsx",
       "upstream": "apps/web/src/components/chat/WorkLog.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
-      "mode": "verbatim"
+      "mode": "adapted",
+      "note": "phone: an interactive row's line is pointer-coarse:min-h-11 (44 px tap target); otherwise upstream"
     },
     {
       "local": "src/components/chat/WorkLog.test.tsx",
@@ -305,7 +306,7 @@
       "upstream": "apps/web/src/components/chat/MessageCopyButton.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "lucide-react icons; try/catch clipboard with a status line instead of the anchored toast"
+      "note": "lucide-react icons; try/catch clipboard with a status line instead of the anchored toast; execCommand fallback when the Clipboard API is missing or refuses"
     },
     {
       "local": "src/components/chat/ToolItemDetail.tsx",
@@ -319,7 +320,7 @@
       "upstream": "apps/web/src/components/ChatMarkdown.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "react-markdown + remark-gfm (+ remark-breaks); no Shiki, Mermaid, raw HTML, file links, images, citations"
+      "note": "react-markdown + remark-gfm (+ remark-breaks); no Shiki, Mermaid, raw HTML, file links, images, citations; code-block Wrap lines toggle kept (starts on below sm)"
     },
     {
       "local": "src/session-logic.ts",
@@ -401,9 +402,9 @@
     {
       "local": "src/components/chat/ComposerPrimaryActions.tsx",
       "upstream": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
-      "note": "labelled Send/Queue/Steer/Update pill + T3's Stop and Ctrl/\u2318-click alternate; no plan/resume/compact/pending-question states"
+      "note": "labelled Send/Queue/Steer/Update pill + T3's Stop and Ctrl/\u2318-click alternate and canSteer; 44 px on a coarse pointer; no plan/resume/compact/pending-question states"
     },
     {
       "local": "src/components/chat/ComposerPendingApprovalPanel.tsx",
@@ -464,13 +465,13 @@
     {
       "local": "src/t3/client-runtime/state/composerDispatch.ts",
       "upstream": "packages/client-runtime/src/state/composerDispatch.ts",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "verbatim"
     },
     {
       "local": "src/t3/client-runtime/state/composerDispatch.test.ts",
       "upstream": "packages/client-runtime/src/state/composerDispatch.test.ts",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
       "note": "imports vitest instead of vite-plus/test"
     },
@@ -527,7 +528,7 @@
       "upstream": "apps/web/src/components/RightPanelSheet.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "bottom sheet, not kept mounted, back closes it"
+      "note": "bottom sheet, not kept mounted, back closes it (asks the Files editor first), tab strip, safe-area and soft-keyboard sizing"
     },
     {
       "local": "src/commandPaletteBus.ts",

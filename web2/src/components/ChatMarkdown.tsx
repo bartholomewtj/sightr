@@ -10,7 +10,11 @@
 // - Only `http(s)://` and `mailto:` links are links (web/src/lib/links.ts keeps to explicit schemes);
 //   they open in a new tab with `rel="noopener noreferrer"`. Anything else renders as its text.
 // - Images are not loaded; an image becomes a link to its URL (or its alt text).
-import { memo, useMemo, type ComponentProps, type ReactNode } from "react";
+// - Code blocks keep T3's "Wrap lines" toggle (`data-wrap`); it starts on below the `sm` breakpoint
+//   (T3 starts from its word-wrap setting), so a phone reads a long line without sideways scrolling.
+//   The header is `data-thread-find-ignore`, as upstream's.
+import { memo, useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import { WrapTextIcon } from "lucide-react";
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -18,6 +22,8 @@ import remarkGfm from "remark-gfm";
 import { cn } from "~/lib/utils";
 
 import { MessageCopyButton } from "./chat/MessageCopyButton";
+import { Button } from "./ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 interface ChatMarkdownProps {
   text: string;
@@ -74,12 +80,23 @@ function extractFenceLanguage(className: unknown): string {
   return CODE_FENCE_LANGUAGE_REGEX.exec(value)?.[1] ?? "text";
 }
 
+/** Phones start with code wrapped (T3's `readInitialWordWrapSetting`, from the viewport here). */
+function readInitialWordWrapSetting(): boolean {
+  try {
+    return typeof window !== "undefined" && window.matchMedia?.("(max-width: 639px)").matches === true;
+  } catch {
+    return false;
+  }
+}
+
 export function MarkdownCodeBlockFrame({
   language,
+  wrapped = false,
   actions,
   children,
 }: {
   language: string;
+  wrapped?: boolean;
   actions?: ReactNode;
   children: ReactNode;
 }) {
@@ -87,8 +104,12 @@ export function MarkdownCodeBlockFrame({
     <div
       className="chat-markdown-codeblock my-[0.65rem] overflow-hidden rounded-lg border border-border/70 bg-code leading-snug"
       data-language={language}
+      data-wrap={wrapped ? "true" : "false"}
     >
-      <div className="chat-markdown-codeblock-header flex items-center justify-between gap-2 pt-1.5 pr-1.5 pb-0 pl-3 select-none">
+      <div
+        className="chat-markdown-codeblock-header flex items-center justify-between gap-2 pt-1.5 pr-1.5 pb-0 pl-3 select-none"
+        data-thread-find-ignore=""
+      >
         <span className="inline-flex min-w-0 items-center gap-1.5 font-mono text-2xs">
           <span className="truncate">{language}</span>
         </span>
@@ -99,18 +120,42 @@ export function MarkdownCodeBlockFrame({
   );
 }
 
-function MarkdownCodeBlock({ node, children: _children, ...props }: ComponentProps<"pre"> & ExtraProps) {
+function MarkdownCodeBlock({ node, children: _children, className, ...props }: ComponentProps<"pre"> & ExtraProps) {
+  const [wrapped, setWrapped] = useState(readInitialWordWrapSetting);
   const codeNode = (node as HastNode | undefined)?.children?.find(
     (child) => child.type === "element" && child.tagName === "code",
   );
   const code = hastText(codeNode).replace(/\n$/, "");
   const language = extractFenceLanguage(codeNode?.properties?.className);
+  const wrapLabel = wrapped ? "Disable line wrap" : "Wrap lines";
   return (
     <MarkdownCodeBlockFrame
       language={language}
-      actions={<MessageCopyButton text={code} label="Copy code" size="icon-xs" variant="ghost" />}
+      wrapped={wrapped}
+      actions={
+        <span className="flex items-center gap-0.5" role="toolbar" aria-label="Code block actions">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant={wrapped ? "secondary" : "ghost-muted"}
+                  size="icon-xs"
+                  aria-pressed={wrapped}
+                  onClick={() => setWrapped((value) => !value)}
+                  aria-label={wrapLabel}
+                />
+              }
+            >
+              <WrapTextIcon className="size-3" />
+            </TooltipTrigger>
+            <TooltipPopup side="top">{wrapLabel}</TooltipPopup>
+          </Tooltip>
+          <MessageCopyButton text={code} label="Copy code" size="icon-xs" variant="ghost" />
+        </span>
+      }
     >
-      <pre {...props}>
+      <pre {...props} className={cn(className, wrapped && "whitespace-pre-wrap wrap-anywhere")}>
         <code>{code}</code>
       </pre>
     </MarkdownCodeBlockFrame>

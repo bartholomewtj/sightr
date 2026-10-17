@@ -6,6 +6,7 @@ import { shellSnapshot, thread, threadSnapshot } from "@/test/fixtures";
 import { useRightPanelStore } from "@/rightPanelStore";
 import { setViewportWidth } from "@/test/media";
 import { frame, renderApp } from "@/test/render-app";
+import { nextNavTrail } from "@/components/shell/BackToThreads";
 import { clampSidebarWidth, SIDEBAR_MAX, SIDEBAR_MIN, useUiState } from "@/uiStateStore";
 
 const region = (name: string) => document.querySelector(`[data-region="${name}"]`);
@@ -127,5 +128,36 @@ describe("the root", () => {
     const { router } = renderApp("/v2/settings");
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
     expect(router.history.location.pathname).toBe("/v2/settings");
+  });
+});
+
+describe("phone back button", () => {
+  it("goes back to the list it came from instead of pushing a second list entry", async () => {
+    setViewportWidth(800);
+    const { router } = await boot("/v2/");
+    fireEvent.click(await screen.findByRole("link", { name: /Fix the build/ }));
+    await screen.findByRole("heading", { name: "Fix the build" });
+    fireEvent.click(screen.getByRole("link", { name: "Back to threads" }));
+    await waitFor(() => expect(router.history.location.pathname).toMatch(/\/v2\/?$/));
+    // A pushed list entry would be index 2; going back lands on the first entry.
+    expect(router.history.location.state.__TSR_index).toBe(0);
+  });
+
+  it("replaces with the list when the thread was a deep link", async () => {
+    setViewportWidth(800);
+    const { router } = await boot("/v2/thread/t1");
+    await screen.findByRole("heading", { name: "Fix the build" });
+    fireEvent.click(screen.getByRole("link", { name: "Back to threads" }));
+    await waitFor(() => expect(router.history.location.pathname).toMatch(/\/v2\/?$/));
+    expect(router.history.canGoBack()).toBe(false);
+  });
+
+  it("tracks the entry behind the current one as a pure step", () => {
+    const start = { index: null, fromList: false };
+    expect(nextNavTrail(start, { from: 0, to: 1, fromIsList: true })).toEqual({ index: 1, fromList: true });
+    expect(nextNavTrail({ index: 1, fromList: true }, { from: 1, to: 2, fromIsList: false })).toEqual({ index: 2, fromList: false });
+    expect(nextNavTrail({ index: 2, fromList: true }, { from: 2, to: 1, fromIsList: false })).toEqual({ index: 1, fromList: false });
+    expect(nextNavTrail({ index: 1, fromList: true }, { from: 1, to: 1, fromIsList: false })).toEqual({ index: 1, fromList: true });
+    expect(nextNavTrail(start, { from: undefined, to: 0, fromIsList: false })).toEqual({ index: 0, fromList: false });
   });
 });

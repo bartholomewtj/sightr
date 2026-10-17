@@ -88,8 +88,13 @@ export function useMirror(paneId: string | null, opts: { hot: boolean; lines?: n
         tick();
       }
     };
+    // The network came back: do not sit out the rest of the poll interval on a stale mirror.
+    const onOnline = () => {
+      if (!pageHidden()) tick();
+    };
     kick.current = tick;
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", onOnline);
     tick();
     return () => {
       stopped = true;
@@ -97,6 +102,7 @@ export function useMirror(paneId: string | null, opts: { hot: boolean; lines?: n
       clear();
       controller?.abort();
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onOnline);
     };
   }, [paneId, lines, enabled]);
 

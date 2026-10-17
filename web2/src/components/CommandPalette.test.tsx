@@ -72,6 +72,26 @@ describe("command palette", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Command palette" }));
     expect(await palette()).toHaveClass("max-h-none");
   });
+
+  it("a phone gets a Close button, no keyboard-only 'Show keyboard shortcuts', and the thread header opens it", async () => {
+    await boot("/v2/thread/t1", 390);
+    fireEvent.click(await screen.findByRole("button", { name: "Command palette" }));
+    const dialog = await palette();
+    const input = within(dialog).getByRole("combobox");
+    fireEvent.change(input, { target: { value: ">keyboard" } });
+    await waitFor(() => expect(within(dialog).queryAllByRole("option")).toHaveLength(0));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close command palette" }));
+    await waitFor(() => expect(useCommandPaletteStore.getState().open).toBe(false));
+  });
+
+  it("a desktop offers 'Show keyboard shortcuts' and has no Close button", async () => {
+    await boot("/v2/", 1280);
+    modK();
+    const dialog = await palette();
+    expect(within(dialog).queryByRole("button", { name: "Close command palette" })).toBeNull();
+    fireEvent.change(within(dialog).getByRole("combobox"), { target: { value: ">keyboard" } });
+    expect(await within(dialog).findByRole("option", { name: /Show keyboard shortcuts/ })).toBeInTheDocument();
+  });
 });
 
 describe("shortcuts sheet", () => {

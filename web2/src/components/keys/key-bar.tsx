@@ -34,7 +34,7 @@ export function KeyBar({ onSend, onMore, disabled = false }: KeyBarProps) {
         aria-label={aria}
         disabled={disabled}
         className={cn(
-          "inline-flex h-8 min-w-9 shrink-0 items-center justify-center rounded-md border bg-card px-2 font-mono text-xs text-foreground active:bg-accent disabled:opacity-50",
+          "inline-flex h-8 min-w-9 shrink-0 items-center justify-center rounded-md border bg-card px-2 font-mono text-xs text-foreground active:bg-accent disabled:opacity-50 pointer-coarse:h-11 pointer-coarse:min-w-11",
           repeat.holding === keys[0] && "bg-accent",
         )}
         {...(bind ?? { onClick: tap })}
@@ -61,7 +61,7 @@ export function KeyBar({ onSend, onMore, disabled = false }: KeyBarProps) {
       <button
         type="button"
         aria-label="More keys"
-        className="inline-flex h-8 min-w-9 shrink-0 items-center justify-center rounded-md px-2 text-muted-foreground active:bg-accent"
+        className="inline-flex h-8 min-w-9 shrink-0 items-center justify-center rounded-md px-2 text-muted-foreground active:bg-accent pointer-coarse:h-11 pointer-coarse:min-w-11"
         onPointerDown={keep}
         onClick={onMore}
       >

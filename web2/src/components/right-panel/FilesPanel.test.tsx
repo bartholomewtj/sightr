@@ -8,7 +8,7 @@ import { useBridgeInfo, useThreadStore } from "@/stream/stores";
 import { thread, threadSnapshot } from "@/test/fixtures";
 import { server } from "@/test/setup";
 
-import { FilesPanel } from "./FilesPanel";
+import { __resetFilesNav, FilesPanel } from "./FilesPanel";
 
 const dir = (path: string, entries: { name: string; kind: "dir" | "file" }[]): FilesResponse => ({
   kind: "dir",
@@ -40,6 +40,7 @@ let saves: unknown[] = [];
 let deletes: unknown[] = [];
 
 beforeEach(() => {
+  __resetFilesNav();
   saves = [];
   deletes = [];
   server.use(
@@ -128,6 +129,38 @@ describe("FilesPanel", () => {
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
     expect(screen.getByRole("link", { name: /Download/ })).toHaveAttribute("href", "/api/files/download?path=proj%2Fa.txt");
+  });
+
+  it("comes back to the open file and folder after the sheet is closed and reopened", async () => {
+    const first = render(<FilesPanel threadId="t1" />);
+    fireEvent.click(await screen.findByRole("treeitem", { name: /src/ }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: /main\.ts/ }));
+    expect(await screen.findByText("export {};")).toBeInTheDocument();
+    first.unmount();
+
+    render(<FilesPanel threadId="t1" />);
+    expect(await screen.findByText("export {};")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to files" }));
+    expect(await screen.findByRole("treeitem", { name: /main\.ts/ })).toBeInTheDocument();
+  });
+
+  it("keeps another thread's tab separate", async () => {
+    const first = render(<FilesPanel threadId="t1" />);
+    fireEvent.click(await screen.findByRole("treeitem", { name: /a\.txt/ }));
+    expect(await screen.findByText("hello")).toBeInTheDocument();
+    first.unmount();
+    act(() => useThreadStore.setState({ current: threadFromSnapshot(threadSnapshot(3, thread("t2")), false), missing: null }));
+    render(<FilesPanel threadId="t2" />);
+    expect(await screen.findByRole("treeitem", { name: /a\.txt/ })).toBeInTheDocument();
+  });
+
+  it("keeps phone-sized fields and targets: a 16 px search box, wrapping names", async () => {
+    render(<FilesPanel threadId="t1" />);
+    const search = await screen.findByRole("searchbox", { name: "Find files" });
+    expect(search.className).toContain("text-base");
+    const row = await screen.findByRole("treeitem", { name: /a\.txt/ });
+    expect(row.className).toContain("pointer-coarse:py-2.5");
+    expect(row.querySelector("span.wrap-anywhere")).not.toBeNull();
   });
 
   it("lists the servers on this PC", async () => {

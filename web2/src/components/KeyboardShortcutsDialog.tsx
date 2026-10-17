@@ -30,7 +30,7 @@ export function KeyboardShortcutsDialog() {
   const newThreadKeys = KEYBINDINGS.filter((b) => b.command === "chat.new").map((b) => formatShortcutLabel(b.shortcut));
   return (
     <Dialog open={open} onOpenChange={(next) => useShortcutsDialog.setState({ open: next })}>
-      <DialogPopup className="max-w-lg">
+      <DialogPopup className="max-w-lg max-sm:pb-[env(safe-area-inset-bottom)]">
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
         </DialogHeader>

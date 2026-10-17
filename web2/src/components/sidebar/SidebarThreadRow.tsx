@@ -32,7 +32,9 @@ import { useSwipeActions, type SwipeSide } from "@/hooks/useSwipeActions";
 import { cn } from "@/lib/utils";
 import { useWorkingSince } from "@/state/sidebar";
 
-export const LONG_PRESS_MS = 500;
+import { LONG_PRESS_MS, useLongPress } from "./useLongPress";
+
+export { LONG_PRESS_MS };
 
 export interface SidebarRowActions {
   activeThreadId: string | undefined;
@@ -108,47 +110,30 @@ export function SidebarThreadRow({
       actions.run(side === "right" ? { type: pinned ? "thread.unpin" : "thread.pin", threadId: thread.id } : { type: "thread.settle", threadId: thread.id }),
   });
 
-  // Long press (touch) opens the menu; the click that ends it must not navigate.
-  const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
-  const suppressClick = useRef(false);
-  const clearPress = () => {
-    if (press.current) clearTimeout(press.current.timer);
-    press.current = null;
-  };
-  useEffect(() => clearPress, []);
+  // Long press (any touch, a tablet in the desktop layout too) opens the menu; the click that ends it
+  // must not navigate.
+  const press = useLongPress((el) => actions.openMenu(thread.id, el));
 
   const onPointerDown = (e: PointerEvent<HTMLAnchorElement>) => {
     drag?.listeners?.onPointerDown?.(e as never);
     swipe.handlers.onPointerDown(e);
-    if (actions.touch && e.pointerType === "touch") {
-      const el = e.currentTarget;
-      clearPress();
-      press.current = {
-        x: e.clientX,
-        y: e.clientY,
-        timer: setTimeout(() => {
-          press.current = null;
-          suppressClick.current = true;
-          actions.openMenu(thread.id, el);
-        }, LONG_PRESS_MS),
-      };
-    }
+    press.onPointerDown(e);
   };
   const onPointerMove = (e: PointerEvent<HTMLAnchorElement>) => {
     swipe.handlers.onPointerMove(e);
-    if (press.current && Math.hypot(e.clientX - press.current.x, e.clientY - press.current.y) > 10) clearPress();
+    press.onPointerMove(e);
   };
   const onPointerUp = (e: PointerEvent<HTMLAnchorElement>) => {
-    clearPress();
+    press.cancel();
     swipe.handlers.onPointerUp(e);
   };
   const onPointerCancel = (e: PointerEvent<HTMLAnchorElement>) => {
-    clearPress();
+    press.cancel();
     swipe.handlers.onPointerCancel(e);
   };
   const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
-    if (suppressClick.current || swipe.offset !== 0 || swipe.swiping) {
-      suppressClick.current = false;
+    const longPressed = press.consumeClick();
+    if (longPressed || swipe.offset !== 0 || swipe.swiping) {
       e.preventDefault();
       swipe.close();
     }
@@ -161,7 +146,7 @@ export function SidebarThreadRow({
   };
   const onContextMenu = (e: MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
-    clearPress();
+    press.cancel();
     actions.openMenu(thread.id, e.currentTarget);
   };
 
@@ -226,7 +211,7 @@ export function SidebarThreadRow({
             aria-current={a11y.current}
             data-status={isActive ? "active" : undefined}
             className={cn(
-              "flex touch-pan-y items-center gap-2 px-3 py-1.5 text-sm outline-none select-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              "flex touch-pan-y items-center gap-2 px-3 py-1.5 text-sm outline-none select-none [-webkit-touch-callout:none] hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring pointer-coarse:min-h-11",
               isActive && "bg-sidebar-row-active",
             )}
             onPointerDown={onPointerDown}
@@ -287,7 +272,7 @@ function RenameField({ thread, onDone, run }: { thread: Thread; onDone(): void; 
         aria-label="Thread title"
         aria-invalid={invalid || undefined}
         className={cn(
-          "h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:border-ring",
+          "h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-base text-foreground outline-none focus-visible:border-ring sm:text-sm pointer-coarse:h-10",
           invalid && "border-warn",
         )}
         value={value}

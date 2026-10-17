@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { NO_CAPABILITIES, type QueuedMessage, type Thread } from "@shared/v2/contracts";
+import { NO_CAPABILITIES, type QueuedMessage, type Run, type Thread, type TurnItem } from "@shared/v2/contracts";
 
 import {
+  composerMaxHeight,
+  enterModeFor,
   firstLine,
   heldReasonText,
+  isCompacting,
   isLargePaste,
+  isNativeMaintenanceCommand,
   LARGE_PASTE_CHARS,
   orderRequestOptions,
   queueHeldSummary,
@@ -13,6 +17,7 @@ import {
   resolveEnterAction,
   slashQuery,
   wantsEditNewest,
+  workingMode,
   type ButtonInput,
 } from "./ChatComposer.logic";
 
@@ -193,5 +198,86 @@ describe("small rules", () => {
       ["Always", 2],
       ["No", 0],
     ]);
+  });
+});
+
+describe("compaction (T3 #20184): canSteer", () => {
+  const run = (id: string, ordinal: number, status: Run["status"], userItemId?: string): Run => ({
+    id,
+    threadId: "t1",
+    ordinal,
+    status,
+    startedAt: ordinal,
+    ...(userItemId ? { userItemId } : {}),
+  });
+  const user = (id: string, runId: string | null, text: string, createdAt = 1): TurnItem => ({
+    id,
+    threadId: "t1",
+    runId,
+    ordinal: createdAt,
+    status: "completed",
+    title: null,
+    startedAt: null,
+    completedAt: null,
+    createdAt,
+    updatedAt: createdAt,
+    type: "user_message",
+    messageId: id,
+    text,
+    attachments: [],
+  });
+
+  it("isNativeMaintenanceCommand: /compact or /logout, trimmed, any case, no attachments", () => {
+    expect(isNativeMaintenanceCommand({ text: " /Compact\n" })).toBe(true);
+    expect(isNativeMaintenanceCommand({ text: "/logout", attachments: [] })).toBe(true);
+    expect(isNativeMaintenanceCommand({ text: "/compact now" })).toBe(false);
+    expect(isNativeMaintenanceCommand({ text: "/compact", attachments: [{ path: "C:/a.png", name: "a.png" }] })).toBe(false);
+  });
+
+  it("isCompacting: the newest run is running and started from /compact", () => {
+    expect(isCompacting(null)).toBe(false);
+    expect(isCompacting({ runs: { r1: run("r1", 1, "running", "u1") }, items: { u1: user("u1", "r1", "/compact") } })).toBe(true);
+    // Attributed but not linked yet, and unclaimed (dispatch's own item before T03 adopts it).
+    expect(isCompacting({ runs: { r1: run("r1", 1, "running") }, items: { u1: user("u1", "r1", "/compact") } })).toBe(true);
+    expect(isCompacting({ runs: { r1: run("r1", 1, "running") }, items: { u1: user("u1", null, "/compact") } })).toBe(true);
+    // Ended, a plain message, or an older run's /compact.
+    expect(isCompacting({ runs: { r1: run("r1", 1, "completed", "u1") }, items: { u1: user("u1", "r1", "/compact") } })).toBe(false);
+    expect(isCompacting({ runs: { r1: run("r1", 1, "running", "u1") }, items: { u1: user("u1", "r1", "fix it") } })).toBe(false);
+    expect(
+      isCompacting({
+        runs: { r0: run("r0", 1, "completed", "u0"), r1: run("r1", 2, "running") },
+        items: { u0: user("u0", "r0", "/compact") },
+      }),
+    ).toBe(false);
+  });
+
+  it("canSteer false: the follow-up queues whatever the setting and the modifier say; Stop stays", () => {
+    expect(workingMode("steer", false, ALL, false)).toBe("queue");
+    expect(workingMode("queue", true, ALL, false)).toBe("queue");
+    expect(workingMode("steer", false, ALL)).toBe("steer");
+    const b = resolveComposerButtons(input("working", { hasText: true, followUp: "steer", canSteer: false }));
+    expect(b.primary).toMatchObject({ kind: "queue", label: "Queue", disabled: false });
+    expect(b.primary.reason).toMatch(/Compacting/);
+    expect(b.stop).toBe(true);
+    expect(resolveComposerButtons(input("working", { hasText: true, alternate: true, canSteer: false })).primary.kind).toBe("queue");
+    // A queue-only harness never steers, so it says nothing about compaction.
+    expect(resolveComposerButtons(input("working", { hasText: true, canSteer: false }, QUEUE_ONLY)).primary.reason).toBeNull();
+  });
+});
+
+describe("phone: Enter mode and the box's height", () => {
+  it("a touch screen defaults to Enter = newline, even at a desktop-wide layout; a stored choice wins", () => {
+    expect(enterModeFor(null, "desktop", false)).toBe("enter");
+    expect(enterModeFor(null, "desktop", true)).toBe("mod-enter");
+    expect(enterModeFor(null, "phone", true)).toBe("mod-enter");
+    expect(enterModeFor(null, "phone", false)).toBe("mod-enter");
+    expect(enterModeFor("enter", "phone", true)).toBe("enter");
+  });
+
+  it("autosize stops at eight lines or the dvh cap, whichever is lower", () => {
+    expect(composerMaxHeight(24, 8, Number.NaN)).toBe(24 * 8 + 16);
+    expect(composerMaxHeight(24, 8, 120)).toBe(120);
+    expect(composerMaxHeight(24, 8, 9999)).toBe(24 * 8 + 16);
+    expect(composerMaxHeight(Number.NaN, 8, Number.NaN)).toBe(20 * 8 + 16);
   });
 });

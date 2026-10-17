@@ -72,9 +72,14 @@ export function setFollowUp(followUp: FollowUp): void {
   useComposerSettings.setState({ followUp });
 }
 
-/** The Enter mode in force: the stored one, else the device default. */
+/**
+ * The Enter mode in force: the stored one, else the device default. A touch screen defaults to
+ * `mod-enter` even at a desktop-wide layout (a tablet); same rule as the composer's `enterModeFor`.
+ */
 export function resolveEnterMode(stored: EnterMode | null, layout: "desktop" | "phone"): EnterMode {
-  return stored ?? (layout === "desktop" ? "enter" : "mod-enter");
+  if (stored) return stored;
+  const coarse = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+  return layout === "desktop" && !coarse ? "enter" : "mod-enter";
 }
 
 // ── Per-thread state ────────────────────────────────────────────────────────────────────────────
