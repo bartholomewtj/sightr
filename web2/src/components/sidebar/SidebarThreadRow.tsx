@@ -31,6 +31,7 @@ import { ThreadStatusDot } from "@/components/ThreadStatusIndicators";
 import { useSwipeActions, type SwipeSide } from "@/hooks/useSwipeActions";
 import { cn } from "@/lib/utils";
 import { useWorkingSince } from "@/state/sidebar";
+import { useWoke } from "@/state/woke";
 
 import { LONG_PRESS_MS, useLongPress } from "./useLongPress";
 
@@ -40,6 +41,8 @@ export interface SidebarRowActions {
   activeThreadId: string | undefined;
   /** Phone layout: swipe and long press on, drag off. */
   touch: boolean;
+  /** While mod is held (desktop): the key that opens each of the first nine rows, by thread id. */
+  jumpLabels?: ReadonlyMap<string, string> | null;
   renamingId: string | null;
   openMenu(threadId: string, anchor: HTMLElement): void;
   startRename(threadId: string): void;
@@ -94,13 +97,15 @@ export function SidebarThreadRow({
   const status = effectiveStatus(thread);
   const workingSince = useWorkingSince((s) => s.since[thread.id]);
   const isActive = actions.activeThreadId === thread.id;
+  const woke = useWoke((s) => s.woke[thread.id] !== undefined) && thread.shelf === "active";
   const a11y = resolveSidebarRowAccessibility({
     title: thread.title,
-    statusLabel: statusLabel(status),
+    statusLabel: woke ? `${statusLabel(status)}, woke from snooze` : statusLabel(status),
     projectDisplayName: projectLabel ?? null,
     isActive,
   });
   const rowRef = useRef<HTMLAnchorElement>(null);
+  const jumpLabel = actions.jumpLabels?.get(thread.id) ?? null;
 
   const pinned = thread.shelf === "pinned";
   const swipe = useSwipeActions({
@@ -237,17 +242,38 @@ export function SidebarThreadRow({
                 {snoozeWakeLabel(thread.snoozedUntil, Date.now())}
               </span>
             ) : status === "working" ? null : (
-              <time
-                dateTime={new Date(thread.lastActivityAt).toISOString()}
-                className="shrink-0 font-mono text-2xs text-muted-foreground"
-              >
-                {timeAgoShort(thread.lastActivityAt)}
-              </time>
+              <>
+                {woke ? (
+                  <span data-woke="" title="Its snooze ended" className="shrink-0 rounded-full border border-you px-1.5 text-3xs font-medium text-foreground">
+                    Woke
+                  </span>
+                ) : null}
+                <time
+                  dateTime={new Date(thread.lastActivityAt).toISOString()}
+                  className="shrink-0 font-mono text-2xs text-muted-foreground"
+                >
+                  {timeAgoShort(thread.lastActivityAt)}
+                </time>
+              </>
             )}
           </Link>
         )}
       </div>
+      {jumpLabel ? <JumpHintBadge label={jumpLabel} /> : null}
     </li>
+  );
+}
+
+/** T3's JumpHintBadge: the key that opens this row, over its right edge while mod is held. */
+function JumpHintBadge({ label }: { label: string }) {
+  return (
+    <span
+      aria-hidden
+      data-jump-hint=""
+      className="pointer-events-none absolute top-1/2 right-1.5 z-10 inline-flex h-5 -translate-y-1/2 items-center rounded-full border border-border/80 bg-background/95 px-1.5 font-mono text-3xs font-medium tracking-tight text-foreground shadow-sm"
+    >
+      {label}
+    </span>
   );
 }
 

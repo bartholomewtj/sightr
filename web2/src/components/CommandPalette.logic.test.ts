@@ -8,13 +8,16 @@ import {
   applies,
   buildActionItems,
   buildCommandPaletteRows,
+  buildFileItems,
   buildNeedsYouItems,
   buildProjectActionItems,
   buildRootGroups,
   buildThreadActionItems,
   filterCommandPaletteGroups,
   findHighlightedCommandPaletteItem,
+  isSafeFilesRelPath,
   isSubsequence,
+  rankFileResults,
   type CommandPaletteActionSpec,
 } from "./CommandPalette.logic";
 
@@ -125,5 +128,66 @@ describe("palette rows", () => {
     expect(itemValues).toEqual(["thread:c", "thread:e"]);
     expect(findHighlightedCommandPaletteItem(groups, "thread:e")?.value).toBe("thread:e");
     expect(findHighlightedCommandPaletteItem(groups, "nope")).toBeNull();
+  });
+});
+
+describe("palette Open file… mode", () => {
+  const f = (path: string, kind: "file" | "dir" = "file") => ({ path, name: path.split("/").pop()!, kind });
+
+  it("refuses a path that is not a Files rel path", () => {
+    const bad = ["", "/etc/passwd", "../x", "a/../../x", "C:\\x", "C:/x", "a\\b", "a//b", "a/\u0000b"];
+    for (const path of bad) expect(isSafeFilesRelPath(path)).toBe(false);
+    for (const ok of ["a.ts", "src/a.ts", "dir with space/a b.md", ".github/ci.yml"]) expect(isSafeFilesRelPath(ok)).toBe(true);
+  });
+
+  it("ranks the name match first, files before folders, shorter paths first, and drops unsafe paths", () => {
+    const ranked = rankFileResults([f("docs/readme-notes.md"), f("src/app", "dir"), f("../escape/app.ts"), f("deep/er/app.ts"), f("app.ts"), f("lib/app", "dir")], "app").map((r) => r.path);
+    // An exact name ("app") first (folders last among equals), then the prefix "app.ts" by path length, then the rest.
+    expect(ranked).toEqual(["src/app", "lib/app", "app.ts", "deep/er/app.ts", "docs/readme-notes.md"]);
+  });
+
+  it("an exact name beats a prefix, a prefix beats a substring", () => {
+    expect(rankFileResults([f("x/my-app.ts"), f("x/app-core.ts"), f("x/app")], "app").map((r) => r.path)).toEqual(["x/app", "x/app-core.ts", "x/my-app.ts"]);
+  });
+
+  it("builds items with the folder as the description and the pick as the run", () => {
+    const opened: string[] = [];
+    const items = buildFileItems({ results: [f("src/a.ts"), f("b.ts")], query: "ts", icon: () => null, openFile: (r) => void opened.push(`${r.kind}:${r.path}`) });
+    expect(items.map((i) => [i.value, i.title, i.description])).toEqual([
+      ["file:b.ts", "b.ts", "Files root"],
+      ["file:src/a.ts", "a.ts", "src"],
+    ]);
+    void items[1]!.run();
+    expect(opened).toEqual(["file:src/a.ts"]);
+  });
+
+  it("caps the list", () => {
+    const many = Array.from({ length: 80 }, (_, i) => f(`d/f${i}.ts`));
+    expect(buildFileItems({ results: many, query: "f", icon: () => null, openFile: () => {} })).toHaveLength(50);
+    expect(buildFileItems({ results: many, query: "f", icon: () => null, openFile: () => {}, limit: 5 })).toHaveLength(5);
+  });
+});
+
+describe("palette thread actions apply", () => {
+  const spec = (value: string, applyTest: (typeof applies)["thread"]) => ({ value, title: value, icon: null, applies: applyTest, run: () => {} });
+  const ctx = (over: Partial<Parameters<typeof buildActionItems>[1]> = {}) => ({ thread: threads[0]!, desktop: true, readOnly: false, ...over });
+
+  it("Find in thread needs a thread on its timeline, not the CLI", () => {
+    const specs = [spec("find", applies.findable)];
+    expect(buildActionItems(specs, ctx()).map((i) => i.value)).toEqual(["action:find"]);
+    expect(buildActionItems(specs, ctx({ timeline: true })).length).toBe(1);
+    expect(buildActionItems(specs, ctx({ timeline: false }))).toEqual([]);
+    expect(buildActionItems(specs, ctx({ thread: null }))).toEqual([]);
+  });
+
+  it("Copy folder path needs a pane (a thread still spawning has none)", () => {
+    const specs = [spec("folder", applies.hasPane)];
+    expect(buildActionItems(specs, ctx()).length).toBe(1);
+    expect(buildActionItems(specs, ctx({ thread: thread("s", { paneId: "" }) }))).toEqual([]);
+  });
+
+  it("a keepOpen action says so", () => {
+    const items = buildActionItems([{ ...spec("open-file", applies.thread), keepOpen: true }], ctx());
+    expect(items[0]?.keepOpen).toBe(true);
   });
 });

@@ -5,17 +5,24 @@
  * `CommandPalette.logic.ts`. Groups: Needs you and recent threads with no query, then Threads,
  * Projects and Actions as you type. Actions are the same functions the buttons call (shelf commands
  * and their undo toasts are T10's), and only those that apply to the open thread are offered.
+ * "Open file…" switches the list to the Files search for the open thread; a pick opens in the Files tab
+ * (`rightPanelStore.openFile`). "Find in thread" opens the thread's find bar; "Copy thread id" and "Copy
+ * folder path" use the clipboard (with the execCommand fallback) and say so in a toast.
  * A centred dialog on desktop; full height on a phone, below the status bar, with a Close button (the
  * sidebar's and a thread header's palette button open it there).
  */
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
   ArchiveIcon,
+  ArrowLeftIcon,
   BellDotIcon,
   CircleStopIcon,
   ClockIcon,
+  CopyIcon,
+  FileIcon,
   FilesIcon,
   FolderIcon,
+  FolderOpenIcon,
   GitBranchIcon,
   KeyboardIcon,
   MessageSquareIcon,
@@ -25,6 +32,7 @@ import {
   PinIcon,
   PinOffIcon,
   PlusIcon,
+  SearchIcon,
   SettingsIcon,
   SquareCheckIcon,
   TerminalSquareIcon,
@@ -36,13 +44,14 @@ import type { Project, Thread } from "@shared/v2/contracts";
 import { timeAgoShort } from "@v1/lib/format";
 import { cn } from "~/lib/utils";
 import { closeCommandPalette, useCommandPaletteStore } from "@/commandPaletteBus";
+import { openThreadFind } from "@/components/chat/useThreadFind";
 import { CustomSnoozeDialog } from "@/components/CustomSnoozeDialog";
 import { openShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 import { ThreadStatusDot } from "@/components/ThreadStatusIndicators";
 import { useLayout } from "@/hooks/useLayout";
 import { KEYBINDINGS } from "@/keybindings";
 import { openRightPanelSurface, useRightPanelStore } from "@/rightPanelStore";
-import { openThreadTerminal } from "@/threadViewStore";
+import { openThreadTerminal, useThreadView } from "@/threadViewStore";
 import { interruptRun } from "@/state/composer";
 import { performThreadCommand, useSidebarPrefs, useSidebarThreads } from "@/state/sidebar";
 import { useBridgeInfo, useShell } from "@/stream/stores";
@@ -51,6 +60,7 @@ import { useUiState } from "@/uiStateStore";
 import {
   applies,
   buildActionItems,
+  buildFileItems,
   buildNeedsYouItems,
   buildProjectActionItems,
   buildRootGroups,
@@ -58,12 +68,15 @@ import {
   filterCommandPaletteGroups,
   findHighlightedCommandPaletteItem,
   getCommandPaletteInputPlaceholder,
+  getFilePickerPlaceholder,
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
   type CommandPaletteActionItem,
   type CommandPaletteActionSpec,
 } from "./CommandPalette.logic";
 import { CommandPaletteContent } from "./CommandPaletteContent";
+import { useFilePickerSearch } from "./CommandPaletteFiles";
+import { copyThreadFolderPath, copyThreadId } from "./sidebar/threadCopy";
 import { CommandPaletteResults } from "./CommandPaletteResults";
 import { Button } from "./ui/button";
 import { CommandDialog, CommandDialogPopup } from "./ui/command";
@@ -118,15 +131,33 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
   const navigate = useNavigate();
   const { threadId } = useParams({ strict: false }) as { threadId?: string };
   const initialQuery = useCommandPaletteStore((s) => s.initialQuery);
+  const initialMode = useCommandPaletteStore((s) => s.initialMode);
   const [query, setQuery] = useState(initialQuery);
+  // "files": the Open file… list. Backspace on an empty box, or the Back row, returns to the commands.
+  const [mode, setMode] = useState<"commands" | "files">(initialMode ?? "commands");
   const [highlightedItemValue, setHighlightedItemValue] = useState<string | null>(null);
   const executed = useRef(false);
   const threads = useSidebarThreads();
   const projects = useShell((s) => s.projects);
   const readOnly = useBridgeInfo((s) => s.readOnly);
   const thread = threadId ? (threads[threadId] ?? null) : null;
+  const { view } = useThreadView(threadId ?? "");
+  const timeline = view !== "cli";
+  const filesMode = mode === "files";
+  const fileSearch = useFilePickerSearch(query, filesMode && threadId !== undefined);
 
-  const groups = useMemo(() => {
+  const fileGroups = useMemo(() => {
+    if (!filesMode || !threadId) return [];
+    const items = buildFileItems({
+      results: fileSearch.results,
+      query,
+      icon: (r) => (r.kind === "dir" ? icon(FolderIcon) : icon(FileIcon)),
+      openFile: (r) => useRightPanelStore.getState().openFile(threadId, r.path, r.kind),
+    });
+    return items.length === 0 ? [] : [{ value: "files", label: "Files", items }];
+  }, [filesMode, threadId, fileSearch.results, query]);
+
+  const commandGroups = useMemo(() => {
     const openThread = (t: Thread) => void navigate({ to: "/thread/$threadId", params: { threadId: t.id } });
     const threadList = Object.values(threads);
     const threadInput = {
@@ -157,7 +188,7 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
       }),
     ];
 
-    const ctx = { thread, desktop: props.desktop, readOnly };
+    const ctx = { thread, desktop: props.desktop, readOnly, timeline };
     const t = thread;
     const actionSpecs: CommandPaletteActionSpec[] = [
       { value: "new-thread", title: "New thread", icon: icon(PlusIcon), shortcutCommand: "chat.new", run: () => void navigate({ to: "/new" }) },
@@ -180,6 +211,43 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
       { value: "open-terminal", title: "Open Terminal", icon: icon(TerminalSquareIcon), shortcutCommand: "terminal.toggle", applies: applies.thread, run: () => openThreadTerminal(threadId) },
       { value: "open-files", title: "Open Files", icon: icon(FilesIcon), applies: applies.thread, run: () => openRightPanelSurface("files") },
       { value: "open-git", title: "Open Git", icon: icon(GitBranchIcon), applies: applies.thread, run: () => openRightPanelSurface("git") },
+      {
+        value: "open-file",
+        title: "Open file…",
+        searchTerms: ["file", "find file", "go to file"],
+        icon: icon(FolderOpenIcon),
+        applies: applies.thread,
+        keepOpen: true,
+        run: () => {
+          setMode("files");
+          setQuery("");
+        },
+      },
+      {
+        value: "find-in-thread",
+        title: "Find in thread",
+        searchTerms: ["search", "find", "timeline"],
+        icon: icon(SearchIcon),
+        shortcutCommand: "chat.find",
+        applies: applies.findable,
+        run: () => (t ? openThreadFind(t.id) : undefined),
+      },
+      {
+        value: "copy-thread-id",
+        title: "Copy thread id",
+        searchTerms: ["copy", "id", "clipboard"],
+        icon: icon(CopyIcon),
+        applies: applies.thread,
+        run: () => (t ? void copyThreadId(t.id) : undefined),
+      },
+      {
+        value: "copy-folder-path",
+        title: "Copy folder path",
+        searchTerms: ["copy", "cwd", "directory", "clipboard"],
+        icon: icon(CopyIcon),
+        applies: applies.hasPane,
+        run: () => (t ? void copyThreadFolderPath(t.paneId) : undefined),
+      },
       { value: "stop-run", title: "Stop run", icon: icon(CircleStopIcon), applies: applies.running, run: () => (t ? interruptRun(t.id) : undefined) },
       {
         value: "mark-unread",
@@ -236,17 +304,35 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
       projectSearchItems: projectItems,
       threadSearchItems: buildThreadActionItems(threadInput),
     });
-  }, [threads, projects, threadId, thread, query, readOnly, props, navigate]);
+  }, [threads, projects, threadId, thread, timeline, query, readOnly, props, navigate]);
+  const groups = filesMode ? fileGroups : commandGroups;
 
   const executeItem = (item: CommandPaletteActionItem) => {
     if (executed.current) return;
+    if (item.keepOpen) {
+      void Promise.resolve(item.run());
+      return;
+    }
     executed.current = true;
     closeCommandPalette();
     void Promise.resolve(item.run());
   };
 
+  const backToCommands = () => {
+    setMode("commands");
+    setQuery("");
+  };
+  const filesEmptyMessage = !threadId
+    ? "Open a thread to search its files."
+    : (fileSearch.error ?? (fileSearch.tooShort ? "Type at least 2 characters of a file name." : fileSearch.pending ? "Searching…" : "No files match."));
+
   const firstItemValue = groups[0]?.items[0]?.value ?? null;
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement> & { preventBaseUIHandler?: () => void }) => {
+    if (filesMode && event.key === "Backspace" && query === "" && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      backToCommands();
+      return;
+    }
     if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
     const item = findHighlightedCommandPaletteItem(groups, highlightedItemValue ?? firstItemValue);
     if (!item) return;
@@ -260,8 +346,9 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
       aria-label="Command palette"
       autoHighlight="always"
       footerActionLabel="Open"
+      {...(filesMode ? { showBackHint: true } : {})}
       panelSize={props.desktop ? "list" : "fill"}
-      inputProps={{ placeholder: getCommandPaletteInputPlaceholder(), onKeyDown: handleKeyDown }}
+      inputProps={{ placeholder: filesMode ? getFilePickerPlaceholder() : getCommandPaletteInputPlaceholder(), onKeyDown: handleKeyDown }}
       {...(props.desktop ? {} : { inputAccessory: <PaletteCloseButton /> })}
       mode="none"
       items={groups}
@@ -270,13 +357,28 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
       onValueChange={(value: string) => setQuery(value)}
       value={query}
     >
+      {filesMode ? <FilesModeBar onBack={backToCommands} truncated={fileSearch.truncated} /> : null}
       <CommandPaletteResults
+        {...(filesMode ? { emptyStateMessage: filesEmptyMessage } : {})}
         groups={groups}
         highlightedItemValue={highlightedItemValue}
         keybindings={KEYBINDINGS}
         onExecuteItem={executeItem}
       />
     </CommandPaletteContent>
+  );
+}
+
+/** The files list's header: a Back button (a phone has no Backspace-on-empty habit) and a note when the search was cut short. */
+function FilesModeBar({ onBack, truncated }: { onBack: () => void; truncated: boolean }) {
+  return (
+    <div className="flex items-center gap-2 border-b px-2 py-1 text-xs text-muted-foreground">
+      <Button size="xs" variant="ghost-muted" aria-label="Back to commands" className="pointer-coarse:min-h-11" onClick={onBack}>
+        <ArrowLeftIcon aria-hidden /> Commands
+      </Button>
+      <span className="min-w-0 flex-1 truncate">Open file</span>
+      {truncated ? <span>Search stopped early. Try a longer name.</span> : null}
+    </div>
   );
 }
 

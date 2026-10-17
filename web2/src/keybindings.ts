@@ -2,13 +2,22 @@
 // Changes: Sightr's `when` context keys (T13); the platform is injectable for tests and read from
 // `userAgentData` before `navigator.platform`; a binding with no modifier never fires while a text
 // field has focus; a symbol key such as `?` matches whatever Shift the layout needs to type it. The
-// terminal split, preview, thread-jump and model-picker helpers are not taken.
-import type { KeybindingCommand, KeybindingShortcut, KeybindingWhenNode, ResolvedKeybindingsConfig } from "@t3tools/contracts";
+// terminal split, preview and model-picker helpers are not taken; the thread-jump ones are (mod+1..9).
+import {
+  THREAD_JUMP_KEYBINDING_COMMANDS,
+  type KeybindingCommand,
+  type KeybindingShortcut,
+  type KeybindingWhenNode,
+  type ResolvedKeybindingsConfig,
+  type ThreadJumpKeybindingCommand,
+} from "@t3tools/contracts";
 import {
   DEFAULT_RESOLVED_KEYBINDINGS,
   isMacPlatform,
   matchesKeybindingShortcut,
+  matchesKeybindingShortcutModifiers,
   type ShortcutEventLike,
+  type ShortcutModifierStateLike,
 } from "@t3tools/shared/keybindings";
 
 export type { ShortcutEventLike, ShortcutModifierStateLike } from "@t3tools/shared/keybindings";
@@ -233,6 +242,35 @@ export function threadTraversalDirectionFromCommand(command: string | null): "pr
   return null;
 }
 
+/** T3's `threadJumpCommandForIndex`: the command for the Nth thread (0-based), or null past nine. */
+export function threadJumpCommandForIndex(index: number): ThreadJumpKeybindingCommand | null {
+  return THREAD_JUMP_KEYBINDING_COMMANDS[index] ?? null;
+}
+
+/** T3's `threadJumpIndexFromCommand`: 0-based index of a jump command, or null for any other. */
+export function threadJumpIndexFromCommand(command: string | null): number | null {
+  const index = THREAD_JUMP_KEYBINDING_COMMANDS.indexOf(command as ThreadJumpKeybindingCommand);
+  return index === -1 ? null : index;
+}
+
+/**
+ * T3's `shouldShowThreadJumpHintsForModifiers`: true while exactly the modifiers of a jump binding are held
+ * (mod alone, in the default table), unless the terminal has the keys.
+ */
+export function shouldShowThreadJumpHintsForModifiers(
+  modifiers: ShortcutModifierStateLike,
+  keybindings: ResolvedKeybindingsConfig,
+  options?: ShortcutMatchOptions,
+): boolean {
+  if (resolveContext(options).terminalFocus) return false;
+  const platform = resolvePlatform(options);
+  for (const command of THREAD_JUMP_KEYBINDING_COMMANDS) {
+    const shortcut = effectiveShortcutsForCommand(keybindings, command, options)[0];
+    if (shortcut && matchesKeybindingShortcutModifiers(modifiers, shortcut, platform)) return true;
+  }
+  return false;
+}
+
 /** What the shortcuts sheet says each command does. */
 export const COMMAND_LABEL: Record<KeybindingCommand, string> = {
   "sidebar.toggle": "Toggle the sidebar",
@@ -253,5 +291,14 @@ export const COMMAND_LABEL: Record<KeybindingCommand, string> = {
   "thread.settle": "Settle the thread",
   "thread.pin": "Pin the thread",
   "thread.undo": "Undo the last sidebar change",
+  "thread.jump.1": "Open the 1st to 9th thread in the sidebar",
+  "thread.jump.2": "Jump to thread 2",
+  "thread.jump.3": "Jump to thread 3",
+  "thread.jump.4": "Jump to thread 4",
+  "thread.jump.5": "Jump to thread 5",
+  "thread.jump.6": "Jump to thread 6",
+  "thread.jump.7": "Jump to thread 7",
+  "thread.jump.8": "Jump to thread 8",
+  "thread.jump.9": "Jump to thread 9",
   "shortcuts.open": "Keyboard shortcuts",
 };

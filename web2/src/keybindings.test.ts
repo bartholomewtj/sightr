@@ -2,7 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import { DEFAULT_KEYBINDINGS, parseKeybindingWhenExpression } from "@t3tools/shared/keybindings";
 
-import { COMMAND_LABEL, evaluateWhenNode, formatShortcutLabel, KEYBINDINGS, matchBinding, shortcutLabelForCommand } from "./keybindings";
+import {
+  COMMAND_LABEL,
+  evaluateWhenNode,
+  formatShortcutLabel,
+  KEYBINDINGS,
+  matchBinding,
+  shortcutLabelForCommand,
+  shouldShowThreadJumpHintsForModifiers,
+  threadJumpCommandForIndex,
+  threadJumpIndexFromCommand,
+} from "./keybindings";
 
 const WIN = "Win32";
 const MAC = "MacIntel";
@@ -106,5 +116,47 @@ describe("the default table", () => {
     expect(shortcutLabelForCommand(KEYBINDINGS, "commandPalette.toggle", { platform: MAC })).toBe("⌘K");
     const steer = KEYBINDINGS.find((b) => b.command === "thread.steerQueuedMessage")!;
     expect(formatShortcutLabel(steer.shortcut, WIN)).toBe("Ctrl+Shift+Enter");
+  });
+});
+
+describe("thread jump (mod+1..9)", () => {
+  it("maps mod+digit to the Nth jump command, by the digit's key or its physical code", () => {
+    expect(matchBinding(key("1", { ctrl: true }), {}, WIN)).toBe("thread.jump.1");
+    expect(matchBinding(key("9", { ctrl: true }), {}, WIN)).toBe("thread.jump.9");
+    expect(matchBinding(key("3", { meta: true }), {}, MAC)).toBe("thread.jump.3");
+    // A layout that types a symbol on the digit row still jumps by position.
+    expect(matchBinding(key("&", { ctrl: true }, "Digit1"), {}, "Win32")).toBe("thread.jump.1");
+    expect(matchBinding(key("1", { ctrl: true, shift: true }), {}, WIN)).toBeNull();
+    expect(matchBinding(key("0", { ctrl: true }), {}, WIN)).toBeNull();
+    expect(matchBinding(key("1", {}), {}, WIN)).toBeNull();
+  });
+
+  it("is off while direct typing is armed, but not in a text field", () => {
+    expect(matchBinding(key("2", { ctrl: true }), { terminalFocus: true }, WIN)).toBeNull();
+    expect(matchBinding(key("2", { ctrl: true }), { editableFocus: true }, WIN)).toBe("thread.jump.2");
+  });
+
+  it("converts between index and command", () => {
+    expect(threadJumpCommandForIndex(0)).toBe("thread.jump.1");
+    expect(threadJumpCommandForIndex(8)).toBe("thread.jump.9");
+    expect(threadJumpCommandForIndex(9)).toBeNull();
+    expect(threadJumpIndexFromCommand("thread.jump.4")).toBe(3);
+    expect(threadJumpIndexFromCommand("thread.next")).toBeNull();
+    expect(threadJumpIndexFromCommand(null)).toBeNull();
+  });
+
+  it("labels the first jump key per platform", () => {
+    expect(shortcutLabelForCommand(KEYBINDINGS, "thread.jump.3", { platform: WIN })).toBe("Ctrl+3");
+    expect(shortcutLabelForCommand(KEYBINDINGS, "thread.jump.3", { platform: MAC })).toBe("⌘3");
+  });
+
+  it("shows the hints for exactly the jump modifier, never while the terminal has the keys", () => {
+    const mods = (m: Partial<{ metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean }>) => ({ metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...m });
+    expect(shouldShowThreadJumpHintsForModifiers(mods({ ctrlKey: true }), KEYBINDINGS, { platform: WIN })).toBe(true);
+    expect(shouldShowThreadJumpHintsForModifiers(mods({ metaKey: true }), KEYBINDINGS, { platform: WIN })).toBe(false);
+    expect(shouldShowThreadJumpHintsForModifiers(mods({ metaKey: true }), KEYBINDINGS, { platform: MAC })).toBe(true);
+    expect(shouldShowThreadJumpHintsForModifiers(mods({ ctrlKey: true, shiftKey: true }), KEYBINDINGS, { platform: WIN })).toBe(false);
+    expect(shouldShowThreadJumpHintsForModifiers(mods({}), KEYBINDINGS, { platform: WIN })).toBe(false);
+    expect(shouldShowThreadJumpHintsForModifiers(mods({ ctrlKey: true }), KEYBINDINGS, { platform: WIN, context: { terminalFocus: true } })).toBe(false);
   });
 });

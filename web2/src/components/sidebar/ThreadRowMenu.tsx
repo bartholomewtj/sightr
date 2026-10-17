@@ -1,13 +1,15 @@
 /**
  * The row menu (T10): Rename, Pin/Unpin, Mark unread/read, Snooze (presets, Pick time, Wake now),
  * Settle/Unsettle, Archive. One menu for the whole sidebar, anchored to the row that opened it (right
- * click, `Space`, or a long press on touch). It is also the keyboard alternative to dragging.
+ * click, `Space`, or a long press on touch). It is also the keyboard alternative to dragging. Copy thread id
+ * and Copy folder path are the palette's actions (`threadCopy.ts`).
  */
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator } from "~/components/ui/menu";
 
 import type { Thread } from "@shared/v2/contracts";
 import type { ShelfCommand } from "@/components/Sidebar.logic";
 import { resolveSnoozePresets } from "@/components/Sidebar.snooze";
+import { copyThreadFolderPath, copyThreadId } from "@/components/sidebar/threadCopy";
 
 const TOUCH_ITEM = "pointer-coarse:min-h-11";
 
@@ -49,6 +51,10 @@ export function ThreadRowMenu({
           ) : (
             <MenuItem className={TOUCH_ITEM} onClick={() => run({ type: "thread.markUnread", threadId })}>Mark unread</MenuItem>
           )}
+          <MenuItem className={TOUCH_ITEM} onClick={() => void copyThreadId(threadId)}>Copy thread id</MenuItem>
+          {thread.paneId !== "" ? (
+            <MenuItem className={TOUCH_ITEM} onClick={() => void copyThreadFolderPath(thread.paneId)}>Copy folder path</MenuItem>
+          ) : null}
           <MenuSeparator />
           <MenuGroup>
             <MenuGroupLabel>Snooze</MenuGroupLabel>

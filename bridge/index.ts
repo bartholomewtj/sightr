@@ -20,6 +20,7 @@ import { buildId } from "./static-assets.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
 import { openThreadStore, STORE_FILE, StoreTooNewError, type ThreadStore } from "./threads/store.ts";
 import { createHerdIngestor } from "./threads/herd-ingest.ts";
+import { createWorktreeIndex } from "./worktrees.ts";
 import { buildJournalRegistry } from "./journal/registry.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import { createJournalIngestor, createThreadWatchers } from "./threads/journal-ingest.ts";
@@ -153,7 +154,8 @@ const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots, cfg.sta
 
 // v2 herd ingest: workspaces → projects, panes → threads. Subscribed after the activity bookkeeping
 // above, so the ledger already holds this poll's transitions and first sightings when it reads them.
-const herdIngestor = threadStore ? createHerdIngestor({ store: threadStore, engine, activity, journals }) : null;
+// Its own worktree index: Project.branch comes from `worktree.list`, read through the same cache rules as the snapshot's.
+const herdIngestor = threadStore ? createHerdIngestor({ store: threadStore, engine, activity, journals, worktrees: createWorktreeIndex(herdr) }) : null;
 
 // v2 journal ingest: harness logs → turn items, herdr status → runs. It reads a thread's log only
 // while the thread is working or a client watches it (T05 adds and removes watchers).

@@ -6,7 +6,7 @@ import { create } from "zustand";
 
 import { DEFAULT_KEYBINDINGS } from "@t3tools/shared/keybindings";
 
-import { COMMAND_LABEL, formatShortcutLabel, KEYBINDINGS } from "@/keybindings";
+import { COMMAND_LABEL, formatShortcutLabel, KEYBINDINGS, threadJumpIndexFromCommand } from "@/keybindings";
 
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "./ui/dialog";
 import { Kbd } from "./ui/kbd";
@@ -38,12 +38,21 @@ export function KeyboardShortcutsDialog() {
           <table className="w-full text-sm" aria-label="Keyboard shortcuts">
             <tbody>
               {KEYBINDINGS.map((binding, index) => {
+                // Nine jump rules read as one row: "Ctrl+1" says the rest.
+                const jump = threadJumpIndexFromCommand(binding.command);
+                if (jump !== null && jump > 0) return null;
                 const rule = DEFAULT_KEYBINDINGS[index];
                 const when = rule?.when ? (WHEN_LABEL[rule.when] ?? rule.when) : null;
                 return (
                   <tr key={`${binding.command}:${index}`} className="border-b last:border-b-0" data-shortcut={binding.command}>
                     <td className="py-1.5 pe-3 align-top">
                       <Kbd>{formatShortcutLabel(binding.shortcut)}</Kbd>
+                      {jump === 0 ? (
+                        <>
+                          {" … "}
+                          <Kbd>{formatShortcutLabel({ ...binding.shortcut, key: "9" })}</Kbd>
+                        </>
+                      ) : null}
                     </td>
                     <td className="py-1.5 align-top">
                       <span className="text-foreground">{COMMAND_LABEL[binding.command]}</span>

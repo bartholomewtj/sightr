@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { BranchToolbar } from "@/components/BranchToolbar";
 import { BackToThreads } from "@/components/shell/BackToThreads";
+import { BranchChip } from "@/components/sidebar/BranchChip";
 import { DraftHeroHeadline } from "@/components/chat/DraftHeroHeadline";
 import { ProviderModelPicker } from "@/components/chat/ProviderModelPicker";
 import { TraitsPicker } from "@/components/chat/TraitsPicker";
@@ -52,6 +53,7 @@ export function NewThreadView({ projectId }: { projectId?: string }) {
       <header className="flex items-center gap-2 border-b px-3 py-2">
         {!desktop && <BackToThreads />}
         <h2 className="min-w-0 flex-1 truncate font-semibold">New thread</h2>
+        <DraftBranchChip />
         {!start || start.phase === "failed" ? (
           <Button size="sm" variant="ghost" onClick={discardDraft}>
             Discard
@@ -71,6 +73,13 @@ export function NewThreadView({ projectId }: { projectId?: string }) {
       </div>
     </section>
   );
+}
+
+/** The branch the chosen project's checkout is on, beside the title. Read-only; nothing when it has none. */
+function DraftBranchChip() {
+  const projectId = useDraftThread((s) => s.draft.projectId);
+  const branch = useShell((s) => (projectId ? s.projects[projectId]?.branch : undefined));
+  return <BranchChip branch={branch} />;
 }
 
 function DraftBody() {

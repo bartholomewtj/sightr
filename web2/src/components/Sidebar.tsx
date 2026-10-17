@@ -6,6 +6,8 @@
  * Pinned, Active, Snoozed, Settled. Archived threads live at /archived. Every shelf change is a bridge
  * command (state/sidebar.ts), applied optimistically and undoable. Above the list: All / Needs you and
  * a search box (either flattens the list). The sidebar renders only from the shell stream's store.
+ * On desktop, holding mod shows 1 to 9 on the first nine rows in screen order (`Sidebar.jump.ts`); mod+1..9
+ * opens that thread. A project row carries its checkout's branch, read-only (`BranchChip`).
  */
 import {
   closestCenter,
@@ -32,6 +34,12 @@ import { CustomSnoozeDialog } from "@/components/CustomSnoozeDialog";
 import { PushOnboarding } from "@/components/settings/PushOnboarding";
 import { handleSidebarDrop, sectionDropId, useSidebarDrag, zoneFor } from "@/components/Sidebar.drag";
 import {
+  threadJumpOrder,
+  useShortcutModifierState,
+  useSidebarSearch,
+  useThreadJumpHintVisibility,
+} from "@/components/Sidebar.jump";
+import {
   buildProjectTree,
   documentTitle,
   needsYouThreads,
@@ -42,15 +50,18 @@ import {
   type SidebarProjectNode,
   type SidebarSection,
 } from "@/components/Sidebar.logic";
+import { BranchChip } from "@/components/sidebar/BranchChip";
 import { SidebarRowContext, SidebarThreadRow, SortableThreadRow, type SidebarRowActions } from "@/components/sidebar/SidebarThreadRow";
 import { ProjectRenameField, ProjectRowMenu } from "@/components/sidebar/ProjectRowMenu";
 import { useLongPress } from "@/components/sidebar/useLongPress";
 import { ThreadRowMenu } from "@/components/sidebar/ThreadRowMenu";
 import { ThreadStatusDot } from "@/components/ThreadStatusIndicators";
 import { useLayout } from "@/hooks/useLayout";
-import { KEYBINDINGS, shortcutLabelForCommand } from "@/keybindings";
+import { KEYBINDINGS, shortcutLabelForCommand, shouldShowThreadJumpHintsForModifiers, threadJumpCommandForIndex } from "@/keybindings";
 import { cn } from "@/lib/utils";
 import { performThreadCommand, renameProject, useSidebarPrefs, useSidebarThreads } from "@/state/sidebar";
+import { useWokeTracking } from "@/state/woke";
+import { domShortcutContext } from "@/shortcutHandlers";
 import { useShell } from "@/stream/stores";
 
 const SECTION_LABEL: Record<SidebarSection, string> = { pinned: "Pinned", active: "Active", snoozed: "Snoozed", settled: "Settled" };
@@ -68,9 +79,14 @@ export function Sidebar() {
   const archivedCount = useMemo(() => threadList.filter((t) => t.shelf === "archived").length, [threadList]);
   const filter = useSidebarPrefs((s) => s.filter);
   const setFilter = useSidebarPrefs((s) => s.setFilter);
-  const [query, setQuery] = useState("");
+  const query = useSidebarSearch((s) => s.query);
+  const setQuery = useSidebarSearch((s) => s.setQuery);
+  // A search belongs to this visit: a phone leaves it behind when a thread opens.
+  useEffect(() => () => useSidebarSearch.getState().setQuery(""), []);
   const results = useMemo(() => searchSidebarThreads(threadList, projects, query), [threadList, projects, query]);
   const { threadId: activeThreadId } = useParams({ strict: false }) as { threadId?: string };
+  // "Woke" on a thread whose snooze ran out; opening it clears the label.
+  useWokeTracking(loaded, threads, activeThreadId);
 
   const [menu, setMenu] = useState<{ threadId: string; anchor: HTMLElement } | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -95,17 +111,40 @@ export function Sidebar() {
   }, [desktop, needsYou.length]);
 
   const run = useCallback((command: ShelfCommand) => void performThreadCommand(command), []);
+
+  // mod+1..9: while the modifier is held, the first nine rows in screen order wear their number.
+  const collapsedProjects = useSidebarPrefs((s) => s.collapsedProjects);
+  const jumpOrder = useMemo(
+    () => threadJumpOrder({ projects, threads: threadList, filter, query, collapsedProjects }),
+    [projects, threadList, filter, query, collapsedProjects],
+  );
+  const modifiers = useShortcutModifierState(desktop);
+  const hintsWanted = desktop && shouldShowThreadJumpHintsForModifiers(modifiers, KEYBINDINGS, { context: domShortcutContext() });
+  const jumpHints = useThreadJumpHintVisibility();
+  const syncJumpHints = jumpHints.sync;
+  useEffect(() => syncJumpHints(hintsWanted), [hintsWanted, syncJumpHints]);
+  const jumpLabels = useMemo(() => {
+    if (!desktop || !jumpHints.visible) return null;
+    const labels = new Map<string, string>();
+    jumpOrder.slice(0, 9).forEach((id, index) => {
+      const label = shortcutLabelForCommand(KEYBINDINGS, threadJumpCommandForIndex(index));
+      if (label) labels.set(id, label);
+    });
+    return labels;
+  }, [desktop, jumpHints.visible, jumpOrder]);
+
   const actions = useMemo<SidebarRowActions>(
     () => ({
       activeThreadId,
       touch: !desktop,
+      jumpLabels,
       renamingId,
       openMenu: (threadId, anchor) => setMenu({ threadId, anchor }),
       startRename: setRenamingId,
       endRename: () => setRenamingId(null),
       run,
     }),
-    [activeThreadId, desktop, renamingId, run],
+    [activeThreadId, desktop, jumpLabels, renamingId, run],
   );
 
   // Up/Down move focus between rows (screen order), as T3's thread traversal.
@@ -325,6 +364,7 @@ function ProjectBlock({ node, desktop, actions }: { node: SidebarProjectNode; de
             {collapsed ? <ChevronRight className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
             {node.nested ? <GitBranch className="size-3.5" role="img" aria-label="Worktree" /> : null}
             <span className="min-w-0 flex-1 truncate">{project.label}</span>
+            <BranchChip branch={project.branch} />
             <span className="font-mono text-2xs tabular-nums">{project.number}</span>
             {node.rollUp ? <ThreadStatusDot status={node.rollUp} showElapsed={false} /> : null}
           </button>

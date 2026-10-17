@@ -183,6 +183,13 @@ export const MIGRATIONS: readonly Migration[] = [
       db.run(`ALTER TABLE threads ADD COLUMN context_usage_json TEXT`);
     },
   },
+  {
+    // Project.branch: the checked-out branch, read-only, from the worktree index.
+    version: 4,
+    up(db) {
+      db.run(`ALTER TABLE projects ADD COLUMN branch TEXT`);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
@@ -241,6 +248,7 @@ interface ProjectRow {
   number: number;
   repo_key: string | null;
   worktree_of: string | null;
+  branch: string | null;
   ord: number;
   status: string;
   closed_at: number | null;
@@ -312,6 +320,7 @@ function projectFromRow(r: ProjectRow): Project {
     number: r.number,
     ...(r.repo_key !== null ? { repoKey: r.repo_key } : {}),
     ...(r.worktree_of !== null ? { worktreeOf: r.worktree_of } : {}),
+    ...(r.branch !== null ? { branch: r.branch } : {}),
     order: r.ord,
     status: r.status as Project["status"],
     ...(r.closed_at !== null ? { closedAt: r.closed_at } : {}),
@@ -326,6 +335,7 @@ function projectParams(p: Project) {
     number: p.number,
     repo_key: p.repoKey ?? null,
     worktree_of: p.worktreeOf ?? null,
+    branch: p.branch ?? null,
     ord: p.order,
     status: p.status,
     closed_at: p.closedAt ?? null,

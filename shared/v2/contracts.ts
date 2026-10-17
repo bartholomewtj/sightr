@@ -95,6 +95,8 @@ export interface Project {
   repoKey?: string;
   /** On a linked worktree: its repo's `repoKey`. The sidebar nests it under the primary with the same `repoKey`. */
   worktreeOf?: string;
+  /** The branch the workspace's checkout is on (read-only; absent when detached or not a git checkout). */
+  branch?: string;
   order: number;
   /** Roll-up of its active and pinned threads (`worstStatus`). */
   status: ThreadStatus;

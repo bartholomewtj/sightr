@@ -586,21 +586,21 @@
       "upstream": "packages/contracts/src/keybindings.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "plain TS types instead of Effect Schema; Sightr's command list"
+      "note": "plain TS types instead of Effect Schema; Sightr's command list; db5919d87: THREAD_JUMP_KEYBINDING_COMMANDS (thread.jump.1..9)"
     },
     {
       "local": "src/t3/shared/keybindings.ts",
       "upstream": "packages/shared/src/keybindings.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "DEFAULT_KEYBINDINGS is Sightr's table; parser, matcher and when grammar unchanged"
+      "note": "DEFAULT_KEYBINDINGS is Sightr's table; parser, matcher and when grammar unchanged; db5919d87: mod+1..9 thread.jump bindings"
     },
     {
       "local": "src/keybindings.ts",
       "upstream": "apps/web/src/keybindings.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "Sightr's when context, injectable platform, no unmodified binding in a text field, symbol keys ignore Shift"
+      "note": "Sightr's when context, injectable platform, no unmodified binding in a text field, symbol keys ignore Shift; db5919d87: threadJumpCommandForIndex, threadJumpIndexFromCommand, shouldShowThreadJumpHintsForModifiers"
     },
     {
       "local": "src/rightPanelStore.ts",
@@ -655,7 +655,7 @@
       "upstream": "apps/web/src/components/CommandPalette.logic.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "Sightr threads/projects/actions; T3 filtering and ranking, plus a subsequence fallback"
+      "note": "Sightr threads/projects/actions; T3 filtering and ranking, plus a subsequence fallback; Open file… mode, Find in thread and copy actions (Sightr's)"
     },
     {
       "local": "src/components/CommandPaletteContent.tsx",
@@ -864,6 +864,34 @@
       "upstream": "packages/shared/src/proposedPlanText.ts",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "verbatim"
+    },
+    {
+      "local": "src/components/Sidebar.jump.ts",
+      "upstream": "apps/web/src/components/Sidebar.logic.ts",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "createThreadJumpHintVisibilityController (200 ms) is T3's; the jump order is Sightr's (what the sidebar shows: search, Needs you, or pinned and active rows)"
+    },
+    {
+      "local": "src/components/Sidebar.jump.ts",
+      "upstream": "apps/web/src/shortcutModifierState.ts",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "held-modifier tracking with the paste and blur resets; no editable-focus option"
+    },
+    {
+      "local": "src/components/sidebar/BranchChip.tsx",
+      "upstream": "apps/web/src/components/BranchToolbarBranchSelector.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "read-only chip from Project.branch; switching, creating and PR checkout are never taken"
+    },
+    {
+      "local": "src/components/CommandPaletteFiles.ts",
+      "upstream": "apps/web/src/components/files/ProjectFilePicker.logic.ts",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "Open file… mode: the Files search API, re-ranked by name (rankFileResults in CommandPalette.logic.ts); no fuzzy index or match highlighting"
     }
   ],
   "decisions": [
@@ -1022,6 +1050,18 @@
       "commit": "db5919d87daf",
       "verdict": "skip",
       "reason": "ConnectionBanner already shows reconnecting and lost; a dot adds only an always-green state and T3's version is built on multi-environment phases and a hover tooltip"
+    },
+    {
+      "upstream": "apps/web/src/components/files/ProjectFilePicker.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "defer",
+      "reason": "Open file… is a mode of the command palette, not a dialog of its own, and has no mod+p binding yet (the browser keeps Ctrl+P for print); a fuzzy server-side index and match highlighting can come later"
+    },
+    {
+      "upstream": "apps/web/src/components/search/ProjectContentSearchDialog.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "defer",
+      "reason": "Needs GET /api/files/grep on the bridge (rg --json inside the contained folder); name search only for now"
     }
   ]
 }

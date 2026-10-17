@@ -7,16 +7,18 @@
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 
-import type { KeybindingCommand } from "@t3tools/contracts";
+import { THREAD_JUMP_KEYBINDING_COMMANDS, type KeybindingCommand } from "@t3tools/contracts";
 
 import { isCommandPaletteOpen, toggleCommandPalette } from "@/commandPaletteBus";
 import { openShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
+import { threadJumpOrder, useSidebarSearch } from "@/components/Sidebar.jump";
 import { undoLatestThreadAction } from "@/hooks/showThreadUndoNotice";
 import { DESKTOP_QUERY, useLayout } from "@/hooks/useLayout";
-import { KEYBINDINGS, resolveShortcutCommand, type ShortcutMatchContext } from "@/keybindings";
+import { KEYBINDINGS, resolveShortcutCommand, threadJumpIndexFromCommand, type ShortcutMatchContext } from "@/keybindings";
 import { adjacentThread } from "@/lib/threadNavigation";
 import { selectRightPanelOpen, toggleRightPanelSurface, useRightPanelStore } from "@/rightPanelStore";
 import { domShortcutContext, registerShortcutHandler, runShortcutCommand } from "@/shortcutHandlers";
+import { currentSidebarThreads, useSidebarPrefs } from "@/state/sidebar";
 import { useShell, useThreadStore } from "@/stream/stores";
 import { openThreadTerminal, toggleThreadTerminal } from "@/threadViewStore";
 import { useUiState } from "@/uiStateStore";
@@ -42,7 +44,25 @@ export function GlobalShortcuts() {
       openThread(next);
       return true;
     };
+    // mod+1..9 (desktop): the Nth thread in the order the sidebar shows. A phone has no such key, and with
+    // no Nth thread the key stays the browser's.
+    const jump = (command: KeybindingCommand) => {
+      if (!live.current.desktop) return false;
+      const index = threadJumpIndexFromCommand(command);
+      if (index === null) return false;
+      const prefs = useSidebarPrefs.getState();
+      const id = threadJumpOrder({
+        projects: useShell.getState().projects,
+        threads: Object.values(currentSidebarThreads()),
+        filter: prefs.filter,
+        query: useSidebarSearch.getState().query,
+        collapsedProjects: prefs.collapsedProjects,
+      })[index];
+      if (id === undefined) return false;
+      openThread(id);
+    };
     const offs = [
+      ...THREAD_JUMP_KEYBINDING_COMMANDS.map((command) => registerShortcutHandler(command, () => jump(command))),
       registerShortcutHandler("commandPalette.toggle", () => toggleCommandPalette()),
       registerShortcutHandler("sidebar.toggle", () => {
         if (!live.current.desktop) return false;

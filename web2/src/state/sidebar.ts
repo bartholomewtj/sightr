@@ -95,6 +95,11 @@ export function useSidebarThread(threadId: string | undefined): Thread | undefin
   }, [thread, pending]);
 }
 
+/** Every thread as the sidebar sees it right now (pending commands applied), for a key handler. */
+export function currentSidebarThreads(): Record<string, Thread> {
+  return applyPending(useShell.getState().threads, usePendingShelf.getState().pending);
+}
+
 function currentThread(threadId: string): Thread | undefined {
   return applyPending(useShell.getState().threads, usePendingShelf.getState().pending)[threadId];
 }
