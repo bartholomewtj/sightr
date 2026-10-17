@@ -410,8 +410,10 @@ export function parseClaudeTranscript(
             const isError = b.is_error === true;
             // Bash reports a non-zero exit as an error result that starts "Exit code N".
             const exit = isError ? /^Exit code (\d+)/.exec(resultText) : null;
+            // Claude wraps a tool's refusal in a `<tool_use_error>` envelope; the words inside are the error.
+            const shown = isError ? (/^\s*<tool_use_error>([\s\S]*?)<\/tool_use_error>\s*$/.exec(resultText)?.[1] ?? resultText) : resultText;
             target.result = {
-              ...clamp(resultText, MAX_RESULT_CHARS),
+              ...clamp(shown, MAX_RESULT_CHARS),
               ...(isError ? { isError: true } : {}),
               ...(exit ? { exitCode: Number(exit[1]) } : {}),
             };

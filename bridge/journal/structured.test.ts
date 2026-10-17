@@ -124,7 +124,8 @@ describe("Claude fixture → turn items", () => {
     const edit = byId(list, "c0000000-0000-4000-8000-000000000004:0");
     expect(edit).toMatchObject({ type: "file_change", status: "failed", deletions: 1, additions: 1 });
     if (edit.type !== "file_change") throw new Error("type");
-    expect(edit.errorText).toContain("String to replace not found");
+    // The `<tool_use_error>` envelope is dropped; the words inside are the error.
+    expect(edit.errorText).toBe("String to replace not found in file.\nString: export const missing = 1;");
   });
 
   test("a Write that created a file is all additions", () => {
