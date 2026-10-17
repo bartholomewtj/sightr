@@ -197,6 +197,8 @@ export function classifyFooter(text: string): PromptFamily | null {
  *  tail ("to cancel"); the head already names the confirm phrase. Longer than this is a different
  *  line, not a wrap. */
 const FOOTER_WRAP_TAIL = 20;
+/** The longest wrapped tail that still ends in "Esc to cancel" (the free-text row's longer hint). */
+const FOOTER_WRAP_TAIL_LONG = 40;
 // The head of a wrapped hint starts with the confirm phrase. A transcript line that merely
 // mentions "enter to select" later in the sentence must not become a footer.
 const FOOTER_HEAD = /^\s*(enter to select|enter to confirm|esc to cancel|tab to amend|ctrl\+g to edit)\b/i;
@@ -215,7 +217,11 @@ export function classifyTailFooter(
   if (direct) return { family: direct, scanEnd: fi, text: texts[fi]! };
   if (fi < 1 || isBlank(texts[fi - 1]!)) return null;
   const cont = texts[fi]!.trim();
-  if (cont.length === 0 || cont.length > FOOTER_WRAP_TAIL) return null;
+  // A focused AskUserQuestion free-text row adds "ctrl+g to edit in Notepad" to the hint, so on a
+  // narrow pane a wizard's wrap is "Notepad · Esc to cancel" (live 2026-10-18): a longer tail is still
+  // a wrap when it ends the hint bar's own way.
+  const tailOk = cont.length <= FOOTER_WRAP_TAIL || (cont.length <= FOOTER_WRAP_TAIL_LONG && /\besc to cancel$/i.test(cont));
+  if (cont.length === 0 || !tailOk) return null;
   const head = texts[fi - 1]!;
   if (!FOOTER_HEAD.test(head)) return null;
   const joined = `${head.trimEnd()} ${cont}`;

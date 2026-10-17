@@ -53,7 +53,7 @@ Source: `~/.pi/agent/extensions/ask.ts` (tool implementation) and `@earendil-wor
 - Digits are NEVER emitted.
 
 ## "Type something." Free-Text
-- The row is not an option button. On a one-question card it stays prompt-select `feedback` and the phone does not type it (its key would be a digit).
+- The row is not an option button. On a one-question card it stays prompt-select `feedback` with `openKeys` (arrows, then Enter) and `editing`. v1 does not type it; the v2 bridge's free-text answer does (live 2026-10-18: Down, Down, Enter opened the editor, typed text landed, Enter submitted it).
 - On a multi-question card it stays on the wizard as `feedback`. The phone walks the pointer with Up/Down, Enter opens the editor, types, and Enter submits. Digits are never sent.
 - `feedback.focused` means the `>` sits on the row. Option buttons lock (Enter would open the editor). The type-in box stays available; its keys are then just `["Enter"]`.
 - `feedback.editing` means the editor is open (`✎`, `Your answer:`). The card stays a wizard. Identity ignores the pointer and the editor text, so neither looks like a committed answer. `customChosen` (`✓`) does.
@@ -61,7 +61,7 @@ Source: `~/.pi/agent/extensions/ask.ts` (tool implementation) and `@earendil-wor
 
 ## What is NOT Lifted
 - **Submit tab:** The review tab (`Ready to submit`) has no options. It lifts as a wizard `review` whose model carries Pi's own keys: Enter submits (only when every question is answered — otherwise Pi paints `Unanswered: …` and ignores Enter, so Submit is disabled) and Escape cancels. Answers echo as `<chip label>: <answer>`. Live 2026-09-27 (pane `wGK:p2`, fixture `pi--ask-multi-review.txt`): Submit from the phone returned `Large, Coffee`.
-- **Input mode:** Enter on `Type something.` paints `✎`, `Your answer:`, and the editor. A multi-question frame still lifts as the same wizard with `feedback.editing`. A one-question frame stays raw.
+- **Input mode:** Enter on `Type something.` paints `✎`, `Your answer:`, and the editor, and a blank row between the `Enter to submit • Esc to cancel` help and the closing rule (live 2026-10-18). A multi-question frame still lifts as the same wizard with `feedback.editing`. A one-question frame lifts as the same prompt-select with `feedback.editing` (options locked).
 
 ## Fixture Provenance
 - `web/src/fixtures/panes/pi--ask-*.txt` were generated using Pi's own `createQuestionnaireUI(...).render(94)` via `jiti` import from `C:/Users/you/.pi/agent/extensions/ask.ts`.
@@ -75,4 +75,4 @@ Source: `~/.pi/agent/extensions/ask.ts` (tool implementation) and `@earendil-wor
 - Real terminal theme `selectedBg` RGB values in live environment.
 
 ## Known Limitations
-- A one-question card's editor stays raw. The phone types only the multi-question wizard's free-text row.
+- v1 types only the multi-question wizard's free-text row. v2 types both through the bridge.

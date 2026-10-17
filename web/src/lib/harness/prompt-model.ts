@@ -59,6 +59,17 @@ export interface PromptFeedback {
   text: string;
   /** Absent means `plan-change` (Claude); set explicitly for another harness's custom row. */
   purpose?: PromptFeedbackPurpose;
+  /**
+   * The keys that make the field take typing from THIS screen (the bridge's free-text answer, v2).
+   * Set only by an adapter whose walk was measured live (Claude's AskUserQuestion row: its digit;
+   * Pi's: arrows onto the row, then Enter). Absent = the bridge never types this row.
+   */
+  openKeys?: string[];
+  /**
+   * The row opens a separate editor (Pi): `true` while it is open. Absent = the field takes typing
+   * as soon as it is `focused` (Claude's inline row).
+   */
+  editing?: boolean;
 }
 
 /** A recognised single-choice dialog: the question, its selectable options, and the family. */
@@ -110,6 +121,7 @@ export function promptsEqual(a: PromptModel, b: PromptModel): boolean {
     // digit must not fire across a change to it: focus decides whether that digit answers at all, and
     // text appearing in the box means someone at the terminal is typing into this very dialog.
     a.feedback?.focused === b.feedback?.focused &&
+    a.feedback?.editing === b.feedback?.editing &&
     a.feedback?.text === b.feedback?.text
   );
 }

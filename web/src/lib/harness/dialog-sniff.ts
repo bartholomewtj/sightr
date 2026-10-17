@@ -91,3 +91,53 @@ export function hasBlockingDialog(agent: string, text: string): boolean {
   if (!Object.hasOwn(SNIFFERS, agent) || text.length === 0) return false;
   return SNIFFERS[agent]!.detect(parseLines(text));
 }
+
+// ── Compaction status ──────────────────────────────────────────────────────────────────────────
+//
+// A harness that compacts its context on its own (no user message: Claude's auto-compact, Pi's
+// auto-compaction) cancels the compaction on the interrupt key a steer presses. The bridge reads a
+// working thread's screen for the harness's own status row and queues instead of steering
+// (bridge/threads/compaction-watch.ts). Only the rows below are read, near the tail, so a transcript
+// line quoting the words far above does not count.
+
+/** How many rows from the bottom of a read the status row may sit in. */
+const COMPACTING_TAIL_ROWS = 20;
+
+/**
+ * Claude's spinner row while it compacts, manual `/compact` or auto: one spinner glyph (`·✢✳✶✻✽*`,
+ * it cycles), then "Compacting conversation…" and the elapsed time (live 2026-10-18, Claude Code
+ * 2.1.302: `✻ Compacting conversation… (2s · ↓ 133 tokens)`).
+ */
+const CLAUDE_COMPACTING = /^\s*\S\s+Compacting conversation…/;
+/**
+ * Pi's compaction status indicator (pi-coding-agent `CompactionStatusIndicator`): "Compacting
+ * context... (esc to cancel)" for `/compact`, "Auto-compacting... (esc to cancel)" (optionally after
+ * "Context overflow detected, ") when Pi compacts on its own. It sits in the editor slot or in the
+ * editor's top border, so it is matched anywhere on the row. From Pi's source; not captured live
+ * (a session too small to compact shows only "Nothing to compact").
+ */
+const PI_COMPACTING = /(?:Compacting context|Auto-compacting)\.\.\. \(/;
+
+const COMPACTING: Record<string, RegExp> = {
+  claude: CLAUDE_COMPACTING,
+  pi: PI_COMPACTING,
+};
+
+/** True when `agent` has a compaction status row this file knows. */
+export function detectsCompaction(agent: string): boolean {
+  return Object.hasOwn(COMPACTING, agent);
+}
+
+/**
+ * True when `text` (a pane read, plain or ANSI) shows `agent`'s compaction status row near its tail.
+ * Any other agent, or empty text, is false.
+ */
+export function isCompactingScreen(agent: string, text: string): boolean {
+  if (!Object.hasOwn(COMPACTING, agent) || text.length === 0) return false;
+  const re = COMPACTING[agent]!;
+  const rows = text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").split(/\r?\n/);
+  let end = rows.length - 1;
+  while (end >= 0 && rows[end]!.trim() === "") end--;
+  for (let i = end; i >= 0 && end - i < COMPACTING_TAIL_ROWS; i--) if (re.test(rows[i]!)) return true;
+  return false;
+}
