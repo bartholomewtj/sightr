@@ -8,7 +8,9 @@ import type {
   BridgeSettings,
   BridgeSettingsView,
   FileSearchResponse,
+  FileResolveResponse,
   FilesResponse,
+  FolderGitDiffResponse,
   FolderGitResponse,
   LockStatus,
   NotifyPrefs,
@@ -324,6 +326,23 @@ export function fetchFolderGit(path: string, paneIds: string[], signal?: AbortSi
   q.set("path", path);
   for (const id of paneIds.slice(0, MAX_GIT_PANES)) q.append("pane", id);
   return readJson<FolderGitResponse>(`/api/files/git?${q}`, signal ? { signal } : {});
+}
+
+/** One commit's diff, or the branch range against its base, for the repo around a Files folder. Read-only. */
+export function fetchFolderGitDiff(path: string, scope: { scope: "commit"; sha: string } | { scope: "branch" }, signal?: AbortSignal): Promise<FolderGitDiffResponse> {
+  const q = new URLSearchParams();
+  q.set("path", path);
+  q.set("scope", scope.scope);
+  if (scope.scope === "commit") q.set("sha", scope.sha);
+  return readJson<FolderGitDiffResponse>(`/api/files/git/diff?${q}`, signal ? { signal } : {});
+}
+
+/** A path as an agent printed it (absolute, or relative to the pane's folder) as a Files rel path, or why not. */
+export function resolveFilePath(paneId: string | null, path: string, signal?: AbortSignal): Promise<FileResolveResponse> {
+  const q = new URLSearchParams();
+  q.set("path", path);
+  if (paneId) q.set("pane", paneId);
+  return readJson<FileResolveResponse>(`/api/files/resolve?${q}`, signal ? { signal } : {});
 }
 
 // ── T18: Settings (copied from web/src/lib/api.ts, same routes) ─────────────────────────────────

@@ -125,6 +125,9 @@
   --color-house-accent: var(--accent);
   --color-warn: var(--warn);
   --color-ok: var(--ok);
+  /* T3's diff count tokens (chat/DiffStatLabel.tsx, verbatim): added is ok, removed is warn, as DiffView. */
+  --color-diff-addition: var(--ok);
+  --color-diff-deletion: var(--warn);
   --color-navy: var(--navy);
   --color-line: var(--line);
   --color-boxline: var(--boxline);

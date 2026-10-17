@@ -514,7 +514,7 @@
       "upstream": "apps/web/src/rightPanelStore.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "pattern",
-      "note": "three fixed tabs, per-device open state, tab, width and font; phone sheet"
+      "note": "three fixed tabs, per-device open state, tab, width and font; phone sheet; openFile(threadId, rel path) opens the Files tab on a file"
     },
     {
       "local": "src/components/RightPanelTabs.tsx",
@@ -529,6 +529,20 @@
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
       "note": "bottom sheet, not kept mounted, back closes it (asks the Files editor first), tab strip, safe-area and soft-keyboard sizing"
+    },
+    {
+      "local": "src/components/chat/DiffStatLabel.tsx",
+      "upstream": "apps/web/src/components/chat/DiffStatLabel.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim",
+      "note": "Git tab +N/-M; text-diff-addition/deletion map to --ok/--warn in index.css"
+    },
+    {
+      "local": "src/components/DiffFilePathCopyButton.tsx",
+      "upstream": "apps/web/src/components/DiffFilePathCopyButton.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "no tooltip or MorphIcon; house toast; execCommand fallback via copyText"
     },
     {
       "local": "src/commandPaletteBus.ts",
@@ -678,6 +692,18 @@
     }
   ],
   "decisions": [
+    {
+      "upstream": "apps/web/src/components/DiffPanel.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "not ported: right-panel/GitPanel.tsx took its branch-range scope, wrap and collapse-all as Sightr code; the per-turn checkpoint scope, split view and @pierre/diffs are never taken"
+    },
+    {
+      "upstream": "apps/web/src/components/diffs/DiffFileStatus.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "skip",
+      "reason": "hover-tooltip icon; the Git tab says inline that a truncated diff shows some files as counts only, and a file with no patch does not expand"
+    },
     {
       "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
       "commit": "db5919d87daf",

@@ -24,6 +24,7 @@ import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
 import { deleteFile, downloadFileUrl, fetchFiles, fetchLocalServers, openFileUrl, saveFile, searchFiles, type LocalServersResponse } from "@/lib/api";
 import { isDeletedFile, noteDeletedFile, subscribeDeleted, useFilesTree } from "@/lib/files-tree";
+import { useRightPanelStore } from "@/rightPanelStore";
 import { useSidebarThread } from "@/state/sidebar";
 import { useBridgeInfo, useThread } from "@/stream/stores";
 
@@ -81,6 +82,24 @@ export function FilesPanel({ threadId }: { threadId: string }) {
     if (leaveGuard.current?.(go)) return;
     go();
   };
+
+  // "Open in Files" from anywhere (rightPanelStore.openFile): a file opens in the detail view, a folder
+  // becomes the tree's base. Taken once, for this thread; unsaved edits are asked about first.
+  const fileRequest = useRightPanelStore((s) => (s.fileRequest?.threadId === threadId ? s.fileRequest : null));
+  const consumeFileRequest = useRightPanelStore((s) => s.consumeFileRequest);
+  useEffect(() => {
+    if (!fileRequest) return;
+    consumeFileRequest(fileRequest.id);
+    leave(() => {
+      if (fileRequest.kind === "dir") {
+        // Before the thread's folder resolves, keep it from replacing the requested folder.
+        if (folder.path === undefined) restored.current = true;
+        setBase(fileRequest.path);
+        setOpenPath(null);
+      } else setOpenPath(fileRequest.path);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one request, taken once
+  }, [fileRequest?.id]);
 
   if (!thread) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
   if (folder.filesOff) return <p className="p-4 text-sm text-muted-foreground">Files isn't turned on. Set SIGHTR_WORK_ROOT on the host.</p>;
