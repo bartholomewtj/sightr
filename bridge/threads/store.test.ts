@@ -86,6 +86,11 @@ describe("migrations", () => {
     expect(store.getProject("w1")).toEqual({ id: "w1", label: "a", labelSource: "herd", number: 1, order: 1, status: "idle" });
     store.append([createProject(project("w1", { repoKey: "/r/.git" }))]);
     expect(store.getProject("w1")?.repoKey).toBe("/r/.git");
+    // Project.branch rides the same upsert and goes away when the next upsert has none.
+    store.append([createProject(project("w1", { repoKey: "/r/.git", branch: "feat/x" }))]);
+    expect(store.getProject("w1")?.branch).toBe("feat/x");
+    store.append([createProject(project("w1", { repoKey: "/r/.git" }))]);
+    expect(store.getProject("w1")?.branch).toBeUndefined();
     store.close();
   });
 

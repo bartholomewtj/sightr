@@ -13,6 +13,7 @@ import type { AgentStatus } from "../../shared/wire.ts";
 import { ACTIVITY_KEY, type ActivityLedger, type PaneActivity } from "../activity.ts";
 import type { AgentSessionRef, JournalAdapter } from "../journal/types.ts";
 import type { AgentView, EngineSnapshot, StateEngine } from "../state-engine.ts";
+import type { WorktreeIndex } from "../worktrees.ts";
 import { capabilitiesFor, SHELL_HARNESS } from "./capabilities.ts";
 import { MAX_TITLE_LENGTH } from "./decide.ts";
 import type { EventDraft, ServerThread, ServerThreadPatch } from "./events.ts";
@@ -98,6 +99,8 @@ export interface HerdDiffContext {
   /** Threads (by id) and projects (by id) already missing at the previous reconcile. */
   missingThreads: ReadonlySet<string>;
   missingProjects: ReadonlySet<string>;
+  /** The branch a workspace's checkout is on, when the worktree index knows it. */
+  branchOf?: (workspaceId: string) => string | undefined;
   /** The ledger's entry for a pane. */
   activity: (paneId: string) => PaneActivity | undefined;
   /** When the engine last reported a status transition for the pane, since start. */
@@ -117,6 +120,7 @@ interface DesiredWorkspace {
   number: number;
   repoKey?: string;
   worktreeOf?: string;
+  branch?: string;
 }
 
 const sameRef = (a: AgentSessionRef | undefined, b: AgentSessionRef | undefined) =>
@@ -132,6 +136,7 @@ function sameProject(a: Project, b: Project): boolean {
     a.order === b.order &&
     a.repoKey === b.repoKey &&
     a.worktreeOf === b.worktreeOf &&
+    a.branch === b.branch &&
     a.status === b.status &&
     a.closedAt === b.closedAt
   );
@@ -312,6 +317,10 @@ export function diffHerd(snap: EngineSnapshot, projection: HerdProjection, ctx: 
       ...(w.worktree?.isLinkedWorktree ? { worktreeOf: w.worktree.repoKey } : {}),
     });
   }
+  for (const [id, w] of workspaces) {
+    const branch = ctx.branchOf?.(id);
+    if (branch) w.branch = branch;
+  }
   for (const pane of panes) {
     if (!workspaces.has(pane.workspaceId)) {
       workspaces.set(pane.workspaceId, { label: pane.workspaceLabel || pane.workspaceId, number: pane.workspaceNumber });
@@ -338,6 +347,7 @@ export function diffHerd(snap: EngineSnapshot, projection: HerdProjection, ctx: 
       order: w.number,
       ...(w.repoKey !== undefined ? { repoKey: w.repoKey } : {}),
       ...(w.worktreeOf !== undefined ? { worktreeOf: w.worktreeOf } : {}),
+      ...(w.branch !== undefined ? { branch: w.branch } : {}),
       status: rollUp(id),
     };
     if (!existing || !sameProject(existing, desired)) {
@@ -369,6 +379,8 @@ export interface HerdIngestorDeps {
   engine: Pick<StateEngine, "onUpdate" | "onTransition">;
   activity: Pick<ActivityLedger, "get">;
   journals: Record<string, JournalAdapter> | null;
+  /** Fills `Project.branch` from the worktree index (bridge/worktrees.ts). Optional: no branch without it. */
+  worktrees?: Pick<WorktreeIndex, "decorate">;
   now?: () => number;
   newId?: () => string;
   log?: (msg: string) => void;
@@ -394,6 +406,28 @@ export function createHerdIngestor(deps: HerdIngestorDeps): HerdIngestor {
   let missingProjects: ReadonlySet<string> = new Set();
   const unsubscribe: (() => void)[] = [];
 
+  // Branch per workspace, from the worktree index. Resolving it is async (a cached herdr call), so the
+  // reconcile reads the last answer; a change re-runs the reconcile on the snapshot that asked.
+  let branches: ReadonlyMap<string, string> = new Map();
+  let resolving = false;
+  const refreshBranches = (snap: EngineSnapshot): void => {
+    if (!deps.worktrees || resolving || snap.bridge !== "connected") return;
+    resolving = true;
+    deps.worktrees
+      .decorate(snap.workspaces, [...snap.agents, ...snap.shellPanes])
+      .then((decorated) => {
+        const next = new Map<string, string>();
+        for (const w of decorated) if (w.worktree?.branch) next.set(w.workspaceId, w.worktree.branch);
+        const changed = next.size !== branches.size || [...next].some(([id, b]) => branches.get(id) !== b);
+        branches = next;
+        if (changed) reconcile(snap);
+      })
+      .catch((err) => log(`[threads] branch lookup failed: ${(err as Error).message}`))
+      .finally(() => {
+        resolving = false;
+      });
+  };
+
   const reconcile = (snap: EngineSnapshot): number => {
     // A disconnected engine has no herd to compare against; the store is left alone.
     if (snap.bridge !== "connected") return 0;
@@ -412,6 +446,7 @@ export function createHerdIngestor(deps: HerdIngestorDeps): HerdIngestor {
           first,
           missingThreads,
           missingProjects,
+          branchOf: (workspaceId) => branches.get(workspaceId),
           activity: (paneId) => activity.get(ACTIVITY_KEY, paneId),
           touchedAt: (paneId) => touched.get(paneId),
           capabilities: (harness) => capabilitiesFor(harness, journals),
@@ -437,7 +472,12 @@ export function createHerdIngestor(deps: HerdIngestorDeps): HerdIngestor {
       // The engine fires transitions before the update in one poll, so the transition only annotates;
       // reconcile is the single writer.
       unsubscribe.push(engine.onTransition((agent) => touched.set(agent.paneId, now())));
-      unsubscribe.push(engine.onUpdate((snap) => void reconcile(snap)));
+      unsubscribe.push(
+        engine.onUpdate((snap) => {
+          reconcile(snap);
+          refreshBranches(snap);
+        }),
+      );
     },
     stop() {
       for (const off of unsubscribe.splice(0)) off();
