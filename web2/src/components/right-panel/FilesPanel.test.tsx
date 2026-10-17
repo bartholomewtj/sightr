@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { FilesResponse } from "@shared/wire";
+import { useRightPanelStore } from "@/rightPanelStore";
 import { threadFromSnapshot } from "@/stream/apply";
 import { useBridgeInfo, useThreadStore } from "@/stream/stores";
 import { thread, threadSnapshot } from "@/test/fixtures";
@@ -173,5 +174,28 @@ describe("FilesPanel", () => {
     server.use(http.get("/api/files/pane-folder", () => new HttpResponse("not found", { status: 404 })));
     render(<FilesPanel threadId="t1" />);
     expect(await screen.findByText(/Files isn't turned on/)).toBeInTheDocument();
+  });
+
+  it("opens a file asked for from elsewhere (openFile), once, for its own thread only", async () => {
+    act(() => useRightPanelStore.getState().openFile("t1", "proj/src/main.ts"));
+    render(<FilesPanel threadId="t1" />);
+    expect(await screen.findByText("export {};")).toBeInTheDocument();
+    expect(useRightPanelStore.getState().fileRequest).toBeNull();
+    // Another thread's request is left for that thread.
+    act(() => useRightPanelStore.getState().openFile("t2", "proj/a.txt"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByText("export {};")).toBeInTheDocument();
+    expect(useRightPanelStore.getState().fileRequest).toMatchObject({ threadId: "t2" });
+  });
+
+  it("opens a requested folder as the tree's base, and a request while editing asks first", async () => {
+    render(<FilesPanel threadId="t1" />);
+    fireEvent.click(await screen.findByRole("treeitem", { name: /a\.txt/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.change(screen.getByLabelText("Edit a.txt"), { target: { value: "changed" } });
+    act(() => useRightPanelStore.getState().openFile("t1", "proj/src", "dir"));
+    fireEvent.click(await screen.findByRole("button", { name: "Discard edits" }));
+    expect(await screen.findByRole("treeitem", { name: /main\.ts/ })).toBeInTheDocument();
+    expect(document.querySelector("[data-files-base]")).toHaveAttribute("data-files-base", "proj/src");
   });
 });
