@@ -320,7 +320,7 @@
       "upstream": "apps/web/src/components/ChatMarkdown.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "react-markdown + remark-gfm (+ remark-breaks); no Shiki, Mermaid, raw HTML, file links, images, citations; code-block Wrap lines toggle kept (starts on below sm)"
+      "note": "react-markdown + remark-gfm (+ remark-breaks); no Shiki, Mermaid, raw HTML, file links, images, citations; code-block Wrap lines toggle kept (starts on below sm unless Settings → Display → Code wrapping forces wrap or scroll)"
     },
     {
       "local": "src/session-logic.ts",
@@ -604,6 +604,41 @@
       "upstream": "apps/web/src/routes/settings.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "pattern"
+    },
+    {
+      "local": "src/components/settings/FoldedSettingsSection.tsx",
+      "upstream": "apps/web/src/components/settings/FoldedSettingsSection.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "inside header kept; no settings-search target, open state controlled by the caller (section chips open Advanced); outside header dropped"
+    },
+    {
+      "local": "src/components/settings/OpenSourceLicenses.tsx",
+      "upstream": "apps/web/src/components/settings/OpenSourceLicenses.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "no licence manifest: web2/THIRD_PARTY.md (the T3 MIT notice) bundled as text in a fold, link to the repo"
+    },
+    {
+      "local": "src/components/settings/SettingsNav.tsx",
+      "upstream": "apps/web/src/components/settings/SettingsSidebarNav.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "phone: sticky row of section chips with a scroll-spy mark, not a sidebar"
+    },
+    {
+      "local": "src/components/settings/NewThreadSettings.tsx",
+      "upstream": "apps/web/src/components/settings/ProjectDefaultsSettings.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "per-device default harness, model, effort and permission mode per harness from pickersFor(); bypass is never a default; model list UI after ProviderModelsSection"
+    },
+    {
+      "local": "src/components/new-thread/ThreadDefaults.logic.ts",
+      "upstream": "apps/web/src/components/settings/ProviderModelsSection.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "favourite, hide and add custom model ids per harness; no descriptor editor, no reorder"
     },
     {
       "local": "src/components/chat/threadFind.ts",
