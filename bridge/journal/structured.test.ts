@@ -195,7 +195,7 @@ describe("Claude fixture → turn items", () => {
     const entry = entries.find((e) => e.uuid === "c0000000-0000-4000-8000-000000000022")!;
     expect(entry.role).toBe("note");
     expect(isUserSpeech(entry)).toBe(false);
-    expect(byId(list, "c0000000-0000-4000-8000-000000000022:0")).toMatchObject({ type: "run_interrupt_result", message: "Interrupted" });
+    expect(byId(list, "c0000000-0000-4000-8000-000000000022:0")).toMatchObject({ type: "run_interrupt_result", message: "Stopped by the user" });
   });
 
   test("a usage-limit API error → error item, usage_limit, reset from resetsAt", () => {

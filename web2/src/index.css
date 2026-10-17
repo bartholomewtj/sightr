@@ -168,6 +168,9 @@
   --color-warning-surface: var(--warn-soft);
   --color-success: var(--ok);
   --color-success-foreground: var(--ok);
+  /* T3's diff stat colours (DiffStatLabel). */
+  --color-diff-addition: var(--ok);
+  --color-diff-deletion: var(--warn);
   --color-info: var(--navy);
   --color-info-foreground: var(--navy);
   --color-sidebar: var(--nav);

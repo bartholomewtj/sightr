@@ -64,7 +64,7 @@ export function isInterruptMarker(text: string): boolean {
 function interruptPart(text: string): TranscriptPart {
   return {
     kind: "text",
-    text: /tool use/i.test(text) ? "Interrupted during a tool call" : "Interrupted",
+    text: /tool use/i.test(text) ? "Stopped by the user during a tool call" : "Stopped by the user",
     notice: "interrupted",
   };
 }

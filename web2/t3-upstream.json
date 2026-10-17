@@ -277,9 +277,9 @@
     {
       "local": "src/components/chat/MessagesTimeline.tsx",
       "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
-      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list"
+      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list; db5919d87: event rows draw V2LifecycleRow and ProposedPlanCard, DiffStatLabel on file-change rows"
     },
     {
       "local": "src/components/chat/WorkLog.tsx",
@@ -311,9 +311,9 @@
     {
       "local": "src/components/chat/ToolItemDetail.tsx",
       "upstream": "apps/web/src/components/chat/V2ItemInspector.tsx",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "pattern",
-      "note": "an open tool row's call and output; inline output, 200-line cap"
+      "note": "an open tool row's call and output; inline output, 200-line cap; db5919d87: diff stat + copy, failed-edit error text, todo checklist, dynamic-tool args list"
     },
     {
       "local": "src/components/ChatMarkdown.tsx",
@@ -325,9 +325,9 @@
     {
       "local": "src/session-logic.ts",
       "upstream": "apps/web/src/session-logic.ts",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
-      "note": "turn items -> timeline entries / work-log entries; Sightr run-end notices and reasoning durations"
+      "note": "turn items -> timeline entries / work-log entries; Sightr run-end notices and reasoning durations; db5919d87: todo_list work rows, proposed_plan/subagent/run_interrupt_result/compaction as event rows, 'Fetched <url>' for page fetches"
     },
     {
       "local": "src/pendingUserInput.ts",
@@ -608,7 +608,7 @@
     {
       "local": "src/components/chat/threadFind.ts",
       "upstream": "apps/web/src/components/chat/threadFind.ts",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
       "note": "T19: T3's match shape, step and count helpers kept; in-memory search of the thread's items with v1's matcher and a fold/group reveal plan replace the server search"
     },
@@ -675,6 +675,40 @@
       "upstream": "apps/web/src/components/BranchToolbarEnvModeSelector.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "pattern"
+    },
+    {
+      "local": "src/components/chat/DiffStatLabel.tsx",
+      "upstream": "apps/web/src/components/chat/DiffStatLabel.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim",
+      "note": "+a -d stat; diff colours are index.css aliases"
+    },
+    {
+      "local": "src/components/chat/ProposedPlanCard.tsx",
+      "upstream": "apps/web/src/components/chat/ProposedPlanCard.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "plan card with collapse/expand and Copy; no download/save-to-workspace menu, no environment props"
+    },
+    {
+      "local": "src/components/chat/V2LifecycleRow.tsx",
+      "upstream": "apps/web/src/components/chat/V2LifecycleRow.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "run_interrupt_result divider, compaction divider with the summary behind a tap, subagent row (status dot, model/tokens/duration) opening in place instead of a child thread or hover card"
+    },
+    {
+      "local": "src/proposedPlan.ts",
+      "upstream": "apps/web/src/proposedPlan.ts",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "plan preview/export helpers; relative import of proposedPlanText"
+    },
+    {
+      "local": "src/t3/shared/proposedPlanText.ts",
+      "upstream": "packages/shared/src/proposedPlanText.ts",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim"
     }
   ],
   "decisions": [
