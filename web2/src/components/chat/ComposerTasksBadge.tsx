@@ -182,7 +182,8 @@ export function ComposerTasksSheet({
             </span>
           </SheetTitle>
         </SheetHeader>
-        <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-4">
+        {/* The rows' icon column is ComposerBanner.Root's variable; the sheet has no Root, so it sets it. */}
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-4 [--composer-banner-icon-column:--spacing(7)]">
           <ComposerTasksList progress={progress} steps={steps} />
         </div>
       </SheetPopup>
