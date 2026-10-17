@@ -306,3 +306,137 @@ export function orderRequestOptions(options: readonly RuntimeRequestOption[]): {
   const indexed = options.map((option, index) => ({ option, index }));
   return [...indexed.filter((o) => !o.option.destructive), ...indexed.filter((o) => o.option.destructive)];
 }
+
+// ── Permission mode (T08's live switch) ─────────────────────────────────────────────────────────
+
+/** One choice in the composer's mode menu: an id from the thread's capabilities, its label from the launch table. */
+export interface PermissionModeOption {
+  id: string;
+  label: string;
+  /** Needs a confirm step and `confirmBypass` (the bridge refuses it otherwise). */
+  destructive: boolean;
+}
+
+/**
+ * The modes the thread can switch to live, in the capability list's order, or null when it cannot
+ * switch (no flag, or no list). Labels and the destructive mark come from the harness's launch modes;
+ * an id the launch table does not name keeps its id as the label.
+ */
+export function permissionModeOptions(
+  caps: Thread["capabilities"] | undefined,
+  launchModes: readonly { id: string; label: string; destructive?: boolean }[] | null | undefined,
+): PermissionModeOption[] | null {
+  if (!caps?.canSwitchPermissionMode) return null;
+  const ids = caps.permissionModes ?? [];
+  if (ids.length === 0) return null;
+  return ids.map((id) => {
+    const known = launchModes?.find((m) => m.id === id);
+    return { id, label: known?.label ?? id, destructive: known?.destructive === true };
+  });
+}
+
+/**
+ * Why the mode cannot change right now, or null when it can. The bridge switches only a resting
+ * thread (idle or done) with nothing waiting on the operator; this says so before a tap, not after.
+ */
+export function permissionModeBlock(input: {
+  thread: Pick<Thread, "status" | "shelf"> | null;
+  hasRequest: boolean;
+  busy: boolean;
+  readOnly: boolean;
+  linkLost: boolean;
+}): string | null {
+  const { thread } = input;
+  if (!thread) return "Loading the thread…";
+  if (thread.shelf === "archived") return "The pane is gone.";
+  if (input.readOnly) return "This device is read-only.";
+  if (input.linkLost) return "Not connected.";
+  if (input.hasRequest || thread.status === "approval" || thread.status === "input") return "Answer the agent first.";
+  if (input.busy) return "Wait for the last command to finish.";
+  switch (thread.status) {
+    case "idle":
+    case "done":
+      return null;
+    case "working":
+      return "The agent is working. Change the mode when it stops.";
+    case "starting":
+      return "The agent is starting.";
+    default:
+      return "The agent is not at its prompt.";
+  }
+}
+
+/**
+ * The operator's words for a refused `thread.permissionMode.set` (bridge/threads/live-modes.ts codes).
+ * `shown` is the mode the footer last showed when keys went out; `labelOf` names it.
+ */
+export function permissionModeRefusalText(error: string | undefined, shown: string | undefined, labelOf: (id: string) => string): string {
+  const now = shown ? ` It is now in ${labelOf(shown)}.` : "";
+  switch (error) {
+    case "thread-busy":
+      return "The agent is working. Change the mode when it stops.";
+    case "needs-response":
+      return "The agent is waiting for an answer first.";
+    case "thread-archived":
+    case "pane-gone":
+      return "The pane is gone.";
+    case "permission-mode-unsupported":
+      return "This agent's mode cannot be changed from Sightr.";
+    case "invalid-mode":
+      return "The bridge does not know that mode.";
+    case "bypass-needs-confirm":
+      return "The bridge needs the bypass confirmed.";
+    case "blocked":
+      return `The agent's input box was not on screen, so Sightr stopped.${now || " Nothing changed."}`;
+    case "unknown-mode":
+      return `Sightr could not read the mode from the agent's footer.${now} Check the Terminal.`;
+    case "mode-not-reached":
+      return `The mode did not come up after cycling.${now}`;
+    case "bypass-reached":
+      return `Sightr stopped at Bypass permissions on the way and pressed nothing more.${now} Pick a mode again.`;
+    default:
+      return error ? `The mode did not change: ${error}.` : "The mode did not change.";
+  }
+}
+
+// ── Prompt length ───────────────────────────────────────────────────────────────────────────────
+
+/** The line under the box once the text reaches the cap (the box stops taking more there). */
+export function promptLengthMessage(text: string, max = MAX_COMPOSER_CHARS): string | null {
+  return text.length >= max ? `At the ${Math.round(max / 1024)} KB limit. Attach longer text as a file.` : null;
+}
+
+// ── Status line ─────────────────────────────────────────────────────────────────────────────────
+
+/** "just now", "12m ago", "3h ago", "2d ago". */
+export function agoLabel(at: number, now: number): string {
+  const ms = now - at;
+  if (!Number.isFinite(ms) || ms < 60_000) return "just now";
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
+  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`;
+  return `${Math.floor(ms / 86_400_000)}d ago`;
+}
+
+export type ThreadStatusLineState =
+  | { kind: "snoozed"; label: string; actionLabel: "Wake now"; command: "thread.unsnooze" }
+  | { kind: "settled"; label: string; actionLabel: "Un-settle"; command: "thread.unsettle" };
+
+/**
+ * T3's ThreadStatusLine rows that Sightr has data for: a snoozed thread (wakes in …) and a settled one
+ * (settled … ago). Sightr keeps no "woke from snooze" acknowledgement, so that row is not here.
+ */
+export function threadStatusLine(
+  thread: Pick<Thread, "shelf" | "snoozedUntil" | "settledAt"> | null,
+  now: number,
+  wakeLabel: (until: number, now: number) => string,
+): ThreadStatusLineState | null {
+  if (!thread) return null;
+  if (thread.shelf === "snoozed" && thread.snoozedUntil !== undefined && thread.snoozedUntil > now) {
+    return { kind: "snoozed", label: `Snoozed, wakes in ${wakeLabel(thread.snoozedUntil, now)}`, actionLabel: "Wake now", command: "thread.unsnooze" };
+  }
+  if (thread.shelf === "settled") {
+    const label = thread.settledAt !== undefined ? `Settled ${agoLabel(thread.settledAt, now)}` : "Settled";
+    return { kind: "settled", label, actionLabel: "Un-settle", command: "thread.unsettle" };
+  }
+  return null;
+}

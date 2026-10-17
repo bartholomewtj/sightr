@@ -463,6 +463,57 @@
       "note": "plain ARIA listbox for the slash trigger; T3's item/option-id shape; no ui/command"
     },
     {
+      "local": "src/components/chat/ComposerControl.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerControl.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/chat/CompactComposerControlsMenu.tsx",
+      "upstream": "apps/web/src/components/chat/CompactComposerControlsMenu.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "Access radio only, from capabilities.permissionModes (T08 live switch); trigger names the mode; bypass confirm lives in ChatComposer"
+    },
+    {
+      "local": "src/components/chat/ComposerImageThumbnail.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerImageThumbnail.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/lib/imageCompression.ts",
+      "upstream": "apps/web/src/lib/imageCompression.ts",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "thumbnail path only (createComposerImageThumbnail and its canvas helpers); no recompression budget"
+    },
+    {
+      "local": "src/components/chat/ZoomableImage.tsx",
+      "upstream": "apps/web/src/components/chat/ZoomableImage.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/chat/ExpandedImageDialog.tsx",
+      "upstream": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "staged composer images only: no video, assets, SnapShot, MediaActions or atom host; touch swipe pages"
+    },
+    {
+      "local": "src/components/chat/ComposerPromptLengthValidation.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerPromptLengthValidation.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/chat/ThreadStatusLine.tsx",
+      "upstream": "apps/web/src/components/chat/ThreadStatusLine.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim"
+    },
+    {
       "local": "src/t3/client-runtime/state/composerDispatch.ts",
       "upstream": "packages/client-runtime/src/state/composerDispatch.ts",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",

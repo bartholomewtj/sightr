@@ -10,18 +10,23 @@
  */
 import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent } from "react";
 import {
+  AlarmClockIcon,
+  CircleCheckIcon,
+  ImageIcon,
   KeyboardIcon,
   Loader2Icon,
   LockIcon,
   PaperclipIcon,
   PencilIcon,
   RotateCwIcon,
+  ShieldAlertIcon,
   ServerOffIcon,
   TriangleAlertIcon,
   WifiOffIcon,
   XIcon,
 } from "lucide-react";
 
+import { launchFor } from "@shared/agents";
 import type { QueuedMessage, RuntimeRequest } from "@shared/v2/contracts";
 import { commandsFor } from "@v1/lib/agent-commands";
 import { isDestructiveInput } from "@v1/lib/destructive";
@@ -36,9 +41,11 @@ import { sendKeys } from "@/lib/api";
 import { loadDraft, saveDraft } from "@/lib/drafts";
 import { useOperatorCommands, useOperatorKeys } from "@/lib/operator-commands";
 import { useShortcutHandler } from "@/shortcutHandlers";
-import { useSidebarThread } from "@/state/sidebar";
+import { snoozeWakeLabel } from "@/components/Sidebar.snooze";
+import { performThreadCommand, useSidebarThread } from "@/state/sidebar";
 import {
   addAttachments,
+  attachmentFile,
   dispatchMessage,
   endQueuedEdit,
   getThreadComposer,
@@ -50,12 +57,14 @@ import {
   retryAttachment,
   saveQueuedEdit,
   sentMessage,
+  setPermissionMode,
   settleUploads,
   startQueuedEdit,
   useComposerSettings,
   useThreadComposer,
   type AttachmentChip,
 } from "@/state/composer";
+import { V2CommandError } from "@/stream/commands";
 import { useBridgeInfo, useStreamHealth, useThread } from "@/stream/stores";
 import { Button } from "../ui/button";
 import {
@@ -64,12 +73,22 @@ import {
   isCompacting,
   isLargePaste,
   MAX_COMPOSER_CHARS,
+  permissionModeBlock,
+  permissionModeOptions,
+  permissionModeRefusalText,
+  promptLengthMessage,
   resolveComposerButtons,
   resolveEnterAction,
   slashQuery,
+  threadStatusLine,
   wantsEditNewest,
   workingMode,
 } from "./ChatComposer.logic";
+import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
+import { ComposerImageThumbnail } from "./ComposerImageThumbnail";
+import { ComposerPromptLengthValidation } from "./ComposerPromptLengthValidation";
+import { ExpandedImageDialog, type ExpandedImagePreview } from "./ExpandedImageDialog";
+import { ThreadStatusLine } from "./ThreadStatusLine";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./ComposerBannerStack";
 import { ComposerCommandMenu, composerSuggestionOptionId, toCommandItems, type ComposerCommandItem } from "./ComposerCommandMenu";
 import { ComposerDecisionPanel } from "./ComposerDecisionPanel";
@@ -128,6 +147,18 @@ function useCoarsePointer(): boolean {
     return () => mql.removeEventListener("change", on);
   }, []);
   return coarse;
+}
+
+/** The wall clock, to the half minute, while `on` (a status line that reads the clock redraws as time passes). */
+function useMinuteClock(on: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!on) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [on]);
+  return now;
 }
 
 /** Ctrl/⌘ held anywhere on the page (T3's shortcut modifier state), for the live Queue/Steer label. */
@@ -194,6 +225,9 @@ export function ChatComposer({ threadId }: { threadId: string }) {
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [armedCommand, setArmedCommand] = useState<string | null>(null);
   const [dismissedRun, setDismissedRun] = useState<string | null>(null);
+  /** A destructive permission mode picked from the menu, waiting for its confirm tap. */
+  const [confirmMode, setConfirmMode] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<ExpandedImagePreview | null>(null);
   const listId = useId();
 
   const editing = composer.editing;
@@ -220,7 +254,7 @@ export function ChatComposer({ threadId }: { threadId: string }) {
     hasText: hasContent,
     followUp,
     editing: editing !== null,
-    busy: composer.busy === "send" || composer.busy === "edit",
+    busy: composer.busy === "send" || composer.busy === "edit" || composer.busy === "mode",
     linkLost,
     readOnly,
     uploading,
@@ -228,6 +262,68 @@ export function ChatComposer({ threadId }: { threadId: string }) {
   };
   const buttons = resolveComposerButtons({ ...buttonInput, alternate });
   const canSteerQueued = thread?.status === "working" && workingMode("steer", false, thread.capabilities, canSteer) === "steer";
+
+  // ── Permission mode (T08): only when the thread's flags offer a live switch ──
+  const harness = thread?.harness;
+  const capabilities = thread?.capabilities;
+  const modeOptions = useMemo(
+    () => permissionModeOptions(capabilities, harness ? launchFor(harness)?.modes : undefined),
+    [capabilities, harness],
+  );
+  const modeLabel = (id: string) => modeOptions?.find((o) => o.id === id)?.label ?? id;
+  const modeBlocked = permissionModeBlock({
+    thread,
+    hasRequest: request !== null,
+    busy: composer.busy !== null,
+    readOnly,
+    linkLost,
+  });
+  const describeModeRefusal = (err: unknown) =>
+    err instanceof V2CommandError
+      ? permissionModeRefusalText(err.body?.error, typeof err.body?.shown === "string" ? err.body.shown : undefined, modeLabel)
+      : err instanceof Error && err.message
+        ? err.message
+        : "Could not reach the bridge.";
+  function pickMode(mode: string): void {
+    const option = modeOptions?.find((o) => o.id === mode);
+    if (!option || modeBlocked) return;
+    if (option.destructive) {
+      setConfirmMode(mode);
+      return;
+    }
+    setConfirmMode(null);
+    void setPermissionMode(threadId, mode, { describe: describeModeRefusal });
+  }
+  function confirmDestructiveMode(): void {
+    const mode = confirmMode;
+    setConfirmMode(null);
+    if (!mode || modeBlocked) return;
+    void setPermissionMode(threadId, mode, { confirmBypass: true, describe: describeModeRefusal });
+  }
+
+  // ── Snoozed / settled line (T3's ThreadStatusLine) ──
+  const restingShelf = thread?.shelf === "snoozed" || thread?.shelf === "settled";
+  const clock = useMinuteClock(restingShelf);
+  const statusLine = threadStatusLine(thread, clock, snoozeWakeLabel);
+  const lengthMessage = promptLengthMessage(text);
+
+  function openImage(chipId: string): void {
+    const images = composer.attachments.filter((c) => c.image);
+    const index = images.findIndex((c) => c.id === chipId);
+    if (index < 0) return;
+    // Object URLs for the open viewer only; revoked when it closes.
+    const urls = images.map((c) => {
+      const file = attachmentFile(c.id);
+      return { src: file && typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : null, name: c.name };
+    });
+    setExpanded({ images: urls, index });
+  }
+  function closeImage(): void {
+    setExpanded((open) => {
+      for (const image of open?.images ?? []) if (image.src) URL.revokeObjectURL(image.src);
+      return null;
+    });
+  }
 
   // ── Autosize: grow to eight lines (less when the keyboard leaves little room), then scroll ──
   useEffect(() => {
@@ -570,6 +666,15 @@ export function ChatComposer({ threadId }: { threadId: string }) {
         {announce}
       </div>
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-1.5">
+        {statusLine ? (
+          <ThreadStatusLine
+            icon={statusLine.kind === "snoozed" ? <AlarmClockIcon aria-hidden="true" /> : <CircleCheckIcon aria-hidden="true" />}
+            label={statusLine.label}
+            actionLabel={statusLine.actionLabel}
+            actionDisabled={readOnly || linkLost}
+            onAction={() => void performThreadCommand({ type: statusLine.command, threadId })}
+          />
+        ) : null}
         <ComposerBannerStack items={banners} />
         <QueuedRunsControl
           ref={queueRef}
@@ -643,6 +748,25 @@ export function ChatComposer({ threadId }: { threadId: string }) {
                 onSelect={pickCommand}
               />
             ) : null}
+            {confirmMode !== null ? (
+              <div
+                role="alertdialog"
+                aria-label="Confirm the permission mode"
+                className="flex flex-wrap items-center gap-2 rounded-xl border border-destructive/40 bg-error-surface px-3 py-2 text-sm"
+              >
+                <ShieldAlertIcon className="size-4 shrink-0 text-destructive" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  {modeLabel(confirmMode)}: the agent runs every tool without asking you first.
+                  {modeBlocked ? <span className="block text-xs text-muted-foreground">{modeBlocked}</span> : null}
+                </span>
+                <Button size="sm" variant="destructive" className="pointer-coarse:min-h-11" disabled={modeBlocked !== null} onClick={confirmDestructiveMode}>
+                  Switch to {modeLabel(confirmMode)}
+                </Button>
+                <Button size="sm" variant="outline" className="pointer-coarse:min-h-11" onClick={() => setConfirmMode(null)}>
+                  Cancel
+                </Button>
+              </div>
+            ) : null}
             {pendingPaste !== null ? (
               <div role="alertdialog" aria-label="Large paste" className="flex flex-wrap items-center gap-2 rounded-xl border bg-card px-3 py-2 text-sm">
                 <span className="flex-1">
@@ -689,6 +813,7 @@ export function ChatComposer({ threadId }: { threadId: string }) {
                   <AttachmentChipView
                     key={chip.id}
                     chip={chip}
+                    onOpen={chip.image ? () => openImage(chip.id) : undefined}
                     onRetry={() => retryAttachment(threadId, paneId, chip.id)}
                     onRemove={() => removeAttachment(threadId, chip.id)}
                   />
@@ -723,6 +848,7 @@ export function ChatComposer({ threadId }: { threadId: string }) {
                   setTyping(false);
                 }}
               />
+              <ComposerPromptLengthValidation message={lengthMessage} />
               {statusText && layout === "phone" ? (
                 // Phone: the toolbar has no room left for it, so the hint gets its own line.
                 <p className="px-3 pb-0.5 text-xs text-muted-foreground" aria-live="polite" data-composer-status="">
@@ -764,6 +890,16 @@ export function ChatComposer({ threadId }: { threadId: string }) {
                     <KeyboardIcon />
                   </Button>
                 ) : null}
+                {modeOptions ? (
+                  <CompactComposerControlsMenu
+                    runtimeMode={thread?.permissionMode}
+                    runtimeModeOptions={modeOptions}
+                    blockedReason={composer.busy === "mode" ? null : modeBlocked}
+                    switching={composer.busy === "mode"}
+                    size={layout === "phone" ? "xs" : "sm"}
+                    onRuntimeModeChange={pickMode}
+                  />
+                ) : null}
                 <span className="min-w-0 flex-1 truncate px-1 text-xs text-muted-foreground" aria-live={layout === "phone" ? undefined : "polite"}>
                   {layout === "phone" ? "" : statusText}
                 </span>
@@ -796,11 +932,24 @@ export function ChatComposer({ threadId }: { threadId: string }) {
           </>
         )}
       </div>
+      {expanded ? <ExpandedImageDialog preview={expanded} onClose={closeImage} /> : null}
     </div>
   );
 }
 
-function AttachmentChipView({ chip, onRetry, onRemove }: { chip: AttachmentChip; onRetry: () => void; onRemove: () => void }) {
+function AttachmentChipView({
+  chip,
+  onOpen,
+  onRetry,
+  onRemove,
+}: {
+  chip: AttachmentChip;
+  /** An image chip: a thumbnail that opens the viewer. */
+  onOpen?: (() => void) | undefined;
+  onRetry: () => void;
+  onRemove: () => void;
+}) {
+  const file = chip.image ? attachmentFile(chip.id) : undefined;
   return (
     <li
       data-attachment-status={chip.status}
@@ -809,6 +958,22 @@ function AttachmentChipView({ chip, onRetry, onRemove }: { chip: AttachmentChip;
         chip.status === "failed" && "border-destructive/40 bg-error-surface text-destructive",
       )}
     >
+      {file && onOpen ? (
+        <button
+          type="button"
+          aria-label={`View ${chip.name}`}
+          data-attachment-thumbnail=""
+          className="relative -my-0.5 -ms-1.5 size-8 shrink-0 overflow-hidden rounded-md bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:after:absolute pointer-coarse:after:-inset-1.5"
+          onClick={onOpen}
+        >
+          <ComposerImageThumbnail
+            file={file}
+            alt=""
+            className="size-full object-cover"
+            fallback={<ImageIcon className="m-auto size-4 text-muted-foreground" aria-hidden="true" />}
+          />
+        </button>
+      ) : null}
       {chip.status === "uploading" ? <Loader2Icon className="size-3 animate-spin" aria-label="Uploading" /> : null}
       <span className="min-w-0 truncate" title={chip.error ?? chip.name}>
         {chip.name}
