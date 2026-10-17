@@ -59,7 +59,7 @@ weekly review ──► one GitHub issue ──► /t3-sync confirm ──► sy
      It keeps the body under GitHub's limit and puts long tables in follow-up comments.
    - **One open issue at a time.** A later week comments on the open issue and moves its title to the new sha.
    - **Quiet weeks** produce nothing. The routine never edits the repo, and sends a phone push when it files an issue or fails to.
-   - **Login.** The routine authenticates `gh` from a `GH_TOKEN` set on its cloud environment: a fine-grained token, sightr only, Issues read and write.
+   - **GitHub access.** No token is needed. Cloud sessions reach GitHub through Anthropic's proxy, using the connected GitHub account (`GH_TOKEN` reads `proxy-injected`). The proxy blocks GraphQL, so `gh issue` and `gh label` fail; the routine uses REST through `gh api` (`repos/bartholomewtj/sightr/issues`, `/comments`, `/labels`).
 2. **Confirm (`/t3-sync`, on the PC).** The ClaudeOS skill reads the open `t3-sync` review and spot-checks its verdicts against the code. Where no review exists, it runs the checker itself with `--diff` and does the triage. The buckets both use:
 
    | Bucket | Meaning | Default action |
