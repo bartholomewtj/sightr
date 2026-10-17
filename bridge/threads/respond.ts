@@ -1,4 +1,5 @@
 import type { RuntimeRequest } from "../../shared/v2/contracts.ts";
+import { sanitizeFreeText } from "../../shared/v2/request-question.ts";
 import {
   defaultSleep,
   multiSelectApplyRecipe,
@@ -7,13 +8,14 @@ import {
   type RecipeResult,
 } from "../../web/src/lib/dialog-recipes.ts";
 import type { DialogKind, DialogModels } from "../../web/src/lib/harness/dialog-contract.ts";
-import { dialogModel, dialogRegion } from "../../web/src/lib/harness/dialog-kit.ts";
+import { dialogModel, dialogRegion, freeTextModel } from "../../web/src/lib/harness/dialog-kit.ts";
 import { SILENT_AUDIT, type AuditDetail, type AuditLog } from "../audit.ts";
 import type { Config } from "../config.ts";
 import type { HerdrClient } from "../herdr-client.ts";
 import { paneKey, PaneBusyError, type PaneQueue } from "../pane-queue.ts";
 import { checkPromptBinding, sendKeysPaced, type SleepFn } from "../pane-write-routes.ts";
 import { failureText } from "../responses.ts";
+import { freeTextRecipe, type FreeTextResult } from "./free-text.ts";
 import { requestEvents } from "./request-items.ts";
 import type { ThreadStore } from "./store.ts";
 
@@ -30,6 +32,9 @@ import type { ThreadStore } from "./store.ts";
 //     state differs from the wanted set, verifying each flip, then the harness's submit walk.
 // Each re-read parses the screen through the thread's adapter (dialog-kit `dialogModel`). A read that
 // shows anything else stops the recipe before its next key, and the request expires as stale.
+//
+// A `freeText` question also takes `text`: the operator's own answer, typed into the dialog's
+// free-text row by free-text.ts in the same pane-queue turn (open the row, type, verify, Enter).
 
 /** Rows of the viewport a dialog read takes (the request ingest reads the same). */
 export const DIALOG_READ_LINES = 60;
@@ -44,6 +49,8 @@ export interface RespondCommand {
   requestId: string;
   optionIndex?: number;
   optionIndices?: number[];
+  /** A `freeText` question's own answer. */
+  text?: string;
 }
 
 export interface RespondDeps {
@@ -71,6 +78,13 @@ const fail = (code: RespondCode, reason: string): RespondResult => ({ ok: false,
 /** Why `request` cannot take this answer, or null when it can. */
 function invalidAnswer(request: RuntimeRequest, command: RespondCommand): RespondResult | null {
   if (request.via === "whistlr") return fail("invalid", "whistlr-card");
+  if (command.text !== undefined) {
+    if (command.optionIndex !== undefined || command.optionIndices !== undefined) return fail("invalid", "both-answers");
+    if (typeof command.text !== "string") return fail("invalid", "bad-text");
+    if (request.kind !== "question" || request.freeText !== true) return fail("invalid", "no-free-text");
+    if (sanitizeFreeText(command.text) === "") return fail("invalid", "empty-text");
+    return null;
+  }
   const boxes = request.multiSelect?.checked.length ?? 0;
   if (command.optionIndices !== undefined) {
     if (!request.multiSelect) return fail("invalid", "not-multi-select");
@@ -97,7 +111,8 @@ function invalidAnswer(request: RuntimeRequest, command: RespondCommand): Respon
 }
 
 /** Which recipe answers `request` with `command`, or null for T04's one key list. */
-function recipeKind(request: RuntimeRequest, command: RespondCommand): "multi-select" | "preview-select" | null {
+function recipeKind(request: RuntimeRequest, command: RespondCommand): "free-text" | "multi-select" | "preview-select" | null {
+  if (command.text !== undefined) return "free-text";
   if (command.optionIndices !== undefined) return "multi-select";
   if (request.preview) return "preview-select";
   return null;
@@ -150,7 +165,53 @@ export function createRespondHandler(deps: RespondDeps): RespondHandler {
           return fail("prompt-changed", "prompt changed");
         };
 
-        if (recipe !== null) {
+        if (recipe === "free-text") {
+          const text = sanitizeFreeText(command.text!);
+          const sent: string[] = [];
+          let outcome: FreeTextResult;
+          try {
+            outcome = await freeTextRecipe(
+              {
+                read: async () => freeTextModel(agent, (await herdr.readPane(paneId, "visible", DIALOG_READ_LINES, "ansi")).text),
+                send: async (toSend) => {
+                  try {
+                    await sendKeysPaced(herdr, paneId, toSend, deps.sleep);
+                  } catch (err) {
+                    return { status: "error", error: failureText("key send", err) };
+                  }
+                  sent.push(...toSend);
+                  return { status: "sent" };
+                },
+                type: async (typed) => {
+                  try {
+                    await herdr.sendPaneText(paneId, typed);
+                  } catch (err) {
+                    return { status: "error", error: failureText("text send", err) };
+                  }
+                  return { status: "sent" };
+                },
+                sleep,
+              },
+              text,
+            );
+          } catch (err) {
+            outcome = { status: "error", error: failureText("herdr read", err) };
+          }
+          audit.record({
+            action: "keys",
+            paneId,
+            detail: {
+              keys: sent,
+              text,
+              recipe,
+              ...(outcome.status === "sent" ? {} : { sent: false }),
+              ...(outcome.typed ? { textDelivered: true } : {}),
+              promptBinding: binding.audit,
+            },
+          });
+          if (outcome.status === "changed") return expire();
+          if (outcome.status === "error") return fail("failed", outcome.error);
+        } else if (recipe !== null) {
           // T17: the closed-loop recipes. Every key follows a fresh read parsed through the
           // thread's adapter; the keys that went out are audited whatever the outcome.
           const sent: string[] = [];
@@ -174,7 +235,7 @@ export function createRespondHandler(deps: RespondDeps): RespondHandler {
           let outcome: RecipeResult;
           try {
             // The screen the binding just passed must still parse to this request's dialog.
-            const kindIO = io(recipe);
+            const kindIO = io(recipe as "multi-select" | "preview-select");
             const tapped = await kindIO.read();
             if (!tapped || dialogRegion(recipe, tapped) !== boundText) {
               outcome = { status: "changed" };
@@ -216,7 +277,12 @@ export function createRespondHandler(deps: RespondDeps): RespondHandler {
           audit.record({ action: "keys", paneId, detail: { keys, promptBinding: binding.audit } });
         }
 
-        const answer = optionIndices !== undefined ? { optionIndices: [...optionIndices].sort((a, b) => a - b) } : { optionIndex: optionIndex! };
+        const answer =
+          command.text !== undefined
+            ? { customAnswer: sanitizeFreeText(command.text) }
+            : optionIndices !== undefined
+              ? { optionIndices: [...optionIndices].sort((a, b) => a - b) }
+              : { optionIndex: optionIndex! };
         const resolved: RuntimeRequest = { ...current, status: "resolved", ...answer, updatedAt: now() };
         const { last } = store.append(requestEvents(resolved), {
           ...(opts.commandId !== undefined

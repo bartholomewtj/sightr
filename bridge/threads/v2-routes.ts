@@ -111,6 +111,7 @@ export function respondEffect(respond: RespondHandler): EffectHandler {
         requestId: command.requestId,
         ...(command.optionIndex !== undefined ? { optionIndex: command.optionIndex } : {}),
         ...(command.optionIndices !== undefined ? { optionIndices: command.optionIndices } : {}),
+        ...(command.text !== undefined ? { text: command.text } : {}),
       },
       { commandId: ctx.commandId, receiptResult: ctx.receipt.result },
     );
@@ -211,7 +212,7 @@ export function commandHash(body: Record<string, unknown>): string {
   return createHash("sha256").update(stable(rest)).digest("hex");
 }
 
-type FieldKind = "string" | "number" | "number?" | "numbers?";
+type FieldKind = "string" | "string?" | "number" | "number?" | "numbers?";
 
 /** Field shapes for the commands this slice runs; effect handlers check their own. */
 const COMMAND_FIELDS: Partial<Record<CommandType, Record<string, FieldKind>>> = {
@@ -226,7 +227,7 @@ const COMMAND_FIELDS: Partial<Record<CommandType, Record<string, FieldKind>>> = 
   "thread.markRead": { threadId: "string" },
   "thread.markUnread": { threadId: "string" },
   "project.rename": { projectId: "string", label: "string" },
-  "runtime-request.respond": { requestId: "string", optionIndex: "number?", optionIndices: "numbers?" },
+  "runtime-request.respond": { requestId: "string", optionIndex: "number?", optionIndices: "numbers?", text: "string?" },
 };
 
 /** Why `body` is not a well-formed `type` command, or null. */
@@ -238,7 +239,9 @@ export function invalidFields(type: CommandType, body: Record<string, unknown>):
     const ok =
       kind === "string"
         ? typeof v === "string" && v.length > 0
-        : kind === "number"
+        : kind === "string?"
+          ? v === undefined || typeof v === "string"
+          : kind === "number"
           ? typeof v === "number" && Number.isFinite(v)
           : kind === "number?"
             ? v === undefined || (typeof v === "number" && Number.isFinite(v))

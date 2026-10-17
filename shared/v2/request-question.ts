@@ -26,8 +26,26 @@ export function requestBoxCount(request: Pick<RuntimeRequest, "multiSelect">): n
   return request.multiSelect?.checked.length ?? 0;
 }
 
+/**
+ * The longest answer the bridge types into a free-text row (`runtime-request.respond` `text`). A
+ * longer value wraps the dialog past what its grammar reads on a narrow pane (v1's FEEDBACK_MAX_LENGTH).
+ */
+export const FREE_TEXT_MAX_CHARS = 240;
+
+/**
+ * A typed answer as the bridge sends it: whitespace runs (newlines included) become one space, and
+ * control characters (ESC would cancel the dialog) are dropped. Empty means nothing to send.
+ */
+export function sanitizeFreeText(text: string): string {
+  return text
+    .replace(/\s+/g, " ")
+    .replace(/\p{Cc}/gu, "")
+    .trim()
+    .slice(0, FREE_TEXT_MAX_CHARS);
+}
+
 export function requestQuestion(
-  request: Pick<RuntimeRequest, "prompt" | "options" | "steps" | "multiSelect" | "answers">,
+  request: Pick<RuntimeRequest, "prompt" | "options" | "steps" | "multiSelect" | "answers" | "freeText">,
 ): UserInputQuestion {
   const steps = request.steps ?? [];
   const current = steps.findIndex((s) => s.current);
@@ -43,5 +61,6 @@ export function requestQuestion(
       value: requestOptionValue(i),
     })),
     ...(boxes > 0 ? { multiSelect: true } : {}),
+    ...(request.freeText ? { allowCustomAnswer: true } : {}),
   };
 }

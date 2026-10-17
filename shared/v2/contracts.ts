@@ -459,6 +459,13 @@ export interface RuntimeRequest {
   preview?: { optionIndex: number; lines: string[] };
   /** T17: the echoed answers on a wizard or multi-select review step. */
   answers?: { question: string; answer: string }[];
+  /**
+   * The question has an empty free-text row ("Type something.") the bridge can type into: answer it
+   * with `runtime-request.respond` `text`. T3's `allowCustomAnswer` on the request's question.
+   */
+  freeText?: boolean;
+  /** The typed answer, once resolved with `text` (T3's `customAnswer`). */
+  customAnswer?: string;
 }
 
 /** One chip of a multi-question ask's stepper (v1's `WizardStepChip`). */
@@ -543,6 +550,8 @@ export type Command =
       requestId: string;
       optionIndex?: number;
       optionIndices?: number[];
+      /** The operator's own answer, typed into a `freeText` request's row (instead of an option). */
+      text?: string;
     })
   | (CommandBase & { type: "thread.permissionMode.set"; threadId: string; mode: string; confirmBypass?: boolean })
   | (CommandBase & { type: "thread.model.set"; threadId: string; model: string })
