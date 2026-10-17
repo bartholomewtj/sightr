@@ -2,6 +2,7 @@ import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { LockPrompt } from "@/components/LockPrompt";
+import { ThreadNotificationCoordinator } from "@/components/ThreadNotificationCoordinator";
 import { useNavTrail } from "@/components/shell/BackToThreads";
 import { ConnectionBanner } from "@/components/shell/ConnectionBanner";
 import { V2Unavailable } from "@/components/shell/V2Unavailable";
@@ -51,6 +52,7 @@ function OpenShell() {
         <Outlet />
       </div>
       <ToastStack />
+      <ThreadNotificationCoordinator />
     </div>
   );
 }
