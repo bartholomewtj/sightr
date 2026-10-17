@@ -2,7 +2,9 @@
  * Sightr v2 contracts: the domain, the commands and the events the bridge and `web2/` share.
  *
  * Turn-item and thread shapes mirror T3 Code's OrchestrationV2 contracts (upstream commit e3b35d1b)
- * so T3 UI components can be adapted; keep names aligned when T3 changes.
+ * so T3 UI components can be adapted; keep names aligned when T3 changes. The `proposed_plan`,
+ * `todo_list`, `subagent`, `run_interrupt_result` and `compaction` items, `PlanStep` and
+ * `Thread.contextUsage` follow T3 at db5919d87.
  *
  * Differences from T3 that are on purpose:
  * - Times are epoch milliseconds (numbers), as everywhere else in Sightr. T3 sends ISO date strings.
@@ -137,6 +139,25 @@ export interface Thread {
   /** Last confirmed value (T08). */
   permissionMode?: string;
   model?: string;
+  /**
+   * T3's `OrchestrationV2AppThread.contextUsage`: the context the agent last reported using, read
+   * from the newest assistant usage in the journal. Absent when the harness records none.
+   */
+  contextUsage?: ThreadTokenUsageSnapshot;
+}
+
+/**
+ * T3's `ThreadTokenUsageSnapshot` (packages/contracts/src/providerRuntime.ts), cut to the fields a
+ * journal can fill. `maxTokens` stays unset when the window is not known.
+ */
+export interface ThreadTokenUsageSnapshot {
+  usedTokens: number;
+  totalProcessedTokens?: number;
+  maxTokens?: number;
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
+  cost?: { amount: number; currency: string };
 }
 
 /** T3's `OrchestrationV2RunStatus`, cut to the four a status-watched pane can produce. */
@@ -196,6 +217,14 @@ export interface WebSearchResult {
   title?: string;
   url?: string;
   snippet?: string;
+}
+
+/** T3's `OrchestrationV2PlanStep` (`durationAnchorAt` left out: no source fills it). */
+export interface PlanStep {
+  id: string;
+  text: string;
+  status: "pending" | "running" | "completed";
+  durationMs?: number;
 }
 
 /** T3's `ProviderRequestKind`. */
@@ -283,6 +312,10 @@ export type TurnItem =
       streaming: boolean;
     })
   | (TurnItemBase & { type: "reasoning"; text: string; streaming: boolean })
+  /** T3's `proposed_plan`: a plan the agent put forward (Claude's ExitPlanMode). */
+  | (TurnItemBase & { type: "proposed_plan"; planId: string; markdown: string; streaming: boolean })
+  /** T3's `todo_list`: the agent's task list as of this call (Claude TodoWrite, Pi `todo`). */
+  | (TurnItemBase & { type: "todo_list"; planId: string; steps: PlanStep[]; explanation?: string })
   | (TurnItemBase & {
       type: "command_execution";
       input: string;
@@ -299,15 +332,55 @@ export type TurnItem =
       diffStr?: string;
       oldStr?: string;
       newStr?: string;
+      /** Sightr: the tool's own error text when the change failed (T3 shows only `diffStr`). */
+      errorText?: string;
     })
-  | (TurnItemBase & { type: "file_search"; pattern?: string; results?: FileSearchResult[] })
-  | (TurnItemBase & { type: "web_search"; patterns?: string[]; results?: WebSearchResult[] })
+  | (TurnItemBase & {
+      type: "file_search";
+      pattern?: string;
+      results?: FileSearchResult[];
+      /** Sightr: the tool's own error text when the search failed. */
+      errorText?: string;
+    })
+  | (TurnItemBase & {
+      type: "web_search";
+      patterns?: string[];
+      results?: WebSearchResult[];
+      /** Sightr: the tool's own error text when the search or fetch failed. */
+      errorText?: string;
+    })
   | (TurnItemBase & {
       type: "dynamic_tool";
       toolName: string | null;
+      /** Sightr: the journal's one-line summary of the call (a path, a description). */
       input: unknown;
       output?: unknown;
       outputOmitted?: boolean;
+      /** Sightr: the call's own arguments, capped (the item's `truncated` says when they were cut). */
+      rawInput?: unknown;
+    })
+  /**
+   * T3's `subagent`: a child agent the harness ran (Claude `Agent`, Pi `subagent`). Sightr's journals
+   * know no child thread, so `childThreadId` is null; `driver` and `providerInstanceId` are the harness.
+   */
+  | (TurnItemBase & {
+      type: "subagent";
+      subagentId: string;
+      origin: "provider_native" | "app_owned";
+      driver: string;
+      providerInstanceId: string;
+      childThreadId: string | null;
+      prompt: string;
+      progress?: string;
+      result: string | null;
+      /** Sightr: T3 reads these from its `OrchestrationV2Subagent` record, which a journal has no counterpart for. */
+      model?: string | null;
+      /** Sightr: the harness's own status word (`completed`, `running`, `background`, `async_launched`, …). */
+      agentStatus?: string;
+      durationMs?: number;
+      /** Sightr: the harness's token count, as it formats it ("94.1k") or as a number string. */
+      tokens?: string;
+      toolUses?: number;
     })
   | (TurnItemBase & {
       type: "approval_request";
@@ -317,8 +390,18 @@ export type TurnItem =
       options?: ApprovalOption[];
     })
   | (TurnItemBase & { type: "user_input_request"; requestId: string; questions: UserInputQuestion[] })
+  /** T3's `run_interrupt_result`: the harness recorded that the run was stopped (Claude's interrupt marker). */
+  | (TurnItemBase & { type: "run_interrupt_result"; message: string })
   | (TurnItemBase & { type: "system_notice"; message: string })
   | (TurnItemBase & { type: "error"; failure: ProviderFailure; retry?: ProviderRetry })
+  /** T3's `compaction`: the context was compacted; `summary` is the text the harness kept. */
+  | (TurnItemBase & {
+      type: "compaction";
+      driver: string | null;
+      summary?: string;
+      beforeTokenCount?: number;
+      afterTokenCount?: number;
+    })
   // ── Sightr extensions (no T3 counterpart) ──
   /** Sightr: the harness session inside the pane changed (relaunch, `/clear`, `/new`). */
   | (TurnItemBase & { type: "session"; from: string | null; to: string })
@@ -512,6 +595,7 @@ export type ThreadPatch = Partial<
     | "terminalId"
     | "permissionMode"
     | "model"
+    | "contextUsage"
   >
 > & {
   /** `null` clears it. */

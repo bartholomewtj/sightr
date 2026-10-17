@@ -1,4 +1,4 @@
-// Adapted from T3 Code apps/web/src/components/chat/MessagesTimeline.tsx @ e3b35d1b (MIT, see THIRD_PARTY.md).
+// Adapted from T3 Code apps/web/src/components/chat/MessagesTimeline.tsx @ db5919d87 (MIT, see THIRD_PARTY.md).
 // Upstream's list and row components on Sightr's thread store: a `LegendList` of the rows
 // `MessagesTimeline.logic.ts` derives, one memoised `TimelineRowContent` per row, T3's row components
 // (user bubble, assistant markdown + meta, turn fold, working header, thinking tail, live tool row,
@@ -18,8 +18,11 @@
 //   this in its work-group view state; here a map held while the timeline is mounted); LegendList pins
 //   at any distance while following (threshold 1, as upstream) so the follow decision is ours alone;
 //   raw buttons get a 44 px coarse-pointer height; an expanded thought follows its live text.
-// - Left out: minimap, find, citations, forks, diffs, revert, attachments previews, subagents,
-//   worktree setup, MCP apps, HTML renders, proposed plans.
+// - Event rows also draw T3's lifecycle rows (`V2LifecycleRow`: interrupt divider, compaction,
+//   subagent) and the proposed-plan card (`ProposedPlanCard`); a file-change row carries T3's
+//   `DiffStatLabel` in its trailing slot, and a task-list row a list icon.
+// - Left out: minimap, citations, forks, revert, checkpoint diffs, attachment previews, worktree
+//   setup, MCP apps, HTML renders.
 import { LegendList, type LegendListRef, type MaintainScrollAtEndOptions } from "@legendapp/list/react";
 import { descriptorFor } from "@shared/agents";
 import type { Run } from "@shared/v2/contracts";
@@ -34,6 +37,7 @@ import {
   EyeIcon,
   GlobeIcon,
   HammerIcon,
+  ListTodoIcon,
   MessageCircleIcon,
   PaperclipIcon,
   RotateCcwIcon,
@@ -96,8 +100,11 @@ import {
   type MessagesTimelineRow,
   type StableMessagesTimelineRowsState,
 } from "./MessagesTimeline.logic";
+import { DiffStatLabel } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
+import { ProposedPlanCard } from "./ProposedPlanCard";
 import { ScreenTimelineRow } from "./ScreenTimelineRow";
+import { isV2LifecycleItem, V2LifecycleRow } from "./V2LifecycleRow";
 import { TimelineSystemDivider } from "./TimelineSystemDivider";
 import { ToolItemDetail, toolItemHasDetail } from "./ToolItemDetail";
 import { useTimelineFollow } from "./useTimelineFollow";
@@ -736,6 +743,10 @@ function EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event" }
   if (item.type === "screen") {
     return <ScreenTimelineRow text={item.text} capturedAt={item.capturedAt} />;
   }
+  if (item.type === "proposed_plan") {
+    return <ProposedPlanCard planMarkdown={item.markdown} truncated={item.truncated === true} />;
+  }
+  if (isV2LifecycleItem(item)) return <V2LifecycleRow item={item} createdAt={row.createdAt} />;
   return null;
 }
 
@@ -998,6 +1009,7 @@ type WorkEntryIconName =
   | "eye"
   | "globe"
   | "hammer"
+  | "list-todo"
   | "message-circle"
   | "search"
   | "square-pen"
@@ -1022,6 +1034,8 @@ function WorkEntryIcon({ name, className }: { name: WorkEntryIconName; className
       return <GlobeIcon className={className} aria-hidden />;
     case "hammer":
       return <HammerIcon className={className} aria-hidden />;
+    case "list-todo":
+      return <ListTodoIcon className={className} aria-hidden />;
     case "search":
       return <SearchIcon className={className} aria-hidden />;
     case "message-circle":
@@ -1050,6 +1064,7 @@ function workEntryIconName(workEntry: WorkLogEntry): WorkEntryIconName {
   if (workEntry.itemType === "user_input_request" || workEntry.itemType === "approval_request") {
     return "message-circle";
   }
+  if (workEntry.itemType === "todo_list") return "list-todo";
   const action = toolGroupAction(workEntry);
   if (action !== "other") return toolGroupSummaryIconName(action);
   if (workEntry.itemType === "dynamic_tool") return "wrench";
@@ -1164,6 +1179,9 @@ function WorkEntryLogRow({ workEntry, displayLabel }: { workEntry: WorkLogEntry;
       }
       trailing={
         <>
+          {item?.type === "file_change" && (item.additions !== undefined || item.deletions !== undefined) ? (
+            <DiffStatLabel additions={item.additions ?? 0} deletions={item.deletions ?? 0} layout="inline" className="shrink-0 text-xs" />
+          ) : null}
           {showFailedIndicator && !showDestructiveRowStyle ? (
             <XIcon aria-hidden className={cn("size-3 shrink-0", failedToolIconClassName)} />
           ) : null}

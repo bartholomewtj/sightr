@@ -31,6 +31,18 @@ import {
   rootList,
   statFile,
 } from "./files.ts";
+import type { TranscriptToolDetail, TranscriptUsage } from "../../shared/wire.ts";
+import {
+  capInput,
+  diffDetail,
+  diffForNewFile,
+  diffFromReplacements,
+  mergeSubagent,
+  providerFailure,
+  subagentDetail,
+  todoDetail,
+  todoStepStatus,
+} from "./structured.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
   AgentSessionRef,
@@ -39,6 +51,103 @@ import type {
   TranscriptPart,
   TranscriptSource,
 } from "./types.ts";
+
+type ToolPart = Extract<TranscriptPart, { kind: "tool" }>;
+
+const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+
+/** Pi's subagent tools: `subagent` starts one, `get_subagent_result` reads its state. */
+const SUBAGENT_TOOLS = new Set(["subagent", "get_subagent_result"]);
+
+/** What a pi call's own arguments already say: an edit's diff before its result lands, a subagent's brief. */
+export function piCallDetail(name: string, args: unknown): TranscriptToolDetail | undefined {
+  if (args === null || typeof args !== "object") return undefined;
+  const o = args as Record<string, unknown>;
+  const file = str(o.path) ?? str(o.file_path) ?? "";
+  switch (name) {
+    case "edit": {
+      if (file === "") return undefined;
+      const list = Array.isArray(o.edits) ? o.edits : [{ oldText: o.oldText, newText: o.newText }];
+      const edits = list.flatMap((e) =>
+        e && typeof e === "object" && typeof (e as Record<string, unknown>).oldText === "string" &&
+        typeof (e as Record<string, unknown>).newText === "string"
+          ? [{ oldText: (e as { oldText: string }).oldText, newText: (e as { newText: string }).newText }]
+          : [],
+      );
+      const diff = diffFromReplacements(file, edits);
+      return diff === null ? undefined : diffDetail(file, diff);
+    }
+    case "write":
+      return file === "" || typeof o.content !== "string" ? undefined : diffDetail(file, diffForNewFile(file, o.content));
+    case "subagent":
+      return subagentDetail({ title: o.description, prompt: o.prompt, model: o.model });
+    case "get_subagent_result":
+      return subagentDetail({ agentId: o.agent_id });
+    default:
+      return undefined;
+  }
+}
+
+/** Refine a call's detail from its toolResult's `details` (edit's patch, todo's list, subagent facts). */
+export function applyPiDetails(part: ToolPart, details: unknown): void {
+  if (details === null || typeof details !== "object" || Array.isArray(details)) return;
+  const d = details as Record<string, unknown>;
+  if (part.name === "edit") {
+    const file = part.detail?.kind === "diff" ? part.detail.fileName : (str((part.input as { path?: unknown } | undefined)?.path) ?? part.summary);
+    // `patch` is a unified diff; `diff` is pi's numbered display form, kept only when there is no patch.
+    const patch = str(d.patch);
+    if (patch && patch.trim() !== "") part.detail = diffDetail(file, patch);
+    return;
+  }
+  if (part.name === "todo" && Array.isArray(d.tasks)) {
+    const steps = d.tasks.flatMap((t) => {
+      if (!t || typeof t !== "object") return [];
+      const o = t as Record<string, unknown>;
+      const status = todoStepStatus(o.status);
+      const text = (str(o.subject) ?? str(o.content) ?? "").trim();
+      if (status === null || text === "") return [];
+      return [{ id: String(o.id ?? text), text, status }];
+    });
+    part.detail = todoDetail(steps);
+    return;
+  }
+  if (SUBAGENT_TOOLS.has(part.name)) {
+    const seconds = /^([\d.]+)s/.exec(str(d.duration) ?? "");
+    part.detail = mergeSubagent(
+      part.detail,
+      subagentDetail({
+        agentId: d.agentId,
+        title: d.description ?? d.displayName,
+        status: d.status,
+        model: d.modelName,
+        durationMs: typeof d.durationMs === "number" && d.durationMs > 0 ? d.durationMs : seconds ? Number(seconds[1]) * 1000 : undefined,
+        tokens: d.tokens,
+        toolUses: d.toolUses,
+      }),
+    );
+  }
+}
+
+/** A pi assistant row's `usage` as context use; null when it reports nothing. */
+export function piUsage(usage: unknown): TranscriptUsage | null {
+  if (usage === null || typeof usage !== "object") return null;
+  const u = usage as Record<string, unknown>;
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
+  const input = n(u.input);
+  const cacheRead = n(u.cacheRead);
+  const cached = cacheRead + n(u.cacheWrite);
+  const output = n(u.output);
+  const used = input + cached + output;
+  if (used === 0) return null;
+  const cost = n((u.cost as { total?: unknown } | undefined)?.total);
+  return {
+    usedTokens: used,
+    inputTokens: input + cached,
+    cachedInputTokens: cacheRead,
+    outputTokens: output,
+    ...(cost > 0 ? { cost } : {}),
+  };
+}
 
 /** pi's session ids are uuids (v4 and v7 both observed) — validated before any path work. */
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -105,10 +214,13 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
         // Mutated in place — the part already sits in an emitted entry, which is why results attach
         // without reordering anything.
         pendingTools.delete(id);
+        const exit = /(?:exited with code|exit code:?)\s*(\d+)/i.exec(resultText.slice(-200));
         target.result = {
           ...clamp(resultText, MAX_RESULT_CHARS),
           ...(isError ? { isError: true } : {}),
+          ...(isError && exit && target.name === "bash" ? { exitCode: Number(exit[1]) } : {}),
         };
+        if (!isError) applyPiDetails(target, m.details);
       } else if (resultText.trim() !== "") {
         // Orphan result (its call fell outside a tail-read window) — kept unattached so the window
         // never silently drops output.
@@ -142,19 +254,34 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
         if (b.thinking.trim() !== "")
           parts.push({ kind: "thinking", ...clamp(stripAnsi(b.thinking), MAX_TEXT_CHARS) });
       } else if (b.type === "toolCall") {
-        const part: Extract<TranscriptPart, { kind: "tool" }> = {
+        const name = typeof b.name === "string" ? b.name : "tool";
+        const detail = piCallDetail(name, b.arguments);
+        const part: ToolPart = {
           kind: "tool",
-          name: typeof b.name === "string" ? b.name : "tool",
+          name,
           // pi passes `arguments` as a real object — no parse needed.
           summary: summarizeToolInput(b.arguments),
+          ...capInput(b.arguments),
+          ...(detail ? { detail } : {}),
         };
         if (typeof b.id === "string") pendingTools.set(b.id, part);
         parts.push(part);
       }
     }
 
+    // A failed turn: pi writes `stopReason: "error"` with the provider's words in `errorMessage` and,
+    // usually, no content at all. Without this part the failure would be invisible. An `aborted`
+    // turn is the operator's own Stop and needs no part (the run's status says it).
+    if (role === "assistant" && m.stopReason === "error") {
+      const message = (str(m.errorMessage) ?? "").trim() || "The model stopped with an error.";
+      const code = /\[code=([\w.-]+)\]/.exec(message)?.[1] ?? null;
+      const at = typeof m.timestamp === "number" ? m.timestamp : Date.parse(ts) || 0;
+      parts.push({ kind: "text", ...clamp(message, MAX_TEXT_CHARS), error: providerFailure(message, { code, at }) });
+    }
+
     if (parts.length === 0) continue; // a row with nothing renderable
-    entries.push({ uuid, ts, role, parts });
+    const usage = role === "assistant" ? piUsage(m.usage) : null;
+    entries.push({ uuid, ts, role, parts, ...(usage ? { usage } : {}) });
   }
 
   return entries;

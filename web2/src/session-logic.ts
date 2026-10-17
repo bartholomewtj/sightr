@@ -1,7 +1,12 @@
-// Adapted from T3 Code apps/web/src/session-logic.ts @ e3b35d1b (MIT, see THIRD_PARTY.md).
+// Adapted from T3 Code apps/web/src/session-logic.ts @ db5919d87 (MIT, see THIRD_PARTY.md).
 // Turn items → timeline entries, as upstream's `deriveTimelineEntriesFromVisibleTurnItems` and
 // `projectedWorkEntry`, on Sightr's item shapes (shared/v2/contracts.ts). Changes from upstream:
-// - Times are epoch ms (Sightr), not ISO strings; there are no attempts, plans, MCP apps or HTML renders.
+// - Times are epoch ms (Sightr), not ISO strings; there are no attempts, plan artifacts, MCP apps or
+//   HTML renders. `proposed_plan` is an `event` entry (T3: its own `proposed-plan` kind), and so are
+//   `subagent`, `run_interrupt_result` and `compaction` (drawn by V2LifecycleRow).
+// - `todo_list` is a work row that opens to the checklist (T3 skips it here and shows it in the
+//   composer's tasks badge); a `web_search` of a URL reads "Fetched <url>". A run the journal marked
+//   interrupted gets no synthetic "Stopped" notice.
 // - An entry's id is the turn item's id, also for messages: a journal entry with two text parts gives
 //   two items that share a `messageId`.
 // - Sightr items: `session` and `screen` become `event` entries; a run that ended `interrupted` or
@@ -116,8 +121,39 @@ export function workEntryIndicatesToolNeutralStatus(entry: WorkLogEntry): boolea
   );
 }
 
-/** Sightr items with no T3 counterpart render as standalone event rows. */
-const STANDALONE_ITEM_TYPES = new Set<TurnItem["type"]>(["session", "screen"]);
+/**
+ * Items that render as standalone event rows: Sightr's `session` and `screen`, T3's lifecycle rows
+ * (`run_interrupt_result`, `subagent`; `compaction` too here, as a divider), and `proposed_plan`
+ * (T3 gives it its own `proposed-plan` entry kind; here it is an event row that draws the card).
+ */
+const STANDALONE_ITEM_TYPES = new Set<TurnItem["type"]>([
+  "session",
+  "screen",
+  "run_interrupt_result",
+  "subagent",
+  "compaction",
+  "proposed_plan",
+]);
+
+/** "Updated tasks · 2/5 done" for a `todo_list` row (Sightr: T3 shows the list only in the composer's tasks badge). */
+export function todoListLabel(item: Extract<TurnItem, { type: "todo_list" }>): string {
+  const done = item.steps.filter((s) => s.status === "completed").length;
+  return item.steps.length === 0 ? "Cleared tasks" : `Updated tasks · ${done}/${item.steps.length} done`;
+}
+
+/** A `web_search` whose pattern is a URL was a page fetch (Claude WebFetch): "Fetched example.com/docs". */
+export function webSearchLabel(item: Extract<TurnItem, { type: "web_search" }>): string {
+  const [first] = item.patterns ?? [];
+  if (first && /^https?:\/\//i.test(first)) {
+    try {
+      const url = new URL(first);
+      return `Fetched ${url.host}${url.pathname === "/" ? "" : url.pathname}`;
+    } catch {
+      return `Fetched ${first}`;
+    }
+  }
+  return "Searched the web";
+}
 
 function itemCreatedAt(item: TurnItem): number {
   return item.startedAt ?? item.createdAt;
@@ -150,6 +186,8 @@ function projectedWorkEntryTone(item: TurnItem): WorkLogEntry["tone"] {
     case "file_search":
     case "web_search":
     case "dynamic_tool":
+    case "subagent":
+    case "todo_list":
     case "user_input_request":
     case "approval_request":
       return "tool";
@@ -242,14 +280,23 @@ function projectedWorkEntry(item: TurnItem, reasoningTime: ReasoningTime | undef
         toolTitle: title ?? "File search",
         toolData: item,
       };
-    case "web_search":
-      return {
-        ...common,
-        label: "Searched the web",
-        ...(item.patterns?.length ? { detail: item.patterns.join(", ") } : {}),
-        toolTitle: title ?? "Web search",
-        toolData: item,
-      };
+    case "web_search": {
+      const label = webSearchLabel(item);
+      // Sightr: a fetch's row reads "Fetched <url>" (its title and label); a search keeps T3's form.
+      return label.startsWith("Fetched ")
+        ? { ...common, label, toolTitle: label, toolData: item }
+        : {
+            ...common,
+            label,
+            ...(item.patterns?.length ? { detail: item.patterns.join(", ") } : {}),
+            toolTitle: title ?? "Web search",
+            toolData: item,
+          };
+    }
+    case "todo_list":
+      // Sightr: T3 skips todo lists in the timeline (its composer badge shows them); here each update
+      // is a tool row that opens to the checklist.
+      return { ...common, label: todoListLabel(item), toolTitle: todoListLabel(item), toolData: item };
     case "system_notice":
       // Sightr: a notice that finished cleanly (a background command completing, "Stopped") is not a warning.
       return item.status === "completed" ? { ...common, label: item.message } : { ...common, label: item.message, sourceActivityKind: "runtime.warning" };
@@ -414,13 +461,17 @@ export function deriveTimelineEntries(input: TimelineEntriesInput): TimelineEntr
   const items = input.items;
   const runningRunId = input.runs.find((run) => run.status === "running")?.id ?? null;
   const lastIndexByRun = new Map<string, number>();
+  // A run whose journal recorded the interrupt already has T3's divider; no synthetic "Stopped".
+  const interruptedByJournal = new Set<string>();
   items.forEach((item, index) => {
     if (item.runId !== null) lastIndexByRun.set(item.runId, index);
+    if (item.runId !== null && item.type === "run_interrupt_result") interruptedByJournal.add(item.runId);
   });
   const endByIndex = new Map<number, TurnItem>();
   for (const run of input.runs) {
     const last = lastIndexByRun.get(run.id);
     if (last === undefined) continue;
+    if (run.status === "interrupted" && interruptedByJournal.has(run.id)) continue;
     const end = runEndItem(run, items[last]!.updatedAt);
     if (end) endByIndex.set(last, end);
   }

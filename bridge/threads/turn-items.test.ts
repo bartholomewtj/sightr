@@ -51,11 +51,96 @@ describe("entryItems", () => {
     expect(items[1]).toMatchObject({ text: "done", streaming: false, messageId: "e1" });
   });
 
-  test("summary and note → system_notice", () => {
-    for (const role of ["summary", "note"] as const) {
-      const [item] = entryItems(entry({ role, parts: [{ kind: "text", text: "compacted" }] }), CTX);
-      expect(item).toMatchObject({ type: "system_notice", message: "compacted" });
-    }
+  test("note → system_notice; a compaction summary → compaction with the text as its summary", () => {
+    const [note] = entryItems(entry({ role: "note", parts: [{ kind: "text", text: "a task finished" }] }), CTX);
+    expect(note).toMatchObject({ type: "system_notice", message: "a task finished" });
+    const [summary] = entryItems(entry({ role: "summary", parts: [{ kind: "text", text: "long summary" }] }), { ...CTX, harness: "claude" });
+    expect(summary).toMatchObject({ type: "compaction", status: "completed", driver: "claude", summary: "long summary" });
+  });
+
+  test("an error part → T3's error item (failed, the failure as written)", () => {
+    const failure = { class: "usage_limit" as const, message: "You've hit your session limit · resets 2:10am", code: "rate_limit", retryable: null, resetAt: 123 };
+    const [item] = entryItems(entry({ parts: [{ kind: "text", text: failure.message, error: failure }] }), CTX);
+    expect(item).toMatchObject({ type: "error", status: "failed", failure });
+  });
+
+  test("an interrupt marker → run_interrupt_result, never a user message", () => {
+    const [item] = entryItems(entry({ role: "note", parts: [{ kind: "text", text: "Interrupted", notice: "interrupted" }] }), CTX);
+    expect(item).toMatchObject({ type: "run_interrupt_result", message: "Interrupted", status: "completed" });
+  });
+
+  test("a file change carries its diff, counts, and the error text when it failed", () => {
+    const diff = "--- a/x.ts\n+++ b/x.ts\n@@ -1,1 +1,1 @@\n-a\n+b";
+    const ok = entryItems(
+      entry({ parts: [{ kind: "tool", name: "Edit", summary: "x.ts", detail: { kind: "diff", fileName: "/p/x.ts", diff, additions: 1, deletions: 1 }, result: { text: "updated" } }] }),
+      CTX,
+    )[0]!;
+    expect(ok).toMatchObject({ type: "file_change", fileName: "/p/x.ts", diffStr: diff, additions: 1, deletions: 1, status: "completed" });
+    expect(ok).not.toHaveProperty("errorText");
+    const failed = entryItems(
+      entry({ parts: [{ kind: "tool", name: "Edit", summary: "x.ts", detail: { kind: "diff", fileName: "x.ts", diff }, result: { text: "String to replace not found", isError: true } }] }),
+      CTX,
+    )[0]!;
+    expect(failed).toMatchObject({ type: "file_change", status: "failed", diffStr: diff, errorText: "String to replace not found" });
+  });
+
+  test("an old part with no detail still maps as before (stored payloads from older bridges)", () => {
+    const [item] = entryItems(entry({ parts: [{ kind: "tool", name: "Edit", summary: "src/a.ts", result: { text: "updated" } }] }), CTX);
+    expect(item).toMatchObject({ type: "file_change", fileName: "src/a.ts" });
+    expect(item).not.toHaveProperty("diffStr");
+  });
+
+  test("todo, plan and subagent details → T3's todo_list, proposed_plan and subagent items", () => {
+    const items = entryItems(
+      entry({
+        parts: [
+          { kind: "tool", name: "todo", summary: "x", detail: { kind: "todo", steps: [{ id: "1", text: "Write tests", status: "running" }] }, result: { text: "ok" } },
+          { kind: "tool", name: "ExitPlanMode", summary: "# Plan", detail: { kind: "plan", markdown: "# Plan\n\n1. Do it" }, result: { text: "approved" } },
+          {
+            kind: "tool",
+            name: "Agent",
+            summary: "Survey files",
+            detail: { kind: "subagent", agentId: "ag1", title: "Survey files", prompt: "look", status: "completed", model: "claude-sonnet-5-5", durationMs: 5000, tokens: "12000", toolUses: 3 },
+            result: { text: "Found three." },
+          },
+          { kind: "tool", name: "subagent", summary: "x", detail: { kind: "subagent", status: "error" }, result: { text: "died" } },
+        ],
+      }),
+      { ...CTX, harness: "claude" },
+    );
+    expect(items[0]).toMatchObject({ type: "todo_list", planId: "e1:0", steps: [{ id: "1", text: "Write tests", status: "running" }] });
+    expect(items[1]).toMatchObject({ type: "proposed_plan", planId: "e1:1", markdown: "# Plan\n\n1. Do it", streaming: false });
+    expect(items[2]).toMatchObject({
+      type: "subagent",
+      title: "Survey files",
+      subagentId: "ag1",
+      origin: "provider_native",
+      driver: "claude",
+      childThreadId: null,
+      prompt: "look",
+      result: "Found three.",
+      model: "claude-sonnet-5-5",
+      agentStatus: "completed",
+      durationMs: 5000,
+      tokens: "12000",
+      toolUses: 3,
+      status: "completed",
+    });
+    expect(items[3]).toMatchObject({ type: "subagent", status: "failed", subagentId: "e1:3" });
+  });
+
+  test("a dynamic tool keeps its capped arguments as rawInput; a command its exit code", () => {
+    const items = entryItems(
+      entry({
+        parts: [
+          { kind: "tool", name: "mcp__x__y", summary: "go", input: { a: 1, b: "two" }, result: { text: "ok" } },
+          { kind: "tool", name: "Bash", summary: "false", result: { text: "Exit code 2", isError: true, exitCode: 2 } },
+        ],
+      }),
+      CTX,
+    );
+    expect(items[0]).toMatchObject({ type: "dynamic_tool", input: "go", rawInput: { a: 1, b: "two" } });
+    expect(items[1]).toMatchObject({ type: "command_execution", exitCode: 2, outputIndicatesFailure: true });
   });
 
   test("an entry with no timestamp takes the context's first-seen time", () => {
@@ -205,6 +290,12 @@ describe("helpers", () => {
   test("searchResults caps and parses", () => {
     expect(searchResults("a.ts:3:x\n\n  b.ts  ")).toEqual([{ fileName: "a.ts", line: 3, preview: "x" }, { fileName: "b.ts" }]);
     expect(searchResults(Array.from({ length: 500 }, (_, i) => `f${i}`).join("\n"))).toHaveLength(200);
+  });
+
+  test("searchResults drops Claude's Grep/Glob header and notes (not file names)", () => {
+    expect(searchResults("Found 2 files\nsrc/a.ts\nsrc/b.ts")).toEqual([{ fileName: "src/a.ts" }, { fileName: "src/b.ts" }]);
+    expect(searchResults("No files found")).toEqual([]);
+    expect(searchResults("Found 1 file limit: 20\nx.ts\n(Results are truncated. Consider using a more specific path or pattern.)")).toEqual([{ fileName: "x.ts" }]);
   });
 
   test("sameItemBody ignores ordinal and updatedAt, not content", () => {

@@ -1,4 +1,4 @@
-// Adapted from T3 Code apps/web/src/components/chat/threadFind.ts @ e3b35d1b (MIT, see THIRD_PARTY.md).
+// Adapted from T3 Code apps/web/src/components/chat/threadFind.ts @ db5919d87 (MIT, see THIRD_PARTY.md).
 // Kept: `ThreadFindMatch`, `stepThreadFindIndex`, `formatThreadFindCount`. Changed: T3 asks the server
 // to search the thread; Sightr searches the thread store's items in memory (T19) with v1's matcher
 // (`@v1/lib/find`), so a hit can sit in a folded run or a collapsed tool group. `findRevealPlan` says
@@ -51,7 +51,21 @@ export function turnItemFindText(item: TurnItem): string {
       parts.push(item.input, item.output ?? "");
       break;
     case "file_change":
-      parts.push(item.fileName);
+      parts.push(item.fileName, item.errorText ?? "");
+      break;
+    case "proposed_plan":
+      parts.push(item.markdown);
+      break;
+    case "todo_list":
+      parts.push(...item.steps.map((s) => s.text));
+      break;
+    case "subagent":
+      parts.push(item.result ?? "", item.model ?? "");
+      break;
+    case "run_interrupt_result":
+      parts.push(item.message);
+      break;
+    case "compaction":
       break;
     case "file_search":
       parts.push(item.pattern ?? "");
