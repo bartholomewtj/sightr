@@ -67,6 +67,8 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
               key={option.id}
               value={option.id}
               disabled={props.blockedReason !== null || props.switching}
+              // Sightr: a phone user expects the menu to close on a pick (Base UI keeps radio menus open).
+              closeOnClick
               className={cn(TOUCH_ROW, option.destructive && "text-destructive-foreground")}
             >
               <span className="flex items-center justify-between gap-3">
