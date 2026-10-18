@@ -82,6 +82,11 @@ export function GlobalShortcuts() {
       }),
       registerShortcutHandler("rightPanel.files", () => toggleRightPanelSurface("files")),
       registerShortcutHandler("rightPanel.git", () => toggleRightPanelSurface("git")),
+      // mod+d (T3's key): no thread open, nothing to review, so the key stays the browser's.
+      registerShortcutHandler("diff.toggle", () => {
+        if (!live.current.threadId) return false;
+        toggleRightPanelSurface("diff");
+      }),
       // The Terminal tab (or the CLI view) registers its own handler while mounted; this one opens it and
       // asks it to arm.
       registerShortcutHandler("terminal.directTyping", () => {

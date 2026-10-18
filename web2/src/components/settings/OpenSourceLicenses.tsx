@@ -18,7 +18,7 @@ export function OpenSourceLicenses() {
   return (
     <SettingsRow
       title="Open-source licences"
-      description="Parts of this app are adapted from T3 Code (MIT). The notice that comes with that code is below."
+      description="Parts of this app are adapted from T3 Code (MIT), and diffs are coloured with highlight.js (BSD-3-Clause). The notices that come with them are below."
       control={
         <Button size="sm" variant="outline" render={<a href={T3_REPOSITORY_URL} target="_blank" rel="noreferrer noopener" />}>
           <ExternalLinkIcon />

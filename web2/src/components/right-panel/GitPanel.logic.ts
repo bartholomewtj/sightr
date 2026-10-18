@@ -1,5 +1,5 @@
-// Pure helpers for the Git tab (T13 + git history): times, paths, and which rows can open in Files.
-import type { FolderGitEntry } from "@shared/wire";
+// Pure helpers for the Git tab (T13 + git history): times and paths. (T27: the working-tree list moved to the
+// Diff tab, so the helper that said which of its rows could open in Files went with it.)
 
 /** "just now", "5m ago", "3h ago", "2d ago", "3w ago", then a short date. `time` is unix seconds. */
 export function relativeTime(time: number, nowMs: number = Date.now()): string {
@@ -15,11 +15,6 @@ export function relativeTime(time: number, nowMs: number = Date.now()): string {
 /** A repo-relative path as a Files rel path, given the repo root's Files path (`""` is the Files root). */
 export function repoFilePath(rootPath: string, path: string): string {
   return rootPath ? `${rootPath}/${path}` : path;
-}
-
-/** A working-tree entry whose file still exists, so Files can open it (not deleted on either side). */
-export function entryOnDisk(e: FolderGitEntry): boolean {
-  return e.x !== "D" && e.y !== "D";
 }
 
 /** "↑2 ↓1 · origin/main"-style counts as words for a screen reader. */

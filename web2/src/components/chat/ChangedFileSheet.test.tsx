@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Run, TurnItem } from "@shared/v2/contracts";
 
+import { useDiffPanelStore } from "@/diffPanelStore";
+import { useRightPanelStore } from "@/rightPanelStore";
 import { threadFromSnapshot } from "@/stream/apply";
 import { useThreadStore } from "@/stream/stores";
 import { __resetTimelineState } from "@/state/timeline";
@@ -12,7 +14,7 @@ import { installListLayout } from "@/test/list-layout";
 import { assistant, edit, resetOrdinals, run, user } from "@/test/turn-items";
 
 import { openPrintedPath } from "../right-panel/OpenFileLink";
-import { closeChangedFile } from "./changedFilesTarget";
+import { closeChangedFile, openChangedFile, openChangedFileSheet } from "./changedFilesTarget";
 import { MessagesTimeline } from "./MessagesTimeline";
 
 vi.mock("../right-panel/OpenFileLink", async (importOriginal) => ({
@@ -108,11 +110,27 @@ describe("changed-files card in the timeline", () => {
 describe("ChangedFileSheet", () => {
   async function openSheet() {
     await show(threeEdits(), [run("r1")]);
-    fireEvent.click(card()!.querySelector('[data-changed-file="src/a.ts"]')!);
+    // T27: a tap on the card opens the Diff tab; the sheet is opened by its own function.
+    act(() => openChangedFileSheet({ threadId: "t1", runId: "r1", path: "src/a.ts" }));
     await settle();
     expect(sheet()).toBeTruthy();
     return sheet()!;
   }
+
+  it("is not what a tap on the card opens any more (T27): the Diff tab opens on that run, at that file", async () => {
+    await show(threeEdits(), [run("r1")]);
+    fireEvent.click(card()!.querySelector('[data-changed-file="src/a.ts"]')!);
+    await settle();
+    expect(sheet()).toBeNull();
+    expect(useDiffPanelStore.getState().scopes["t1"]).toEqual({ kind: "run", runId: "r1" });
+    expect(useDiffPanelStore.getState().reveal).toMatchObject({ threadId: "t1", filePath: "src/a.ts" });
+    expect(useRightPanelStore.getState().sheet).toBe("diff"); // a phone-width test: the sheet
+  });
+
+  it("openChangedFile asks the diff store for the run's scope", () => {
+    openChangedFile({ threadId: "t9", runId: "r9", path: "x/y.ts" });
+    expect(useDiffPanelStore.getState().scopes["t9"]).toEqual({ kind: "run", runId: "r9" });
+  });
 
   it("lists the file's edits in order, each with its number and status", async () => {
     const s = await openSheet();
@@ -136,7 +154,7 @@ describe("ChangedFileSheet", () => {
 
   it("says nothing about a net diff for a file edited once", async () => {
     await show([user("u:0", "go", inRun), edit("e:0", "b.ts", { ...inRun, additions: 1, deletions: 0, diffStr: diffA(1) }), assistant("m:0", "ok", inRun)], [run("r1")]);
-    fireEvent.click(card()!.querySelector('[data-changed-file="b.ts"]')!);
+    act(() => openChangedFileSheet({ threadId: "t1", runId: "r1", path: "b.ts" }));
     await settle();
     expect(within(sheet()!).getByText("Edit 1 of 1")).toBeTruthy();
     expect(sheet()!.querySelector('[data-changed-file-note="net"]')).toBeNull();

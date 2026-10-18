@@ -278,6 +278,7 @@ export const COMMAND_LABEL: Record<KeybindingCommand, string> = {
   "rightPanel.toggle": "Toggle the right panel",
   "rightPanel.files": "Open the Files tab",
   "rightPanel.git": "Open the Git tab",
+  "diff.toggle": "Open the Diff tab",
   "terminal.directTyping": "Type into the terminal (on or off)",
   "commandPalette.toggle": "Command palette",
   "composer.sendAlternate": "Send the other way (queue or steer) while the agent works",

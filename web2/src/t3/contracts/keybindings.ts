@@ -44,6 +44,8 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "composer.sendAlternate",
   "chat.new",
   "chat.find",
+  // T3's diff toggle (mod+d), opening Sightr's Diff tab (T27).
+  "diff.toggle",
   // Sightr: the right panel's fixed tabs, direct typing, the shortcuts sheet.
   "rightPanel.files",
   "rightPanel.git",

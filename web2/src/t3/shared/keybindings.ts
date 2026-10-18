@@ -1,7 +1,7 @@
 // Adapted from T3 Code packages/shared/src/keybindings.ts @ e3b35d1b (MIT, see THIRD_PARTY.md).
 // Changes: DEFAULT_KEYBINDINGS is Sightr's table (T13, a subset of T3's that fits a herd: no
-// terminal splits, preview, workspace, branch or model-picker bindings; mod+w/mod+t/mod+d are not
-// taken), with ctrl+backquote for direct typing, the right-panel tabs and the `?` shortcuts sheet. The
+// terminal splits, preview, workspace, branch or model-picker bindings; mod+w and mod+t are not taken;
+// mod+d is, as T3's diff.toggle, since T27), with ctrl+backquote for direct typing, the right-panel tabs and the `?` shortcuts sheet. The
 // parser, matcher and `when` grammar are T3's, unchanged.
 import {
   type KeybindingRule,
@@ -128,6 +128,9 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+b", command: "sidebar.toggle" },
   { key: "mod+j", command: "terminal.toggle" },
   { key: "mod+alt+b", command: "rightPanel.toggle" },
+  // T3's diff.toggle key, kept so keybinding syncs stay identical (T27). In a plain browser tab mod+d is the
+  // bookmark key and the browser may win; the installed PWA and the palette's "Open Diff" are the supported ways.
+  { key: "mod+d", command: "diff.toggle", when: "!terminalFocus" },
   { key: "ctrl+`", command: "terminal.directTyping" },
   { key: "mod+k", command: "commandPalette.toggle", when: "!terminalFocus" },
   { key: "mod+shift+enter", command: "thread.steerQueuedMessage", when: "!terminalFocus" },

@@ -1,9 +1,10 @@
 /**
  * The Git tab (T13), read-only: `/api/files/git` for the thread's folder. The branch and how far it is
- * ahead of or behind its base (the upstream, else origin's default branch), "Changes" (the working tree
- * against HEAD, as before) and "Commits" (the last 20 on HEAD), so work an agent already committed is
- * still visible. A commit, or the whole branch against its base, opens its own file list with each
- * file's diff on tap (`/api/files/git/diff`). Refreshes on the button, when the thread's run ends, and
+ * ahead of or behind its base (the upstream, else origin's default branch), "Changes" (one summary row:
+ * how many files and lines, with a button into the Diff tab, where the working tree is reviewed since T27)
+ * and "Commits" (the last 20 on HEAD), so work an agent already committed is still visible. A commit, or
+ * the whole branch against its base, opens its own file list with each file's diff on tap
+ * (`/api/files/git/diff`); "Open branch in Diff" reviews the same range in the Diff tab. Refreshes on the button, when the thread's run ends, and
  * when the page returns to the foreground or the network is back. No stage, commit, push, PR, checkout
  * or per-turn diff: out of scope (docs/T3_ADAPTATION.md).
  *
@@ -13,8 +14,8 @@
  * sheet; Collapse all folds every open diff. The view (list, a commit, the branch), the expanded files
  * and the scroll position are remembered per thread so a closed and reopened sheet resumes where it was.
  */
-import { ArrowLeftIcon, ChevronsDownUpIcon, FileSymlinkIcon, GitBranchIcon, GitCommitHorizontalIcon, GitCompareIcon, RotateCwIcon, WrapTextIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeftIcon, ChevronsDownUpIcon, DiffIcon, FileSymlinkIcon, GitBranchIcon, GitCommitHorizontalIcon, GitCompareIcon, RotateCwIcon, WrapTextIcon } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { FolderGitCommit, FolderGitDiffResponse, FolderGitResponse } from "@shared/wire";
 import { cn } from "~/lib/utils";
@@ -22,13 +23,15 @@ import { Button } from "~/components/ui/button";
 import { DiffStatLabel } from "@/components/chat/DiffStatLabel";
 import { DiffFilePathCopyButton } from "@/components/DiffFilePathCopyButton";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
+import { useDiffPanelStore } from "@/diffPanelStore";
 import { fetchFolderGit, fetchFolderGitDiff } from "@/lib/api";
 import { useDiffWrap, useRightPanelStore } from "@/rightPanelStore";
 import { useSidebarThread } from "@/state/sidebar";
 import { useThread } from "@/stream/stores";
 
 import { DiffLines, diffLinesByPath, parseDiff } from "./DiffView";
-import { entryOnDisk, relativeTime, repoFilePath, syncLabel } from "./GitPanel.logic";
+import { relativeTime, repoFilePath, syncLabel } from "./GitPanel.logic";
+import { useRefreshTriggers } from "./useRefreshTriggers";
 import { usePaneFolder } from "./usePaneFolder";
 
 type Available = Extract<FolderGitResponse, { available: true }>;
@@ -44,26 +47,6 @@ const DIFF_UNAVAILABLE: Record<Extract<FolderGitDiffResponse, { available: false
   "no-base": "This branch has nothing to compare with (no upstream, main or master).",
   "bad-commit": "That commit isn't in this repository any more.",
 };
-
-const FINAL = new Set(["completed", "interrupted", "failed"]);
-
-/** The newest run's id and status; a change from running to final means the run ended. */
-function useRunEnded(threadId: string, onEnd: () => void): void {
-  const state = useThread(threadId);
-  const latest = useMemo(() => {
-    const runs = Object.values(state?.runs ?? {});
-    return runs.length === 0 ? null : runs.reduce((a, b) => (b.ordinal > a.ordinal ? b : a));
-  }, [state?.runs]);
-  const seen = useRef<{ id: string; status: string } | null>(null);
-  const fire = useRef(onEnd);
-  fire.current = onEnd;
-  useEffect(() => {
-    const prev = seen.current;
-    seen.current = latest ? { id: latest.id, status: latest.status } : null;
-    if (!latest || !prev) return;
-    if (prev.id === latest.id && prev.status === "running" && FINAL.has(latest.status)) fire.current();
-  }, [latest?.id, latest?.status]);
-}
 
 /** What the tab shows: the overview, one commit, or the branch against its base. */
 export type GitView = { kind: "list" } | { kind: "commit"; sha: string } | { kind: "branch" };
@@ -87,7 +70,6 @@ export function GitPanel({ threadId }: { threadId: string }) {
   const [result, setResult] = useState<FolderGitResponse | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [refreshes, setRefreshes] = useState(0);
   const [view, setView] = useState<GitView>(() => navMemory.get(threadId)?.view ?? { kind: "list" });
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(navMemory.get(threadId)?.expanded ?? []));
   const [wrap, setWrap] = useDiffWrap();
@@ -96,20 +78,8 @@ export function GitPanel({ threadId }: { threadId: string }) {
   }, [threadId, view, expanded]);
   const scrollRef = useScrollMemory<HTMLDivElement>(`git:${threadId}:${viewKey(view)}`);
 
-  const refresh = () => setRefreshes((n) => n + 1);
-  useRunEnded(threadId, refresh);
-  // Back from sleep or another app (and the network returning): the status may have moved on meanwhile.
-  useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === "visible") setRefreshes((n) => n + 1);
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("online", onVisible);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("online", onVisible);
-    };
-  }, []);
+  // The run ended, the page came back, the network returned (shared with the Diff tab), and the button.
+  const { refreshes, refresh } = useRefreshTriggers(threadId);
 
   useEffect(() => {
     if (folder.path === undefined || folder.path === null || !paneId) return;
@@ -164,14 +134,12 @@ export function GitPanel({ threadId }: { threadId: string }) {
           Refresh
         </Button>
       </div>
-      {available ? (
+      {available && view.kind !== "list" ? (
         <div className="flex items-center gap-1 border-b px-2 py-1">
-          {view.kind !== "list" ? (
-            <Button size="xs" variant="ghost-muted" onClick={() => setView({ kind: "list" })}>
-              <ArrowLeftIcon aria-hidden="true" />
-              All changes
-            </Button>
-          ) : null}
+          <Button size="xs" variant="ghost-muted" onClick={() => setView({ kind: "list" })}>
+            <ArrowLeftIcon aria-hidden="true" />
+            All changes
+          </Button>
           <span className="flex-1" />
           <Button size="xs" variant="ghost-muted" aria-pressed={wrap} onClick={() => setWrap(!wrap)} className={cn(wrap && "bg-accent text-foreground")}>
             <WrapTextIcon aria-hidden="true" />
@@ -189,12 +157,8 @@ export function GitPanel({ threadId }: { threadId: string }) {
         {result && !result.available ? <p>{UNAVAILABLE[result.reason]}</p> : null}
         {available && view.kind === "list" ? (
           <Overview
+            threadId={threadId}
             result={available}
-            expanded={expanded}
-            prefix={prefix}
-            toggle={toggle}
-            wrap={wrap}
-            openInFiles={openInFiles}
             onCommit={(sha) => setView({ kind: "commit", sha })}
             onBranch={() => setView({ kind: "branch" })}
           />
@@ -242,51 +206,75 @@ interface RowsProps {
   openInFiles: ((path: string) => void) | null;
 }
 
-function Overview(props: RowsProps & { result: Available; onCommit: (sha: string) => void; onBranch: () => void }) {
-  const { result } = props;
-  const diffs = useMemo(() => {
-    const map = new Map<string, { lines: string[]; added: number; removed: number }>();
-    for (const f of parseDiff(result.diff)) if (f.path) map.set(f.path, f);
-    return map;
-  }, [result.diff]);
+/** "12 files changed · +230 −41": every entry counts (untracked and conflicted files too); the lines come from the tracked diff. */
+export function changesSummary(result: Pick<Available, "entries" | "diff" | "diffTruncated">): { files: number; added: number; removed: number; partial: boolean } {
+  let added = 0;
+  let removed = 0;
+  for (const f of parseDiff(result.diff)) {
+    added += f.added;
+    removed += f.removed;
+  }
+  return { files: result.entries.length, added, removed, partial: result.diffTruncated };
+}
+
+function Overview(props: { threadId: string; result: Available; onCommit: (sha: string) => void; onBranch: () => void }) {
+  const { result, threadId } = props;
+  const summary = useMemo(() => changesSummary(result), [result]);
+  const openDiff = useDiffPanelStore((s) => s.openDiff);
   const commits = result.commits ?? [];
   return (
     <>
       <section aria-label="Changes">
-        <h3 className="mb-1 text-xs font-medium text-muted-foreground">Changes{result.entries.length ? ` · ${result.entries.length}` : ""}</h3>
-        {result.clean ? <p className="text-muted-foreground">Working tree clean.</p> : null}
-        <FileRows
-          {...props}
-          label="Changed files"
-          rows={result.entries.map((e) => {
-            const d = diffs.get(e.path);
-            return { path: e.path, status: `${e.x}${e.y}`, ...(d ? { lines: d.lines, added: d.added, removed: d.removed } : {}), openable: entryOnDisk(e) };
-          })}
-        />
+        <h3 className="mb-1 text-xs font-medium text-muted-foreground">Changes</h3>
+        {result.clean ? (
+          <p className="text-muted-foreground">Working tree clean.</p>
+        ) : (
+          <div className="flex items-center gap-2 rounded border px-2 py-1.5" data-git-changes-summary="">
+            <p className="min-w-0 flex-1 wrap-anywhere">
+              {summary.files} file{summary.files === 1 ? "" : "s"} changed
+              {summary.added > 0 || summary.removed > 0 ? (
+                <>
+                  {" · "}
+                  <DiffStatLabel additions={summary.added} deletions={summary.removed} layout="inline" />
+                  {summary.partial ? <span className="text-muted-foreground"> (counts may be short)</span> : null}
+                </>
+              ) : null}
+            </p>
+            <Button size="xs" variant="outline" className="shrink-0" onClick={() => openDiff(threadId, { kind: "workingTree" })}>
+              <DiffIcon aria-hidden="true" />
+              Review in Diff
+            </Button>
+          </div>
+        )}
         {result.hidden > 0 ? (
           <p className="mt-2 text-xs text-muted-foreground">
             {result.hidden} hidden file{result.hidden === 1 ? "" : "s"} not shown.
           </p>
         ) : null}
-        {result.statusTruncated ? <p className="mt-2 text-xs text-muted-foreground">First 500 changes shown.</p> : null}
-        {result.diffTruncated ? <p className="mt-2 text-xs text-muted-foreground">Diff truncated.</p> : null}
+        {result.statusTruncated ? <p className="mt-2 text-xs text-muted-foreground">First 500 changes counted.</p> : null}
         {result.noCommits ? <p className="mt-2 text-xs text-muted-foreground">No commits yet: nothing to diff against.</p> : null}
       </section>
       {commits.length > 0 || result.base ? (
         <section aria-label="Commits" className="mt-4">
           <h3 className="mb-1 text-xs font-medium text-muted-foreground">Commits</h3>
           {result.base && result.ahead ? (
-            <button
-              type="button"
-              onClick={props.onBranch}
-              className="mb-1 flex w-full items-center gap-2 rounded border px-2 py-1.5 text-left hover:bg-accent pointer-coarse:py-2.5"
-              data-git-branch-range=""
-            >
-              <GitCompareIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-              <span className="min-w-0 flex-1 wrap-anywhere">
-                All {result.ahead} commit{result.ahead === 1 ? "" : "s"} not on {result.base}
-              </span>
-            </button>
+            <div className="mb-1 flex items-stretch gap-1">
+              <button
+                type="button"
+                onClick={props.onBranch}
+                className="flex min-w-0 flex-1 items-center gap-2 rounded border px-2 py-1.5 text-left hover:bg-accent pointer-coarse:py-2.5"
+                data-git-branch-range=""
+              >
+                <GitCompareIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className="min-w-0 flex-1 wrap-anywhere">
+                  All {result.ahead} commit{result.ahead === 1 ? "" : "s"} not on {result.base}
+                </span>
+              </button>
+              <Button size="xs" variant="outline" className="h-auto shrink-0" onClick={() => openDiff(threadId, { kind: "branch", baseRef: result.base })}>
+                <DiffIcon aria-hidden="true" />
+                Open branch in Diff
+              </Button>
+            </div>
           ) : null}
           <ul aria-label="Recent commits" className="space-y-1">
             {commits.map((c) => (
