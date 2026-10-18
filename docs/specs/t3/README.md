@@ -26,7 +26,8 @@ One spec = one run. Do not implement a sibling spec in the same run. The rules a
 | Model / effort / permission mode pickers | At spawn: CLI args. Live: only where the harness has a key/slash for it | Capability flags per harness, never `if agent === …` in UI |
 | Right panel: diff / files / terminal / preview / PR | Right panel: **Terminal** (the live mirror), **Files**, **Git status** | Phone: each is a sheet |
 | Server-hosted PTYs (`terminal.*`) | Not needed: the pane *is* the terminal | The mirror reads it as today |
-| Worktrees, checkpoints, diff panel, commit/push/PR | **Out of scope** for this series | herdr owns worktrees; read-only git status stays |
+| Diff panel, per-run changed files, checkpoints | **Diffs series T24–T31** (read-only), see below | Reversed 18 Oct 2026 |
+| Worktrees, rollback, commit/push/PR | **Out of scope** | herdr owns worktrees; Sightr never writes git state |
 | Pairing / T3 Connect / Electron / Expo app | **Out**: one PWA over Tailscale, WebAuthn lock as today | Desktop and phone get equal weight via an adaptive layout |
 
 ## Domain (shared/v2/contracts.ts, spec T01)
@@ -123,6 +124,14 @@ Order matters: T01→T05 make the bridge serve v2 with no UI; T09 can start once
 | T18 | [T18-settings-push-lock.md](T18-settings-push-lock.md) | web2 | Settings route: theme, display, push, lock devices, bridge settings, connection info |
 | T19 | [T19-parity-ports.md](T19-parity-ports.md) | web2 | Gesture wheel, find (timeline and mirror), statusline, whistlr decision cards |
 | T20 | [T20-upstream-sync.md](T20-upstream-sync.md) | scripts | Upstream check covers the contracts, answers in JSON, remembers skip/defer decisions |
+| T24 | [T24-changed-files-card.md](T24-changed-files-card.md) | web2 | Changed-files card per run, from the run's `file_change` items |
+| T25 | [T25-diff-renderer-spike.md](T25-diff-renderer-spike.md) | scripts + web2 | Measured spike: `@pierre/diffs` vs hand-rolled + highlighter vs status quo; `DiffCodeView` seam |
+| T26 | [T26-bridge-diff-api.md](T26-bridge-diff-api.md) | bridge + shared | Working-tree and branch-vs-base review API: file list, lazy patches, whitespace, whole-file contents |
+| T27 | [T27-diff-panel.md](T27-diff-panel.md) | web2 | Diff panel: scope and base pickers, changed-files tree, lazy patches |
+| T28 | [T28-split-whitespace-context.md](T28-split-whitespace-context.md) | web2 | Split view (wide only), ignore whitespace, expand unchanged lines |
+| T29 | [T29-line-comments.md](T29-line-comments.md) | web2 | Line comments become quoted text in the composer |
+| T30 | [T30-git-checkpoints.md](T30-git-checkpoints.md) | bridge + shared | Snapshots in a private store at run start and end; exact per-run diffs, patches kept in SQLite |
+| T31 | [T31-checkpoint-ui.md](T31-checkpoint-ui.md) | web2 | Card and panel run scope read checkpoints, fall back to the journal |
 
 ## React Compiler spike (T23, 18 Oct 2026): not adopted
 
@@ -145,9 +154,29 @@ so web2 stays uncompiled. Compiler-only rewrites upstream are `skip` rows in `we
 unsaved; the command is in the config). Revisit if adapted ports start costing more than the bail-outs
 would take to fix.
 
+## Diffs series (T24–T31, decided 18 Oct 2026)
+
+Bart reversed the earlier "no per-turn diffs, no checkpoints" line. T3's diff work reaches Sightr as a
+series of its own, in this order (value first), one spec per run, bridge before web2:
+
+1. **T24** changed-files card per run, from the journal (no git).
+2. **T25** renderer spike, decided from numbers (as T23 was). T27–T29 code against a `DiffCodeView` seam, so the choice stays swappable.
+3. **T26 + T27** the review API and the diff panel: working tree, branch vs a picked base, file tree.
+4. **T28** split view (≥ 1024 px only), ignore whitespace, expand unchanged lines.
+5. **T29** line comments that land in the plain-text composer as quoted text. No Tiptap.
+6. **T30 + T31** git checkpoints for exact per-run diffs, then the UI that prefers them over the journal.
+
+How a session builds it (waves, which model does what, the per-slice loop, gates): [`DIFFS-RUNBOOK.md`](DIFFS-RUNBOOK.md).
+
+Rules for the whole series:
+
+- **Read-only.** No stage, revert, commit, push, rollback or worktree creation. Nothing is ever written into a user's repository. T30 keeps its snapshots in a private bare repo under Sightr's state dir (on by default, with an opt-out), and stores each run's patches in `threads.sqlite` so archived runs still show their diffs.
+- **Never take, still:** `@pierre/trees` (a beta; the tree is local code), Effect atoms and RPC (plain fetch to the bridge), Tiptap, T3's PR-diff and review-guide components, T3's mobile review module.
+- **Ledger.** The `skip` decision on T3's `DiffPanel.tsx` and `DiffFileStatus.tsx` is reversed by the slice that ports each file.
+
 ## Not in this series
 
-- Worktree creation, checkpoints, per-turn diffs, rollback, commit/push/PR (T3 §5). Herdr owns worktrees, and Sightr's Git panel stays read-only.
+- Worktree creation, rollback, commit/push/PR (T3 §5). Herdr owns worktrees, and Sightr never writes git state. Per-turn diffs and checkpoints moved to the diffs series above.
 - Resuming an archived thread into a new pane. That is a follow-up once T07 lands; Claude, Pi and Codex can resume by session id.
 - Multi-environment pairing, a native app and a relay.
 - Row 4 of the council set (whistlr wizard). Marked operator-decision cards keep going through `whistlr reply`.

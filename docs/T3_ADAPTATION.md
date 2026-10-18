@@ -33,7 +33,7 @@ These are not "later" items. Raise one only as a deliberate design change, in `s
 - **Tiptap**. The composer stays a plain text area, so phone dictation works.
 - **Electron, Expo, Clerk, T3 Connect relays and pairing.** Sightr is one PWA over Tailscale with its WebAuthn lock.
 - **Provider processes owned by the server.** Herdr owns the agents; Sightr observes panes and starts them with `agent.start`.
-- **Worktrees, checkpoints, per-turn diffs, rollback, commit/push/PR.** Out of scope for v2 (`specs/t3/README.md` "Not in this series"). Revisit as a series of its own, not as a sync.
+- **Worktrees, rollback, commit/push/PR.** Out of scope (`specs/t3/README.md` "Not in this series"). Sightr never writes git state. Checkpoints and per-turn diffs were moved into their own series on 18 Oct 2026 (T24–T31, read-only); they reach Sightr through those specs, not through a sync.
 - **Branching on a harness id in web2.** Capability flags only; `scripts/web2-harness-ids.ts` fails the build otherwise.
 - **Claude's live `/model` and `/effort`.** They rewrite the user's global default. Models are chosen at spawn.
 
