@@ -1,6 +1,6 @@
 // Adapted from T3 Code apps/web/src/components/CommandPaletteResults.tsx @ e3b35d1b (MIT, see THIRD_PARTY.md).
-// Changes: the plain (non-virtualized) list only, since a herd is a few dozen threads; no thread
-// content-match excerpt and no submenu rows; 44 px rows on touch. Row markup and classes are T3's.
+// Changes: the plain (non-virtualized) list only, since a herd is a few dozen threads; the thread
+// content-match excerpt (a Messages row) shows over two lines, no submenu rows; 44 px rows on touch. Row markup and classes are T3's.
 import { type ResolvedKeybindingsConfig } from "@t3tools/contracts";
 
 import { shortcutLabelForCommand } from "../keybindings";
@@ -61,7 +61,15 @@ function RowBody({ item }: { item: CommandPaletteActionItem }) {
         {item.titleLeadingContent}
         <span className="truncate">{item.title}</span>
       </span>
-      <span className="min-w-0 truncate text-muted-foreground/70 text-xs">{item.description}</span>
+      <span
+        className={
+          item.descriptionLines === 2
+            ? "line-clamp-2 min-w-0 break-words text-muted-foreground/70 text-xs"
+            : "min-w-0 truncate text-muted-foreground/70 text-xs"
+        }
+      >
+        {item.description}
+      </span>
     </span>
   ) : (
     <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-foreground">

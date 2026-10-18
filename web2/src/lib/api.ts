@@ -1,6 +1,7 @@
 // The non-v2 bridge calls web2 needs: the lock endpoints (copied from web/src/lib/api.ts, same
 // `/api/lock/*` routes) and the request headers every web2 call sends.
 import { BUILD_HEADER, SEEN_HEADER } from "@shared/limits";
+import { V2_SEARCH_PATH, type ThreadSearchResponse } from "@shared/v2/contracts";
 import type {
   ActionResponse,
   BridgeConfig,
@@ -265,6 +266,11 @@ export function fetchFiles(path: string, signal?: AbortSignal): Promise<FilesRes
 
 export function searchFiles(q: string, signal?: AbortSignal): Promise<FileSearchResponse> {
   return readJson<FileSearchResponse>(`/api/files/search?q=${encodeURIComponent(q)}`, signal ? { signal } : {});
+}
+
+/** Message search across threads (`GET /api/v2/search`): user and assistant text and command inputs. */
+export function searchThreads(q: string, signal?: AbortSignal, limit = 8): Promise<ThreadSearchResponse> {
+  return readJson<ThreadSearchResponse>(`${V2_SEARCH_PATH}?q=${encodeURIComponent(q)}&limit=${limit}`, signal ? { signal } : {});
 }
 
 export function downloadFileUrl(path: string): string {
