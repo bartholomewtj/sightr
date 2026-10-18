@@ -145,7 +145,16 @@ export function parseStatusV2(records: string[]): ParsedStatus {
   // An upstream with no `branch.ab` line is gone (deleted on the remote): no counts to trust.
   return { ...(branch === undefined ? {} : { branch }), detached, noCommits, ...(upstream === undefined ? {} : { upstream }), ...(ahead === undefined ? {} : { ahead, behind: behind! }), entries };
 }
-export function isHiddenPath(path: string): boolean { return path.split("/").some((seg) => seg !== "" && isRefusedName(seg)); }
+/**
+ * A repo path the Files refusal list hides (any segment). On Windows a segment shaped like an 8.3 short
+ * name (`ENV~1`, `GITHUB~1`) is hidden too: the file system resolves it to its long name, so a tracked
+ * entry named `ENV~1` would make git read `.env` through it (T26's working-tree diff and T30's snapshots).
+ */
+export function isHiddenPath(path: string, windows = process.platform === "win32"): boolean {
+  return path.split("/").some((seg) => seg !== "" && (isRefusedName(seg) || (windows && SHORT_NAME_RE.test(seg))));
+}
+/** An 8.3 short name's `~<digit>` tail, anywhere in a segment. */
+export const SHORT_NAME_RE = /~\d/;
 function cutDiff(text: string): { text: string; truncated: boolean } { const bytes = new TextEncoder().encode(text); if (bytes.length <= DIFF_CAP_BYTES) return { text, truncated: false }; const cut = new TextDecoder().decode(bytes.slice(0, DIFF_CAP_BYTES)); return { text: cut.slice(0, cut.lastIndexOf("\n") + 1), truncated: true }; }
 
 // ── History: commits, the branch range, one commit's diff. Read-only like everything above. ─────────

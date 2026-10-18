@@ -7,7 +7,8 @@ import {
   FILE_PATCH_CAP_BYTES, REVIEW_MAX_GIT, REVIEW_QUEUE_MAX, REVIEW_SUBCOMMANDS, createFolderReview, createGate, cutPatchAtHunk, hasNul, headerNamesAllowed, keepWholeHunks,
   parseRawZ, parseNumstatZ, REVIEW_GIT_PREFIX, patchHeadersMatch, synthesizeAddedPatch, validBase,
 } from "./workdir-review.ts";
-import { KILL_GRACE_MS, collectBounded, spawnGit, type BoundedProc, type GitRun, type GitRunner } from "./workdir-git.ts";
+import { KILL_GRACE_MS, collectBounded, isHiddenPath, spawnGit, type BoundedProc, type GitRun, type GitRunner } from "./workdir-git.ts";
+import { trackAlias } from "./test/short-names.ts";
 import type { ReviewBranches, ReviewDiffFileContents, ReviewDiffFilePatch, ReviewDiffPreview } from "../shared/v2/review.ts";
 
 const rootTemp = async (name: string) => realpath(await mkdtemp(join(tmpdir(), name)));
@@ -884,6 +885,32 @@ describe("Windows name aliases do not get past the path check", () => {
         if (c.available) { expect(c.new).toEqual({ state: "absent" }); expect(c.old).toEqual({ state: "absent" }); }
         if (p.available) expect(p.patch).toBe("");
       }
+    } finally { await rm(work, { recursive: true, force: true }); }
+  }, 60_000);
+  test("a TRACKED entry named like the 8.3 short name of .env or of a hidden folder is hidden: not listed, diffed or read (T30 review)", async () => {
+    expect(isHiddenPath("ENV~1", true)).toBe(true);
+    expect(isHiddenPath("HIDDEN~1/s.txt", true)).toBe(true);
+    expect(isHiddenPath("ENV~1", false)).toBe(false);
+    if (!win) { console.warn("skipping the tracked 8.3 alias diff: not Windows"); return; }
+    const work = await rootTemp("sightr-review-alias2-"); const repo = join(work, "repo"); await mkdir(join(repo, ".hiddendir"), { recursive: true });
+    try {
+      const g = gitIn(repo); await g("init", "-q", "-b", "main");
+      await writeFile(join(repo, "a.txt"), "alpha\n"); await writeFile(join(repo, ".hiddendir", "s.txt"), "HIDDEN-SECRET\n");
+      await g("add", "-A"); await g("commit", "-qm", "i");
+      await writeFile(join(repo, ".env"), "ENV-SECRET\n");
+      const envShort = shortNameOf(repo, ".env"), dirShort = shortNameOf(repo, ".hiddendir");
+      if (!envShort || !dirShort) { console.warn("skipping the tracked 8.3 alias diff: this volume has no short names (8.3 name creation is off)"); return; }
+      await trackAlias(g, repo, envShort); await trackAlias(g, repo, `${dirShort}/s.txt`);
+      await writeFile(join(repo, ".hiddendir", "s.txt"), "HIDDEN-SECRET-2\n");
+      const review = reviewer(work);
+      const list = asList(await review.list(repo, { scope: "working-tree" }));
+      expect(list.files.map((f) => f.path)).not.toContain(envShort);
+      expect(list.files.map((f) => f.path).some((p) => p.startsWith(dirShort))).toBe(false);
+      for (const file of [envShort, `${dirShort}/s.txt`]) {
+        expect(await review.patch(repo, { scope: "working-tree", file })).toEqual({ available: false, reason: "bad-file" });
+        expect(await review.contents(repo, { scope: "working-tree", file })).toEqual({ available: false, reason: "bad-file" });
+      }
+      expect(JSON.stringify(list)).not.toContain("SECRET");
     } finally { await rm(work, { recursive: true, force: true }); }
   }, 60_000);
   if (!win) test("name aliases are Windows-only", () => { console.warn("skipping the Windows name-alias test: not Windows"); });
