@@ -113,6 +113,8 @@ import {
 import { AssistantChangedFilesSection } from "./AssistantChangedFilesSection";
 import { DiffStatLabel } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
+import { ReviewCommentCard } from "./ReviewCommentCard";
+import { parseReviewBlocks } from "@/lib/reviewCommentContext";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { OpenFileThreadContext } from "../right-panel/OpenFileLink";
 import { ScreenTimelineRow } from "./ScreenTimelineRow";
@@ -606,8 +608,16 @@ function MessageAuthorHeading({ children }: { children: string }) {
 const COLLAPSED_USER_MESSAGE_FADE_HEIGHT_REM = 1.75;
 const COLLAPSED_USER_MESSAGE_FADE_MASK = `linear-gradient(to bottom, black calc(100% - ${COLLAPSED_USER_MESSAGE_FADE_HEIGHT_REM}rem), transparent)`;
 
+/** A sent message that holds review comments (T29): the user's own text as markdown and each review block as a collapsed card. Null for any other message. */
+function reviewSegments(text: string) {
+  if (!text.includes("[review] ")) return null;
+  const segments = parseReviewBlocks(text);
+  return segments.some((s) => s.type === "review") ? segments : null;
+}
+
 const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(props: { text: string }) {
   const [expanded, setExpanded] = useState(false);
+  const segments = useMemo(() => reviewSegments(props.text), [props.text]);
   const hasVisibleBody = props.text.trim().length > 0;
   const canCollapse = hasVisibleBody && shouldCollapseUserMessage(props.text);
   const isCollapsed = canCollapse && !expanded;
@@ -619,7 +629,17 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
           data-user-message-collapsed={isCollapsed ? "true" : "false"}
           style={isCollapsed ? { WebkitMaskImage: COLLAPSED_USER_MESSAGE_FADE_MASK, maskImage: COLLAPSED_USER_MESSAGE_FADE_MASK } : undefined}
         >
-          <ChatMarkdown text={props.text} className="text-foreground" lineBreaks headingLevelOffset={MESSAGE_HEADING_LEVEL} />
+          {segments ? (
+            segments.map((segment, i) =>
+              segment.type === "review" ? (
+                <ReviewCommentCard key={i} block={segment.block} />
+              ) : segment.text.trim() === "" ? null : (
+                <ChatMarkdown key={i} text={segment.text} className="text-foreground" lineBreaks headingLevelOffset={MESSAGE_HEADING_LEVEL} />
+              ),
+            )
+          ) : (
+            <ChatMarkdown text={props.text} className="text-foreground" lineBreaks headingLevelOffset={MESSAGE_HEADING_LEVEL} />
+          )}
         </div>
       ) : null}
       {canCollapse ? (

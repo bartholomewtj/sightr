@@ -14,6 +14,8 @@ export type { DiffExpandContents } from "@/lib/diffFileContents";
 
 export type DiffSide = "old" | "new";
 export type DiffLineRef = { filePath: string; side: DiffSide; line: number }; // 1-based, from the hunk header
+export type DiffSelection = { side: DiffSide; start: number; end: number };
+export type DiffRevealLine = { side: DiffSide; line: number; key: number | string };
 export type DiffAnnotation = { at: DiffLineRef; key: string };
 export type DiffCodeViewProps = {
   patch: string; // one file's unified diff (what `parsePatch` splits out)
@@ -23,7 +25,15 @@ export type DiffCodeViewProps = {
   layout?: "stacked" | "split"; // adapters without split render stacked and say so via `capabilities`
   annotations?: DiffAnnotation[]; // T29 anchors
   renderAnnotation?: (a: DiffAnnotation) => ReactNode;
-  onLineAction?: (at: DiffLineRef) => void; // tap/click on a line gutter, T29
+  /** A tap or click on a line gutter, T29. `shiftKey` is the keyboard's; a touch screen has none (the caller extends a range on a second tap). */
+  onLineAction?: (at: DiffLineRef, modifiers: { shiftKey: boolean }) => void;
+  /** Lines to mark as selected (one side, 1-based, inclusive). An annotation for the range goes through `annotations`, anchored to its last line (T29). */
+  selection?: DiffSelection;
+  /**
+   * Scroll this line into view. A windowing adapter mounts the line's window first, then scrolls after layout
+   * (T29); a new `key` asks again. An adapter that draws every line scrolls to it directly.
+   */
+  revealLine?: DiffRevealLine;
   /** T28: the whole file, fetched once on the first tap of any expand control. Null: the read failed (the adapter says so and offers a retry). */
   onExpandContext?: (filePath: string) => Promise<DiffExpandContents | null>;
   /** The host cut this patch: the tail after the last hunk is unknown, so there is no control for it (T28). */

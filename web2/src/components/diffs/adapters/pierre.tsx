@@ -83,7 +83,7 @@ export default function PierreAdapter(props: DiffCodeViewProps) {
       diffIndicators: "classic" as const, // +/- glyphs, so a change is not told by colour alone
       disableFileHeader: true, // the adapter draws the path above, in the page DOM
       unsafeCSS: UNSAFE_CSS,
-      onLineNumberClick: onLineAction ? (e: { annotationSide: "deletions" | "additions"; lineNumber: number }) => onLineAction({ filePath, side: e.annotationSide === "deletions" ? "old" : "new", line: e.lineNumber }) : undefined,
+      onLineNumberClick: onLineAction ? (e: { annotationSide: "deletions" | "additions"; lineNumber: number }) => onLineAction({ filePath, side: e.annotationSide === "deletions" ? "old" : "new", line: e.lineNumber }, { shiftKey: false }) : undefined,
       loadDiffFiles: onExpandContext
         ? async () => {
             const r = await onExpandContext(filePath).catch(() => null);

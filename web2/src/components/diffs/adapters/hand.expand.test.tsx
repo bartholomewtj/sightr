@@ -222,7 +222,7 @@ describe("split layout", () => {
     expect(now!.textContent).not.toMatch(/No newline/);
   });
 
-  it("keeps a window of long context lines to the node budget: a context pair counts twice towards the 12,000 characters", async () => {
+  it("keeps a window of long context lines to the node budget: a context pair counts twice towards the 4,000 characters", async () => {
     // Windows after the first wait for the screen, which a stub that never fires keeps them from reaching.
     vi.stubGlobal("IntersectionObserver", class { observe() {} unobserve() {} disconnect() {} takeRecords() { return []; } });
     const long = (i: number) => `const value${i} = "${"x".repeat(380)}";`;
@@ -234,8 +234,8 @@ describe("split layout", () => {
     stacked.unmount();
     const split = view({ patch: flat, layout: "split", onExpandContext: undefined });
     await waitFor(() => expect(split.container.querySelector("[class*=hljs-]")).not.toBeNull());
-    // 12,000 characters over a pair's two sides of 400: 15 rows in a window (stacked: 30).
-    expect(split.container.querySelectorAll("[role=row]").length).toBeLessThanOrEqual(15);
+    // 4,000 characters over a pair's two sides of 400: 5 rows in a window (stacked: 10) (T29 cut the cap from 12,000).
+    expect(split.container.querySelectorAll("[role=row]").length).toBeLessThanOrEqual(5);
     // The first window of a split file stays within the 5,000-node budget, and about the size of a stacked one.
     expect(split.container.querySelectorAll("*").length).toBeLessThanOrEqual(5000);
     expect(split.container.querySelectorAll("*").length).toBeLessThanOrEqual(stackedNodes * 1.3);

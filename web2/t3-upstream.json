@@ -1080,6 +1080,47 @@
       "commit": "9c161462c94f7d9d6d9169da5c841457cbadf213",
       "mode": "pattern",
       "note": "T30: a checkpoint at each run's start and end, recorded as checkpoint.captured; Sightr listens to T03's run.started/run.ended. Retention sweep and the run-scope review answers are Sightr's"
+    },
+    {
+      "local": "src/components/diffs/commentSubmitShortcut.ts",
+      "upstream": "apps/web/src/components/diffs/commentSubmitShortcut.ts",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/diffs/commentSubmitShortcut.test.ts",
+      "upstream": "apps/web/src/components/diffs/commentSubmitShortcut.test.ts",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "adapted",
+      "note": "T29: T3's two cases kept as they are; the import is vitest's (T3 runs vite-plus), and one case added for a plain Enter, which adds a line"
+    },
+    {
+      "local": "src/components/diffs/AnnotatableCodeView.tsx",
+      "upstream": "apps/web/src/components/diffs/AnnotatableCodeView.tsx",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "pattern",
+      "note": "T29: the same job over the DiffCodeView seam instead of Pierre's CodeView: a gutter tap starts or extends a range, the editor is an annotation row under its last line, Save puts the comment in the pending list (state/lineComments.ts), not a Tiptap draft. Not taken: Pierre types, composerDraftStore, selectedLines state, gutter utility"
+    },
+    {
+      "local": "src/components/diffs/DiffCommentAnnotation.tsx",
+      "upstream": "apps/web/src/components/diffs/DiffCommentAnnotation.tsx",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "pattern",
+      "note": "T29: the saved note row under a commented range, a tap opening Edit and Delete at 44 px (T3 shows delete on hover). The draft editor half is DiffCommentEditor.tsx (same upstream file): plain textarea, Save and Cancel at 44 px, Mod+Enter through commentSubmitShortcut.ts"
+    },
+    {
+      "local": "src/components/diffs/DiffCommentEditor.tsx",
+      "upstream": "apps/web/src/components/diffs/DiffCommentAnnotation.tsx",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "pattern",
+      "note": "T29: the draft half of T3's DiffCommentAnnotation (kind=draft): a plain textarea so phone dictation works, Save and Cancel at 44 px, Mod+Enter to save, Escape to cancel, Clear range; the note is kept outside React state while typing so a keystroke does not redraw the diff"
+    },
+    {
+      "local": "src/lib/reviewCommentContext.ts",
+      "upstream": "apps/web/src/reviewCommentContext.ts",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "pattern",
+      "note": "T29: only the idea of turning a diff comment into context for the composer. T3 builds a Tiptap node (476 lines, Effect schemas, Pierre ranges); Sightr writes plain text into the draft: [review] header, a diff excerpt fence, the note quoted with > , and parses it back. The spec's path apps/web/src/lib/reviewCommentContext.ts is apps/web/src/reviewCommentContext.ts at this commit. T3's fnv1a32 (lib/diffRendering.ts, a skip decision) is not taken; blockHash is a 10-line FNV-1a"
     }
   ],
   "decisions": [
@@ -1504,6 +1545,13 @@
       "verdict": "skip",
       "reason": "Router subscription narrowing for T3's thread route consumers (#20837); Sightr's routes are its own pattern",
       "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/diffs/DiffCommentAnnotation.tsx",
+      "commit": "0bdb5a8c6405",
+      "verdict": "skip",
+      "reason": "Native caret and selection classes for a comment box inside Pierre's contentEditable annotation slot (#17554); Sightr's DiffCommentEditor/DiffCommentAnnotation are a plain textarea and a note row outside any contentEditable, so the native caret already shows (T29 pattern rows)",
+      "date": "2026-10-19"
     }
   ]
 }
