@@ -12,13 +12,20 @@ import { PROMPT_TAIL_LINES } from "./limits.ts";
  * alignment must survive because they can be semantic content in a displayed diff or command.
  */
 const SGR_SEQUENCE = /(?:\x1b\[|\x9b)[0-?]*[ -/]*m/g;
+/**
+ * A tool call's status bullet at the start of a line. Claude blinks it (`●` / blank) while the call
+ * waits on a permission dialog, and that line sits inside the dialog's bound tail (live 18 Oct 2026,
+ * 2.1.302, a `Read file` prompt): two reads a second apart differed only there, so the request was
+ * re-created every poll and an answer's binding check missed half the time. It is read as a blank.
+ */
+const BLINKING_BULLET = /^(\s*)[●⏺](?= )/;
 
 export function normalizePromptRegion(text: string): string[] {
   return text
     .replace(SGR_SEQUENCE, "")
     .replace(/\r\n?/g, "\n")
     .split("\n")
-    .map((line) => line.replace(/\s+$/, ""))
+    .map((line) => line.replace(BLINKING_BULLET, "$1 ").replace(/\s+$/, ""))
     .filter((line) => line.length > 0);
 }
 

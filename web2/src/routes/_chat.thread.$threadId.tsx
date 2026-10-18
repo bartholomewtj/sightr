@@ -80,11 +80,10 @@ function ThreadRouteView() {
 
   return (
     <section aria-label={title} className="flex min-h-0 flex-1 flex-col">
-      <header className="flex items-center gap-2 border-b px-3 py-2">
+      <header className="relative flex items-center gap-2 border-b px-3 py-2">
         {!desktop && <BackToThreads />}
         {/* The title opens this thread's menu (rename, pin, snooze, settle, archive, mark unread). */}
         <ChatHeader title={title} thread={shellThread ?? state?.thread ?? null} canOperate={!missing && !readOnly} />
-        {state?.syncing && !cli && <span className="text-xs text-muted-foreground">Syncing…</span>}
         {cliFirst && !missing ? <ThreadViewToggle threadId={threadId} view={view} /> : null}
         {!missing && !cli ? (
           <Button size="icon-sm" variant="ghost-muted" aria-label="Find in thread" onClick={() => openThreadFind(threadId)}>
@@ -98,6 +97,17 @@ function ThreadRouteView() {
           </Button>
         ) : null}
         {!desktop && !missing ? <PhonePanelButtons cli={cli} /> : null}
+        {/* Syncing is a thin line on the header's bottom edge, not a word in the title row: at 360 px a
+            word there squeezed the title to a few letters. */}
+        {state?.syncing && !cli ? (
+          <span
+            role="status"
+            data-syncing=""
+            className="pointer-events-none absolute inset-x-0 -bottom-px h-0.5 animate-pulse bg-primary/60"
+          >
+            <span className="sr-only">Syncing…</span>
+          </span>
+        ) : null}
       </header>
       {!desktop ? <PhonePanelSheet threadId={threadId} /> : null}
       {missing ? (

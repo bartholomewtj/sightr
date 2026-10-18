@@ -83,7 +83,11 @@ export function ThreadDetailsContent({ threadId }: { threadId: string }) {
   const folder = usePaneFolder(thread?.paneId || null);
   if (!thread) return <p className="px-4 py-6 text-sm text-muted-foreground">This thread isn't loaded.</p>;
   const runs = state ? Object.values(state.runs) : [];
-  const harness = descriptorFor(thread.harness)?.label ?? thread.harness;
+  const descriptor = descriptorFor(thread.harness);
+  const harness = descriptor?.label ?? thread.harness;
+  const modeId = thread.permissionMode?.trim();
+  // The launch table's label for the mode (as the composer's chip shows it), else the raw id.
+  const mode = modeId ? (descriptor?.launch?.modes?.find((m) => m.id === modeId)?.label ?? modeId) : null;
   const sessionId = thread.sessionRef?.value ?? null;
   const folderPath = folder.path;
   return (
@@ -92,7 +96,7 @@ export function ThreadDetailsContent({ threadId }: { threadId: string }) {
         <dl>
           <DetailRow label="Harness">{harness}</DetailRow>
           <DetailRow label="Model">{thread.model?.trim() || muted("Harness default")}</DetailRow>
-          <DetailRow label="Permission mode">{thread.permissionMode?.trim() || muted("Not reported")}</DetailRow>
+          <DetailRow label="Permission mode">{mode ?? muted("Not reported")}</DetailRow>
           <DetailRow label="Status">{thread.status}</DetailRow>
         </dl>
       </ThreadDetailsSection>

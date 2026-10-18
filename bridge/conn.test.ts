@@ -164,4 +164,10 @@ describe("bridge-side lines", () => {
     await poll();
     expect(seen).toEqual([["connected", undefined], ["disconnected", "pipe gone"], ["connected", undefined]]);
   });
+
+  test("a herdr.slow line is written as a bridge line", () => {
+    const { log, lines } = memoryLog();
+    log.bridge({ kind: "herdr.slow", ms: 5000 });
+    expect(lines).toEqual([expect.objectContaining({ src: "bridge", kind: "herdr.slow", ms: 5000 })]);
+  });
 });

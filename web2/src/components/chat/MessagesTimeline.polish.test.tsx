@@ -206,7 +206,7 @@ describe("thread details", () => {
     const value = (label: string) => sheet.querySelector(`[data-thread-detail="${label}"] dd`)?.textContent;
     expect(value("Harness")).toBe("Claude Code");
     expect(value("Model")).toBe("claude-haiku-5-5");
-    expect(value("Permission mode")).toBe("acceptEdits");
+    expect(value("Permission mode")).toBe("Accept edits");
     expect(value("Folder")).toBe("work/demo");
     expect(value("Session id")).toBe("290a2b12-973b-47d1-ae45-3c629c92b769");
     expect(value("Runs")).toBe("1");
