@@ -26,7 +26,10 @@ export function diffFileTreeEntries(files: ReadonlyArray<Pick<DiffFileEntry, "pa
   return [...statusByPath].map(([path, status]) => ({ path, status }));
 }
 
-/** Every ancestor directory of `paths` once, parents first, without a trailing slash. */
+/**
+ * Every ancestor directory of `paths` once, parents first, without a trailing slash. T3's, kept for its ported
+ * test; the tree here is built by `buildTurnDiffTree`, which does not need it.
+ */
 export function collectDirectoryPaths(paths: ReadonlyArray<string>): ReadonlyArray<string> {
   const directories = new Set<string>();
   for (const path of paths) {
@@ -65,17 +68,6 @@ export function treeOrder(files: ReadonlyArray<DiffFileEntry>): DiffFileEntry[] 
   walk(buildDiffTree(files));
   // A path the tree could not place (an empty or all-slash name) still gets listed.
   for (const list of byPath.values()) out.push(...list);
-  return out;
-}
-
-/** Every directory node's path in the tree (what "fold all" would close). */
-export function treeDirectoryPaths(nodes: ReadonlyArray<TurnDiffTreeNode>): string[] {
-  const out: string[] = [];
-  for (const node of nodes) {
-    if (node.kind !== "directory") continue;
-    out.push(node.path);
-    out.push(...treeDirectoryPaths(node.children));
-  }
   return out;
 }
 

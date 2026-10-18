@@ -279,7 +279,7 @@
       "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
-      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list; db5919d87: event rows draw V2LifecycleRow and ProposedPlanCard, DiffStatLabel on file-change rows; timeline polish: file-change/read rows lead with the file name (folder dim, start-truncated as StartTruncatedPath), fetch group icon, OpenFileThreadContext for path links, ThreadDetailsSheet mounted beside the list; images: the user bubble draws T3's two-column image grid (TimelineAttachments), a tool row with output images carries an image mark; T24: the changed-files card row and ChangedFileSheet mounted beside the list"
+      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list; db5919d87: event rows draw V2LifecycleRow and ProposedPlanCard, DiffStatLabel on file-change rows; timeline polish: file-change/read rows lead with the file name (folder dim, start-truncated as StartTruncatedPath), fetch group icon, OpenFileThreadContext for path links, ThreadDetailsSheet mounted beside the list; images: the user bubble draws T3's two-column image grid (TimelineAttachments), a tool row with output images carries an image mark; T24: the changed-files card row (T27 removed the ChangedFileSheet that was mounted beside the list)"
     },
     {
       "local": "src/components/chat/TimelineAttachments.tsx",
@@ -320,7 +320,7 @@
       "upstream": "apps/web/src/components/chat/V2ItemInspector.tsx",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "pattern",
-      "note": "an open tool row's call and output; inline output, 200-line cap; db5919d87: diff stat + copy, failed-edit error text, todo checklist, dynamic-tool args list; timeline polish: Copy on command and output (CommandBlock pattern), paths open the Files tab, MCP tool names; images: a dynamic tool's output images as lazy thumbnails (TimelineAttachments); T24: FileChangeDetail extracted from the file_change branch for the changed-file sheet"
+      "note": "an open tool row's call and output; inline output, 200-line cap; db5919d87: diff stat + copy, failed-edit error text, todo checklist, dynamic-tool args list; timeline polish: Copy on command and output (CommandBlock pattern), paths open the Files tab, MCP tool names; images: a dynamic tool's output images as lazy thumbnails (TimelineAttachments); T24: FileChangeDetail extracted from the file_change branch (for T24's changed-file sheet, which T27 removed)"
     },
     {
       "local": "src/components/ChatMarkdown.tsx",
@@ -966,7 +966,7 @@
       "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
       "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
       "mode": "pattern",
-      "note": "T24: the changed-files section under a run's reply; tree/flat toggle (per-device), Collapse all, 50-row cap, caveat line; a tap calls openChangedFile (T27 repoints it at the diff panel)"
+      "note": "T24: the changed-files section under a run's reply; tree/flat toggle (per-device), Collapse all, 50-row cap, caveat line; a tap calls openChangedFile, which T27 points at the Diff tab's run scope"
     },
     {
       "local": "src/components/chat/ChangedFiles.logic.ts",

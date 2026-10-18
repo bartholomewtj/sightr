@@ -4,9 +4,12 @@
 // and one Back closed every sheet that was open.
 //
 // A "slot" is one history entry we pushed. It belongs to the sheet that pushed it (`owner`), or to nobody
-// (an orphan) when that sheet closed while a sheet above it was still open: the browser cannot remove an
-// entry from the middle of its list, so the slot stays until a Back reaches it, and that Back skips it (one
-// more step back) so it never costs the operator an extra press.
+// (an orphan) when that sheet closed while something was still above its entry (a sheet, or a route change):
+// the browser cannot remove an entry from the middle of its list, so the slot stays. Each slot has an `id`,
+// written into its entry's state, and `below`, the identity of the entry it was pushed on top of. An orphan is
+// skipped (one more step back, so it never costs the operator an extra press) only when a Back lands exactly
+// on `below`, that is, when that Back stepped off the orphan's entry. A pop that lands anywhere else (the
+// router stepping from Z to Y over entries the orphan sits under) is the router's, and leaves it alone.
 //
 // Back with unsaved edits in the Files editor asks first (`guardPanelLeave`). If the guard holds the close,
 // our entry is already gone: it is pushed again so the next Back still closes the sheet instead of leaving
@@ -22,18 +25,28 @@ interface SheetOwner {
   slot: Slot | null;
 }
 interface Slot {
+  id: number;
   owner: SheetOwner | null;
+  /** The entry this one was pushed on top of (`entryKey` of its state). */
+  below: string;
 }
 const slots: Slot[] = [];
 /** Back steps we took ourselves (closing the top sheet by hand): their `popstate` is not a gesture. */
 const ownPops = new Set<object>();
 let listening = false;
 
-const sheetState = () => ({ ...(window.history.state as object | null), [SHEET_STATE]: true });
+let nextSlotId = 1;
+
+/** What names a history entry: its state (the router's entries carry a key of their own, ours a `sheetId`). */
+const entryKey = (state: unknown): string => JSON.stringify(state ?? null);
+const sheetIdOf = (state: unknown): number | null => {
+  const id = (state as Record<string, unknown> | null)?.sheetId;
+  return typeof id === "number" ? id : null;
+};
 
 function pushSlot(owner: SheetOwner): Slot {
-  window.history.pushState(sheetState(), "");
-  const slot: Slot = { owner };
+  const slot: Slot = { id: nextSlotId++, owner, below: entryKey(window.history.state) };
+  window.history.pushState({ ...(window.history.state as object | null), [SHEET_STATE]: true, sheetId: slot.id }, "");
   slots.push(slot);
   if (!listening) {
     listening = true;
@@ -48,14 +61,19 @@ function onPopState(): void {
     ownPops.delete(mine.value);
     return;
   }
-  const slot = slots.pop();
-  if (!slot) return; // somebody else's entry: the router's
-  const owner = slot.owner;
+  const top = slots[slots.length - 1];
+  if (!top) return; // somebody else's entry: the router's
+  const owner = top.owner;
   if (owner === null) {
-    // An orphan: its sheet is long gone. This Back was meant for whatever lies below it.
-    window.history.back();
+    // An orphan: its sheet is long gone. When this Back stepped off its entry, it was meant for whatever lies
+    // below: step once more. Any other pop is the router's own, and the orphan keeps its place.
+    if (entryKey(window.history.state) === top.below) {
+      slots.pop();
+      window.history.back();
+    }
     return;
   }
+  slots.pop();
   owner.slot = null;
   let closed = false;
   guardPanelLeave(() => {
@@ -71,7 +89,8 @@ function releaseSlot(owner: SheetOwner): void {
   if (!slot) return;
   owner.slot = null;
   const top = slots[slots.length - 1] === slot;
-  if (top && (window.history.state as Record<string, unknown> | null)?.[SHEET_STATE]) {
+  // Only the entry we are on can be stepped off; after a route change it is not ours any more.
+  if (top && sheetIdOf(window.history.state) === slot.id) {
     slots.pop();
     const token = {};
     ownPops.add(token);

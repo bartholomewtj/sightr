@@ -29,7 +29,7 @@
 //   with output images (a Read of a PNG, a screenshot) carries an image mark and shows them when
 //   opened (`TimelineAttachments`; bytes from the bridge's attachment route; T3's ExpandedImageDialog).
 // - T24: a `changed-files` row (the run's changed-files card, `AssistantChangedFilesSection`) follows
-//   the run's reply, and `ChangedFileSheet` (a tap on a file) is mounted beside the list.
+//   the run's reply; a tap on one of its files opens the Diff tab on that run (T27).
 // - Left out: minimap, citations, forks, revert, checkpoint diffs, video/file previews, worktree
 //   setup, MCP apps, HTML renders.
 import { LegendList, type LegendListRef, type MaintainScrollAtEndOptions } from "@legendapp/list/react";
@@ -111,7 +111,6 @@ import {
   type StableMessagesTimelineRowsState,
 } from "./MessagesTimeline.logic";
 import { AssistantChangedFilesSection } from "./AssistantChangedFilesSection";
-import { ChangedFileSheet } from "./ChangedFileSheet";
 import { DiffStatLabel } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { ProposedPlanCard } from "./ProposedPlanCard";
@@ -169,7 +168,6 @@ export function MessagesTimeline({ threadId }: MessagesTimelineProps) {
     <OpenFileThreadContext value={threadId}>
       <MessagesTimelineBody threadId={threadId} />
       <ThreadDetailsSheet threadId={threadId} />
-      <ChangedFileSheet threadId={threadId} />
     </OpenFileThreadContext>
   );
 }

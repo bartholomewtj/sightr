@@ -36,7 +36,7 @@ const EMPTY: RunScope = { found: false, files: [], shellRan: false };
 const NUMBERED_HUNK = /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/;
 
 /**
- * An edit's diff as hunks only: its `---`/`+++` markers dropped. The journal's own hunk header is `@@ @@`
+ * An edit's diff as hunks only: its leading `---`/`+++` file header dropped. The journal's own hunk header is `@@ @@`
  * (the edit tool sends fragments, so it has no line numbers); each such hunk gets a header with the counts
  * `parsePatch` needs and numbers that count from the edit's first line, and says so (`label`), since they
  * are not the file's line numbers. A numbered header (a new file's `@@ -0,0 +1,N @@`) is kept as it is.
@@ -44,7 +44,9 @@ const NUMBERED_HUNK = /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/;
 export function editHunks(diff: string, label = ""): string[] {
   if (diff.trim() === "") return [];
   const rows = diff.replace(/\r?\n$/, "").split("\n");
-  const body = rows.filter((r, i) => !((r.startsWith("--- ") && (rows[i + 1] ?? "").startsWith("+++ ")) || (r.startsWith("+++ ") && (rows[i - 1] ?? "").startsWith("--- "))));
+  // The file header is the pair above the first hunk, and only that: a removed line "-- x" followed by an added
+  // "++ y" reads `--- x` then `+++ y` inside a hunk, and is body.
+  const body = rows[0]?.startsWith("--- ") && rows[1]?.startsWith("+++ ") ? rows.slice(2) : rows;
   if (body.length === 0) return [];
   const groups: string[][] = [];
   for (const row of body) {
@@ -57,7 +59,8 @@ export function editHunks(diff: string, label = ""): string[] {
     const rest = first.startsWith("@@") ? lines : g; // a diff with no header at all: every row is body
     const del = rest.filter((r) => r.startsWith("-")).length;
     const add = rest.filter((r) => r.startsWith("+")).length;
-    const ctx = rest.length - del - add;
+    // A backslash row ("\ No newline at end of file") belongs to neither side.
+    const ctx = rest.filter((r) => !r.startsWith("-") && !r.startsWith("+") && !r.startsWith("\\")).length;
     return [`@@ -${del + ctx > 0 ? 1 : 0},${del + ctx} +${add + ctx > 0 ? 1 : 0},${add + ctx} @@${label ? ` ${label}` : ""}`, ...rest];
   });
 }

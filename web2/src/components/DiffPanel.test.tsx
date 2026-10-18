@@ -18,6 +18,7 @@ import { assistant, edit, resetOrdinals, run as runItem, user } from "@/test/tur
 
 import { DiffPanel } from "./DiffPanel";
 import { preloadDiffRenderer } from "./diffs/DiffCodeView";
+import { diffMemoryKey, readDiffMemory, writeDiffMemory } from "./diffs/diffPanelMemory";
 
 vi.mock("./diffs/DiffCodeView", async (importOriginal) => {
   const original = await importOriginal<typeof import("./diffs/DiffCodeView")>();
@@ -208,6 +209,28 @@ describe("DiffPanel: working tree", () => {
     fake.listUnavailable = "not-a-repo";
     await mount();
     expect(await screen.findByText("This folder is not a git repository.")).toBeInTheDocument();
+  });
+
+  it("a busy first load does not settle the folds: when Refresh then succeeds, the 2 files are open", async () => {
+    fake.listUnavailable = "busy";
+    await mount();
+    expect(await screen.findByText(/The host is busy/)).toBeInTheDocument();
+    expect(JSON.stringify(readDiffMemory(diffMemoryKey("t1", WORKING_TREE)).unfolded)).toBe("null"); // nothing saved in its place
+    fake.listUnavailable = null;
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(sections()).toHaveLength(2));
+    await waitFor(() => expect(toggle("src/a.ts")).toHaveAttribute("aria-expanded", "true"));
+    expect(toggle("src/b.ts")).toHaveAttribute("aria-expanded", "true");
+    await waitFor(() => expect(fake.patchPaths().sort()).toEqual(["src/a.ts", "src/b.ts"]));
+  });
+
+  it("a failed first load (the request itself failing) does not settle the folds either", async () => {
+    server.use(http.get("/api/files/git/review", () => new HttpResponse("boom", { status: 500 }), { once: true }));
+    await mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(sections()).toHaveLength(2));
+    await waitFor(() => expect(toggle("src/a.ts")).toHaveAttribute("aria-expanded", "true"));
+    expect(toggle("src/b.ts")).toHaveAttribute("aria-expanded", "true");
   });
 
   it("says when Files is off or the folder is outside its root, without asking the review API", async () => {
@@ -422,6 +445,27 @@ describe("DiffPanel: branch scope", () => {
     expect(screen.queryByText(/isn't a branch here any more/)).toBeNull();
     expect(fake.listCalls.every((u) => u.searchParams.get("base") === "develop")).toBe(true);
     expect(screen.getByRole("button", { name: "Compare: Branch vs develop" })).toBeInTheDocument();
+  });
+
+  it("keeps a stored base older than the newest refs the host lists: a cut list does not say it is gone", async () => {
+    fake.branchesTruncated = true;
+    fake.knownBases.add("release/2019");
+    act(() => useDiffPanelStore.getState().setScope("t1", { kind: "branch", baseRef: "release/2019" }));
+    await mount();
+    await waitFor(() => expect(fake.branchCalls.length).toBeGreaterThan(0));
+    await settle(60);
+    expect(screen.queryByText(/isn't a branch here any more/)).toBeNull();
+    expect(fake.listCalls.every((u) => u.searchParams.get("base") === "release/2019")).toBe(true);
+    expect(screen.getByRole("button", { name: "Compare: Branch vs release/2019" })).toBeInTheDocument();
+  });
+
+  it("still falls back when the host itself says a base the cut list does not show is bad", async () => {
+    fake.branchesTruncated = true; // "ghost" is not in the list, which proves nothing; the host's bad-base does
+    act(() => useDiffPanelStore.getState().setScope("t1", { kind: "branch", baseRef: "ghost" }));
+    await mount();
+    expect(await screen.findByText(/ghost isn't a branch here any more/)).toBeInTheDocument();
+    expect(fake.listCalls.some((u) => u.searchParams.get("base") === "ghost")).toBe(true); // asked, and refused
+    await waitFor(() => expect(fake.listCalls.some((u) => u.searchParams.get("base") === null)).toBe(true));
   });
 
   it("picks the scope and the base from a bottom sheet on a phone, with a filter for the branches", async () => {
@@ -654,6 +698,39 @@ describe("DiffPanel: remembered state", () => {
     expect(toggle("src/f1.ts")).toHaveAttribute("aria-expanded", "true");
     expect(toggle("src/f0.ts")).toHaveAttribute("aria-expanded", "false");
     expect(document.querySelector("[data-diff-tree-toggle]")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  // jsdom has no layout, so a restore shows as `scrollTop` moving off 0 by the remembered offset.
+  const remembered = () => writeDiffMemory(diffMemoryKey("t1", WORKING_TREE), { anchor: { path: "src/f1.ts", offset: 123 } });
+  const scroller = () => document.querySelector<HTMLElement>("[data-diff-scroller]") as HTMLElement;
+
+  it("puts the scroll back to the remembered file and offset when it reopens", async () => {
+    remembered();
+    await mount();
+    await waitFor(() => expect(scroller().scrollTop).toBe(123));
+  });
+
+  it("a tap-through to another file wins over the remembered place on that remount", async () => {
+    remembered();
+    act(() => useDiffPanelStore.getState().openDiff("t1", WORKING_TREE, "src/f4.ts"));
+    await mount();
+    await waitFor(() => expect(scrolled).toEqual(["src/f4.ts"]));
+    await settle(150);
+    expect(scroller().scrollTop).toBe(0); // the restore did not run over the reveal
+    expect(scrolled).toEqual(["src/f4.ts"]);
+  });
+
+  it("a tap-through that arrives while the remembered place is still being waited for ends that wait", async () => {
+    writeDiffMemory(diffMemoryKey("t1", WORKING_TREE), { anchor: { path: "src/not-here-yet.ts", offset: 77 } });
+    await mount();
+    act(() => useDiffPanelStore.getState().openDiff("t1", WORKING_TREE, "src/f2.ts"));
+    await waitFor(() => expect(scrolled).toEqual(["src/f2.ts"]));
+    // The file the old restore wanted turns up late: it must not pull the page back.
+    fake.setFiles([...fake.files, { path: "src/not-here-yet.ts" }]);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(section("src/not-here-yet.ts")).toBeDefined());
+    await settle(100);
+    expect(scroller().scrollTop).toBe(0);
   });
 
   it("keeps a separate memory for each scope of a thread", async () => {

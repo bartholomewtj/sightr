@@ -40,9 +40,15 @@ export function useDiffBranches(folderPath: string | null | undefined, enabled: 
   return state;
 }
 
-/** Whether `baseRef` is a branch the list knows. Unknown while the list has not been read. */
+/**
+ * Whether `baseRef` is a branch the list knows. Unknown (null) while the list has not been read, and when it was
+ * cut at the newest refs and the name is not in it: an older base may well exist, and the host's `bad-base` says
+ * so when it does not.
+ */
 export function baseExists(state: BranchesState, baseRef: string): boolean | null {
-  return state.status === "ready" ? state.data.branches.some((b) => b.name === baseRef) : null;
+  if (state.status !== "ready") return null;
+  if (state.data.branches.some((b) => b.name === baseRef)) return true;
+  return state.data.truncated ? null : false;
 }
 
 function describe(state: BranchesState): string | null {

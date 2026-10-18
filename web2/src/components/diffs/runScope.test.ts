@@ -34,6 +34,22 @@ describe("editHunks", () => {
     expect(editHunks("-a\n+b\n+c")).toEqual(["@@ -1,1 +1,2 @@", "-a", "+b", "+c"]);
   });
 
+  it("drops only the file header above the first hunk: a removed `-- x` and an added `++ y` are body", () => {
+    const rows = editHunks("--- a/f.sql\n+++ b/f.sql\n@@ @@\n ctx\n--- x\n+++ y\n ctx2");
+    expect(rows).toEqual(["@@ -1,3 +1,3 @@", " ctx", "--- x", "+++ y", " ctx2"]);
+    const file = parsePatch(["--- a/f.sql", "+++ b/f.sql", ...rows].join("\n"))[0]!;
+    expect(file.hunks[0]!.lines.map((l) => `${l.kind}:${l.text}`)).toEqual(["context:ctx", "del:-- x", "add:++ y", "context:ctx2"]);
+    expect(file.hunks[0]!.mismatch).toBeUndefined();
+  });
+
+  it("does not count `\\ No newline at end of file` as a context line", () => {
+    const rows = editHunks("--- a/f\n+++ b/f\n@@ @@\n-a\n\\ No newline at end of file\n+b\n\\ No newline at end of file");
+    expect(rows[0]).toBe("@@ -1,1 +1,1 @@");
+    const file = parsePatch(["--- a/f", "+++ b/f", ...rows].join("\n"))[0]!;
+    expect(file.hunks[0]!.mismatch).toBeUndefined();
+    expect(file.hunks[0]!.lines.map((l) => [l.kind, l.noEol])).toEqual([["del", true], ["add", true]]);
+  });
+
   it("returns nothing for an empty diff", () => {
     expect(editHunks("")).toEqual([]);
     expect(editHunks("--- a/f\n+++ b/f")).toEqual([]);

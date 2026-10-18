@@ -53,11 +53,17 @@ export function readAnchor(scroller: HTMLElement): { path: string; offset: numbe
 /**
  * Restore `key`'s anchor on `scroller` and keep recording it. The restore repeats while the content grows
  * (patches arrive after the list) and stops at the first success, at the operator's first touch, or after
- * {@link ANCHOR_GIVE_UP_MS}. Returns the detach function.
+ * {@link ANCHOR_GIVE_UP_MS}. `restore: false` only records (a reveal asked for another place, so the remembered
+ * one must not win). `stopRestoring` ends a restore in progress, for a reveal that arrives while it runs.
  */
-export function attachAnchorMemory(scroller: HTMLElement, key: string): () => void {
+export interface AnchorMemory {
+  detach: () => void;
+  stopRestoring: () => void;
+}
+
+export function attachAnchorMemory(scroller: HTMLElement, key: string, opts: { restore?: boolean } = {}): AnchorMemory {
   const target = readDiffMemory(key).anchor;
-  let restoring = target !== null && (target.path !== "" || target.offset > 0);
+  let restoring = opts.restore !== false && target !== null && (target.path !== "" || target.offset > 0);
   let timer: ReturnType<typeof setTimeout> | null = null;
   let observer: MutationObserver | null = null;
   let frame = 0;
@@ -94,9 +100,12 @@ export function attachAnchorMemory(scroller: HTMLElement, key: string): () => vo
     timer = setTimeout(stopRestoring, ANCHOR_GIVE_UP_MS);
     apply();
   }
-  return () => {
-    stopRestoring();
-    if (frame) cancelAnimationFrame(frame);
-    scroller.removeEventListener("scroll", onScroll);
+  return {
+    stopRestoring,
+    detach: () => {
+      stopRestoring();
+      if (frame) cancelAnimationFrame(frame);
+      scroller.removeEventListener("scroll", onScroll);
+    },
   };
 }

@@ -6,7 +6,7 @@
 // folder totals, and `treeOrder`. The test imports vitest, not vite-plus/test.
 import { describe, expect, it } from "vitest";
 
-import { buildDiffTree, collectDirectoryPaths, diffFileTreeEntries, diffTotals, treeDirectoryPaths, treeOrder } from "./diffFileTree.logic";
+import { buildDiffTree, collectDirectoryPaths, diffFileTreeEntries, diffTotals, treeOrder } from "./diffFileTree.logic";
 import type { DiffFileEntry } from "./diffTypes";
 
 const file = (path: string, over: Partial<DiffFileEntry> = {}): DiffFileEntry => ({ path, kind: "modified", added: 1, removed: 0, countsKnown: true, rev: path, ...over });
@@ -80,9 +80,6 @@ describe("buildDiffTree", () => {
     expect(c).toMatchObject({ kind: "file", stat: null });
   });
 
-  it("lists every folder path (what a collapse-all would close)", () => {
-    expect(treeDirectoryPaths(buildDiffTree([file("a/b/c.ts"), file("a/d/e.ts"), file("f.ts")]))).toEqual(["a", "a/b", "a/d"]);
-  });
 });
 
 describe("treeOrder", () => {

@@ -37,6 +37,8 @@ export interface DiffServer {
   files: FakeFile[];
   branches: ReviewBranch[];
   defaultBase: string | undefined;
+  /** The branch list says it was cut at the newest refs. */
+  branchesTruncated: boolean;
   /** Ref names the list accepts as `base`; any other answers `bad-base`. */
   knownBases: Set<string>;
   listCalls: URL[];
@@ -75,6 +77,7 @@ export function createDiffServer(initial: FakeFile[] = []): DiffServer {
       { name: "develop", remote: false, time: 1_699_000_000 },
     ],
     defaultBase: "origin/main",
+    branchesTruncated: false,
     knownBases: new Set(["main", "origin/main", "develop"]),
     listCalls: [],
     listHeaders: [],
@@ -153,7 +156,7 @@ export function createDiffServer(initial: FakeFile[] = []): DiffServer {
     }),
     http.get(REVIEW_PATHS.branches, ({ request }) => {
       server.branchCalls.push(new URL(request.url));
-      return HttpResponse.json({ available: true, current: "main", ...(server.defaultBase ? { defaultBase: server.defaultBase } : {}), branches: server.branches, truncated: false });
+      return HttpResponse.json({ available: true, current: "main", ...(server.defaultBase ? { defaultBase: server.defaultBase } : {}), branches: server.branches, truncated: server.branchesTruncated });
     }),
   ];
   return server;

@@ -368,8 +368,10 @@ of 104 windows mounted and about 70,000 nodes, and its longest tasks were 130 to
 under the sweep; the limits hold for the file at rest and for ordinary files, not after reading all of a pathological one.
 (2) The heap base was 4.4 MB in this run against 10.2 MB in T25's, so the percentage is on a smaller base; the absolute
 residue after unmount (0.7 MB) is a third of T25's 2.1 MB. The real-phone trial (after T27) still decides the paint and
-scroll rows on Bart's phone. A future change could unmount windows far from the screen (keeping their measured height); it
-was not done here because it would make browser find and scroll restore less predictable.
+scroll rows on Bart's phone. Unmounting windows far from the screen (keeping their measured height) was not done in
+T27, because it would make browser find and scroll restore less predictable. **Owner: T29.** It has to build
+mount-on-demand for scroll-to-line anyway (the target's window mounts first, then the line scrolls into view), and
+unmounts far windows there; T27's panel needs no change for it.
 
 Re-measure: `bun add -d --no-save @pierre/diffs@1.5.2` in `web2` (only for A; highlight.js 11.12.0 is a dependency since T27); `bun scripts/diff-spike.ts
 fixtures`; `SIGHTR_DIFFS=hand|pierre|status bunx vite build --outDir <temp>` (add `SIGHTR_DIFFS_PAGE=0` to leave

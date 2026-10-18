@@ -37,7 +37,7 @@ import { DiffScopePicker } from "./diffs/DiffScopePicker";
 import { canOpenInFiles, filesPathOf } from "./diffs/diffFileActions";
 import { diffTotals, treeOrder } from "./diffs/diffFileTree.logic";
 import { repoRootPath } from "./diffs/diffRootPath";
-import { attachAnchorMemory, diffMemoryKey, readDiffMemory, writeDiffMemory } from "./diffs/diffPanelMemory";
+import { attachAnchorMemory, diffMemoryKey, readDiffMemory, writeDiffMemory, type AnchorMemory } from "./diffs/diffPanelMemory";
 import { reviewReason } from "./diffs/diffReasons";
 import { IDLE, type DiffFileEntry, type PatchState } from "./diffs/diffTypes";
 import { useRunOptions, useRunScopeFiles } from "./diffs/runScope";
@@ -139,7 +139,10 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
   const files = useMemo(() => treeOrder(sourceFiles), [sourceFiles]);
   const patchFor = useCallback((path: string): PatchState => (scope.kind === "run" ? (runByPath.get(path) ?? IDLE) : patches.patchFor(path)), [scope.kind, runByPath, patches]);
   const summary = patches.summary;
-  const filesReady = scope.kind === "run" || summary.status === "ready" || summary.status === "unavailable" || summary.status === "error";
+  // A list to work from: the server's, once it has answered and is available; a run's, once the thread has its items.
+  const listOk = scope.kind === "run" ? run.found : summary.status === "ready";
+  // Nothing more is coming for a request that has failed for good, so a reveal waiting for the list is dropped then.
+  const listFailed = scope.kind !== "run" && (summary.status === "unavailable" || summary.status === "error");
 
   // A base the host does not know (it was deleted since): ask for the default instead.
   useEffect(() => {
@@ -150,26 +153,32 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
 
   // Unfolded by default: the revealed file (below), else every file when there are few.
   const revealPending = reveal !== null && reveal.threadId === threadId;
+  // Only from a list that loaded: a failed first load must not save an empty choice in its place.
   useEffect(() => {
-    if (unfolded !== null || !filesReady) return;
+    if (unfolded !== null || !listOk) return;
     setUnfolded(revealPending || files.length > DIFF_AUTO_UNFOLD_MAX ? new Set() : new Set(files.map((f) => f.path)));
-  }, [unfolded, filesReady, files, revealPending]);
+  }, [unfolded, listOk, files, revealPending]);
 
   const unfold = useCallback((path: string) => setUnfolded((prev) => (prev?.has(path) ? prev : new Set([...(prev ?? []), path]))), []);
 
   // A tap-through (the Git tab, a run's changed-files card): unfold the file, scroll to it once, mark it briefly.
+  // The place it names wins over the place remembered from last time (`anchor`), also when that restore is still running.
+  const anchor = useRef<AnchorMemory | null>(null);
+  const skipRestore = useRef(false);
   useEffect(() => {
-    if (!reveal || reveal.threadId !== threadId || !filesReady) return;
+    if (!reveal || reveal.threadId !== threadId || !(listOk || listFailed)) return;
     consumeReveal(reveal.requestId);
     const hit = files.find((f) => f.path === reveal.filePath);
     if (!hit) return;
+    skipRestore.current = true;
+    anchor.current?.stopRestoring();
     unfold(hit.path);
     setRevealPath(hit.path);
     setPendingScroll(hit.path);
     setHighlight(hit.path);
     // Asked for a file, so the file is the point: the phone's tree folds out of the way, as when one is picked in it.
     if (!wide) setTreeOpen(false);
-  }, [reveal, threadId, filesReady, files, unfold, consumeReveal, wide]);
+  }, [reveal, threadId, listOk, listFailed, files, unfold, consumeReveal, wide]);
   useEffect(() => {
     if (!highlight) return;
     const t = setTimeout(() => setHighlight(null), 1600);
@@ -186,7 +195,15 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
   }, [pendingScroll, scrollerEl, files, unfolded]);
 
   // Scroll comes back to a file header plus an offset into it (windows hold estimated heights).
-  useEffect(() => (scrollerEl ? attachAnchorMemory(scrollerEl, memKey) : undefined), [scrollerEl, memKey]);
+  useEffect(() => {
+    if (!scrollerEl) return;
+    const memory = attachAnchorMemory(scrollerEl, memKey, { restore: !skipRestore.current });
+    anchor.current = memory;
+    return () => {
+      memory.detach();
+      anchor.current = null;
+    };
+  }, [scrollerEl, memKey]);
 
   // Sections within 400 px of the scroller: their patch is fetched ahead (after the unfolded and revealed
   // files), so a file about to scroll in is already there. A folded file off the screen is never fetched.

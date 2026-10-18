@@ -129,6 +129,47 @@ describe("useSheetHistory with sheets stacked", () => {
     expect(here()).not.toBe(thread());
   });
 
+  // The router's own pushState, as `thread.next` does it: a new entry above whatever is there.
+  const route = (name: string) => act(async () => { window.history.pushState({ page: `${thread()}-${name}` }, ""); await sleep(5); });
+
+  it("a sheet closed by a route change leaves its entry alone: Back over the router's entries is the router's (X to Y to Z)", async () => {
+    render(<Harness initial={{ a: false, b: false, c: false }} />);
+    act(() => setA(true)); // thread details open on X
+    expect(openSheetEntries()).toBe(1);
+    await route("Y");
+    await flush(() => setA(false)); // the route change unmounted the sheet: its entry is under Y now
+    expect(openSheetEntries()).toBe(1); // kept, as an orphan
+    await route("Z");
+
+    await back(); // Z to Y: not the sheet's pop, and not skipped
+    expect(here()).toBe(`${thread()}-Y`);
+    expect(openSheetEntries()).toBe(1);
+    await back(); // Y to X (the sheet's entry, which shows X)
+    expect(here()).toBe(thread());
+    expect(closed).toEqual([]);
+    await back(); // off the orphan's entry: skipped, so this one Back is enough to leave X
+    await act(async () => sleep(50));
+    expect(here()).not.toBe(thread());
+    expect(String(here())).not.toContain("-Y");
+    expect(openSheetEntries()).toBe(0);
+  });
+
+  it("a sheet opened after a route change closes with one Back and leaves the new page", async () => {
+    const { container } = render(<Harness initial={{ a: false, b: false, c: false }} />);
+    act(() => setA(true));
+    await route("Y");
+    await flush(() => setA(false));
+    act(() => setB(true)); // a sheet on Y
+    expect(openSheetEntries()).toBe(2);
+    await back();
+    expect(closed).toEqual(["B"]);
+    expect(container.textContent).toBe("none");
+    expect(here()).toBe(`${thread()}-Y`);
+    await back(); // the router's: Y to X's sheet entry
+    expect(here()).toBe(thread());
+    expect(closed).toEqual(["B"]);
+  });
+
   it("opens with the page already showing a sheet entry, and closes each in turn", async () => {
     const { container } = render(<Harness initial={{ a: true, b: false, c: false }} />);
     act(() => setC(true));
