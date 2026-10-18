@@ -89,6 +89,8 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
   const work = new Set<Promise<unknown>>();
   let unsubscribe: (() => void) | null = null;
   let timers: Array<ReturnType<typeof setTimeout>> = [];
+  /** The temp-index dir being emptied at start: no snapshot makes its temp index before that is done. */
+  let cleaning: Promise<void> = Promise.resolve();
 
   const track = <T>(p: Promise<T>): Promise<T | undefined> => {
     const guarded = p.catch((err): undefined => { log(`[checkpoints] ${(err as Error).message}`); return undefined; });
@@ -112,6 +114,7 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
 
   /** Whatever throws on the way (a store that cannot be made, a read, an append) is recorded, never lost. */
   async function onStarted(run: Run): Promise<void> {
+    await cleaning;
     try { await startNow(run); } catch (err) {
       log(`[checkpoints] start of run ${run.id} failed: ${(err as Error).message}`);
       if (!store.getCheckpoint(run.id) && store.getRun(run.id)) append("start", absent(run, "git-failed"));
@@ -163,6 +166,7 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
 
   /** As {@link onStarted}: a throw records the end as failed, so no row stays `pending` because of it. */
   async function onEnded(runId: string, completedAt: number): Promise<void> {
+    await cleaning;
     await starts.get(runId);
     try { await endNow(runId, completedAt); } catch (err) {
       log(`[checkpoints] end of run ${runId} failed: ${(err as Error).message}`);
@@ -180,6 +184,8 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
     // An end alone proves nothing: with no start snapshot there is no end snapshot.
     if (!row) return append("end", absent(run, deps.enabled ? "start-missed" : "disabled"));
     if (row.checkpoint.status === "absent" || !row.startCommit) return append("end", absent(run, row.checkpoint.reason ?? "start-missed"), { repoRoot: row.repoRoot });
+    // A start the sweep gave up on (pending past PENDING_MAX_MS): its ref is gone, so there is no start to compare with.
+    if (row.objectsExpiredAt !== null) return append("end", absent(run, "start-missed"), { repoRoot: row.repoRoot });
     const startCommit = row.startCommit;
     const base: CapturedExtra = { repoRoot: row.repoRoot, startCommit };
     const info = await git.resolveRepo(row.repoRoot); // the stored root, not the pane (it may be gone)
@@ -408,7 +414,7 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
       if (unsubscribe) return;
       unsubscribe = store.onCommitted(onEvents);
       if (!deps.enabled) return; // the kill switch: no git, no sweep; runs still read `absent: disabled`
-      void git.cleanTmp();
+      cleaning = git.cleanTmp().catch(() => {});
       const first = setTimeout(() => { void track(sweep()); }, SWEEP_FIRST_MS);
       const every = setInterval(() => { void track(sweep()); }, SWEEP_EVERY_MS);
       (first as { unref?: () => void }).unref?.(); (every as { unref?: () => void }).unref?.();

@@ -389,6 +389,34 @@ describe("checkpoints: failures are recorded, never lost (T30 review)", () => {
     expect(r.store.getCheckpoint(run.id)?.checkpoint).toMatchObject({ status: "pending", live: false });
   });
 
+  test("a start given up after a day whose run.ended then arrives: the end is absent start-missed, with no end snapshot taken", async () => {
+    const snaps: string[] = [];
+    const r = await rig({ wrapGit: (g) => ({ ...g, snapshotLocked: async (info, req) => { snaps.push(req.side); return g.snapshotLocked(info, req); } }) });
+    const run = await r.start();
+    r.clock.t += 25 * 60 * 60 * 1000;
+    expect((await r.svc.sweep(r.clock.t)).expired).toEqual([run.id]);
+    await r.end(run, r.clock.t); // inside the end window
+    expect(snaps).toEqual(["start"]);
+    expect(await refs(r)).toEqual([]);
+    expect(r.store.getCheckpoint(run.id)?.checkpoint).toMatchObject({ status: "absent", reason: "start-missed" });
+  });
+
+  test("the temp-index folder is emptied at start before any snapshot makes its temp index", async () => {
+    const order: string[] = [];
+    const r = await rig({
+      wrapGit: (g) => ({
+        ...g,
+        cleanTmp: async () => { await Bun.sleep(150); await g.cleanTmp(); order.push("cleaned"); },
+        snapshotLocked: async (info, req) => { order.push(`snapshot ${req.side}`); return g.snapshotLocked(info, req); },
+      }),
+    });
+    const run = await r.start(); // svc.start() ran inside rig(): the clean is still sleeping when run.started lands
+    await writeFile(join(r.repo.root, "a.txt"), "two\n");
+    await r.end(run);
+    expect(order).toEqual(["cleaned", "snapshot start", "snapshot end"]);
+    expect(r.store.getCheckpoint(run.id)?.checkpoint.status).toBe("ready");
+  });
+
   test("history rewritten and pruned under live snapshots: the sweep's gc fails, the broken runs expire, and gc then succeeds", async () => {
     const r = await rig({ files: { "a.txt": "base\n", "keep.txt": "keep\n" } });
     // Files and index an hour old and stat-clean (not "racy"): the snapshot then reuses keep.txt's blob and
