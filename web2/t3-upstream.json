@@ -1,5 +1,5 @@
 {
-  "$comment": "Files in web2 taken from or modelled on T3 Code (MIT, THIRD_PARTY.md). mode: verbatim = byte-identical to upstream at commit; adapted = upstream body with local edits (header names the source); pattern = same job and name, Sightr's own code. Check for upstream changes with `bun scripts/t3-upstream.ts`; porting a change bumps the row's commit.",
+  "$comment": "Files in web2 taken from or modelled on T3 Code (MIT, THIRD_PARTY.md). mode: verbatim = byte-identical to upstream at commit; adapted = upstream body with local edits (header names the source); pattern = same job and name, Sightr's own code; shape = mirrors type and field names only (contracts outside web2/; local paths stay relative to web2/). decisions = upstream changes chosen not to take ({upstream, commit, verdict: skip | defer, reason, date}); the checker hides one until that file changes upstream again. Check for upstream changes with `bun scripts/t3-upstream.ts`; porting a change bumps the row's commit.",
   "repo": "https://github.com/pingdotgg/t3code.git",
   "baseline": "e3b35d1b2440b104f0bc2e357377c348121234dd",
   "folders": [
@@ -905,6 +905,19 @@
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "pattern",
       "note": "Open file… mode: the Files search API, re-ranked by name (rankFileResults in CommandPalette.logic.ts); no fuzzy index or match highlighting"
+    },
+    {
+      "local": "../shared/v2/contracts.ts",
+      "upstream": "packages/contracts/src/orchestrationV2.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "shape"
+    },
+    {
+      "local": "../shared/v2/request-question.ts",
+      "upstream": "packages/contracts/src/orchestrationV2.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "shape",
+      "note": "OrchestrationV2UserInputQuestion"
     }
   ],
   "decisions": [

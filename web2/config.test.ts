@@ -56,7 +56,7 @@ describe("t3 shims", () => {
     for (const row of manifest.files) {
       expect(existsSync(resolve(here, row.local)), row.local).toBe(true);
       expect(row.commit).toMatch(/^[0-9a-f]{8,40}$/);
-      expect(["verbatim", "adapted", "pattern"]).toContain(row.mode);
+      expect(["verbatim", "adapted", "pattern", "shape"]).toContain(row.mode);
     }
   });
 
