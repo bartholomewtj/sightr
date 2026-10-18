@@ -87,7 +87,11 @@ export class FakeHerdrClient {
   sendPaneKeys(paneId: string, keys: string[]): Promise<void> { this.keys.push([paneId, keys]); return Promise.resolve(); }
 }
 
-export async function startFakeHerdr(opts: { herd?: FakeHerd; socketPath?: string } = {}): Promise<{ herd: FakeHerd; socketPath: string; stop(): Promise<void> }> {
+/**
+ * `delayMs`: how long to sit on a reply to `method` before sending it (0 = at once). Lets a test make
+ * Herdr answer late, the way a busy PC does, through the real client and its timeout.
+ */
+export async function startFakeHerdr(opts: { herd?: FakeHerd; socketPath?: string; delayMs?: (method: string) => number } = {}): Promise<{ herd: FakeHerd; socketPath: string; stop(): Promise<void> }> {
   const herd = opts.herd ?? createFakeHerd();
   const tempDir = opts.socketPath ? undefined : mkdtempSync(join(tmpdir(), "sightr-e2e-"));
   const socketPath = opts.socketPath ?? (process.platform === "win32" ? `\\\\.\\pipe\\sightr-e2e-${process.pid}-${Date.now()}\\herdr.sock` : join(tempDir!, "herdr.sock"));
@@ -112,7 +116,11 @@ export async function startFakeHerdr(opts: { herd?: FakeHerd; socketPath?: strin
           continue;
         }
         const reply = handleRpc(herd, msg);
-        if (reply) socket.end(JSON.stringify(reply) + "\n");
+        if (!reply) continue;
+        const delay = opts.delayMs?.(msg.method) ?? 0;
+        const send = () => { if (!socket.destroyed) socket.end(JSON.stringify(reply) + "\n"); };
+        if (delay > 0) setTimeout(send, delay);
+        else send();
       }
     });
     socket.on("close", () => { sockets.delete(socket); bufferBySocket.delete(socket); });

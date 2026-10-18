@@ -137,6 +137,28 @@ export function extractClaudeSessionName(text: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Consecutive transient poll failures (see {@link isTransientPollError}) the link absorbs before it
+ * reads as down. The first is absorbed (the herd stays as it was, nothing is pushed); the second
+ * flips it. A busy PC (a test suite, a build) makes Herdr answer late, not vanish.
+ */
+export const TRANSIENT_FLIP_AT = 2;
+
+/**
+ * Whether a poll failure means "Herdr is busy" rather than "Herdr is gone": true only for the
+ * client's own timeout rejection (`herdr <method>: timed out after <n>ms`, bridge/herdr-client.ts).
+ * Everything else — EPIPE, ECONNREFUSED, ENOENT, a closed socket, a bad or error reply — is fatal.
+ */
+export function isTransientPollError(err: unknown): boolean {
+  return err instanceof Error && err.message.includes("timed out after");
+}
+
+/** The budget a timeout rejection names (`timed out after 5000ms` → 5000), or 0 when it names none. */
+function timeoutBudgetMs(err: unknown): number {
+  const m = err instanceof Error ? /timed out after (\d+)ms/.exec(err.message) : null;
+  return m ? Number(m[1]) : 0;
+}
+
 export interface EngineSnapshot {
   agents: AgentView[];
   shellPanes: AgentView[];
@@ -149,6 +171,8 @@ type TransitionListener = (agent: AgentView, from: AgentStatus, to: AgentStatus)
 type RemoveListener = (paneId: string) => void;
 type UpdateListener = (snap: EngineSnapshot) => void;
 type LinkListener = (status: BridgeStatus, err?: string) => void;
+/** `ms`: the per-request budget the absorbed poll exceeded. */
+type SlowListener = (ms: number) => void;
 
 export class StateEngine {
   private agents: AgentView[] = [];
@@ -187,6 +211,11 @@ export class StateEngine {
   private readonly removeListeners = new Set<RemoveListener>();
   private readonly updateListeners = new Set<UpdateListener>();
   private readonly linkListeners = new Set<LinkListener>();
+  private readonly slowListeners = new Set<SlowListener>();
+  /** Consecutive transient poll failures while connected; reset by a good poll or a fatal error. */
+  private transientFailures = 0;
+  /** One-shot short retry after an absorbed transient failure (when the cadence is relaxed). */
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private started = false;
   private polling = false;
@@ -236,6 +265,15 @@ export class StateEngine {
     return () => this.linkListeners.delete(fn);
   }
 
+  /**
+   * Fires once per slow episode: when the first transient failure is absorbed while connected (the
+   * link stays up). A good poll ends the episode; so does the flip, which onLink reports instead.
+   */
+  onSlow(fn: SlowListener): () => void {
+    this.slowListeners.add(fn);
+    return () => this.slowListeners.delete(fn);
+  }
+
   current(): EngineSnapshot {
     return {
       agents: this.agents,
@@ -258,6 +296,8 @@ export class StateEngine {
     this.started = false;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
   }
 
   /**
@@ -535,6 +575,9 @@ export class StateEngine {
       this.shellPanes = shellPanes;
       this.workspaces = workspaceViews;
       this.tabs = tabViews;
+      this.transientFailures = 0; // a slow episode, if any, is over
+      if (this.retryTimer) clearTimeout(this.retryTimer);
+      this.retryTimer = null;
       const wasConnected = this.bridge === "connected";
       this.bridge = "connected";
       if (!wasConnected) for (const fn of this.linkListeners) fn("connected");
@@ -544,6 +587,28 @@ export class StateEngine {
       for (const fn of this.updateListeners) fn(snap);
     } catch (err) {
       const wasConnected = this.bridge === "connected";
+      // A timeout while connected is Herdr answering late (a busy PC), not Herdr gone: absorb it
+      // until TRANSIENT_FLIP_AT in a row. The herd stays as last polled, no listener fires and
+      // nothing is pushed — nothing changed that a phone could act on.
+      if (wasConnected && isTransientPollError(err) && ++this.transientFailures < TRANSIENT_FLIP_AT) {
+        if (this.transientFailures === 1) {
+          console.warn(`[state] poll slow: ${(err as Error).message} — keeping the last herd, retrying`);
+          const ms = timeoutBudgetMs(err);
+          for (const fn of this.slowListeners) fn(ms);
+        }
+        // Retry at the fast cadence: at the idle cadence the next attempt would sit a full idle
+        // interval away. On the fast cadence the interval already is that retry.
+        if (this.started && this.cadenceMs > this.pollMs && !this.retryTimer) {
+          this.retryTimer = setTimeout(() => {
+            this.retryTimer = null;
+            if (this.started) void this.poll();
+          }, this.pollMs);
+        }
+        return;
+      }
+      this.transientFailures = 0; // flipped, or a fatal error: the link is down, the count is moot
+      if (this.retryTimer) clearTimeout(this.retryTimer);
+      this.retryTimer = null;
       if (wasConnected) {
         console.warn(`[state] poll failed, marking disconnected: ${(err as Error).message}`);
       }
