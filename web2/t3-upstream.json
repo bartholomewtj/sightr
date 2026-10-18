@@ -932,7 +932,7 @@
       "upstream": "packages/contracts/src/orchestrationV2.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "shape",
-      "note": "T30 added RunCheckpoint, CheckpointFile, checkpoint.captured and the checkpoint_summary item from OrchestrationV2Checkpoint, OrchestrationV2CheckpointFileSummary and the checkpoint turn item as they stand at 9c161462 (field names only; the row's commit is not moved for them)"
+      "note": "T30 added RunCheckpoint, CheckpointFile, checkpoint.captured and the checkpoint turn item (checkpointId, files) from OrchestrationV2Checkpoint, OrchestrationV2CheckpointFileSummary and T3's checkpoint item as they stand at 9c161462 (field names only; the row's commit is not moved for them)"
     },
     {
       "local": "../shared/v2/request-question.ts",
@@ -1058,7 +1058,7 @@
       "upstream": "apps/server/src/vcs/GitVcsDriver.ts",
       "commit": "9c161462c94f7d9d6d9169da5c841457cbadf213",
       "mode": "pattern",
-      "note": "T30: checkpoints.captureCheckpoint's temp index seeded from the real one (mtime a second back for the racy check), add, write-tree, commit-tree with HEAD as parent, update-ref; into a private bare store with the real objects as an alternate instead of the user's repo. Not taken: hidden refs in the user's repo, restore/rollback, sparse-checkout handling, the embedded-repo retry"
+      "note": "T30: checkpoints.captureCheckpoint's temp index seeded from the real one (mtime a second back for the racy check), add, write-tree, commit-tree, update-ref; into a private bare store with the real objects as an alternate (left out of the object writers, so nothing is freshened) instead of the user's repo. Not taken: HEAD as the parent (a gc would walk the user's history, and fails in a shallow clone), hidden refs in the user's repo, restore/rollback, T3's sparse-checkout re-read (here the sparse settings are mirrored and refused names cut with mktree), the embedded-repo retry"
     },
     {
       "local": "../bridge/threads/checkpoint-diff.ts",

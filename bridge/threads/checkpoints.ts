@@ -11,7 +11,7 @@ import { resolve } from "node:path";
 
 import type { CheckpointAbsentReason, Run, RunCheckpoint, ThreadEvent } from "../../shared/v2/contracts.ts";
 import type { ReviewDiffFileContents, ReviewDiffFilePatch, ReviewUnavailable } from "../../shared/v2/review.ts";
-import { hardenedInvoke, openRepo, spawnGit, type GitRunner } from "../workdir-git.ts";
+import { hardenedInvoke, isHiddenPath, openRepo, spawnGit, type GitRunner } from "../workdir-git.ts";
 import { parseRelPath } from "../workdir.ts";
 import { SHELL_HARNESS } from "./capabilities.ts";
 import { authoredMatcher, blobSide, capturePatches, commitsAlive, diffRun, filePatch, hashOf, MAX_PATCH_STORE_BYTES } from "./checkpoint-diff.ts";
@@ -26,6 +26,8 @@ export const CHECKPOINT_KEEP_RUNS = 50;
 export const CHECKPOINT_KEEP_DAYS = 14;
 export const ARCHIVED_KEEP_MS = 24 * 60 * 60 * 1000;
 export const MAX_STORE_BYTES = 256 * 1024 * 1024;
+/** A start snapshot whose run has not ended after this long is given up (its ref goes at the next sweep). */
+export const PENDING_MAX_MS = 24 * 60 * 60 * 1000;
 export const SWEEP_FIRST_MS = 30_000;
 export const SWEEP_EVERY_MS = 60 * 60 * 1000;
 /** A run-scope review read waits at most this long for its store (a snapshot or gc may hold it). */
@@ -49,6 +51,8 @@ export interface CheckpointServiceDeps {
   maxStoreBytes?: number;
   /** Stored-patch cap for the sweep (default `MAX_PATCH_STORE_BYTES`). */
   maxPatchStoreBytes?: number;
+  /** How long a run-scope read waits for its store (default {@link RUN_REVIEW_DEADLINE_MS}); past it, `busy`. */
+  reviewDeadlineMs?: number;
 }
 
 export type RunPatchQuery = { threadId: string; runId: string; file: string; w: boolean };
@@ -77,7 +81,7 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
   const { store } = deps;
   const now = deps.now ?? Date.now;
   const log = deps.log ?? ((m: string) => console.warn(m));
-  const git = deps.git ?? createCheckpointGit({ stateDir: deps.stateDir, now });
+  const git = deps.git ?? createCheckpointGit({ stateDir: deps.stateDir, workRoot: deps.workRoot, now });
   const invoke = hardenedInvoke(deps.run ?? spawnGit);
   const maxStoreBytes = deps.maxStoreBytes ?? MAX_STORE_BYTES;
   /** Start work per run, so an end waits for its start. */
@@ -97,7 +101,7 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
     store.append([{ type: "checkpoint.captured", threadId: checkpoint.threadId, payload: { checkpoint, phase, ...extra } }], patches ? { checkpointPatches: patches } : {});
   }
   const absent = (run: Pick<Run, "id" | "threadId" | "ordinal">, reason: CheckpointAbsentReason, extra: Partial<RunCheckpoint> = {}): RunCheckpoint => ({
-    runId: run.id, threadId: run.threadId, ordinal: run.ordinal, status: "absent", reason, files: [], additions: 0, deletions: 0, capturedAt: now(), ...extra,
+    runId: run.id, threadId: run.threadId, appRunOrdinal: run.ordinal, status: "absent", reason, files: [], additions: 0, deletions: 0, capturedAt: now(), ...extra,
   });
   const projectOn = (threadId: string): boolean => {
     const thread = store.getThread(threadId); if (!thread) return false;
@@ -106,7 +110,15 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
 
   // ── Start ──────────────────────────────────────────────────────────────────────────────────────
 
+  /** Whatever throws on the way (a store that cannot be made, a read, an append) is recorded, never lost. */
   async function onStarted(run: Run): Promise<void> {
+    try { await startNow(run); } catch (err) {
+      log(`[checkpoints] start of run ${run.id} failed: ${(err as Error).message}`);
+      if (!store.getCheckpoint(run.id) && store.getRun(run.id)) append("start", absent(run, "git-failed"));
+    }
+  }
+
+  async function startNow(run: Run): Promise<void> {
     const thread = store.getThread(run.threadId);
     if (!thread || thread.harness === SHELL_HARNESS) return;
     if (store.getCheckpoint(run.id)) return; // a replayed start
@@ -127,7 +139,7 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
       const approximate = out.capturedAt - run.startedAt > APPROX_LAG_MS;
       append(
         "start",
-        { runId: run.id, threadId: run.threadId, ordinal: run.ordinal, status: "pending", live: true, files: [], additions: 0, deletions: 0, capturedAt: out.capturedAt, ...(out.skipped ? { skipped: out.skipped } : {}), ...(approximate ? { approximate: true } : {}) },
+        { runId: run.id, threadId: run.threadId, appRunOrdinal: run.ordinal, status: "pending", live: true, files: [], additions: 0, deletions: 0, capturedAt: out.capturedAt, ...(out.skipped ? { skipped: out.skipped } : {}), ...(approximate ? { approximate: true } : {}) },
         { repoRoot: info.root, startCommit: out.commit, skippedPaths: out.skippedPaths, ...(Object.keys(out.hiddenStats).length ? { hiddenStats: out.hiddenStats } : {}) },
       );
     });
@@ -149,8 +161,17 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
     return store.listCheckpoints().some((c) => c.checkpoint.runId !== runId && c.checkpoint.threadId !== threadId && c.repoRoot !== "" && c.startCommit !== null && samePath(c.repoRoot, root) && c.runStartedAt <= to && (c.runCompletedAt ?? Number.MAX_SAFE_INTEGER) >= from);
   }
 
+  /** As {@link onStarted}: a throw records the end as failed, so no row stays `pending` because of it. */
   async function onEnded(runId: string, completedAt: number): Promise<void> {
     await starts.get(runId);
+    try { await endNow(runId, completedAt); } catch (err) {
+      log(`[checkpoints] end of run ${runId} failed: ${(err as Error).message}`);
+      const run = store.getRun(runId), row = store.getCheckpoint(runId);
+      if (run && row?.endAt === null) append("end", absent(run, "git-failed"), { repoRoot: row.repoRoot, ...(row.startCommit ? { startCommit: row.startCommit } : {}) });
+    }
+  }
+
+  async function endNow(runId: string, completedAt: number): Promise<void> {
     const run = store.getRun(runId); if (!run) return;
     const thread = store.getThread(run.threadId);
     if (!thread || thread.harness === SHELL_HARNESS) return;
@@ -183,7 +204,7 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
       append(
         "end",
         {
-          runId, threadId: run.threadId, ordinal: run.ordinal, status: "ready", live: true, files: diff.files, additions: diff.additions, deletions: diff.deletions, capturedAt: out.capturedAt,
+          runId, threadId: run.threadId, appRunOrdinal: run.ordinal, status: "ready", live: true, files: diff.files, additions: diff.additions, deletions: diff.deletions, capturedAt: out.capturedAt,
           ...(diff.truncated ? { truncated: true } : {}), ...(hidden ? { hidden } : {}), ...(out.skipped ? { skipped: out.skipped } : {}),
           ...(row.checkpoint.approximate ? { approximate: true } : {}), ...(shared ? { shared: true } : {}), ...(out.unsettled ? { unsettled: true } : {}),
         },
@@ -219,17 +240,21 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
     }
     return out;
   }
-  const refsOf = (r: CheckpointSweepRow): string[] => [checkpointRef(r.checkpoint.threadId, r.checkpoint.ordinal, "start"), checkpointRef(r.checkpoint.threadId, r.checkpoint.ordinal, "end")];
+  const refsOf = (r: CheckpointSweepRow): string[] => [checkpointRef(r.checkpoint.threadId, r.checkpoint.appRunOrdinal, "start"), checkpointRef(r.checkpoint.threadId, r.checkpoint.appRunOrdinal, "end")];
 
-  /** Live rows retention removes now: past the newest 50 per thread, older than 14 days, or 24 h after their thread was archived. A running run is kept. */
+  /**
+   * Live rows retention removes now: past the newest 50 per thread, older than 14 days, or 24 h after their
+   * thread was archived. A `pending` row (its run has not ended) is kept for {@link PENDING_MAX_MS}; past
+   * that its end will never come (a lost `run.ended`, a bridge down at the time), so its start ref goes.
+   */
   function dueRows(rows: CheckpointSweepRow[], at: number): Set<string> {
     const due = new Set<string>();
     const byThread = new Map<string, CheckpointSweepRow[]>();
     for (const r of rows) byThread.set(r.checkpoint.threadId, [...(byThread.get(r.checkpoint.threadId) ?? []), r]);
     for (const list of byThread.values()) {
-      list.sort((a, b) => b.checkpoint.ordinal - a.checkpoint.ordinal);
+      list.sort((a, b) => b.checkpoint.appRunOrdinal - a.checkpoint.appRunOrdinal);
       list.forEach((r, i) => {
-        if (r.checkpoint.status === "pending") return;
+        if (r.checkpoint.status === "pending") { if (at - (r.startAt ?? r.runStartedAt) > PENDING_MAX_MS) due.add(r.checkpoint.runId); return; }
         if (i >= CHECKPOINT_KEEP_RUNS || at - r.runStartedAt > CHECKPOINT_KEEP_DAYS * DAY_MS || (r.threadArchivedAt !== null && at - r.threadArchivedAt > ARCHIVED_KEEP_MS)) due.add(r.checkpoint.runId);
       });
     }
@@ -262,14 +287,39 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
           if (!r) { gone.push(ref); continue; } // its thread or run is no longer in the store (deleted, or T01's 90-day prune)
           if (r.objectsExpiredAt !== null || due.has(r.checkpoint.runId)) { gone.push(ref); expiring.add(r); }
         }
+        let left = refs.filter((ref) => !gone.includes(ref));
+        /**
+         * `gc` in the store; when it fails, find the runs whose objects are gone (the user rewrote history
+         * and pruned what only their repo held: the store reads unchanged trees and blobs through the
+         * alternate), expire them, drop their refs and try once more.
+         */
+        const collect = async (): Promise<boolean> => {
+          if (await git.gc({ store: s.store, objectsDir: s.objectsDir })) return true;
+          const broken: CheckpointSweepRow[] = [];
+          for (const r of mine) {
+            const refsHere = refsOf(r).filter((ref) => left.includes(ref)); if (refsHere.length === 0) continue;
+            const commits = [r.startCommit, r.endCommit].filter((c): c is string => c !== null);
+            if ((await git.objectsMissing(s, commits)) === true) broken.push(r);
+          }
+          const brokenRefs = broken.flatMap(refsOf).filter((ref) => left.includes(ref));
+          if (brokenRefs.length > 0 && (await git.deleteRefs(s.store, brokenRefs))) {
+            left = left.filter((ref) => !brokenRefs.includes(ref));
+            result.refsDeleted += brokenRefs.length;
+            result.expired.push(...expire(broken));
+            if (await git.gc({ store: s.store, objectsDir: s.objectsDir })) return true;
+          }
+          log(`[checkpoints] gc failed in a private store; retrying next sweep`);
+          return false;
+        };
+        let collected = true;
         if (gone.length > 0 && (await git.deleteRefs(s.store, gone))) {
           result.refsDeleted += gone.length;
           result.expired.push(...expire([...expiring]));
-          if (!(await git.gc({ store: s.store, objectsDir: s.objectsDir }))) log(`[checkpoints] gc failed in a private store; retrying next sweep`);
+          collected = await collect();
         }
         // Past the per-store cap (measured on the store's objects, not summed from rows): oldest runs first.
-        let left = refs.filter((ref) => !gone.includes(ref));
-        for (let round = 0; round < 8; round++) {
+        // Only while gc frees what is dropped: a store that cannot collect would otherwise lose every run.
+        for (let round = 0; collected && round < 8; round++) {
           const bytes = await git.storeBytes(s.store);
           if (bytes === null || bytes <= maxStoreBytes) break;
           const live = mine.filter((r) => r.objectsExpiredAt === null && !result.expired.includes(r.checkpoint.runId) && r.checkpoint.status !== "pending").sort((a, b) => a.runStartedAt - b.runStartedAt);
@@ -280,7 +330,7 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
           left = left.filter((ref) => !batchRefs.includes(ref));
           result.refsDeleted += batchRefs.length;
           result.expired.push(...expire(batch));
-          if (!(await git.gc({ store: s.store, objectsDir: s.objectsDir }))) break;
+          collected = await collect();
         }
       });
     }
@@ -301,7 +351,7 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
     if (!row || row.checkpoint.threadId !== q.threadId) return { error: "no-checkpoint" as const };
     if (row.checkpoint.status !== "ready" || !row.startCommit || !row.endCommit) return { error: "no-checkpoint" as const };
     const segs = parseRelPath(q.file);
-    if (!segs?.length || segs.join("/") !== q.file) return { error: "bad-file" as const };
+    if (!segs?.length || segs.join("/") !== q.file || isHiddenPath(q.file)) return { error: "bad-file" as const };
     if (!row.checkpoint.files.some((f) => f.path === q.file) && !row.checkpoint.truncated) return { error: "bad-file" as const };
     return { row, start: row.startCommit, end: row.endCommit };
   }
@@ -320,7 +370,7 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
       const run = git.storeRunner(info);
       if (!(await commitsAlive(run, [start, end]))) return "missing" as const;
       return task(run);
-    }, Date.now() + RUN_REVIEW_DEADLINE_MS); // the queue's clock is the wall clock
+    }, Date.now() + (deps.reviewDeadlineMs ?? RUN_REVIEW_DEADLINE_MS)); // wall clock; the queue answers busy while waiting
     if (r === BUSY) return unavailable("busy");
     if (r === "missing") { markExpired(q.runId, q.threadId); return unavailable("expired"); }
     return r;

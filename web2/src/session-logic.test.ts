@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import type { TurnItem } from "@shared/v2/contracts";
 import { assistant, command, reasoning, resetOrdinals, run, user } from "@/test/turn-items";
 
 import { deriveTimelineEntries, reasoningLabel, reasoningTime } from "./session-logic";
@@ -51,6 +52,21 @@ describe("deriveTimelineEntries", () => {
   it("keys every entry by its item id, also two text parts of one journal entry", () => {
     const entries = deriveTimelineEntries({ items: [assistant("e:0", "one"), assistant("e:1", "two")], runs: [] });
     expect(entries.map((e) => e.id)).toEqual(["e:0", "e:1"]);
+  });
+
+  it("draws no row for a run's checkpoint item (T30; T31's card reads it), and the run's end still follows its last item", () => {
+    const reply = assistant("e:0", "done", inRun);
+    const files = [{ path: "a.txt", kind: "modified" as const, additions: 1, deletions: 0 }];
+    const checkpoint: TurnItem = {
+      id: "checkpoint:r1", threadId: reply.threadId, runId: "r1", ordinal: reply.ordinal + 1, status: "completed", title: "Snapshot: 1 file changed",
+      startedAt: null, completedAt: null, createdAt: reply.createdAt, updatedAt: reply.updatedAt,
+      type: "checkpoint", checkpointId: "r1", files,
+      checkpoint: { runId: "r1", threadId: reply.threadId, appRunOrdinal: 1, status: "ready", files, additions: 1, deletions: 0 },
+    };
+    const entries = deriveTimelineEntries({ items: [reply, checkpoint], runs: [run("r1", { status: "failed" })] });
+    expect(entries.map((e) => e.id)).not.toContain("checkpoint:r1");
+    expect(entries.map((e) => e.id)[0]).toBe("e:0");
+    expect(entries.length).toBe(2); // the reply, then the run's "failed" end row
   });
 
   it("maps T3 tool kinds onto work entries", () => {

@@ -37,7 +37,7 @@ const TURN_ITEM_TYPES = [
   "system_notice",
   "error",
   "compaction",
-  "checkpoint_summary",
+  "checkpoint",
   "session",
   "screen",
 ] as const satisfies readonly TurnItemType[];

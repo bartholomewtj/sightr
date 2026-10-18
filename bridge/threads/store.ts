@@ -539,7 +539,7 @@ function checkpointFromRow(r: CheckpointDbRow): RunCheckpoint {
   return {
     runId: r.run_id,
     threadId: r.thread_id,
-    ordinal: r.ordinal,
+    appRunOrdinal: r.ordinal,
     status: r.status as RunCheckpoint["status"],
     ...(r.reason !== null ? { reason: r.reason as CheckpointAbsentReason } : {}),
     ...(hasObjects ? { live: r.objects_expired_at === null } : {}),
@@ -568,7 +568,7 @@ function serverCheckpointFromRow(r: CheckpointDbRow): ServerCheckpoint {
   };
 }
 
-/** The timeline row's title until the UI draws its own (T31): what the snapshot found, in a few words. */
+/** The item's title: what the snapshot found, in a few words (web2 draws no row for it; T31 draws the card). */
 function checkpointTitle(c: RunCheckpoint): string {
   if (c.status !== "ready") return "Snapshot unavailable";
   const n = c.files.length;
@@ -578,7 +578,7 @@ function checkpointTitle(c: RunCheckpoint): string {
 const bit = (v: boolean | undefined): number | null => (v ? 1 : null);
 const count = (v: number | undefined): number | null => (v ? v : null);
 
-/** Write the run's `checkpoint_summary` item from its row (T3's `checkpoint` item; id `checkpoint:<runId>`). */
+/** Write the run's `checkpoint` item from its row (T3's item of that name; id `checkpoint:<runId>`). */
 function upsertCheckpointItem(tx: Database, row: CheckpointDbRow, sequence: number, ts: number): void {
   const checkpoint = checkpointFromRow(row);
   const id = `checkpoint:${row.run_id}`;
@@ -598,7 +598,9 @@ function upsertCheckpointItem(tx: Database, row: CheckpointDbRow, sequence: numb
     completedAt: row.end_at,
     createdAt,
     updatedAt: ts,
-    type: "checkpoint_summary",
+    type: "checkpoint",
+    checkpointId: row.run_id,
+    files: checkpoint.files,
     checkpoint,
   };
   tx.query(
@@ -619,7 +621,7 @@ function applyCheckpointCaptured(tx: Database, event: StoredEventOf<"checkpoint.
     tx.query(
       `INSERT INTO run_checkpoints (run_id, thread_id, ordinal, repo_root, status, reason, start_commit, start_at, skipped, approximate)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(c.runId, c.threadId, c.ordinal, event.payload.repoRoot ?? "", c.status, c.reason ?? null, event.payload.startCommit ?? null, c.capturedAt ?? event.ts, count(c.skipped), bit(c.approximate));
+    ).run(c.runId, c.threadId, c.appRunOrdinal, event.payload.repoRoot ?? "", c.status, c.reason ?? null, event.payload.startCommit ?? null, c.capturedAt ?? event.ts, count(c.skipped), bit(c.approximate));
     return;
   }
   // The end phase finishes the row once; a duplicate end changes nothing.
@@ -628,7 +630,7 @@ function applyCheckpointCaptured(tx: Database, event: StoredEventOf<"checkpoint.
   const params = {
     run_id: c.runId,
     thread_id: c.threadId,
-    ordinal: c.ordinal,
+    ordinal: c.appRunOrdinal,
     repo_root: existing?.repo_root || event.payload.repoRoot || "",
     status: c.status,
     reason: c.reason ?? null,

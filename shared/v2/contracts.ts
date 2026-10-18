@@ -217,15 +217,16 @@ export interface CheckpointFile {
 }
 
 /**
- * One run's snapshot pair, compared tree to tree. T3's `OrchestrationV2Checkpoint` keeps `threadId`,
- * `runId`, `status`, `files` and `capturedAt` (epoch ms here); T3's per-checkpoint `id`, `scopeId`, `ref`,
- * `nodeId` and parent links have no counterpart (one start/end pair per run, and no ref or sha is ever
+ * One run's snapshot pair, compared tree to tree. T3's `OrchestrationV2Checkpoint` names are kept where
+ * they map: `threadId`, `runId`, `appRunOrdinal`, `status`, `files` and `capturedAt` (epoch ms here); T3's
+ * per-checkpoint `id`, `scopeId`, `ordinalWithinScope`, `ref`, `nodeId` and parent links have no counterpart (one start/end pair per run, and no ref or sha is ever
  * sent to a client). T3's statuses are `ready | missing | error | stale`; Sightr's are below.
  */
 export interface RunCheckpoint {
   runId: string;
   threadId: string;
-  ordinal: number;
+  /** The run's ordinal in its thread (T3's `appRunOrdinal`). */
+  appRunOrdinal: number;
   /** `pending`: the start snapshot exists and the run has not ended. */
   status: "pending" | "ready" | "absent";
   reason?: CheckpointAbsentReason;
@@ -486,11 +487,11 @@ export type TurnItem =
       afterTokenCount?: number;
     })
   /**
-   * T3's `checkpoint` item (T3 calls the row "checkpoint summary"): the run's git checkpoint, id
-   * `checkpoint:<runId>`, written when the end snapshot is recorded (T30). T3's `checkpointId`/`scopeId`
-   * have no counterpart; the record is {@link RunCheckpoint}.
+   * T3's `checkpoint` item: the run's git checkpoint, id `checkpoint:<runId>`, written when the end
+   * snapshot is recorded (T30). `checkpointId` and `files` are T3's fields (the checkpoint id is the run
+   * id: one start/end pair per run); T3's `scopeId` has no counterpart. `checkpoint` is the whole record.
    */
-  | (TurnItemBase & { type: "checkpoint_summary"; checkpoint: RunCheckpoint })
+  | (TurnItemBase & { type: "checkpoint"; checkpointId: string; files: CheckpointFile[]; checkpoint: RunCheckpoint })
   // ── Sightr extensions (no T3 counterpart) ──
   /** Sightr: the harness session inside the pane changed (relaunch, `/clear`, `/new`). */
   | (TurnItemBase & { type: "session"; from: string | null; to: string })
@@ -756,7 +757,7 @@ export interface EventPayloads {
   /**
    * T30 (T3's `checkpoint.captured`): a run's start or end snapshot was taken, or could not be. The start
    * phase records `pending` (or `absent`); the end phase records `ready` or `absent` and upserts the
-   * run's `checkpoint_summary` item.
+   * run's `checkpoint` item.
    */
   "checkpoint.captured": { checkpoint: RunCheckpoint; phase: "start" | "end" };
   /** T30: the run's snapshot objects are gone (retention, or a failed liveness check). Its file list and stored patches stay. */

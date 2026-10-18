@@ -4,10 +4,10 @@ import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { Run, ThreadEvent, TurnItem } from "../../shared/v2/contracts.ts";
-import { fingerprint, gitDirChanges, gitIn, makeRepo, rmrf, tempRoot, writeFiles } from "../test/git-fixtures.ts";
+import { ageTree, fingerprint, gitDirChanges, gitIn, makeRepo, rmrf, tempRoot, writeFiles } from "../test/git-fixtures.ts";
 import { createProject, createThread, project, thread } from "../test/thread-fixtures.ts";
 import { spawnGit, type GitRunner } from "../workdir-git.ts";
-import { checkpointRef, createCheckpointGit, type CheckpointGitOptions } from "./checkpoint-git.ts";
+import { checkpointRef, createCheckpointGit, type CheckpointGit, type CheckpointGitOptions } from "./checkpoint-git.ts";
 import { APPROX_LAG_MS, CHECKPOINT_KEEP_RUNS, createCheckpointService, END_WINDOW_MS, START_WINDOW_MS, type CheckpointServiceDeps } from "./checkpoints.ts";
 import type { EventDraft } from "./events.ts";
 import { openThreadStore, type ThreadStore } from "./store.ts";
@@ -21,13 +21,13 @@ const LF_ONLY = async () => new Map([["core.autocrlf", "false"]]);
 const DAY = 24 * 60 * 60 * 1000;
 
 interface Rig {
-  work: string; state: string; store: ThreadStore; svc: ReturnType<typeof createCheckpointService>;
+  work: string; state: string; store: ThreadStore; svc: ReturnType<typeof createCheckpointService>; git: CheckpointGit;
   repo: Awaited<ReturnType<typeof makeRepo>>; clock: { t: number }; calls: string[][]; cwd: Map<string, string | null>;
   start(threadId?: string, ordinal?: number, over?: Partial<Run>): Promise<Run>;
   end(run: Run, at?: number, status?: "completed" | "failed" | "interrupted"): Promise<void>;
 }
 
-async function rig(opts: { enabled?: boolean; files?: Record<string, string>; git?: Partial<CheckpointGitOptions>; svc?: Partial<CheckpointServiceDeps>; threads?: Array<{ id: string; harness?: string }> } = {}): Promise<Rig> {
+async function rig(opts: { enabled?: boolean; files?: Record<string, string>; git?: Partial<CheckpointGitOptions>; svc?: Partial<CheckpointServiceDeps>; threads?: Array<{ id: string; harness?: string }>; wrapGit?: (g: CheckpointGit) => CheckpointGit } = {}): Promise<Rig> {
   const work = await tempRoot("sightr-cps-"); roots.push(work);
   const state = join(work, "state");
   const clock = { t: 10 * DAY };
@@ -35,17 +35,17 @@ async function rig(opts: { enabled?: boolean; files?: Record<string, string>; gi
   const repo = await makeRepo(work, "repo", opts.files ?? { "a.txt": "one\n" });
   const calls: string[][] = [];
   const counting: GitRunner = (args, cwd, limits) => { calls.push(args); return spawnGit(args, cwd, limits); };
-  const git = createCheckpointGit({ stateDir: state, globalConfig: LF_ONLY, settleDelayMs: 5, now: () => clock.t, run: counting, ...opts.git });
+  const git = createCheckpointGit({ stateDir: state, workRoot: work, globalConfig: LF_ONLY, settleDelayMs: 5, now: () => clock.t, run: counting, ...opts.git });
   const cwd = new Map<string, string | null>();
   store.append([createProject(project("w1"))]);
   for (const t of opts.threads ?? [{ id: "t1" }]) {
     store.append([createThread(thread(t.id, { harness: t.harness ?? "claude", paneId: `p-${t.id}` }))]);
     cwd.set(`p-${t.id}`, repo.root);
   }
-  const svc = createCheckpointService({ store, stateDir: state, workRoot: work, enabled: opts.enabled ?? true, git, now: () => clock.t, log: () => {}, paneCwd: (paneId) => cwd.get(paneId) ?? null, ...opts.svc });
+  const svc = createCheckpointService({ store, stateDir: state, workRoot: work, enabled: opts.enabled ?? true, git: opts.wrapGit ? opts.wrapGit(git) : git, now: () => clock.t, log: () => {}, paneCwd: (paneId) => cwd.get(paneId) ?? null, ...opts.svc });
   svc.start();
   const r: Rig = {
-    work, state, store, svc, repo, clock, calls, cwd,
+    work, state, store, svc, git, repo, clock, calls, cwd,
     async start(threadId = "t1", ordinal = 1, over = {}) {
       const run: Run = { id: `${threadId}-run-${ordinal}`, threadId, ordinal, status: "running", startedAt: clock.t, ...over };
       store.append([{ type: "run.started", threadId, payload: { run } }]);
@@ -66,7 +66,7 @@ const refs = async (r: Rig) => { const { info, git } = await storeGit(r); return
 describe("checkpoints: run flow", () => {
   test("run.started then run.ended: one start and one end ref, one captured per phase, one summary item, Run.checkpoint filled, nothing private on the wire", async () => {
     const r = await rig({ files: { "a.txt": "one\n", "b.txt": "b\n" } });
-    const before = await fingerprint(join(r.repo.root, ".git"));
+    await ageTree(join(r.repo.root, ".git")); const before = await fingerprint(join(r.repo.root, ".git"));
     const run = await r.start();
     expect(r.store.getCheckpoint(run.id)?.checkpoint.status).toBe("pending");
     await writeFiles(r.repo.root, { "a.txt": "one\ntwo\n", "made-by-sed.txt": "s\n" });
@@ -79,7 +79,7 @@ describe("checkpoints: run flow", () => {
     const events = captured(r.store);
     expect(events.map((e) => e.payload.phase)).toEqual(["start", "end"]);
     const end = events[1]!.payload.checkpoint;
-    expect(end).toMatchObject({ runId: run.id, threadId: "t1", ordinal: 1, status: "ready", live: true, additions: 2, deletions: 0 });
+    expect(end).toMatchObject({ runId: run.id, threadId: "t1", appRunOrdinal: 1, status: "ready", live: true, additions: 2, deletions: 0 });
     expect(end.files).toEqual([
       { path: "a.txt", kind: "modified", additions: 1, deletions: 0, authored: true },
       { path: "made-by-sed.txt", kind: "added", additions: 1, deletions: 0, authored: false },
@@ -91,7 +91,7 @@ describe("checkpoints: run flow", () => {
     expect((stored[1]!.payload as { endCommit?: string }).endCommit).toMatch(/^[0-9a-f]{40}$/);
     // One summary item, and the thread snapshot carries Run.checkpoint.
     const snap = r.store.snapshotThread("t1")!;
-    const items = snap.items.filter((i): i is Extract<TurnItem, { type: "checkpoint_summary" }> => i.type === "checkpoint_summary");
+    const items = snap.items.filter((i): i is Extract<TurnItem, { type: "checkpoint" }> => i.type === "checkpoint");
     expect(items.map((i) => i.id)).toEqual([`checkpoint:${run.id}`]);
     expect(items[0]!.checkpoint.files.length).toBe(2);
     expect(snap.runs.find((x) => x.id === run.id)?.checkpoint).toMatchObject({ status: "ready", live: true });
@@ -213,7 +213,7 @@ describe("checkpoints: run-scope review", () => {
     r.store.append([{ type: "thread.archived", threadId: "t1", payload: { reason: "pane-closed", at: r.clock.t } }]);
     r.cwd.delete("p-t1");
     const n = r.calls.length;
-    const printed = await fingerprint(join(r.repo.root, ".git"));
+    await ageTree(join(r.repo.root, ".git")); const printed = await fingerprint(join(r.repo.root, ".git"));
     const stored = await r.svc.patch({ threadId: "t1", runId: run.id, file: "a.txt", w: false });
     expect(r.calls.length).toBe(n);
     expect(stored).toMatchObject({ available: true, truncated: false });
@@ -233,6 +233,7 @@ describe("checkpoints: run-scope review", () => {
 
   test("history rewritten and pruned in the real repo: the live diff fails its liveness check, the run expires (event, live false), stored patches still serve", async () => {
     const r = await rig({ files: { "a.txt": "base\n" } });
+    await ageTree(r.repo.root); await r.repo.git("update-index", "--really-refresh"); // stat-clean: the start tree is read from the real repo
     // The run's end state is committed by the agent, then the operator rewrites history and prunes.
     const run = await r.start();
     await writeFile(join(r.repo.root, "a.txt"), "base\nagent\n");
@@ -253,7 +254,7 @@ describe("checkpoints: run-scope review", () => {
     const stored = await r.svc.patch({ threadId: "t1", runId: run.id, file: "a.txt", w: false });
     expect(stored.available && stored.patch).toContain("+agent");
     expect(r.store.getCheckpoint(run.id)?.checkpoint.status).toBe("ready");
-    const item = r.store.getTurnItem(`checkpoint:${run.id}`) as Extract<TurnItem, { type: "checkpoint_summary" }>;
+    const item = r.store.getTurnItem(`checkpoint:${run.id}`) as Extract<TurnItem, { type: "checkpoint" }>;
     expect(item.checkpoint.live).toBe(false);
   });
 });
@@ -267,7 +268,7 @@ describe("checkpoints: retention", () => {
 
   test(`the ${CHECKPOINT_KEEP_RUNS + 1}st run, a 15-day-old run, an archived thread, a deleted thread and an orphan ref each lose exactly their refs; gc shrinks the store; the user's .git is unchanged`, async () => {
     const r = await rig({ threads: [{ id: "t1" }, { id: "t2" }, { id: "t3" }] });
-    const before = await fingerprint(join(r.repo.root, ".git"));
+    await ageTree(join(r.repo.root, ".git")); const before = await fingerprint(join(r.repo.root, ".git"));
     const big = (i: number) => Array.from({ length: 2000 }, (_, k) => `${i}-${k}-${Math.random()}`).join("\n");
     // t1: 51 runs; the first one is also 15 days old.
     const runs: Run[] = [];
@@ -350,5 +351,83 @@ describe("checkpoints: store", () => {
     r.store.append([{ type: "thread.archived", threadId: "t1", payload: { reason: "user", at: r.clock.t } }, { type: "thread.deleted", threadId: "t1", payload: { at: r.clock.t } }]);
     expect(r.store.getCheckpoint(run.id)).toBeNull();
     expect(r.store.checkpointPatchBytes()).toBe(0);
+  });
+});
+
+describe("checkpoints: failures are recorded, never lost (T30 review)", () => {
+  test("a throw while starting records the start as failed; a throw while ending records the end as failed, so no row stays pending", async () => {
+    let failStart = true, failEnd = false;
+    const r = await rig({
+      wrapGit: (g) => ({
+        ...g,
+        resolveRepo: async (root: string) => { if (failStart) throw new Error("boom: resolve"); return g.resolveRepo(root); },
+        snapshotLocked: async (info, req) => { if (failEnd && req.side === "end") throw new Error("boom: end"); return g.snapshotLocked(info, req); },
+      }),
+    });
+    const a = await r.start("t1", 1);
+    expect(r.store.getCheckpoint(a.id)?.checkpoint).toMatchObject({ status: "absent", reason: "git-failed" });
+    await r.end(a);
+    expect(r.store.getCheckpoint(a.id)?.checkpoint).toMatchObject({ status: "absent", reason: "git-failed" });
+    failStart = false; failEnd = true;
+    const b = await r.start("t1", 2);
+    expect(r.store.getCheckpoint(b.id)?.checkpoint.status).toBe("pending");
+    await r.end(b);
+    const row = r.store.getCheckpoint(b.id)!;
+    expect(row.checkpoint).toMatchObject({ status: "absent", reason: "git-failed" });
+    expect(row.endAt).not.toBeNull();
+  });
+
+  test("a start whose run never ends is given up after a day: the sweep expires it and drops its ref", async () => {
+    const r = await rig();
+    const run = await r.start();
+    expect(await refs(r)).toEqual([checkpointRef("t1", 1, "start")]);
+    r.clock.t += 2 * 60 * 60 * 1000;
+    expect((await r.svc.sweep(r.clock.t)).expired).toEqual([]);
+    r.clock.t += 25 * 60 * 60 * 1000;
+    expect((await r.svc.sweep(r.clock.t)).expired).toEqual([run.id]);
+    expect(await refs(r)).toEqual([]);
+    expect(r.store.getCheckpoint(run.id)?.checkpoint).toMatchObject({ status: "pending", live: false });
+  });
+
+  test("history rewritten and pruned under live snapshots: the sweep's gc fails, the broken runs expire, and gc then succeeds", async () => {
+    const r = await rig({ files: { "a.txt": "base\n", "keep.txt": "keep\n" } });
+    // Files and index an hour old and stat-clean (not "racy"): the snapshot then reuses keep.txt's blob and
+    // the unchanged tree from the real repo instead of hashing them again.
+    await ageTree(r.repo.root); await r.repo.git("update-index", "--really-refresh");
+    const one = await r.start("t1", 1); await writeFile(join(r.repo.root, "a.txt"), "base\nmore\n"); await r.end(one);
+    // The operator rewrites history and prunes: the trees and blobs run 1 read through the alternate are gone.
+    const g = r.repo.git;
+    await g("add", "-A"); await g("commit", "-qm", "wip");
+    await g("checkout", "-q", "--orphan", "fresh"); await g("rm", "-rqf", "--cached", ".");
+    await rm(join(r.repo.root, "a.txt")); await rm(join(r.repo.root, "keep.txt"));
+    await writeFile(join(r.repo.root, "z.txt"), "z\n"); await g("add", "z.txt"); await g("commit", "-qm", "fresh");
+    await g("branch", "-D", "main"); await g("reflog", "expire", "--expire=now", "--all"); await g("gc", "-q", "--prune=now");
+    r.clock.t += 1000;
+    const two = await r.start("t1", 2); await writeFile(join(r.repo.root, "z.txt"), "z2\n"); await r.end(two);
+    expect(r.store.getCheckpoint(two.id)?.checkpoint.status).toBe("ready");
+    // An orphan ref gives the sweep something to collect.
+    const { info, git } = await storeGit(r);
+    await git("update-ref", "refs/checkpoints/ghost/1/start", r.store.getCheckpoint(two.id)!.startCommit!);
+    expect(await r.git.gc({ store: info.store, objectsDir: info.objectsDir })).toBe(false); // run 1's trees are gone
+    const res = await r.svc.sweep(r.clock.t);
+    expect(res.expired).toEqual([one.id]);
+    expect(await refs(r)).toEqual([checkpointRef("t1", 2, "end"), checkpointRef("t1", 2, "start")]);
+    expect(await r.git.gc({ store: info.store, objectsDir: info.objectsDir })).toBe(true);
+    expect(await r.svc.patch({ threadId: "t1", runId: two.id, file: "z.txt", w: true })).toMatchObject({ available: true });
+  });
+
+  test("a run-scope read waiting on a busy store answers busy at its deadline, not after the store's long task", async () => {
+    const r = await rig({ svc: { reviewDeadlineMs: 150 } });
+    const run = await r.start(); await writeFile(join(r.repo.root, "a.txt"), "x\n"); await r.end(run);
+    const { info } = await storeGit(r);
+    let release!: () => void;
+    const holding = r.git.queue.run(info.repoKey, () => new Promise<void>((res) => { release = res; })); // a long gc
+    const t0 = Date.now();
+    expect(await r.svc.patch({ threadId: "t1", runId: run.id, file: "a.txt", w: true })).toEqual({ available: false, reason: "busy" });
+    expect(Date.now() - t0).toBeLessThan(2_000);
+    // The stored patch (w=0) needs no store at all.
+    expect(await r.svc.patch({ threadId: "t1", runId: run.id, file: "a.txt", w: false })).toMatchObject({ available: true });
+    release(); await holding;
+    expect(await r.svc.patch({ threadId: "t1", runId: run.id, file: "a.txt", w: true })).toMatchObject({ available: true });
   });
 });
