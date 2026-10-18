@@ -5,9 +5,9 @@
 // 800 px of the screen. A window highlights its own lines when it mounts, in slices of at most 200 lines, and
 // holds the result in its own state, so nothing highlight-related outlives the component. Browser find sees only
 // mounted rows, and a window not yet mounted holds an estimated 20 px a row.
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import type { DiffAdapterCapabilities, DiffCodeViewProps, DiffSide } from "../DiffCodeView.tsx";
+import { DiffScrollRootContext, type DiffAdapterCapabilities, type DiffCodeViewProps, type DiffSide } from "../DiffCodeView.tsx";
 import { useParsedFile } from "../parsedFile.ts";
 import type { ParsedLine } from "../parsePatch.ts";
 import { highlightLines } from "./hand.highlight.ts";
@@ -30,14 +30,16 @@ function Window({ eager, items, path, renderRow }: { eager: boolean; items: Item
   const ref = useRef<HTMLDivElement>(null);
   const [on, setOn] = useState(eager);
   const [hl, setHl] = useState<Highlighted | null>(null);
+  const scrollRoot = useContext(DiffScrollRootContext);
   useEffect(() => {
     const el = ref.current;
     if (on || !el) return;
     if (typeof IntersectionObserver === "undefined") return setOn(true);
-    const io = new IntersectionObserver((e) => e.some((x) => x.isIntersecting) && setOn(true), { rootMargin: "800px 0px" });
+    // With a scroller of its own (the Diff panel) the margin is measured from that element; without one, from the viewport.
+    const io = new IntersectionObserver((e) => e.some((x) => x.isIntersecting) && setOn(true), { root: scrollRoot, rootMargin: "800px 0px" });
     io.observe(el);
     return () => io.disconnect();
-  }, [on]);
+  }, [on, scrollRoot]);
   // Highlight this window's own lines once it is mounted (and again if its rows change, e.g. lines revealed).
   useEffect(() => {
     if (!on) return;
@@ -51,7 +53,7 @@ function Window({ eager, items, path, renderRow }: { eager: boolean; items: Item
 const GUTTER = "w-10 shrink-0 select-none pe-1 text-right text-muted-foreground pointer-coarse:relative pointer-coarse:min-w-11 pointer-coarse:after:absolute pointer-coarse:after:-inset-y-3 pointer-coarse:after:inset-x-0";
 
 export default function HandAdapter(props: DiffCodeViewProps) {
-  const { patch, parsed, filePath, wrap, layout = "stacked", annotations, renderAnnotation, onLineAction, onExpandContext, eager = true } = props;
+  const { patch, parsed, filePath, wrap, layout = "stacked", annotations, renderAnnotation, onLineAction, onExpandContext, eager = true, header = true } = props;
   const file = useParsedFile(patch, parsed);
   const [text, setText] = useState<string[]>();
   const [revealed, setRevealed] = useState<ReadonlySet<number>>(new Set());
@@ -111,7 +113,7 @@ export default function HandAdapter(props: DiffCodeViewProps) {
   return (
     <div data-diff-adapter="hand" data-diff-layout={layout === "split" ? "split" : "stacked"} data-diff-wrap={wrap ? "" : undefined} className="rounded border font-mono text-xs leading-5">
       <style>{CSS}</style>
-      <div className="flex gap-2 px-2 py-1"><span className="min-w-0 flex-1 truncate">{filePath}</span><span className="text-[var(--ok)]">+{file.additions}</span><span className="text-[var(--warn)]">−{file.deletions}</span></div>
+      {header && <div className="flex gap-2 px-2 py-1"><span className="min-w-0 flex-1 truncate">{filePath}</span><span className="text-[var(--ok)]">+{file.additions}</span><span className="text-[var(--warn)]">−{file.deletions}</span></div>}
       <div role="table" aria-label={filePath} className={wrap ? "" : "overflow-x-auto overscroll-x-contain"}>
         {file.hunks.length === 0 && <div className="px-2 text-muted-foreground">{file.status === "binary" ? "Binary file" : "No changes to show"}</div>}
         {windows.map((items, i) => (

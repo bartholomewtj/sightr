@@ -2,7 +2,7 @@
 // import. `diffs-adapter` is an alias, set in vite.config.ts / vitest.config.ts / tsconfig.json to
 // `adapters/hand.tsx` (T25's decision, flipped by T27) unless SIGHTR_DIFFS=status|hand|pierre picks a candidate;
 // the adapter loads in its own chunk, so a slow chunk shows the plain lines instead of a blank.
-import { lazy, Suspense, type ReactNode } from "react";
+import { createContext, lazy, Suspense, type ReactNode } from "react";
 
 import { DiffLines } from "../right-panel/DiffView.tsx";
 import type { ParsedPatchFile } from "./parsePatch.ts";
@@ -24,8 +24,16 @@ export type DiffCodeViewProps = {
   onExpandContext?: (filePath: string) => Promise<{ oldText: string; newText: string } | null>; // T28
   /** Draw the first window of rows at once (default). False: it mounts when it nears the screen, like the rest (T27: only the first or revealed open file is eager). */
   eager?: boolean;
+  /** Draw the adapter's own file header (path and +/-). Default true; the Diff panel draws its own sticky header and says false. */
+  header?: boolean;
 };
-export type DiffAdapterCapabilities = { split: boolean; expand: boolean; annotations: boolean; highlight: boolean };
+/**
+ * The element that scrolls the diffs, when it is not the page. An adapter that mounts rows as they near the
+ * screen observes against it: an IntersectionObserver with no root does not widen its margin past a nested
+ * scroller, so rows would mount only once they were already on screen.
+ */
+export const DiffScrollRootContext = createContext<HTMLElement | null>(null);
+export type DiffAdapterCapabilities ={ split: boolean; expand: boolean; annotations: boolean; highlight: boolean };
 
 const loadAdapter = () => lazy(() => import("diffs-adapter"));
 let Adapter = loadAdapter();
@@ -54,7 +62,8 @@ function hunkLines(patch: string): string[] {
   return first < 0 ? ["No changes to show"] : rows.slice(first);
 }
 
-function Fallback({ patch, wrap }: Pick<DiffCodeViewProps, "patch" | "wrap">) {
+/** The patch as plain lines: what shows while the adapter loads, and what a caller's error boundary falls back to. */
+export function PlainPatch({ patch, wrap }: Pick<DiffCodeViewProps, "patch" | "wrap">) {
   return (
     <div data-diff-fallback="">
       <DiffLines lines={hunkLines(patch)} wrap={wrap} />
@@ -64,7 +73,7 @@ function Fallback({ patch, wrap }: Pick<DiffCodeViewProps, "patch" | "wrap">) {
 
 export function DiffCodeView(props: DiffCodeViewProps) {
   return (
-    <Suspense fallback={<Fallback patch={props.patch} wrap={props.wrap} />}>
+    <Suspense fallback={<PlainPatch patch={props.patch} wrap={props.wrap} />}>
       <Adapter {...props} />
     </Suspense>
   );
