@@ -45,7 +45,7 @@ weekly review ──► one GitHub issue ──► /t3-sync confirm ──► sy
 ```
 
 1. **Review (weekly, automatic, cloud credits).** Each Monday at 8:00 Brisbane the cloud routine "sightr t3-sync weekly review" (Opus) runs
-   `bun scripts/t3-upstream.ts --ref main` on Sightr's `main`, then reviews every change against this document. It also diffs T3's `orchestrationV2.ts` until T20 lands.
+   `bun scripts/t3-upstream.ts --ref main` on Sightr's `main`, then reviews every change against this document. Contracts are covered by the checker's `shape` rows (T20), so it needs no hand diff.
    - **Why `main`.** The ledger records commits from T3's `main`. T3's stable tags are behind it (`v0.1.0` is 78 commits older than the baseline `e3b35d1b`), and its preview and nightly tags branch off it. A tag would report changes backwards.
    - **Guard.** The routine checks that the ledger `baseline` is an ancestor of the sha it compares against.
    - **Output.** When anything changed, it opens a GitHub issue on `bartholomewtj/sightr` labelled `t3-sync` and titled `T3 review: main @ <sha7> (<N> changes, <K> recommended)`. The issue is the full review, so `/t3-sync` starts from it instead of redoing the work:
@@ -96,10 +96,12 @@ weekly review ──► one GitHub issue ──► /t3-sync confirm ──► sy
 - **Phone first stays.** A desktop-only T3 interaction needs a phone path (sheet, tap or swipe) in the same slice, or the slice says why not.
 - **Record the no's.** A skipped change is a `decisions` row (`{upstream, commit, verdict: "skip" | "defer", reason}`), so the next check does not raise it again.
 
-## Gaps to close first
+## Gaps closed
 
-- **[T20](specs/t3/T20-upstream-sync.md):** the checker learns the contract layer (rows outside `web2/`), `--json` output for the routine, and the `decisions` ledger. Until then, contract drift shows up only in the components that break.
-- **CI:** add `web2/` install, typecheck, test and build to `.github/workflows/ci.yml` next to `web`. A sync slice must not land on a CI that never builds web2.
+- **T20 (done):** the checker covers the contract layer (`shape` rows outside `web2/`), prints `--json` for the routine (`bun scripts/t3-upstream.ts --ref main --json`; exit 1 means an error, e.g. a ref behind the baseline), and honours the ledger `decisions` rows (`{upstream, commit, verdict: skip|defer, reason}`): a decision hides a change until that upstream file changes again.
+- **CI (done):** `web2/` installs, lints, typechecks, tests and builds next to `web`.
+- **React Compiler (T23, decided: skip for now):** measured 18 Oct 2026: 330 functions compile and 21 bail out (the timeline body among them), 200 streamed updates drop from 3801 to 3601 renders (−5%), profiler time goes up, and the bundle grows 10–12%. `SIGHTR_COMPILER=1` in `web2/vite.config.ts` turns it on to re-measure. Details in `specs/t3/README.md`.
+- **Still open:** many `adapted` rows are not re-synced to T3's newest commit (the baseline moved because each upstream change has a decision). The Sidebar fixes noted in the `defer` row are worth taking next time the sidebar is touched.
 
 ## Where things are
 
