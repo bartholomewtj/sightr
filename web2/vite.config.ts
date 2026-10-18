@@ -21,6 +21,25 @@ const devHosts = (process.env.SIGHTR_DEV_HOSTS ?? "")
   .filter(Boolean);
 const allowedHosts = devHosts.includes("*") ? true : devHosts.length > 0 ? devHosts : undefined;
 
+// React Compiler (T23 spike, docs/specs/t3/README.md): off by default. `SIGHTR_COMPILER=1` builds web2
+// through babel-plugin-react-compiler, the way @vitejs/plugin-react 6 documents it. It was measured and
+// not adopted, so its dev dependencies are not in package.json; to measure again, install them unsaved:
+//   bun add -d --no-save @rolldown/plugin-babel @babel/core@^7.29.0 babel-plugin-react-compiler@1.0.0
+// (Babel 8 mis-lowers destructuring defaults in compiler 1.0.0; keep @babel/core on 7.)
+async function reactCompiler(): Promise<Plugin[]> {
+  if (process.env.SIGHTR_COMPILER !== "1") return [];
+  const load = (name: string) => import(/* @vite-ignore */ name) as Promise<Record<string, any>>;
+  try {
+    const [{ default: babel }, { reactCompilerPreset }] = await Promise.all([
+      load("@rolldown/plugin-babel"),
+      load("@vitejs/plugin-react"),
+    ]);
+    return [babel({ presets: [reactCompilerPreset()] }) as Plugin];
+  } catch (e) {
+    throw new Error(`SIGHTR_COMPILER=1 needs the compiler's dev dependencies (see vite.config.ts): ${(e as Error).message}`);
+  }
+}
+
 // Build stamp, the same scheme as web/vite.config.ts: baked into the bundle as __BUILD_INFO__ and
 // emitted to dist/build-info.json, which the bridge reads off disk for X-Sightr-Build on web2's responses.
 const git = (cmd: string) =>
@@ -78,6 +97,7 @@ export default defineConfig({
     // File routes under src/routes, generated into src/routeTree.gen.ts (T3's layout). Before react().
     tanstackRouter({ target: "react", autoCodeSplitting: true }),
     react(),
+    ...(await reactCompiler()),
     tailwindcss(),
     buildInfoPlugin,
     VitePWA({

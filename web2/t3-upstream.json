@@ -1,7 +1,7 @@
 {
-  "$comment": "Files in web2 taken from or modelled on T3 Code (MIT, THIRD_PARTY.md). mode: verbatim = byte-identical to upstream at commit; adapted = upstream body with local edits (header names the source); pattern = same job and name, Sightr's own code. Check for upstream changes with `bun scripts/t3-upstream.ts`; porting a change bumps the row's commit.",
+  "$comment": "Files in web2 taken from or modelled on T3 Code (MIT, THIRD_PARTY.md). mode: verbatim = byte-identical to upstream at commit; adapted = upstream body with local edits (header names the source); pattern = same job and name, Sightr's own code; shape = mirrors type and field names only (contracts outside web2/; local paths stay relative to web2/). decisions = upstream changes chosen not to take ({upstream, commit, verdict: skip | defer, reason, date}); the checker hides one until that file changes upstream again. Check for upstream changes with `bun scripts/t3-upstream.ts`; porting a change bumps the row's commit.",
   "repo": "https://github.com/pingdotgg/t3code.git",
-  "baseline": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+  "baseline": "16918b57d6754d6f145e9b6367c825aa31a740da",
   "folders": [
     "apps/web/src/components/",
     "apps/web/src/components/chat/",
@@ -919,6 +919,19 @@
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
       "note": "normalizeRanges and the <mark> split kept; Shiki tokens, Suspense and the error boundary dropped (a one-line message excerpt)"
+    },
+    {
+      "local": "../shared/v2/contracts.ts",
+      "upstream": "packages/contracts/src/orchestrationV2.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "shape"
+    },
+    {
+      "local": "../shared/v2/request-question.ts",
+      "upstream": "packages/contracts/src/orchestrationV2.ts",
+      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "mode": "shape",
+      "note": "OrchestrationV2UserInputQuestion"
     }
   ],
   "decisions": [
@@ -1089,6 +1102,258 @@
       "commit": "db5919d87daf",
       "verdict": "defer",
       "reason": "Needs GET /api/files/grep on the bridge (rg --json inside the contained folder); name search only for now"
+    },
+    {
+      "upstream": "apps/web/vite.config.ts",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "T23: T3 builds with react({ compiler: true }); web2 measured babel-plugin-react-compiler 1.0.0 and did not adopt it: MessagesTimelineBody, useTimelineFollow and QueuedRunsControl bail out (21 of ~350 component functions), 200 streamed updates went 3801 -> 3601 component renders (-5%, commits unchanged), JS +10% raw / +12% gzip, and one NewThreadView test fails compiled. SIGHTR_COMPILER=1 re-measures (docs/specs/t3/README.md)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/routes/_chat.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler memo removal (#20667) and router-update subscription narrowing (#20837); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/routes/_chat.index.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler-only rewrite (#20580); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/routes/_chat.new.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler-only rewrite (#20597); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/Sidebar.tsx",
+      "commit": "16918b57d675",
+      "verdict": "defer",
+      "reason": "Compiler rewrite; web2 does not run the React Compiler (T23 skip). Pattern look when the sidebar is next touched: #20522 (crash when a thread leaves the sidebar) and #20814 (a minute tick re-rendered every row)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Un-exports a helper after T3's timeline tests moved to a real browser (#20905); nothing to port",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/WorkLog.test.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "T3 moved its React tests to compiled real-browser tests (#20797); Sightr keeps its jsdom copy as its own test",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/ChatMarkdown.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler rewrite and streaming re-render contexts (#20715, #20852) Sightr's copy does not have; #19782 fixes a table expand button Sightr's copy does not draw; web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler-only rewrite (#20592, #20762); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler-only rewrite (#20582); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "packages/contracts/src/keybindings.ts",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Adds composer.increaseEffort/decreaseEffort (#19928): live effort stepping. Claude's /effort rewrites the global default (never taken) and web2's copy has no composer.effort command",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/RightPanelTabs.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler rewrite and re-render isolation for T3's panel surfaces (#20662, #20853); Sightr's tabs are its own Terminal/Files/Git pattern",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/CommandPalette.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "React Compiler rewrite; web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/CommandPaletteResults.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler-only rewrite (#20579); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/settings/settingsLayout.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler-only rewrite (#20647); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/settings/NotificationSettings.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler-only rewrite (#20504); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/settings/ThemeSettings.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler-only rewrite (#20655); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/ThreadFindBar.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler-only rewrite (#20600); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/useThreadFind.ts",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Refactor for the strict compiler rules (#20772); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/useThreadFindNavigation.ts",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler-only rewrite (#20603); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler-only rewrite (#20669); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/ProviderModelPicker.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler-only rewrite (#20711); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/ModelPickerContent.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler rewrite and row re-render skipping while searching (#20706, #20815, #20838); Sightr's picker is a short suggested list plus free text",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/TraitsPicker.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Keyboard effort stepping (#19928, no live effort in Sightr) and a compiler rewrite (#20540)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/QueuedRunsControl.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "React Compiler memo removal only; web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/ChatComposer.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compaction canSteer was taken in T22; the memo-free rewrite is not, web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/BranchToolbar.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Streaming-tick re-render fix for T3's environment chrome (#20860) and useEffectEvent measuring (#20467); Sightr's toolbar is its own read-only pattern",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/BranchToolbarEnvModeSelector.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Compiler-only rewrite (#20572); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/BranchToolbarBranchSelector.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Two-line subscription change for T3's chat chrome (#20860); Sightr's BranchChip is its own pattern",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "packages/contracts/src/orchestrationV2.ts",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Adds OrchestrationV2PendingBackgroundTask.providerInstanceId and PendingBackgroundTaskFields.parentTaskId (#19750, #19751): subagent background work; shared/v2/contracts.ts has no pending-background-task shape. OrchestrationV2UserInputQuestion unchanged",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/PersistentThreadTerminals.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Server-hosted PTYs; the herdr pane is the terminal",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/RelativeTime.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Makes time labels tick under the React Compiler (#21026); web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/ChatOverlayHosts.tsx",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Hosts for PR-thread, device-setup, branch-restore and revert dialogs (#20859); none of those are taken",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/hooks/useLogicalProjectEnvironments.ts",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Environment list for multi-environment projects (#20860); Sightr has one bridge",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/hooks/useRelativeTimeState.ts",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Relative \"checked\" labels re-render only when their text changes (#20819); compiler-era helper, web2 does not run the React Compiler (T23 skip)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/hooks/useThreadRouteTarget.ts",
+      "commit": "16918b57d675",
+      "verdict": "skip",
+      "reason": "Router subscription narrowing for T3's thread route consumers (#20837); Sightr's routes are its own pattern",
+      "date": "2026-10-18"
     }
   ]
 }

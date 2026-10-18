@@ -124,6 +124,27 @@ Order matters: T01→T05 make the bridge serve v2 with no UI; T09 can start once
 | T19 | [T19-parity-ports.md](T19-parity-ports.md) | web2 | Gesture wheel, find (timeline and mirror), statusline, whistlr decision cards |
 | T20 | [T20-upstream-sync.md](T20-upstream-sync.md) | scripts | Upstream check covers the contracts, answers in JSON, remembers skip/defer decisions |
 
+## React Compiler spike (T23, 18 Oct 2026): not adopted
+
+T3 now builds `apps/web` with the React Compiler (`react({ compiler: true })`) and strips manual
+memoisation file by file. web2 measured `babel-plugin-react-compiler` 1.0.0 through
+`@rolldown/plugin-babel` (Babel 7; Babel 8 mis-lowers destructuring defaults) at T3 `16918b5`:
+
+| Measure | Without | With |
+|---|---|---|
+| `web2/src/components/**` (150 files) | | 330 functions compile; 21 bail out in 19 files |
+| Bail-outs that matter | | `MessagesTimelineBody` and `useTimelineFollow` (refs read in render), `QueuedRunsControl` (`try` without `catch`), `ChatHeader`, the Terminal, Files and Git panels. `ChatComposer` and `Sidebar` compile clean |
+| 200 streamed text updates into `MessagesTimeline` (jsdom, DevTools-hook fiber count) | 601 commits, 3801 component renders | 601 commits, 3601 (−5%: only `MessageAuthorHeading` stops re-rendering; history rows already skip) |
+| Profiler time for those updates (dev build, 3 runs) | 318–335 ms | 393–429 ms |
+| JS bundle | 1,546 KB raw / 506 KB gzip | 1,700 KB / 569 KB (+10% / +12%) |
+| web2 tests | 809 pass | 808 pass; `NewThreadView` "split is off… on for an open thread" fails (a value read outside React state is memoised) |
+
+The timeline does not compile clean, renders barely drop, the bundle grows and one behaviour changes,
+so web2 stays uncompiled. Compiler-only rewrites upstream are `skip` rows in `web2/t3-upstream.json`.
+`SIGHTR_COMPILER=1` in `web2/vite.config.ts` turns it on for a re-measure (install the dev deps
+unsaved; the command is in the config). Revisit if adapted ports start costing more than the bail-outs
+would take to fix.
+
 ## Not in this series
 
 - Worktree creation, checkpoints, per-turn diffs, rollback, commit/push/PR (T3 §5). Herdr owns worktrees, and Sightr's Git panel stays read-only.
