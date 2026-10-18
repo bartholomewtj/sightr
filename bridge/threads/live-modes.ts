@@ -4,6 +4,7 @@ import { SILENT_AUDIT, type AuditLog } from "../audit.ts";
 import type { GuardedSender, GuardedSendTarget, PaneSession } from "../guarded-send-route.ts";
 import type { HerdrClient } from "../herdr-client.ts";
 import type { StyledLine } from "../../web/src/lib/blocks.ts";
+import type { ComposerKit } from "../../web/src/lib/harness/composer-kit.ts";
 import { sendKeysPaced, type SleepFn } from "../pane-write-routes.ts";
 import { failureText } from "../responses.ts";
 import type { EventDraft, ServerThread } from "./events.ts";
@@ -61,6 +62,16 @@ type CycleResult =
 function modeOn(pane: PaneSession, lines: StyledLine[]): string | null {
   const kit = pane.kit;
   if (!kit?.permissionModeOf) return null;
+  return kit.permissionModeOf(lines) ?? kit.defaultModeId ?? null;
+}
+
+/**
+ * The mode a resting pane's screen shows, or null when it cannot tell: no reader, no composer on
+ * screen (a dialog or menu is up), or no mode row and no kit default. The mode watch (mode-watch.ts)
+ * records it; the same reader as the cycle, so the two never judge one footer two ways.
+ */
+export function modeOnScreen(kit: ComposerKit, lines: StyledLine[]): string | null {
+  if (!kit.permissionModeOf || !kit.composerReady?.(lines)) return null;
   return kit.permissionModeOf(lines) ?? kit.defaultModeId ?? null;
 }
 
