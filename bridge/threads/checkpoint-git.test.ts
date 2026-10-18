@@ -99,7 +99,7 @@ describe("checkpoint git: pure helpers", () => {
   });
   test("the snapshot config switches off what could write or prompt", () => {
     const flat = SNAPSHOT_CONFIG.join(" ");
-    for (const c of ["core.longpaths=true", "core.safecrlf=false", "core.logAllRefUpdates=false", "commit.gpgsign=false", "gc.auto=0", "core.fsmonitor=false"]) expect(flat).toContain(c);
+    for (const c of ["core.longpaths=true", "core.safecrlf=false", "core.logAllRefUpdates=false", "commit.gpgsign=false", "gc.auto=0", "core.fsmonitor=false", "core.splitIndex=false", "splitIndex.sharedIndexExpire=never"]) expect(flat).toContain(c);
     expect(CHECKPOINT_SUBCOMMANDS.real).toEqual(["rev-parse", "config"]);
   });
 });

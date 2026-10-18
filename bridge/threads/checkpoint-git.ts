@@ -71,7 +71,10 @@ export const CHECKPOINT_SUBCOMMANDS = {
 
 /**
  * Passed on every checkpoint call. Long paths on Windows; no CRLF refusal and no reflog; never sign; no
- * auto-gc or maintenance; a split or untracked-cache index is never written; the fsmonitor stays off.
+ * auto-gc or maintenance; a split or untracked-cache index is never written, and no shared index is ever
+ * expired (T3 d37bce55f: a write to a scratch index under `core.splitIndex` can delete the `sharedindex.*` the
+ * real index still uses; here the temp index's git dir is the store, so this is belt and braces); the
+ * fsmonitor stays off.
  */
 export const SNAPSHOT_CONFIG = [
   "-c", "core.longpaths=true",
@@ -81,6 +84,7 @@ export const SNAPSHOT_CONFIG = [
   "-c", "gc.auto=0",
   "-c", "maintenance.auto=false",
   "-c", "core.splitIndex=false",
+  "-c", "splitIndex.sharedIndexExpire=never",
   "-c", "core.untrackedCache=false",
   "-c", "core.fsmonitor=false",
 ] as const;
