@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import { resolve } from "node:path";
 
+import { diffsAlias } from "./diffs-spike.ts";
 import { t3Aliases } from "./t3-shims.ts";
 import { v1Scope } from "./v1-scope.ts";
 
@@ -22,6 +23,7 @@ export default defineConfig({
       { find: "@shared", replacement: resolve(import.meta.dirname, "../shared") },
       { find: "@v1", replacement: resolve(import.meta.dirname, "../web/src") },
       { find: "virtual:pwa-register", replacement: resolve(import.meta.dirname, "src/test/pwa-register-stub.ts") },
+      diffsAlias(import.meta.dirname),
       ...t3Aliases(import.meta.dirname),
     ],
   },
