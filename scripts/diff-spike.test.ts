@@ -146,10 +146,21 @@ describe("report", () => {
     expect(md).toContain("12,000 (FAIL)");
   });
 
+  test("a pass that fails the harder reading says so", () => {
+    const res = fullResults();
+    (res.candidates.A as { rows: Record<string, { value: string; pass: boolean | null; strict?: boolean }> }).rows["dom"] = { value: "1,900 / 617,000", pass: true, strict: false };
+    const md = renderReport(res);
+    expect(md).toContain("1,900 / 617,000 (pass on (a), FAIL on (b))");
+    expect(md).toContain("passes on (a) but fails on (b): dom");
+  });
+
   test("spliceTable replaces only the marked block", () => {
     const readme = `before\n${TABLE_START}\nold\n${TABLE_END}\nafter\n`;
     const out = spliceTable(readme, "NEW\n");
     expect(out).toBe(`before\n${TABLE_START}\nNEW\n${TABLE_END}\nafter\n`);
     expect(() => spliceTable("no markers", "x")).toThrow();
+    // a README checked out with CRLF gets a CRLF table, not a mix
+    const crlf = spliceTable(`a\r\n${TABLE_START}\r\nold\r\n${TABLE_END}\r\n`, "r1\nr2\n");
+    expect(crlf).toBe(`a\r\n${TABLE_START}\r\nr1\r\nr2\r\n${TABLE_END}\r\n`);
   });
 });

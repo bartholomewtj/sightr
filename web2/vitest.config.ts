@@ -35,7 +35,8 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     css: false,
-    setupFiles: ["./src/test/setup.ts"],
+    // The T25 jsdom harness counts React commits through the DevTools hook, which must exist before react-dom loads.
+    setupFiles: [...(process.env.SIGHTR_SPIKE_ADAPTER ? ["./src/components/diffs/spike/hook.ts"] : []), "./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}", "*.test.ts"],
   },
 });

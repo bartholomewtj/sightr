@@ -16,7 +16,7 @@ export function diffsAdapter(env: Record<string, string | undefined> = process.e
   const raw = env.SIGHTR_DIFFS?.trim();
   if (!raw) return "status";
   if ((DIFF_ADAPTERS as readonly string[]).includes(raw)) return raw as DiffAdapterName;
-  throw new Error(`SIGHTR_DIFFS must be pierre or hand (or unset), got "${raw}"`);
+  throw new Error(`SIGHTR_DIFFS must be status, hand or pierre (or unset), got "${raw}"`);
 }
 
 /** Vite `resolve.alias` entry for the seam's `diffs-adapter` import. */
@@ -24,10 +24,12 @@ export function diffsAlias(root: string, env: Record<string, string | undefined>
   return { find: /^diffs-adapter$/, replacement: resolve(root, "src/components/diffs/adapters", `${diffsAdapter(env)}.tsx`).split("\\").join("/") };
 }
 
-/** Extra build inputs: only a flagged build gets the measurement page. */
+/**
+ * Extra build inputs: only a flagged build gets the measurement page. `SIGHTR_DIFFS_PAGE=0` leaves it out,
+ * for a size measurement whose entry chunks must match an unflagged build's (the page shares chunks with the app).
+ */
 export function diffsInputs(root: string, env: Record<string, string | undefined> = process.env): Record<string, string> | undefined {
-  const raw = env.SIGHTR_DIFFS?.trim();
-  if (!raw) return undefined;
-  diffsAdapter(env);
+  diffsAdapter(env); // throws on a bad value
+  if (!env.SIGHTR_DIFFS?.trim() || env.SIGHTR_DIFFS_PAGE?.trim() === "0") return undefined;
   return { main: resolve(root, "index.html"), "spike-diffs": resolve(root, "spike-diffs.html") };
 }

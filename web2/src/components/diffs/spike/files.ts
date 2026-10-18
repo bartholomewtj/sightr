@@ -27,12 +27,17 @@ export function countNodes(root: ParentNode): number {
   return n;
 }
 
+/** Lines the adapter itself drew: not the seam's Suspense fallback, nor an adapter's plain-text stand-in. */
+export function adapterLines(root: ParentNode): Element[] {
+  return queryDeep(root, "[data-diff-line], [data-content] [data-line]").filter((e) => !e.closest("[data-diff-fallback]"));
+}
+
 /** Elements matching `selector` under `root`, shadow roots included. */
 export function queryDeep(root: ParentNode, selector: string): Element[] {
   const out: Element[] = Array.from(root.querySelectorAll(selector));
   for (const el of Array.from(root.querySelectorAll("*"))) {
     const shadow = (el as Element).shadowRoot;
-    if (shadow) out.push(...queryDeep(shadow, selector));
+    if (shadow) for (const hit of queryDeep(shadow, selector)) out.push(hit); // not push(...hits): thousands of arguments overflow the stack
   }
   return out;
 }

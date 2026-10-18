@@ -59,7 +59,9 @@ const marked = (c: HTMLElement, row: Element, prefix: string) =>
 beforeAll(() => {
   // jsdom has neither observer; pierre measures with them. A Worker is absent too, so pierre renders on the main thread here.
   class Observer { observe() {} unobserve() {} disconnect() {} }
-  Object.assign(globalThis, { ResizeObserver: Observer, IntersectionObserver: Observer, __SIGHTR_DIFFS_NO_WORKER__: true });
+  // Every window counts as on screen: jsdom has no layout, so the hand adapter mounts all its rows.
+  class Visible { constructor(private cb: (e: { isIntersecting: boolean }[]) => void) {} observe() { this.cb([{ isIntersecting: true }]); } unobserve() {} disconnect() {} }
+  Object.assign(globalThis, { ResizeObserver: Observer, IntersectionObserver: Visible, __SIGHTR_DIFFS_NO_WORKER__: true });
 });
 afterEach(cleanup);
 

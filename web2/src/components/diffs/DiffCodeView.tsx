@@ -1,11 +1,10 @@
 // Sightr code (T25). The one seam the diff panel (T27), split and expand (T28) and line comments (T29)
 // import. `diffs-adapter` is an alias, set in vite.config.ts / vitest.config.ts / tsconfig.json to
-// `adapters/status.tsx` unless SIGHTR_DIFFS=pierre|hand picks a candidate; the adapter loads in its own
+// `adapters/status.tsx` unless SIGHTR_DIFFS=status|hand|pierre picks a candidate; the adapter loads in its own
 // chunk, so a slow chunk shows the status-quo lines instead of a blank.
 import { lazy, Suspense, type ReactNode } from "react";
 
 import { DiffLines } from "../right-panel/DiffView.tsx";
-import { unifiedLines, useParsedFile } from "./parsedFile.ts";
 import type { ParsedPatchFile } from "./parsePatch.ts";
 
 export type { ParsedPatchFile } from "./parsePatch.ts";
@@ -28,13 +27,24 @@ export type DiffAdapterCapabilities = { split: boolean; expand: boolean; annotat
 
 const Adapter = lazy(() => import("diffs-adapter"));
 
-function Fallback({ patch, parsed, wrap }: Pick<DiffCodeViewProps, "patch" | "parsed" | "wrap">) {
-  return <DiffLines lines={unifiedLines(useParsedFile(patch, parsed))} wrap={wrap} />;
+/** The patch from its first hunk on, as `DiffLines` draws it. No parser: the seam keeps `parsePatch` out of the main chunk. */
+function hunkLines(patch: string): string[] {
+  const rows = patch.replace(/\n$/, "").split("\n");
+  const first = rows.findIndex((r) => r.startsWith("@@"));
+  return first < 0 ? ["No changes to show"] : rows.slice(first);
+}
+
+function Fallback({ patch, wrap }: Pick<DiffCodeViewProps, "patch" | "wrap">) {
+  return (
+    <div data-diff-fallback="">
+      <DiffLines lines={hunkLines(patch)} wrap={wrap} />
+    </div>
+  );
 }
 
 export function DiffCodeView(props: DiffCodeViewProps) {
   return (
-    <Suspense fallback={<Fallback patch={props.patch} parsed={props.parsed} wrap={props.wrap} />}>
+    <Suspense fallback={<Fallback patch={props.patch} wrap={props.wrap} />}>
       <Adapter {...props} />
     </Suspense>
   );

@@ -340,8 +340,12 @@ export const THRESHOLD_ROWS: { id: string; label: string; pass: string }[] = [
   { id: "touch-a11y", label: "Touch and accessibility", pass: "44 px gutter, selectable, old-then-new order, no page h-scroll" },
 ];
 
-/** `true`/`false` pass or fail, `null` = recorded but not decidable (n/a, or pending a real-phone trial). */
-export type Cell = { value: string; pass: boolean | null };
+/**
+ * `true`/`false` pass or fail, `null` = recorded but not decidable (n/a, or pending a real-phone trial).
+ * `strict: false` marks a pass on the main reading that fails a harder one (the large-patch rows are also
+ * run with the 3,000-line, 400-character-line file open): the table says so, the reader weighs it.
+ */
+export type Cell = { value: string; pass: boolean | null; strict?: boolean };
 export type CandidateResult = { name: string; version: string; rows: Record<string, Cell> };
 export type Results = { device: string; measuredAt: string; candidates: Record<string, CandidateResult> };
 
@@ -354,7 +358,7 @@ export function missingRows(results: Results): string[] {
   return missing;
 }
 
-const mark = (c: Cell) => (c.pass === true ? "pass" : c.pass === false ? "FAIL" : "n/a");
+const mark = (c: Cell) => (c.pass === true ? (c.strict === false ? "pass on (a), FAIL on (b)" : "pass") : c.pass === false ? "FAIL" : "n/a");
 const esc = (s: string) => s.replace(/\|/g, "\\|").replace(/\n/g, " ");
 
 export function renderReport(results: Results): string {
@@ -373,7 +377,8 @@ export function renderReport(results: Results): string {
   const verdict = keys.map((k) => {
     const rows = Object.values((results.candidates[k] as CandidateResult).rows);
     const failed = THRESHOLD_ROWS.filter((r) => (results.candidates[k] as CandidateResult).rows[r.id]?.pass === false).map((r) => r.id);
-    return `- ${k}: ${failed.length === 0 ? "every decidable row passes" : `fails ${failed.join(", ")}`} (${rows.filter((c) => c.pass === null).length} row(s) n/a or pending)`;
+    const strict = THRESHOLD_ROWS.filter((r) => (results.candidates[k] as CandidateResult).rows[r.id]?.strict === false).map((r) => r.id);
+    return `- ${k}: ${failed.length === 0 ? "every decidable row passes" : `fails ${failed.join(", ")}`}${strict.length ? `; passes on (a) but fails on (b): ${strict.join(", ")}` : ""} (${rows.filter((c) => c.pass === null).length} row(s) n/a or pending)`;
   });
   return [`Device and method: ${results.device}. Measured ${results.measuredAt}.`, "", ...lines, "", ...verdict, ""].join("\n");
 }
@@ -385,7 +390,8 @@ export function spliceTable(readme: string, table: string): string {
   const a = readme.indexOf(TABLE_START);
   const b = readme.indexOf(TABLE_END);
   if (a < 0 || b < a) throw new Error(`README has no ${TABLE_START} ... ${TABLE_END} block`);
-  return readme.slice(0, a + TABLE_START.length) + "\n" + table + readme.slice(b);
+  const eol = readme.includes("\r\n") ? "\r\n" : "\n"; // the README may be checked out with CRLF
+  return readme.slice(0, a + TABLE_START.length) + eol + table.replace(/\r?\n/g, eol) + readme.slice(b);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -398,19 +404,25 @@ function flag(args: string[], name: string): string | undefined {
 
 export type JsdomRow = Record<string, number | string>;
 
+/** Markdown for the harness's rows: one table, a row per fixture. */
+export function jsdomTable(rows: JsdomRow[]): string {
+  const cols = Object.keys(rows[0] ?? {});
+  return [`| ${cols.join(" | ")} |`, `|${cols.map(() => "---").join("|")}|`, ...rows.map((r) => `| ${cols.map((c) => String(r[c])).join(" | ")} |`)].join("\n");
+}
+
 function jsdomRun(adapter: string): number {
   const out = join(WEB2, ".spike-diffs", `jsdom-${adapter}.json`);
   mkdirSync(dirname(out), { recursive: true });
+  if (!existsSync(join(DEFAULT_OUT, "large.patch"))) writeFixtures(generateFixtures(resolveMix("auto")), DEFAULT_OUT);
+  // SIGHTR_DIFFS points the seam's `diffs-adapter` alias at the candidate, as a build would.
   const r = Bun.spawnSync(["bunx", "vitest", "run", "src/components/diffs/spike.harness.test.tsx"], {
     cwd: WEB2,
-    env: { ...process.env, SIGHTR_SPIKE_ADAPTER: adapter, SIGHTR_SPIKE_OUT: out },
+    env: { ...process.env, SIGHTR_SPIKE_ADAPTER: adapter, SIGHTR_SPIKE_OUT: out, SIGHTR_DIFFS: adapter },
     stdout: "inherit",
     stderr: "inherit",
   });
   if (r.exitCode !== 0 || !existsSync(out)) return r.exitCode || 1;
-  const row = JSON.parse(readFileSync(out, "utf8")) as JsdomRow;
-  const cols = Object.keys(row);
-  console.log(`| ${cols.join(" | ")} |\n|${cols.map(() => "---").join("|")}|\n| ${cols.map((c) => String(row[c])).join(" | ")} |`);
+  console.log(jsdomTable((JSON.parse(readFileSync(out, "utf8")) as { rows: JsdomRow[] }).rows));
   return 0;
 }
 

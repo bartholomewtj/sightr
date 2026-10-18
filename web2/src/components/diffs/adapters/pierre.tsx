@@ -13,7 +13,10 @@ import { unifiedLines, useParsedFile } from "../parsedFile.ts";
 export const capabilities: DiffAdapterCapabilities = { split: true, expand: true, annotations: true, highlight: true };
 
 // 44 px gutter under a coarse pointer, and the page palette behind the code.
-const UNSAFE_CSS = `@media (pointer: coarse) { [data-column-number] { min-width: 44px; } }
+const UNSAFE_CSS = `@media (pointer: coarse) {
+  [data-column-number] { min-width: 44px; position: relative; }
+  [data-column-number]::after { content: ""; position: absolute; inset: -12px 0; }
+}
 :host { --diffs-bg: transparent; }`;
 
 type PoolState = { pool: WorkerPoolManager | null; ready: "pending" | "ok" | "failed" };
@@ -61,7 +64,11 @@ export default function PierreAdapter(props: DiffCodeViewProps) {
   const file = useParsedFile(patch, parsed);
   const { pool, ready } = usePool();
   const [error, setError] = useState<string | null>(null);
-  const plain = <DiffLines lines={unifiedLines(file)} wrap={wrap} />;
+  const plain = (
+    <div data-diff-fallback="">
+      <DiffLines lines={unifiedLines(file)} wrap={wrap} />
+    </div>
+  );
   const lineAnnotations = useMemo(
     () => (annotations ?? []).filter((a) => a.at.filePath === filePath).map((a) => ({ side: a.at.side === "old" ? ("deletions" as const) : ("additions" as const), lineNumber: a.at.line, metadata: a })),
     [annotations, filePath],
