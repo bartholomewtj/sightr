@@ -82,6 +82,8 @@ export const DiffFileTree = memo(function DiffFileTree(props: {
         <span className="min-w-0 flex-1 font-mono text-xs wrap-anywhere">{node.name}</span>
         {file?.binary ? (
           <span className="ml-auto shrink-0 font-mono text-3xs text-muted-foreground">binary</span>
+        ) : file?.whitespaceOnly ? (
+          <span className="ml-auto shrink-0 font-mono text-3xs text-muted-foreground" data-diff-whitespace-only="">whitespace only</span>
         ) : node.stat && hasNonZeroStat(node.stat) ? (
           <span className="ml-auto shrink-0 font-mono text-3xs tabular-nums">
             <DiffStatLabel additions={node.stat.additions} deletions={node.stat.deletions} />
