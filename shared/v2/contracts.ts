@@ -696,6 +696,40 @@ export type ThreadEvent = { [K in ThreadEventType]: ThreadEventOf<K> }[ThreadEve
 
 export const V2_SHELL_PATH = "/api/v2/shell";
 export const V2_COMMAND_PATH = "/api/v2/command";
+export const V2_SEARCH_PATH = "/api/v2/search";
+
+// ── Message search (`GET /api/v2/search?q=&limit=&archived=`) ────────────────────────────────────
+/** Fewest characters of a query the bridge searches for (shorter answers no results). */
+export const SEARCH_MIN_CHARS = 2;
+export const SEARCH_MAX_QUERY_CHARS = 200;
+export const SEARCH_DEFAULT_LIMIT = 20;
+export const SEARCH_MAX_LIMIT = 50;
+export const SEARCH_EXCERPT_CHARS = 160;
+
+/** Which kind of item matched: a user message, an assistant message or a command's input. */
+export type SearchRole = "user" | "assistant" | "tool";
+
+/** One match. `ranges` are [start, end) offsets into `excerpt` for the matched words. */
+export interface ThreadSearchMatch {
+  threadId: string;
+  threadTitle: string;
+  projectId: string;
+  projectLabel: string;
+  archived: boolean;
+  itemId: string;
+  role: SearchRole;
+  excerpt: string;
+  ranges: { start: number; end: number }[];
+  /** When the item was written (epoch ms). */
+  at: number;
+}
+
+export interface ThreadSearchResponse {
+  query: string;
+  results: ThreadSearchMatch[];
+  /** More matches exist than `limit` (or than the per-thread cap let through). */
+  truncated: boolean;
+}
 export const v2ThreadPath = (threadId: string): string => `/api/v2/thread/${encodeURIComponent(threadId)}`;
 export const v2HistoryPath = (threadId: string): string => `${v2ThreadPath(threadId)}/history`;
 
