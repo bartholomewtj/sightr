@@ -202,7 +202,11 @@ export type CheckpointAbsentReason =
   | "too-large"
   | "timeout"
   | "git-failed"
-  /** A sparse index whose folder outside the cone is on disk (git would have to expand the index to read it). */
+  /**
+   * A sparse index whose folder outside the cone is on disk (git would have to expand the index to read it),
+   * or a sparse checkout whose index could not be read as it is (HEAD's tree would read the files outside
+   * the cone as deleted).
+   */
   | "sparse-checkout";
 
 /**
