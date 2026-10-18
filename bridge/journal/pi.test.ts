@@ -107,6 +107,22 @@ describe("parsePiTranscript", () => {
     expect(entries[0]!.parts[0]).toMatchObject({ kind: "tool", result: { text: "file contents" } });
   });
 
+  // Live 18 Oct 2026 (pi, claude-haiku-5-5): Escape during a bash call wrote `stopReason: "error"` with
+  // only the abort as its message. That is the operator's Stop, not a provider failure.
+  test("an error that is only the operator's abort renders nothing; a real provider error still does", () => {
+    const entries = parsePiTranscript(
+      [
+        row("a", { role: "assistant", stopReason: "error", errorMessage: "This operation was aborted", content: [] }),
+        row("b", { role: "assistant", stopReason: "error", errorMessage: "Request was aborted.", content: [] }),
+        row("c", { role: "assistant", stopReason: "error", errorMessage: "The operation was aborted due to timeout", content: [] }),
+        row("d", { role: "assistant", stopReason: "error", errorMessage: "529 overloaded [code=overloaded_error]", content: [] }),
+      ].join("\n"),
+    );
+    expect(entries.map((e) => e.uuid)).toEqual(["c", "d"]);
+    const part = entries[1]!.parts[0] as { kind: string; error?: { code: string | null } };
+    expect(part.error?.code).toBe("overloaded_error");
+  });
+
   test("an errored toolResult keeps its error flag", () => {
     const entries = parsePiTranscript(
       [

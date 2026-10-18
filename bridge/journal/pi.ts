@@ -178,6 +178,13 @@ interface PiRow {
   message?: unknown;
 }
 
+/** The words pi's provider client gives an aborted request: the operator's Stop, not a failure. */
+const OPERATOR_ABORT = /^(?:(?:this|the) operation was aborted|operation aborted|request was aborted)\.?$/i;
+
+function isOperatorAbort(message: string | undefined): boolean {
+  return message !== undefined && OPERATOR_ABORT.test(message.trim());
+}
+
 /**
  * Parse a pi session log into oldest-first turns. PURE — no fs, no clock.
  *
@@ -271,8 +278,10 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
 
     // A failed turn: pi writes `stopReason: "error"` with the provider's words in `errorMessage` and,
     // usually, no content at all. Without this part the failure would be invisible. An `aborted`
-    // turn is the operator's own Stop and needs no part (the run's status says it).
-    if (role === "assistant" && m.stopReason === "error") {
+    // turn is the operator's own Stop and needs no part (the run's status says it). So is an `error`
+    // whose message is only the abort: pi wrote that for an Escape during a bash call (live 18 Oct
+    // 2026, claude-haiku-5-5: "This operation was aborted"), which rendered as a provider error.
+    if (role === "assistant" && m.stopReason === "error" && !isOperatorAbort(str(m.errorMessage))) {
       const message = (str(m.errorMessage) ?? "").trim() || "The model stopped with an error.";
       const code = /\[code=([\w.-]+)\]/.exec(message)?.[1] ?? null;
       const at = typeof m.timestamp === "number" ? m.timestamp : Date.parse(ts) || 0;
