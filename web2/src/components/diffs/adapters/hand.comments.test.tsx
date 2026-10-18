@@ -208,7 +208,10 @@ describe("windows unmount far from the screen", () => {
     rerender(<HandAdapter patch={patch} filePath="src/big.ts" wrap annotations={[{ at: { filePath: "src/big.ts", side: "new", line: 5 }, key: "n" }]} renderAnnotation={() => <i>n</i>} />);
     await intersect(first, false);
     expect(states(container)[0]).toBe("on");
+    const before = observers.filter((o) => o.el === first).length;
     rerender(<HandAdapter patch={patch} filePath="src/big.ts" wrap />);
+    // Unpinning gives the window a new observer: a real one delivers a first entry, so an off-screen window unmounts.
+    expect(observers.filter((o) => o.el === first).length).toBeGreaterThan(before);
     await intersect(first, false);
     expect(states(container)[0]).toBe("off");
   });
@@ -243,6 +246,29 @@ describe("windows unmount far from the screen", () => {
     expect(states(container).filter((s) => s === "on")).toHaveLength(1);
     expect(container.querySelectorAll("[data-diff-line]").length).toBeLessThan(120);
   });
+});
+
+describe("the node budget", () => {
+  it("a 3,000-line file of 400-character lines stays under 5,000 nodes through a whole sweep", async () => {
+    const line = (i: number) => `+const v${i} = "${"x".repeat(380)}";`;
+    const big = ["diff --git a/src/wide.ts b/src/wide.ts", "new file mode 100644", "--- /dev/null", "+++ b/src/wide.ts", "@@ -0,0 +1,3000 @@", ...Array.from({ length: 3000 }, (_, i) => line(i + 1)), ""].join("\n");
+    const { container } = render(<HandAdapter patch={big} filePath="src/wide.ts" wrap />);
+    await settle();
+    const all = windows(container);
+    expect(all.length).toBeGreaterThan(200); // 4,000 characters of text a window: about 10 rows
+    let peak = container.querySelectorAll("*").length;
+    for (let i = 1; i < all.length; i++) {
+      await intersect(all[i]!, true);
+      all[i - 1]!.getBoundingClientRect = () => ({ height: 200 }) as DOMRect;
+      await intersect(all[i - 1]!, false);
+      if (i % 25 === 0) await settle(); // let the highlight land too, so its spans are counted
+      const nodes = container.querySelectorAll("*").length;
+      peak = Math.max(peak, nodes);
+      expect(nodes).toBeLessThanOrEqual(5000);
+    }
+    expect(peak).toBeLessThanOrEqual(5000);
+    expect(states(container).filter((s) => s === "on")).toHaveLength(1);
+  }, 60_000);
 });
 
 describe("revealLine mounts the window first", () => {

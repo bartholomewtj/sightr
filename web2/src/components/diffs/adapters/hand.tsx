@@ -86,7 +86,7 @@ function Window({ eager, items: given, path, sig, pinned, target, renderRow }: W
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [on, scrollRoot]);
+  }, [on, scrollRoot, pinned]); // a new observer when the pin lifts: a real one reports only a change, so it needs a fresh first entry
   // Highlight this window's own lines once it is mounted (and again if its rows change, e.g. lines revealed).
   useEffect(() => {
     if (!on) return;
