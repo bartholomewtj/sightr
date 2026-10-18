@@ -655,7 +655,7 @@
       "upstream": "apps/web/src/components/CommandPalette.logic.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "Sightr threads/projects/actions; T3 filtering and ranking, plus a subsequence fallback; Open file… mode, Find in thread and copy actions (Sightr's)"
+      "note": "Sightr threads/projects/actions; T3 filtering and ranking, plus a subsequence fallback; Open file… mode, Find in thread and copy actions, and the Messages group (buildMessageItems) (Sightr's)"
     },
     {
       "local": "src/components/CommandPaletteContent.tsx",
@@ -668,7 +668,7 @@
       "upstream": "apps/web/src/components/CommandPaletteResults.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "plain list only, no content-match excerpt or submenus"
+      "note": "plain list only, no submenus; a message-search row shows its excerpt over two lines (descriptionLines)"
     },
     {
       "local": "src/components/ui/command.tsx",
@@ -905,6 +905,20 @@
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "pattern",
       "note": "Open file… mode: the Files search API, re-ranked by name (rankFileResults in CommandPalette.logic.ts); no fuzzy index or match highlighting"
+    },
+    {
+      "local": "src/components/ThreadSearchMatch.tsx",
+      "upstream": "apps/web/src/components/ThreadSearchMatch.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "palette Messages row excerpt: You/Agent/Ran label plus the matched words in bold; the ranges come from GET /api/v2/search (bridge/threads/search.ts), not a client-side scan"
+    },
+    {
+      "local": "src/components/HighlightedSearchLine.tsx",
+      "upstream": "apps/web/src/components/search/HighlightedSearchLine.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "normalizeRanges and the <mark> split kept; Shiki tokens, Suspense and the error boundary dropped (a one-line message excerpt)"
     }
   ],
   "decisions": [

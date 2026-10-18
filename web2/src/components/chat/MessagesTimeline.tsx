@@ -116,6 +116,7 @@ import { ToolItemDetail, toolItemHasDetail } from "./ToolItemDetail";
 import { useTimelineFollow } from "./useTimelineFollow";
 import { EverythingSet } from "./threadFind";
 import { useThreadFind } from "./useThreadFind";
+import { useItemJump } from "./useItemJump";
 import { useThreadFindNavigation } from "./useThreadFindNavigation";
 import { WorkLogBlock, WorkLogButton, WorkLogDetails, WorkLogList, WorkLogRow } from "./WorkLog";
 
@@ -267,6 +268,33 @@ function MessagesTimelineBody({ threadId }: MessagesTimelineProps) {
   // ── History ──────────────────────────────────────────────────────────────────────────────────
   const historyCursor = state?.historyCursor ?? null;
   const synchronized = state !== null && !state.syncing;
+
+  // ── Open a message from the palette's search: page to it, unfold it, scroll, ring the row ──
+  const jumping = useItemJump({
+    threadId,
+    container: timelineEl,
+    rows,
+    itemRunId: (id) => (state?.items[id] ? state.items[id]!.runId : undefined),
+    hasItem: (id) => state?.items[id] !== undefined,
+    synchronized,
+    historyCursor,
+    historyStatus: history.status,
+    historyError: history.error,
+    deriveAllOpenRows: () =>
+      deriveMessagesTimelineRows({
+        timelineEntries: entries,
+        latestRun: latest
+          ? { runId: latest.id, status: latest.status, startedAt: latest.startedAt, completedAt: latest.completedAt }
+          : null,
+        runningRunId: runningRun?.id ?? null,
+        runs,
+        expandedRunIds: new EverythingSet(),
+        expandedWorkGroupIds: new EverythingSet(),
+        isWorking,
+        activeTurnStartedAt: runningRun?.startedAt ?? null,
+      }),
+    listRef,
+  });
   const onStartReached = useCallback(() => {
     if (historyCursor !== null && history.status === "idle") void loadOlderHistory(threadId);
   }, [historyCursor, history.status, threadId]);
@@ -325,7 +353,7 @@ function MessagesTimelineBody({ threadId }: MessagesTimelineProps) {
             estimatedItemSize={90}
             recycleItems={false}
             initialScrollAtEnd
-            maintainScrollAtEnd={following && !find.isOpen ? TIMELINE_MAINTAIN_SCROLL_AT_END : false}
+            maintainScrollAtEnd={following && !find.isOpen && !jumping ? TIMELINE_MAINTAIN_SCROLL_AT_END : false}
             // `following` decides; a fraction of the viewport would disagree with the 80 px follow
             // band on a short (keyboard-open) phone viewport and leave new rows unpinned with no pill.
             maintainScrollAtEndThreshold={1}

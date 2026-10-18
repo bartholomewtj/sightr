@@ -8,12 +8,16 @@
 import { type ReactNode } from "react";
 
 import type { KeybindingCommand } from "@t3tools/contracts";
-import type { Project, Thread } from "@shared/v2/contracts";
+import type { Project, Thread, ThreadSearchMatch as MessageMatch } from "@shared/v2/contracts";
 import type { FileSearchResult } from "@shared/wire";
 
 import { compareActive, isNeedsYou } from "./Sidebar.logic";
 
 export const RECENT_THREAD_LIMIT = 12;
+/** Characters typed before the palette searches message text (the bridge's own floor is the same). */
+export const MESSAGE_SEARCH_MIN_CHARS = 2;
+/** Message matches the palette asks for and shows. */
+export const MESSAGE_SEARCH_LIMIT = 8;
 export const ITEM_ICON_CLASS = "size-4 text-icon-muted";
 
 /** T3's `normalizeSearchText` (apps/web/src/lib/utils.ts). */
@@ -27,6 +31,8 @@ export interface CommandPaletteItem {
   readonly searchTerms: ReadonlyArray<string>;
   readonly title: ReactNode;
   readonly description?: ReactNode;
+  /** Show the description over two lines (a message excerpt) instead of one truncated line. */
+  readonly descriptionLines?: 2;
   readonly timestamp?: string;
   readonly searchRecency?: number;
   readonly icon: ReactNode;
@@ -365,6 +371,31 @@ export function rankFileResults(results: ReadonlyArray<FileSearchResult>, query:
         a.index - b.index,
     )
     .map((e) => e.r);
+}
+
+/**
+ * The "Messages" group: one row per match, thread title over a two-line excerpt (T3's
+ * ThreadSearchMatch pattern). Rows are not run through the palette's own filter: the bridge already
+ * matched them on the message text, which the row's title does not contain.
+ */
+export function buildMessageItems(input: {
+  matches: ReadonlyArray<MessageMatch>;
+  icon: (match: MessageMatch) => ReactNode;
+  renderExcerpt: (match: MessageMatch) => ReactNode;
+  formatTimestamp?: (ms: number) => string;
+  openMatch: (match: MessageMatch) => Promise<void> | void;
+}): CommandPaletteActionItem[] {
+  return input.matches.map((m) => ({
+    kind: "action" as const,
+    value: `message:${m.threadId}:${m.itemId}`,
+    searchTerms: [m.threadTitle, m.excerpt],
+    title: m.threadTitle || "Untitled thread",
+    description: input.renderExcerpt(m),
+    descriptionLines: 2 as const,
+    icon: input.icon(m),
+    ...(input.formatTimestamp && m.at > 0 ? { timestamp: input.formatTimestamp(m.at) } : {}),
+    run: () => input.openMatch(m),
+  }));
 }
 
 export function buildFileItems(input: {
