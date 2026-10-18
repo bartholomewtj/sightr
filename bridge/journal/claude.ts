@@ -26,8 +26,9 @@
 import { readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import type { TranscriptToolDetail, TranscriptUsage } from "../../shared/wire.ts";
+import type { TranscriptImage, TranscriptToolDetail, TranscriptUsage } from "../../shared/wire.ts";
 import { containedRealpath, exists, head, loadTail, readRange as readLogRange, rootList, statFile } from "./files.ts";
+import { blockImage, imageRef, logLines, toolImageName } from "./images.ts";
 import {
   capInput,
   diffDetail,
@@ -427,7 +428,7 @@ function apiErrorResetAt(row: RawRow): number | null {
  */
 export function parseClaudeTranscript(
   text: string,
-  opts: { includeSidechains?: boolean } = {},
+  opts: { includeSidechains?: boolean; byteOffset?: number | undefined } = {},
 ): TranscriptEntry[] {
   const entries: TranscriptEntry[] = [];
   // tool_use id → the part awaiting its result, so a `tool_result` row lands on the call that made it.
@@ -460,7 +461,7 @@ export function parseClaudeTranscript(
     return true;
   };
 
-  for (const line of text.split("\n")) {
+  for (const { line, at } of logLines(text, opts.byteOffset)) {
     if (line.trim() === "") continue;
     let row: RawRow;
     try {
@@ -527,6 +528,12 @@ export function parseClaudeTranscript(
       ? content.filter((b) => b && typeof b === "object" && (b as { type?: unknown }).type === "tool_result").length
       : 0;
 
+    // The row's images, each taking the next ordinal in `rowImages` order (journal/images.ts). A pasted
+    // image sits at the top of a user row; a tool's sits inside its tool_result.
+    let imageN = 0;
+    const looseImages: TranscriptImage[] = [];
+    let lastTarget: ToolPart | undefined;
+
     if (typeof content === "string") {
       if (type === "user" && isInterruptMarker(content)) {
         roleOverride = "note";
@@ -552,6 +559,9 @@ export function parseClaudeTranscript(
             const text = clamp(stripAnsi(b.text), MAX_TEXT_CHARS);
             parts.push({ kind: "text", ...text, ...(apiFailure ? { error: apiFailure(text.text) } : {}) });
           }
+        } else if (b.type === "image") {
+          const img = blockImage(b);
+          if (img) looseImages.push(imageRef(img, { at, row: uuid, n: imageN++, name: `Pasted image ${looseImages.length + 1}` }));
         } else if (b.type === "thinking" && typeof b.thinking === "string") {
           if (b.thinking.trim() !== "")
             parts.push({ kind: "thinking", ...clamp(stripAnsi(b.thinking), MAX_TEXT_CHARS) });
@@ -578,6 +588,15 @@ export function parseClaudeTranscript(
           // sits in an emitted entry, which is exactly why results attach without reordering anything.
           const id = typeof b.tool_use_id === "string" ? b.tool_use_id : "";
           const target = pendingTools.get(id);
+          const raw = Array.isArray(b.content)
+            ? b.content.flatMap((c) => {
+                const img = c && typeof c === "object" ? blockImage(c as Record<string, unknown>) : null;
+                return img ? [img] : [];
+              })
+            : [];
+          const resultImages = raw.map((img, k) =>
+            imageRef(img, { at, row: uuid, n: imageN++, name: toolImageName(target?.input, k, raw.length) }),
+          );
           // Tool output routinely carries colour codes (any command run through a shell) — strip
           // them, since this view renders text nodes rather than interpreting escapes.
           let resultText = stripAnsi(toolResultText(b.content));
@@ -589,6 +608,8 @@ export function parseClaudeTranscript(
           }
           if (target) {
             pendingTools.delete(id);
+            lastTarget = target;
+            if (resultImages.length > 0) target.images = [...(target.images ?? []), ...resultImages];
             const isError = b.is_error === true;
             // Bash reports a non-zero exit as an error result that starts "Exit code N".
             const exit = isError ? /^Exit code (\d+)/.exec(resultText) : null;
@@ -609,7 +630,7 @@ export function parseClaudeTranscript(
               if (early !== undefined && (target.result?.text.trim() ?? "") === "") target.result = clamp(early, MAX_RESULT_CHARS);
               earlyHandbacks.delete(agentId);
             }
-          } else if (resultText.trim() !== "") {
+          } else if (resultText.trim() !== "" || resultImages.length > 0) {
             // Orphan result (its call fell outside a tail-read window) — keep it, unattached, so the
             // window never silently drops output.
             parts.push({
@@ -620,10 +641,20 @@ export function parseClaudeTranscript(
                 ...clamp(resultText, MAX_RESULT_CHARS),
                 ...(b.is_error === true ? { isError: true } : {}),
               },
+              ...(resultImages.length > 0 ? { images: resultImages } : {}),
             });
           }
         }
       }
+    }
+
+    // A pasted image belongs to the words it came with ("[Image #1] what is this?"); beside a
+    // tool_result with no words it is that tool's output; alone in a user row it is a message of its own.
+    if (looseImages.length > 0) {
+      const words = parts.find((p): p is Extract<TranscriptPart, { kind: "text" }> => p.kind === "text" && !p.notice && !p.error);
+      if (words) words.images = [...(words.images ?? []), ...looseImages];
+      else if (lastTarget) lastTarget.images = [...(lastTarget.images ?? []), ...looseImages];
+      else if (type === "user") parts.push({ kind: "text", text: "", images: looseImages });
     }
 
     if (parts.length === 0) continue; // bookkeeping row with nothing to show
@@ -812,7 +843,7 @@ export function claudeJournal(roots: string | readonly string[]): JournalAdapter
   return {
     agent: "claude",
     source,
-    parse: (text) => parseClaudeTranscript(text),
+    parse: (text, ctx) => parseClaudeTranscript(text, { byteOffset: ctx?.byteOffset }),
     // A resumed or compacted conversation continues in a new log that starts with the same root
     // entry, so the root names the conversation (see conversationRoot).
     sessionLineage: async (ref) => {

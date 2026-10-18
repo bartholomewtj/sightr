@@ -98,10 +98,19 @@ export type InferSessionOpts = {
   reportedSessionId?: string;
 };
 
+/** What a parse may know about where `text` sits in its log. */
+export interface ParseContext {
+  /**
+   * Byte offset of `text`'s first byte in the log. The v2 ingest passes it so an image can be kept as
+   * a reference to its row (journal/images.ts); adapters that keep no images ignore it.
+   */
+  byteOffset?: number;
+}
+
 export interface JournalAdapter {
   readonly agent: string;
   readonly source: TranscriptSource;
-  parse(text: string): TranscriptEntry[];
+  parse(text: string, ctx?: ParseContext): TranscriptEntry[];
   /**
    * When Herdr named no session, find one from the pane's cwd. Optional: only harnesses whose log
    * layout is keyed by cwd (Grok) implement it. A miss is `null`, same as "no-log".
