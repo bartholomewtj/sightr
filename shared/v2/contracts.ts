@@ -201,7 +201,9 @@ export type CheckpointAbsentReason =
   | "end-missed"
   | "too-large"
   | "timeout"
-  | "git-failed";
+  | "git-failed"
+  /** A sparse index whose folder outside the cone is on disk (git would have to expand the index to read it). */
+  | "sparse-checkout";
 
 /**
  * T3's `OrchestrationV2CheckpointFileSummary` (`path`, `kind`, `additions`, `deletions`). A rename is a

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { chmod, mkdir, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -7,9 +7,10 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { ageTree, fingerprint, gitDirChanges, gitIn, makeRepo, rmrf, tempRoot, writeFiles } from "../test/git-fixtures.ts";
 import { isHiddenPath, spawnGit, type GitRunner } from "../workdir-git.ts";
 import {
-  alternatesValue, BUSY, CHECKPOINT_SUBCOMMANDS, checkpointRef, configPairs, createCheckpointGit, createStoreQueue, MAX_FILE_BYTES, parseAddErrors, refId, repoKeyOf, SNAPSHOT_CONFIG,
+  alternatesValue, BUSY, CHECKPOINT_SUBCOMMANDS, checkpointRef, configPairs, createCheckpointGit, createStoreQueue, indexEntryCount, MAX_FILE_BYTES, parseAddErrors, refId, repoKeyOf, SNAPSHOT_CONFIG,
   type CheckpointGitOptions, type RepoInfo,
 } from "./checkpoint-git.ts";
+import { diffRun } from "./checkpoint-diff.ts";
 import { shortNameOf, trackAlias } from "../test/short-names.ts";
 
 // Real git processes: under a loaded full run one test can pass bun's 5 s default.
@@ -64,24 +65,35 @@ describe("checkpoint git: pure helpers", () => {
     expect(refId("a/b")).toMatch(/^[0-9a-f]{32}$/);
     expect(refId("x".repeat(65))).toMatch(/^[0-9a-f]{32}$/);
     expect(checkpointRef("t1", 3, "end")).toBe("refs/checkpoints/t1/3/end");
-    expect(repoKeyOf("C:\\Repo\\.git")).toBe(repoKeyOf("c:\\repo\\.git"));
+  });
+  test("repoKeyOf folds case only where the file system does by default (Windows, macOS), so two Linux repos differing in case get two stores", () => {
+    expect(repoKeyOf("C:\\Repo\\.git", "win32")).toBe(repoKeyOf("c:\\repo\\.git", "win32"));
+    expect(repoKeyOf("/Users/u/Repo/.git", "darwin")).toBe(repoKeyOf("/users/u/repo/.git", "darwin"));
+    expect(repoKeyOf("/home/u/Repo/.git", "linux")).not.toBe(repoKeyOf("/home/u/repo/.git", "linux"));
+    expect(repoKeyOf("/home/u/repo/.git", "linux")).toMatch(/^[0-9a-f]{32}$/);
+    expect(repoKeyOf("C:\\Repo\\.git")).toBe(repoKeyOf("C:\\Repo\\.git", process.platform));
   });
   test("alternatesValue quotes a path holding the list separator", () => {
     expect(alternatesValue("/a/b", ":")).toBe("/a/b");
     expect(alternatesValue("/a:b", ":")).toBe('"/a:b"');
     expect(alternatesValue("C:\\x;y", ";")).toBe('"C:\\\\x;y"');
   });
-  test("configPairs keeps only values git accepts and expands ~ in the excludes file", () => {
-    const m = configPairs("core.autocrlf true\ncore.eol bogus\ncore.ignorecase TRUE\ncore.filemode maybe\ncore.excludesfile ~/ig\nuser.name x\n", "/home/u");
+  test("configPairs keeps only values git accepts and expands ~ in the excludes and attributes files", () => {
+    const m = configPairs("core.autocrlf true\ncore.eol bogus\ncore.ignorecase TRUE\ncore.filemode maybe\ncore.excludesfile ~/ig\ncore.attributesFile ~/attrs\nuser.name x\n", "/home/u");
     expect(m.get("core.autocrlf")).toBe("true");
     expect(m.has("core.eol")).toBe(false);
     expect(m.get("core.ignorecase")).toBe("true");
     expect(m.has("core.filemode")).toBe(false);
     expect(m.get("core.excludesfile")).toBe(join("/home/u", "ig"));
+    expect(m.get("core.attributesfile")).toBe(join("/home/u", "attrs"));
+    expect(configPairs("core.attributesfile rel/attrs\n", "/home/u", resolve("/repo")).get("core.attributesfile")).toBe(resolve("/repo", "rel/attrs"));
     expect(m.has("user.name")).toBe(false);
   });
   test("parseAddErrors names unreadable paths and refuses what it does not understand", () => {
     expect(parseAddErrors("error: open(\"locked.txt\"): Permission denied\nerror: unable to index file 'locked.txt'\nfatal: adding files failed\n")).toEqual({ paths: ["locked.txt"], understood: true });
+    // `update-index` stops at the first file it cannot read, and skips a name it refuses.
+    expect(parseAddErrors("error: open(\"locked.txt\"): Permission denied\nfatal: Unable to process path locked.txt\n")).toEqual({ paths: ["locked.txt"], understood: true });
+    expect(parseAddErrors("Ignoring path server.key.\n")).toEqual({ paths: ["server.key."], understood: true });
     expect(parseAddErrors("fatal: something new\n").understood).toBe(false);
     expect(parseAddErrors("")).toEqual({ paths: [], understood: true });
   });
@@ -415,6 +427,14 @@ describe("checkpoint git: snapshots", () => {
     await expect(git.storeRunner(info)(["write-tree"], { extraEnv: { GIT_INDEX_FILE: join(repo.root, ".git", "index") } })).rejects.toThrow(/temp index/);
     await expect(git.storeRunner(info)(["diff"], { extraEnv: { GIT_COMMON_DIR: join(repo.root, ".git") } })).rejects.toThrow(/GIT_COMMON_DIR/);
     await expect(git.storeRunner({ ...info, store: "relative.git" })(["gc"])).rejects.toThrow(/not a private store/);
+    // Config by environment would undo the snapshot config; a lower-case name would slip past the checks on Windows.
+    await expect(git.storeRunner(info)(["diff"], { extraEnv: { GIT_CONFIG_PARAMETERS: "'core.hookspath'='hooks'" } })).rejects.toThrow(/GIT_CONFIG_PARAMETERS is not allowed/);
+    await expect(git.storeRunner(info)(["diff"], { extraEnv: { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "core.hooksPath", GIT_CONFIG_VALUE_0: "hooks" } })).rejects.toThrow(/GIT_CONFIG_COUNT is not allowed/);
+    await expect(git.storeRunner(info)(["diff"], { extraEnv: { GIT_CONFIG_GLOBAL: join(repo.root, "cfg") } })).rejects.toThrow(/GIT_CONFIG_GLOBAL is not allowed/);
+    await expect(git.storeRunner(info)(["diff"], { extraEnv: { git_dir: join(repo.root, ".git") } })).rejects.toThrow(/upper case/);
+    // `pack-objects` writes only into the store's own objects/pack.
+    await expect(git.storeRunner(info)(["pack-objects", "-q", join(repo.root, ".git", "objects", "pack", "pack")])).rejects.toThrow(/objects\/pack/);
+    await expect(git.storeRunner(info)(["pack-objects", "-q", "--stdout", join(info.store, "objects", "pack", "pack")])).rejects.toThrow(/objects\/pack/);
   });
 
   test("with a work root, a worktree whose git dir lies outside it is not snapshotted (the bridge would read files outside the root)", async () => {
@@ -548,6 +568,218 @@ describe("checkpoint git: snapshots", () => {
       else expect(CHECKPOINT_SUBCOMMANDS.private as readonly string[]).toContain(sub);
     }
     await expect(git.storeRunner(info)(["push", "origin"])).rejects.toThrow(/not allowed/);
+  });
+});
+
+describe("checkpoint git: line endings, attributes and sparse folders (T30 safety review 2)", () => {
+  const CRLF10 = Array.from({ length: 10 }, (_, i) => `line ${i}`).join("\r\n") + "\r\n";
+  /** A repo whose `files` are committed byte for byte (the fixture's autocrlf is false), then `config` set; a fresh checkpoint git reads it. */
+  async function lineEndingRepo(files: Record<string, string>, config: Record<string, string> = {}) {
+    const work = await root();
+    const repo = await makeRepo(work, "repo", files);
+    for (const [k, v] of Object.entries(config)) await repo.git("config", k, v);
+    const git = cg(join(work, "state"));
+    const info = (await git.resolveRepo(repo.root))!;
+    return { work, repo, git, info };
+  }
+  /** Worktree files two hours back and the real index refreshed after them: stat-clean and not racy. */
+  async function notRacy(repo: { root: string; git: (...a: string[]) => Promise<string> }, files: string[]) {
+    const t = Math.floor(Date.now() / 1000) - 7200;
+    for (const f of files) await utimes(join(repo.root, ...f.split("/")), t, t);
+    await repo.git("update-index", "--really-refresh").catch(() => "");
+    await repo.git("status");
+  }
+  const counts = async (info: RepoInfo, git: ReturnType<typeof cg>, a: string, b: string) => {
+    const d = await diffRun(git.storeRunner(info), a, b);
+    return "error" in d ? d : d.files.map((f) => `${f.path} ${f.kind} ${f.additions}/${f.deletions}`);
+  };
+  const oidAt = (info: RepoInfo, commit: string, path: string) => storeGit(info)("rev-parse", `${commit}:${path}`);
+
+  test("a CRLF-committed file under autocrlf=true, files older than the index: a one-line edit is 1/1 as git diff says, its blob is the one the operator's git add makes, an untouched file keeps its CRLF blob", async () => {
+    const { repo, git, info } = await lineEndingRepo({ "win.bat": CRLF10, "other.bat": CRLF10, "lf.txt": "a\nb\n" }, { "core.autocrlf": "true" });
+    expect(info.config.join(" ")).toContain("core.autocrlf=true");
+    await notRacy(repo, ["win.bat", "other.bat", "lf.txt"]);
+    const s = await untouched(repo.root, () => git.snapshot(info, req("start")));
+    expect(s.ok).toBe(true); if (!s.ok) return;
+    for (const f of ["win.bat", "other.bat", "lf.txt"]) expect(await oidAt(info, s.commit, f)).toBe(await repo.git("rev-parse", `HEAD:${f}`));
+    await writeFile(join(repo.root, "win.bat"), CRLF10.replace("line 3", "line THREE"));
+    const e = await untouched(repo.root, () => git.snapshot(info, req("end")));
+    expect(e.ok).toBe(true); if (!e.ok) return;
+    expect(await counts(info, git, s.commit, e.commit)).toEqual(["win.bat modified 1/1"]);
+    expect(await repo.git("-c", "core.autocrlf=true", "diff", "--numstat")).toBe("1\t1\twin.bat");
+    expect(await oidAt(info, e.commit, "other.bat")).toBe(await repo.git("rev-parse", "HEAD:other.bat"));
+    // The operator's own `git add` (after the proofs: it writes their index and objects).
+    await repo.git("-c", "core.autocrlf=true", "add", "win.bat");
+    expect(await oidAt(info, e.commit, "win.bat")).toBe(await repo.git("rev-parse", ":win.bat"));
+  });
+
+  test("a CRLF-committed file under `* text=auto` (autocrlf false), files older than the index: a one-line edit is 1/1, the blob the operator's git add makes", async () => {
+    const body = "x1\r\nx2\r\nx3\r\nx4\r\n";
+    const { repo, git, info } = await lineEndingRepo({ "f.txt": body, "g.txt": "plain\n" });
+    await writeFile(join(repo.root, ".gitattributes"), "* text=auto\n"); // a refused name, so never snapshotted; it applies all the same
+    await notRacy(repo, ["f.txt", "g.txt"]);
+    const s = await untouched(repo.root, () => git.snapshot(info, req("start")));
+    expect(s.ok).toBe(true); if (!s.ok) return;
+    expect(await oidAt(info, s.commit, "f.txt")).toBe(await repo.git("rev-parse", "HEAD:f.txt"));
+    await writeFile(join(repo.root, "f.txt"), body.replace("x2", "y2"));
+    const e = await untouched(repo.root, () => git.snapshot(info, req("end")));
+    expect(e.ok).toBe(true); if (!e.ok) return;
+    expect(await counts(info, git, s.commit, e.commit)).toEqual(["f.txt modified 1/1"]);
+    expect(await repo.git("diff", "--numstat")).toBe("1\t1\tf.txt");
+    await repo.git("add", "f.txt");
+    expect(await oidAt(info, e.commit, "f.txt")).toBe(await repo.git("rev-parse", ":f.txt"));
+  });
+
+  test("racy at the start (an index no older than the files), the operator's git status mid-run, one CRLF file edited: only that file, 1/1; the untouched one is not rewritten", async () => {
+    const { repo, git, info } = await lineEndingRepo({ "win.bat": CRLF10, "other.bat": CRLF10 }, { "core.autocrlf": "true" });
+    // `untouched` sets the user's index an hour back: every entry is racy (the files are newer than the index).
+    const s = await untouched(repo.root, () => git.snapshot(info, req("start")));
+    expect(s.ok).toBe(true); if (!s.ok) return;
+    for (const f of ["win.bat", "other.bat"]) expect(await oidAt(info, s.commit, f)).toBe(await repo.git("rev-parse", `HEAD:${f}`));
+    await writeFile(join(repo.root, "win.bat"), CRLF10.replace("line 3", "line THREE"));
+    await Bun.sleep(1100);
+    await repo.git("status"); // the operator's git rewrites its index: no longer racy
+    await ageTree(join(repo.root, ".git", "objects")); // a freshened object would show; the index keeps its new time
+    const before = await fingerprint(join(repo.root, ".git"));
+    const e = await git.snapshot(info, req("end"));
+    expect(gitDirChanges(before, await fingerprint(join(repo.root, ".git")))).toEqual([]);
+    expect(e.ok).toBe(true); if (!e.ok) return;
+    expect(await counts(info, git, s.commit, e.commit)).toEqual(["win.bat modified 1/1"]);
+  });
+
+  test("info/attributes and core.attributesFile are the operator's: `*.txt -text` under autocrlf=true counts a CRLF rewrite as git diff does (3/2)", async () => {
+    for (const where of ["info/attributes", "core.attributesFile"]) {
+      const work = await root();
+      const repo = await makeRepo(work, "repo", { "f.txt": "a\nb\n" });
+      await repo.git("config", "core.autocrlf", "true");
+      if (where === "info/attributes") await writeFile(join(repo.root, ".git", "info", "attributes"), "*.txt -text\n");
+      else { await writeFile(join(work, "attrs"), "*.txt -text\n"); await repo.git("config", "core.attributesFile", join(work, "attrs")); }
+      await notRacy(repo, ["f.txt"]);
+      const git = cg(join(work, "state"));
+      const info = (await git.resolveRepo(repo.root))!;
+      const s = await untouched(repo.root, () => git.snapshot(info, req("start")));
+      await writeFile(join(repo.root, "f.txt"), "a\r\nb\r\nc\r\n");
+      const e = await untouched(repo.root, () => git.snapshot(info, req("end")));
+      expect(s.ok && e.ok).toBe(true); if (!s.ok || !e.ok) return;
+      expect(await repo.git("-c", "core.autocrlf=true", "diff", "--numstat")).toBe("3\t2\tf.txt");
+      expect({ where, files: await counts(info, git, s.commit, e.commit) }).toEqual({ where, files: ["f.txt modified 3/2"] });
+    }
+  });
+
+  test("a file rewritten between settle rounds is hashed against its real index entry each round (an LF version, then a CRLF one, of a CRLF-committed file)", async () => {
+    const work = await root();
+    const repo = await makeRepo(work, "repo", { "win.bat": CRLF10 });
+    await repo.git("config", "core.autocrlf", "true");
+    await writeFile(join(repo.root, "win.bat"), CRLF10.replaceAll("\r\n", "\n").replace("line 1", "line ONE"));
+    let sleeps = 0;
+    const crlf = CRLF10.replace("line 2", "line TWO");
+    const git = cg(join(work, "state"), { sleep: async () => { if (sleeps++ === 0) await writeFile(join(repo.root, "win.bat"), crlf); } });
+    const info = (await git.resolveRepo(repo.root))!;
+    await ageTree(join(repo.root, ".git")); const before = await fingerprint(join(repo.root, ".git"));
+    const out = await git.snapshot(info, req());
+    expect(gitDirChanges(before, await fingerprint(join(repo.root, ".git")))).toEqual([]);
+    expect(out.ok).toBe(true); if (!out.ok) return;
+    expect(out.unsettled).toBe(false);
+    // The real index blob holds CRLF, so git keeps the CRLF version as it is (the LF one in between must not decide).
+    await repo.git("-c", "core.autocrlf=true", "add", "win.bat");
+    expect(await oidAt(info, out.commit, "win.bat")).toBe(await repo.git("rev-parse", ":win.bat"));
+    expect(await storeGit(info)("cat-file", "-p", `${out.commit}:win.bat`).then((t) => t.includes("line TWO\r\n"))).toBe(true);
+  });
+
+  async function sparseRepo(packed = false) {
+    const work = await root();
+    const repo = await makeRepo(work, "repo", { "in/a.txt": "a\n", "out/b.txt": "b\n", "out/deep/c.txt": "c\n", "top.txt": "t\n" });
+    await repo.git("sparse-checkout", "set", "--cone", "in");
+    await repo.git("config", "index.sparse", "true");
+    await repo.git("sparse-checkout", "reapply");
+    if (packed) await repo.git("gc", "-q");
+    const git = cg(join(work, "state"));
+    const info = (await git.resolveRepo(repo.root))!;
+    return { work, repo, git, info };
+  }
+
+  test("a sparse index whose folder outside the cone is on disk (a new file there, a file put back, packed objects): absent sparse-checkout, and the user's .git keeps every byte and mtime", async () => {
+    for (const variant of ["new file", "file put back", "packed"] as const) {
+      const { repo, git, info } = await sparseRepo(variant === "packed");
+      const s = await untouched(repo.root, () => git.snapshot(info, req("start")));
+      expect(s.ok).toBe(true);
+      if (variant === "file put back") await writeFiles(repo.root, { "out/b.txt": "b changed\n" });
+      else await writeFiles(repo.root, { "out/new.txt": "n\n" });
+      // No git of the operator's runs first (its `git status` would rewrite the index, see below).
+      await ageTree(join(repo.root, ".git")); const before = await fingerprint(join(repo.root, ".git"));
+      const e = await git.snapshot(info, req("end"));
+      expect(gitDirChanges(before, await fingerprint(join(repo.root, ".git")))).toEqual([]);
+      expect({ variant, e }).toMatchObject({ variant, e: { ok: false, reason: "sparse-checkout" } });
+    }
+  });
+
+  test("a full-index sparse checkout: a file put back outside the cone is snapshotted as git status sees it (git clears its skip-worktree bit; nothing is expanded)", async () => {
+    const work = await root();
+    const repo = await makeRepo(work, "repo", { "in/a.txt": "a\n", "out/b.txt": "b\n", "out/c.txt": "c\n", "top.txt": "t\n" });
+    await repo.git("sparse-checkout", "set", "--cone", "--no-sparse-index", "in");
+    const git = cg(join(work, "state"));
+    const info = (await git.resolveRepo(repo.root))!;
+    const s = await untouched(repo.root, () => git.snapshot(info, req("start")));
+    await writeFiles(repo.root, { "out/b.txt": "b changed\n" });
+    expect(await repo.git("status", "--porcelain")).toBe("M out/b.txt");
+    const e = await untouched(repo.root, () => git.snapshot(info, req("end")));
+    expect(s.ok && e.ok).toBe(true); if (!s.ok || !e.ok) return;
+    expect(await counts(info, git, s.commit, e.commit)).toEqual(["out/b.txt modified 1/1"]);
+    expect(await filesAt(info, e.commit)).toEqual(["in/a.txt", "out/b.txt", "out/c.txt", "top.txt"]);
+  });
+
+  test("a sparse index: a new file in a new folder outside the cone (no index entry for it) is snapshotted, as git status lists it; the folders outside the cone stay whole", async () => {
+    const { repo, git, info } = await sparseRepo();
+    await writeFiles(repo.root, { "newdir/x.txt": "x\n", "in/a.txt": "a2\n" });
+    const out = await untouched(repo.root, () => git.snapshot(info, req()));
+    expect(out.ok).toBe(true); if (!out.ok) return;
+    expect(await filesAt(info, out.commit)).toEqual(["in/a.txt", "newdir/x.txt", "out/b.txt", "out/deep/c.txt", "top.txt"]);
+    expect(await blobAt(info, out.commit, "newdir/x.txt")).toBe("x");
+  });
+
+  test("a full index in a repo set to index.sparse (not collapsed yet) is read as it is, and every file outside the cone stays in the snapshot", async () => {
+    const work = await root();
+    const repo = await makeRepo(work, "repo", { "in/a.txt": "a\n", "out/b.txt": "b\n", "out/c.txt": "c\n", "top.txt": "t\n" });
+    await repo.git("sparse-checkout", "set", "--cone", "--no-sparse-index", "in"); // a full index with skip-worktree entries
+    await repo.git("config", "--worktree", "index.sparse", "true"); // no command has written the index since
+    expect(await indexEntryCount(join(repo.root, ".git", "index"))).toBe(4);
+    // git collapses it as it reads it (three entries, `out/` one of them); the snapshot must not take that shape.
+    expect((await repo.git("ls-files", "--sparse")).split("\n")).toEqual(["in/a.txt", "out/", "top.txt"]);
+    const git = cg(join(work, "state"));
+    const info = (await git.resolveRepo(repo.root))!;
+    expect(info.config.join(" ")).toContain("index.sparse=true");
+    await writeFiles(repo.root, { "in/a.txt": "a2\n" });
+    const out = await untouched(repo.root, () => git.snapshot(info, req()));
+    expect(out.ok).toBe(true); if (!out.ok) return;
+    expect(await filesAt(info, out.commit)).toEqual(["in/a.txt", "out/b.txt", "out/c.txt", "top.txt"]);
+    expect(await blobAt(info, out.commit, "in/a.txt")).toBe("a2");
+  });
+
+  test("indexEntryCount reads the header: the entries a full index holds, null with no file, NaN for a file that is not an index", async () => {
+    const { repo, state } = await setup({ "a.txt": "a\n", "b/c.txt": "c\n" });
+    expect(await indexEntryCount(join(repo.root, ".git", "index"))).toBe(2);
+    expect(await indexEntryCount(join(state, "none"))).toBeNull();
+    await mkdir(state, { recursive: true }); await writeFile(join(state, "junk"), "not an index, but long enough");
+    expect(await indexEntryCount(join(state, "junk"))).toBeNaN();
+  });
+
+  test.skipIf(process.platform !== "win32")("Windows: files another process holds open with no sharing are named in skippedPaths, keep their index entry, and the snapshot is still ready", async () => {
+    const { repo, git, info } = await setup({ "a.txt": "a\n", "locked.txt": "l\n" });
+    await writeFiles(repo.root, { "a.txt": "a2\n", "locked.txt": "changed\n", "new-locked.txt": "n\n" });
+    const ps = (p: string) => join(repo.root, p).replaceAll("'", "''");
+    const holder = Bun.spawn(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+      `$a=[IO.File]::Open('${ps("locked.txt")}','Open','ReadWrite','None'); $b=[IO.File]::Open('${ps("new-locked.txt")}','Open','ReadWrite','None'); 'locked'; Start-Sleep -Seconds 60`], { stdout: "pipe", stderr: "ignore" });
+    try {
+      const reader = holder.stdout.getReader(); let said = "";
+      while (!said.includes("locked")) { const { value, done } = await reader.read(); if (done) break; said += new TextDecoder().decode(value); }
+      expect(said).toContain("locked");
+      const out = await git.snapshot(info, req());
+      expect(out.ok).toBe(true); if (!out.ok) return;
+      expect(out.skippedPaths).toEqual(["locked.txt", "new-locked.txt"]);
+      expect(await blobAt(info, out.commit, "a.txt")).toBe("a2");
+      expect(await blobAt(info, out.commit, "locked.txt")).toBe("l");
+      expect(await filesAt(info, out.commit)).toEqual(["a.txt", "locked.txt"]);
+    } finally { holder.kill(); await holder.exited; }
   });
 });
 
