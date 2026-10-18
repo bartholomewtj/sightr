@@ -47,6 +47,18 @@ describe("normalizePromptRegion", () => {
       normalizePromptRegion("Approve this file?\n1. Yes"),
     );
   });
+
+  // Live 18 Oct 2026 (Claude Code 2.1.302): the pending tool call's bullet blinks above a `Read file`
+  // permission dialog, inside the bound tail. Both frames are one dialog.
+  test("reads a blinking tool-call bullet as a blank, keeping the alignment", () => {
+    const lit = "\x1b[0m\x1b[38;2;153;153;153m●\x1b[0m Reading C:\\claudeOS\\identity.md\n Do you want to proceed?\n ❯ 1. Yes";
+    const dark = "\x1b[0m\x1b[38;2;153;153;153m \x1b[0m Reading C:\\claudeOS\\identity.md\n Do you want to proceed?\n ❯ 1. Yes";
+    expect(normalizePromptRegion(lit)).toEqual(normalizePromptRegion(dark));
+    expect(normalizePromptRegion(lit)[0]).toBe("  Reading C:\\claudeOS\\identity.md");
+    expect(verifyExpectedPrompt(dark, lit)).toEqual({ ok: true });
+    // A bullet inside a line is content.
+    expect(normalizePromptRegion("a ● b")).toEqual(["a ● b"]);
+  });
 });
 
 describe("verifyExpectedPrompt", () => {
