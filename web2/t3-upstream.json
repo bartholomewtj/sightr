@@ -1523,6 +1523,13 @@
       "verdict": "skip",
       "reason": "Router subscription narrowing for T3's thread route consumers (#20837); Sightr's routes are its own pattern",
       "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/diffs/DiffCommentAnnotation.tsx",
+      "commit": "0bdb5a8c6405",
+      "verdict": "skip",
+      "reason": "Native caret and selection classes for a comment box inside Pierre's contentEditable annotation slot (#17554); Sightr's DiffCommentEditor/DiffCommentAnnotation are a plain textarea and a note row outside any contentEditable, so the native caret already shows (T29 pattern rows)",
+      "date": "2026-10-19"
     }
   ]
 }
