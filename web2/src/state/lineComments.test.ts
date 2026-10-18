@@ -73,6 +73,13 @@ describe("saving", () => {
     expect(getLineComments("t1")).toHaveLength(1);
   });
 
+  it("refuses a refused or unsafe path, whatever the caller did before", () => {
+    for (const path of [".env", "src/id_rsa", "/etc/passwd", "../a.ts", "a/b:c.ts"]) {
+      expect(addLineComment("t1", input({ path })), path).toEqual({ ok: false, reason: "path" });
+    }
+    expect(getLineComments("t1")).toHaveLength(0);
+  });
+
   it("caps the list at 30", () => {
     for (let i = 0; i < MAX_PENDING_COMMENTS; i++) add({ note: "n" + i });
     expect(addLineComment("t1", input())).toEqual({ ok: false, reason: "full" });

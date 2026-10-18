@@ -127,6 +127,17 @@ describe("Add to message", () => {
     expect(toasts()).toContain("Added 10 of 12. Send, then add the rest.");
   });
 
+  it("says the message is full, not 'Added 0 of 1', when the text would pass the composer's limit", () => {
+    comment("one");
+    show();
+    const full = "x".repeat(64 * 1024 - 5);
+    type(full);
+    fireEvent.click(within(bar()!).getByRole("button", { name: "Add to message" }));
+    expect(box().value).toBe(full);
+    expect(toasts()).toContain("Your message is full. Send, then add the rest.");
+    expect(toasts().some((t) => t.startsWith("Added 0 of"))).toBe(false);
+  });
+
   it("leaves outdated comments for the list's confirm tap", () => {
     const fresh = comment("fresh");
     comment("stale", { path: "src/old.ts" });

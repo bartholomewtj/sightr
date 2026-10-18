@@ -286,11 +286,14 @@ export function ChatComposer({ threadId }: { threadId: string }) {
       setText(next);
       if (insertion.focus && request === null) boxRef.current?.focus();
     }
-    const done = added > 0 && next.length <= MAX_COMPOSER_CHARS ? added : 0;
+    const full = added > 0 && next.length > MAX_COMPOSER_CHARS;
+    const done = added > 0 && !full ? added : 0;
     showToast(
       done === total
         ? `Added ${total} comment${total === 1 ? "" : "s"} to your message.${waiting}`
-        : `Added ${done} of ${total}. Send, then add the rest.${waiting}`,
+        : full
+          ? `Your message is full. Send, then add the rest.${waiting}`
+          : `Added ${done} of ${total}. Send, then add the rest.${waiting}`,
     );
   }, [insertion?.id]);
 

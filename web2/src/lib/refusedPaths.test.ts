@@ -28,7 +28,7 @@ describe("commentPathProblem", () => {
 
   it("refuses a journal-style absolute path, a drive letter, .., a backslash, and empty or control segments", () => {
     const tooLong = "d/".repeat(600) + "x";
-    for (const p of ["/etc/passwd", "/home/me/src/a.ts", "C:/Users/me/a.ts", "C:\\Users\\me\\a.ts", "src\\a.ts", "../a.ts", "a/../b.ts", "a//b.ts", "./a.ts", "a/./b.ts", "", "a\u0000b.ts", "a\nb.ts", tooLong]) {
+    for (const p of ["/etc/passwd", "/home/me/src/a.ts", "C:/Users/me/a.ts", "C:\\Users\\me\\a.ts", "src\\a.ts", "../a.ts", "a/../b.ts", "a//b.ts", "./a.ts", "a/./b.ts", "", "a\u0000b.ts", "a\nb.ts", tooLong, "a/b:c.ts", "src/file:stream", "x/".repeat(32) + "y"]) {
       expect(commentPathProblem(p), JSON.stringify(p)).toBe("unsafe");
     }
   });

@@ -11,6 +11,7 @@
 import { create } from "zustand";
 
 import type { DiffSide } from "@/components/diffs/DiffCodeView";
+import { commentPathProblem } from "@/lib/refusedPaths";
 import { locateComment } from "@/components/diffs/lineSelection";
 import type { ParsedPatchFile } from "@/components/diffs/parsePatch";
 import {
@@ -58,13 +59,14 @@ export type CommentInput = {
   note: string;
 };
 
-export type AddResult = { ok: true; comment: LineComment } | { ok: false; reason: "full" | "empty" | "note-too-long" | "range" };
+export type AddResult = { ok: true; comment: LineComment } | { ok: false; reason: "full" | "empty" | "note-too-long" | "range" | "path" };
 
 export const ADD_REFUSAL: Record<Exclude<AddResult, { ok: true }>["reason"], string> = {
   full: "Pending list is full (30). Send or discard some first.",
   empty: "Write a note first.",
   "note-too-long": `A note can be ${MAX_NOTE_CHARS} characters at most.`,
   range: `A comment quotes ${MAX_QUOTE_LINES} lines at most.`,
+  path: "Comments are off for this file.",
 };
 
 const EMPTY: readonly LineComment[] = Object.freeze([]);
@@ -197,6 +199,7 @@ export function addLineComment(threadId: string, input: CommentInput): AddResult
   if (note === "") return { ok: false, reason: "empty" };
   if (note.length > MAX_NOTE_CHARS) return { ok: false, reason: "note-too-long" };
   if (input.quote.length === 0 || input.quote.length > MAX_QUOTE_LINES) return { ok: false, reason: "range" };
+  if (commentPathProblem(input.path)) return { ok: false, reason: "path" };
   const list = getLineComments(threadId);
   if (list.length >= MAX_PENDING_COMMENTS) return { ok: false, reason: "full" };
   const comment: LineComment = {

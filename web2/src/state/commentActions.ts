@@ -4,6 +4,7 @@
 import { showThreadUndoNotice } from "@/hooks/showThreadUndoNotice";
 import { useSidebarThread } from "@/state/sidebar";
 import { useBridgeInfo, useThread } from "@/stream/stores";
+import { commentPathProblem } from "@/lib/refusedPaths";
 import { formatReviewBlock } from "@/lib/reviewCommentContext";
 import { useRightPanelStore } from "@/rightPanelStore";
 import { setCommentsListOpen } from "@/state/commentsUi";
@@ -41,7 +42,7 @@ export function useAddGate(threadId: string): AddGate {
  * unless `includeOutdated` (the caller has had its confirm tap).
  */
 export function addToMessage(threadId: string, comments: readonly LineComment[], draft: string, opts: { phone: boolean; includeOutdated?: boolean }): number {
-  const chosen = comments.filter((c) => commentView(c, draft) !== "in message" && (opts.includeOutdated || c.state !== "outdated"));
+  const chosen = comments.filter((c) => commentPathProblem(c.path) === null && commentView(c, draft) !== "in message" && (opts.includeOutdated || c.state !== "outdated"));
   if (chosen.length === 0) return 0;
   requestInsert(threadId, chosen.map(blockOf), { focus: !opts.phone });
   if (opts.phone) {

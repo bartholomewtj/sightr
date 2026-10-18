@@ -15,13 +15,14 @@ export type CommentPathProblem = "unsafe" | "refused";
 
 /**
  * Why a comment cannot be made on this path, or null. `unsafe`: not a repo-relative forward-slash path (absolute,
- * a drive letter, `..`, a backslash, an empty or control-character segment). `refused`: some segment is on the
+ * a drive letter, `..`, a backslash, a colon, an empty or control-character segment, more than 32 segments). `refused`: some segment is on the
  * Files refusal list.
  */
 export function commentPathProblem(path: string): CommentPathProblem | null {
   if (path === "" || path.length > 1024 || /[\u0000-\u001f\\]/.test(path) || path.startsWith("/") || /^[A-Za-z]:/.test(path)) return "unsafe";
   const parts = path.split("/");
-  if (parts.some((p) => p === "" || p === "." || p === "..")) return "unsafe";
+  // The bridge's `parseRelPath` also refuses a `:` in a segment and more than 32 segments.
+  if (parts.length > 32 || parts.some((p) => p === "" || p === "." || p === ".." || p.includes(":"))) return "unsafe";
   return parts.some(isRefusedName) ? "refused" : null;
 }
 
