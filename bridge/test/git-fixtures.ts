@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { devNull, tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
-import { lstat, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readdir, readFile, realpath, rm, utimes, writeFile } from "node:fs/promises";
 
 export const tempRoot = async (name: string): Promise<string> => realpath(await mkdtemp(join(tmpdir(), name)));
 
@@ -70,16 +70,28 @@ export async function fingerprint(dir: string): Promise<TreePrint> {
 }
 
 /**
- * What changed between two prints of a git dir: files added, removed or with different bytes (never
- * allowed), and files whose mtime moved outside `objects/` (never allowed either). An object's mtime may
- * move: git "freshens" an object it would have written when an alternate already holds it.
+ * What changed between two prints of a git dir: files added, removed, with different bytes, or with a
+ * different mtime. None is allowed, objects included: a snapshot writes its objects without the real repo
+ * as an alternate, so git never "freshens" (touches) an object the user's repo holds.
  */
 export function gitDirChanges(before: TreePrint, after: TreePrint): string[] {
   const out: string[] = [];
   for (const [k, v] of before.content) if (after.content.get(k) !== v) out.push(after.content.has(k) ? `changed ${k}` : `removed ${k}`);
   for (const k of after.content.keys()) if (!before.content.has(k)) out.push(`added ${k}`);
-  for (const [k, v] of before.mtime) if (!k.startsWith("objects/") && after.mtime.has(k) && after.mtime.get(k) !== v) out.push(`touched ${k}`);
+  for (const [k, v] of before.mtime) if (after.mtime.has(k) && after.mtime.get(k) !== v) out.push(`touched ${k}`);
   return out;
+}
+
+/** Set every file under `dir` an hour back, so a later touch (a freshen) shows as an mtime change. */
+export async function ageTree(dir: string): Promise<void> {
+  const t = Math.floor(Date.now() / 1000) - 3600;
+  const walk = async (d: string): Promise<void> => {
+    for (const name of await readdir(d)) {
+      const abs = join(d, name); const st = await lstat(abs);
+      if (st.isDirectory()) await walk(abs); else if (st.isFile()) await utimes(abs, t, t).catch(() => {});
+    }
+  };
+  await walk(dir);
 }
 
 export const rmrf = (p: string) => rm(p, { recursive: true, force: true, maxRetries: 3 });

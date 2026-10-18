@@ -1,14 +1,16 @@
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { chmod, mkdir, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { randomBytes } from "node:crypto";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
-import { fingerprint, gitDirChanges, gitIn, makeRepo, rmrf, tempRoot, writeFiles } from "../test/git-fixtures.ts";
-import { spawnGit, type GitRunner } from "../workdir-git.ts";
+import { ageTree, fingerprint, gitDirChanges, gitIn, makeRepo, rmrf, tempRoot, writeFiles } from "../test/git-fixtures.ts";
+import { isHiddenPath, spawnGit, type GitRunner } from "../workdir-git.ts";
 import {
   alternatesValue, BUSY, CHECKPOINT_SUBCOMMANDS, checkpointRef, configPairs, createCheckpointGit, createStoreQueue, MAX_FILE_BYTES, parseAddErrors, refId, repoKeyOf, SNAPSHOT_CONFIG,
   type CheckpointGitOptions, type RepoInfo,
 } from "./checkpoint-git.ts";
+import { shortNameOf, trackAlias } from "../test/short-names.ts";
 
 // Real git processes: under a loaded full run one test can pass bun's 5 s default.
 setDefaultTimeout(60_000);
@@ -42,6 +44,7 @@ async function setup(files?: Record<string, string>, opts: Partial<CheckpointGit
 }
 async function untouched<T>(repoRoot: string, act: () => Promise<T>, gitDir = join(repoRoot, ".git")): Promise<T> {
   const statusBefore = await gitIn(repoRoot)("status", "--porcelain", "--untracked-files=all");
+  await ageTree(gitDir); // an hour back, so a touched (freshened) object would show
   const before = await fingerprint(gitDir);
   const worktreeBefore = await fingerprint(repoRoot);
   const out = await act();
@@ -103,6 +106,24 @@ describe("checkpoint git: the store queue", () => {
     await blocker;
     expect(await late).toBe(BUSY);
   });
+
+  test("a read with a deadline answers busy while it waits (not after the store's long task), and past the waiting cap at once", async () => {
+    const q = createStoreQueue(2, 1);
+    let release!: () => void;
+    const gc = q.run("s", () => new Promise<void>((r) => { release = r; })); // a long gc holding the store
+    const t0 = Date.now();
+    expect(await q.run("s", async () => "read", Date.now() + 60)).toBe(BUSY);
+    expect(Date.now() - t0).toBeLessThan(1_000);
+    const waiting = q.run("s", async () => "first", Date.now() + 5_000);
+    const t1 = Date.now();
+    expect(await q.run("s", async () => "second", Date.now() + 5_000)).toBe(BUSY); // the cap: one read already waits
+    expect(Date.now() - t1).toBeLessThan(100);
+    const background = q.run("s", async () => "snapshot"); // no deadline: never refused, waits its turn
+    release(); await gc;
+    expect(await waiting).toBe("first");
+    expect(await background).toBe("snapshot");
+    expect(q.waiting).toBe(0);
+  });
 });
 
 describe("checkpoint git: snapshots", () => {
@@ -113,7 +134,9 @@ describe("checkpoint git: snapshots", () => {
     expect(out.ok).toBe(true); if (!out.ok) return;
     expect(info.store).toBe(join(state, "checkpoints", `${info.repoKey}.git`));
     expect(await filesAt(info, out.commit)).toEqual(["a.txt", "src/b.ts"]);
-    expect(await storeGit(info)("rev-parse", `${out.commit}^`)).toBe(head);
+    // No parent: a gc in the store never walks the user's history. The tree is HEAD's (nothing changed).
+    expect(await storeGit(info)("rev-list", "--parents", "-n", "1", out.commit)).toBe(out.commit);
+    expect(await storeGit(info)("rev-parse", `${out.commit}^{tree}`)).toBe(await repo.git("rev-parse", `${head}^{tree}`));
     expect(await storeGit(info)("rev-parse", checkpointRef(req().threadId, 1, "start"))).toBe(out.commit);
     expect(await storeGit(info)("log", "-1", "--format=%an <%ae>", out.commit)).toBe("Sightr <sightr@localhost>");
     // Nothing new in the user's repo: no ref, no object.
@@ -159,7 +182,7 @@ describe("checkpoint git: snapshots", () => {
   });
 
   test("the repo's hooks, filters and fsmonitor never run, and commit.gpgsign does not prompt", async () => {
-    const { repo, git, work } = await setup({ "a.txt": "a\n" });
+    const { repo, work } = await setup({ "a.txt": "a\n" });
     const marker = join(work, "MARKER");
     const sh = `#!/bin/sh\necho ran > "${marker.replaceAll("\\", "/")}"\n`;
     for (const hook of ["post-index-change", "pre-commit", "post-commit", "reference-transaction", "pre-auto-gc"]) {
@@ -173,10 +196,10 @@ describe("checkpoint git: snapshots", () => {
     await repo.git("config", "commit.gpgsign", "true");
     await repo.git("config", "gpg.program", script.replaceAll("\\", "/"));
     await writeFiles(repo.root, { ".gitattributes": "*.txt filter=evil\n", "a.txt": "changed\n", "b.txt": "new\n" });
-    const fresh = (await cg(join(work, "state2")).resolveRepo(repo.root))!; // config is read now
+    const git2 = cg(join(work, "state2")); const fresh = (await git2.resolveRepo(repo.root))!; // config is read now
     // No `git status` around this one: the operator's own git WOULD run that fsmonitor and filter.
     const before = await fingerprint(join(repo.root, ".git"));
-    const out = await git.snapshot(fresh, req());
+    const out = await git2.snapshot(fresh, req());
     expect(out.ok).toBe(true);
     expect(existsSync(marker)).toBe(false);
     expect(gitDirChanges(before, await fingerprint(join(repo.root, ".git")))).toEqual([]);
@@ -278,7 +301,7 @@ describe("checkpoint git: snapshots", () => {
     if (first.ok && again.ok) { expect(again.commit).toBe(first.commit); expect(again.reused).toBe(true); }
   });
 
-  test("a repo with no commits has a parentless snapshot; a detached HEAD only changes the parent", async () => {
+  test("a repo with no commits and a detached HEAD both snapshot (parentless, the worktree's content)", async () => {
     const work = await root();
     const empty = await makeRepo(work, "empty", {});
     await writeFiles(empty.root, { "first.txt": "1\n" });
@@ -295,7 +318,137 @@ describe("checkpoint git: snapshots", () => {
     const dInfo = (await git.resolveRepo(det.root))!;
     const d = await untouched(det.root, () => git.snapshot(dInfo, req()));
     expect(d.ok).toBe(true);
-    if (d.ok) { expect(await storeGit(dInfo)("rev-parse", `${d.commit}^`)).toBe(first); expect(await blobAt(dInfo, d.commit, "a.txt")).toBe("a"); }
+    if (d.ok) { expect(await storeGit(dInfo)("rev-list", "--parents", "-n", "1", d.commit)).toBe(d.commit); expect(await blobAt(dInfo, d.commit, "a.txt")).toBe("a"); }
+  });
+
+  test("a revert, a merge in conflict, a rebase in conflict and a sparse index: the user's .git keeps every byte and every mtime (no freshened object)", async () => {
+    // Revert: a.txt goes back to a blob the user's repo holds (packed and loose). With the real objects as
+    // an alternate, git would touch that object's mtime instead of writing it.
+    const rev = await setup({ "a.txt": "one\n", "b.txt": "two\n" });
+    await rev.repo.git("gc", "-q");
+    await writeFiles(rev.repo.root, { "a.txt": "edited\n" }); await rev.repo.git("commit", "-qam", "edit");
+    await writeFiles(rev.repo.root, { "a.txt": "one\n", "copy.txt": "edited\n" });
+    const r1 = await untouched(rev.repo.root, () => rev.git.snapshot(rev.info, req("start", 1)));
+    expect(r1.ok).toBe(true); if (r1.ok) expect(await blobAt(rev.info, r1.commit, "a.txt")).toBe("one");
+
+    // Mid-merge (conflict) and mid-rebase (conflict).
+    const mg = await setup({ "a.txt": "base\n" });
+    await mg.repo.git("checkout", "-qb", "other"); await writeFiles(mg.repo.root, { "a.txt": "other\n" }); await mg.repo.git("commit", "-qam", "o");
+    await mg.repo.git("checkout", "-q", "main"); await writeFiles(mg.repo.root, { "a.txt": "main\n" }); await mg.repo.git("commit", "-qam", "m");
+    await mg.repo.git("merge", "other").catch(() => {});
+    const m1 = await untouched(mg.repo.root, () => mg.git.snapshot(mg.info, req("start", 1)));
+    expect(m1.ok).toBe(true); if (m1.ok) expect(await blobAt(mg.info, m1.commit, "a.txt")).toContain("<<<<<<<");
+    await mg.repo.git("merge", "--abort");
+    await mg.repo.git("checkout", "-q", "other"); await mg.repo.git("rebase", "main").catch(() => {});
+    const m2 = await untouched(mg.repo.root, () => mg.git.snapshot(mg.info, req("start", 2)));
+    expect(m2.ok).toBe(true);
+
+    // A sparse checkout with a sparse index: the snapshot still holds the files outside the cone.
+    const sp = await setup({ "in/a.txt": "a\n", "out/b.txt": "b\n", "top.txt": "t\n", "vendor/secret.txt": "SECRET_VENDOR\n" });
+    await sp.repo.git("sparse-checkout", "set", "--cone", "in");
+    await sp.repo.git("config", "index.sparse", "true");
+    await sp.repo.git("sparse-checkout", "reapply");
+    await writeFiles(sp.repo.root, { "in/a.txt": "a2\n" });
+    const spGit = cg(join(sp.work, "state-sparse")); // the repo's sparse settings are read now
+    const spInfo = (await spGit.resolveRepo(sp.repo.root))!;
+    expect(spInfo.config.join(" ")).toContain("index.sparse=true");
+    const s1 = await untouched(sp.repo.root, () => spGit.snapshot(spInfo, req("start", 1)));
+    expect(s1.ok).toBe(true);
+    // `vendor/` (a refused name) sits outside the cone as one sparse-folder entry; it leaves the snapshot too.
+    if (s1.ok) { expect(await filesAt(spInfo, s1.commit)).toEqual(["in/a.txt", "out/b.txt", "top.txt"]); expect(await blobAt(spInfo, s1.commit, "in/a.txt")).toBe("a2"); }
+  });
+
+  test("a shallow clone snapshots, and the private gc succeeds and frees what a deleted ref held", async () => {
+    const work = await root();
+    const src = await makeRepo(work, "src", { "a.txt": "1\n" });
+    for (let i = 2; i < 6; i++) { await writeFiles(src.root, { "a.txt": `${i}\n` }); await src.git("commit", "-qam", `c${i}`); }
+    await gitIn(work)("clone", "-q", "--depth", "1", `file://${src.root.replaceAll("\\", "/")}`, "sh");
+    const shRoot = await realpath(join(work, "sh"));
+    const git = cg(join(work, "state"));
+    const info = (await git.resolveRepo(shRoot))!;
+    const noise = () => randomBytes(150_000).toString("hex"); // incompressible, so freeing it shows
+    await writeFiles(shRoot, { "a.txt": "dirty one\n", "big.txt": noise() });
+    const one = await untouched(shRoot, () => git.snapshot(info, req("start", 1)));
+    await writeFiles(shRoot, { "a.txt": "dirty two\n", "big.txt": noise() });
+    const two = await git.snapshot(info, req("start", 2));
+    expect(one.ok && two.ok).toBe(true); if (!one.ok || !two.ok) return;
+    const sizeOf = async () => (await git.storeBytes(info.store))!;
+    expect(await git.deleteRefs(info.store, [checkpointRef(req().threadId, 1, "start")])).toBe(true);
+    const before = await sizeOf();
+    expect(await git.gc({ store: info.store, objectsDir: info.objectsDir })).toBe(true);
+    expect(await sizeOf()).toBeLessThan(before);
+    expect(await storeGit(info)("cat-file", "-t", one.commit).catch(() => "gone")).toBe("gone");
+    expect(await blobAt(info, two.commit, "a.txt")).toBe("dirty two");
+  });
+
+  test("every step that can throw before the snapshot proper (the store's init, the ref check, the HEAD read, the exclude copy) gives a failed outcome", async () => {
+    // The store's folder cannot be made: `checkpoints` is a file.
+    const a = await setup();
+    await mkdir(a.state, { recursive: true }); await writeFile(join(a.state, "checkpoints"), "not a folder");
+    expect(await a.git.snapshot(a.info, req())).toMatchObject({ ok: false, reason: "git-failed" });
+    // The existing-ref check and the HEAD read throw (an injected runner, as a git that cannot start would).
+    const boom = (match: (args: string[]) => boolean): GitRunner => async (args, cwd, limits) => { if (match(args)) throw new Error("spawn failed"); return spawnGit(args, cwd, limits); };
+    for (const match of [(x: string[]) => x.some((s) => s.startsWith("refs/checkpoints/")), (x: string[]) => x.includes("HEAD^{commit}")]) {
+      const b = await setup({ "a.txt": "a\n" }, { run: boom(match) });
+      expect(await b.git.snapshot(b.info, req())).toMatchObject({ ok: false, reason: "git-failed" });
+      expect(await readdir(join(b.state, "checkpoint-tmp")).catch(() => [])).toEqual([]);
+    }
+    // The exclude copy cannot be written: the store's `info` is a file.
+    const c = await setup({ "a.txt": "a\n" });
+    expect((await c.git.snapshot(c.info, req("start", 1))).ok).toBe(true);
+    await rm(join(c.info.store, "info"), { recursive: true, force: true }); await writeFile(join(c.info.store, "info"), "not a folder");
+    expect(await c.git.snapshot(c.info, req("start", 2))).toMatchObject({ ok: false, reason: "git-failed" });
+  });
+
+  test("the private-side guard: a relative state dir is made absolute; a GIT_DIR outside the stores, or a temp index elsewhere, is refused", async () => {
+    const work = await root();
+    const repo = await makeRepo(work, "repo");
+    const rel = relative(process.cwd(), join(work, "state"));
+    const git = cg(rel);
+    const info = (await git.resolveRepo(repo.root))!;
+    expect(isAbsolute(info.store)).toBe(true);
+    expect((await git.snapshot(info, req())).ok).toBe(true);
+    expect(git.storesDir).toBe(join(resolve(rel), "checkpoints"));
+    // A write command against the user's own .git, or a store outside `checkpoints/`, never runs.
+    await expect(git.storeRunner({ ...info, store: join(repo.root, ".git") })(["update-ref", "refs/x", "HEAD"])).rejects.toThrow(/not a private store/);
+    await expect(git.storeRunner({ ...info, store: join(work, "elsewhere.git") })(["gc"])).rejects.toThrow(/not a private store/);
+    await expect(git.storeRunner(info)(["write-tree"], { extraEnv: { GIT_INDEX_FILE: join(repo.root, ".git", "index") } })).rejects.toThrow(/temp index/);
+    await expect(git.storeRunner(info)(["diff"], { extraEnv: { GIT_COMMON_DIR: join(repo.root, ".git") } })).rejects.toThrow(/GIT_COMMON_DIR/);
+    await expect(git.storeRunner({ ...info, store: "relative.git" })(["gc"])).rejects.toThrow(/not a private store/);
+  });
+
+  test("with a work root, a worktree whose git dir lies outside it is not snapshotted (the bridge would read files outside the root)", async () => {
+    const outside = await root("sightr-cp-out-"), work = await root();
+    const main = await makeRepo(outside, "main", { "a.txt": "a\n" });
+    await main.git("worktree", "add", "-q", join(work, "linked"), "-b", "side");
+    const linked = await realpath(join(work, "linked"));
+    expect(await cg(join(work, "state"), { workRoot: work }).resolveRepo(linked)).toBeNull();
+    expect(await cg(join(work, "state2")).resolveRepo(linked)).not.toBeNull();
+    const own = await makeRepo(work, "own");
+    expect(await cg(join(work, "state3"), { workRoot: work }).resolveRepo(own.root)).not.toBeNull();
+  });
+
+  test("8.3 aliases: a tracked entry named like the short name of .env or of a hidden folder is never snapshotted", async () => {
+    expect(isHiddenPath("ENV~1", true)).toBe(true);
+    expect(isHiddenPath("src/GITHUB~1/ci.yml", true)).toBe(true);
+    expect(isHiddenPath("ENV~1", false)).toBe(false);
+    expect(isHiddenPath("src/a.ts", true)).toBe(false);
+    if (process.platform !== "win32") { console.warn("skipping the 8.3 alias snapshot: not Windows"); return; }
+    const { repo, git, info } = await setup({ "a.txt": "a\n", ".github/ci.yml": "on: push\n" });
+    await writeFile(join(repo.root, ".env"), "SECRET=1\n");
+    const envShort = shortNameOf(repo.root, ".env"), dirShort = shortNameOf(repo.root, ".github");
+    if (!envShort || !dirShort) { console.warn("skipping the 8.3 alias snapshot: this volume has no short names (8.3 name creation is off)"); return; }
+    await trackAlias(repo.git, repo.root, envShort);
+    await trackAlias(repo.git, repo.root, `${dirShort}/ci.yml`);
+    await writeFiles(repo.root, { ".github/ci.yml": "on: SECRET_CI\n" });
+    const out = await git.snapshot(info, req());
+    expect(out.ok).toBe(true); if (!out.ok) return;
+    expect(await filesAt(info, out.commit)).toEqual(["a.txt"]);
+    const all = await storeGit(info)("cat-file", "--batch-all-objects", "--batch-check=%(objectname) %(objecttype)");
+    for (const line of all.split("\n").filter(Boolean)) {
+      const [oid, type] = line.split(" ");
+      if (type === "blob") expect(await storeGit(info)("cat-file", "blob", oid!)).not.toContain("SECRET");
+    }
   });
 
   test("a linked worktree and a submodule resolve their own git dir and index, and the shared objects dir", async () => {

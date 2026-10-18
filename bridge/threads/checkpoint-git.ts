@@ -1,10 +1,13 @@
 // Pattern of T3 Code apps/server/src/vcs/GitVcsDriver.ts `checkpoints.captureCheckpoint` (MIT, see web2/THIRD_PARTY.md):
-// a temp index seeded from the real one, `add`, `write-tree`, `commit-tree` with HEAD as parent, `update-ref`.
-// T3 writes its hidden refs and objects into the user's repo; Sightr writes NOTHING there (spec T30). Every
-// snapshot goes into a private bare repo Sightr owns, `<stateDir>/checkpoints/<repoKey>.git`, with:
+// a temp index seeded from the real one, `add`, `write-tree`, `commit-tree`, `update-ref`. T3 parents each
+// checkpoint on HEAD; here they have no parent, so a gc in the store never walks (or, in a shallow clone,
+// trips over) the user's history. T3 writes its hidden refs and objects into the user's repo; Sightr writes
+// NOTHING there (spec T30). Every snapshot goes into a private bare repo Sightr owns,
+// `<stateDir>/checkpoints/<repoKey>.git`, with:
 //   GIT_DIR=<private>             refs, config, logs, hooks dir, info/exclude: all private
 //   GIT_OBJECT_DIRECTORY=<private>/objects            every object write lands here
-//   GIT_ALTERNATE_OBJECT_DIRECTORIES=<real objects>   read-only reuse of the blobs and trees the repo has
+//   GIT_ALTERNATE_OBJECT_DIRECTORIES=<real objects>   read-only reuse of the blobs and trees the repo has;
+//                                 left OUT of the object-writing calls (see below)
 //   GIT_INDEX_FILE=<stateDir>/checkpoint-tmp/<uuid>.index  (and its `.lock`) deleted in `finally`
 //   GIT_WORK_TREE=<repo root>     read only: `add` hashes the files, never writes them
 // The only calls that run against the real repo are `rev-parse` (paths, HEAD) and `config --get-regexp`
@@ -14,15 +17,15 @@
 // --no-optional-locks`, a subcommand allowlist per side, a byte cap on stdout, the remaining budget as its
 // timeout and workdir-git's pipe grace period.
 //
-// One side effect on the real repo git itself causes and no option turns off: when git writes an object
-// that already exists in an alternate (a file reverted to a committed version, an unchanged tree), it
-// "freshens" that object by setting its mtime (git's object-file.c `check_and_freshen_nonlocal`). Content,
-// names, refs, index, config, hooks and logs are untouched; only that object file's (or pack's) mtime
-// moves, which delays its pruning. The tests pin the byte-identity and say so.
+// No option stops git "freshening" an object an alternate already holds when it would write it (it sets
+// that object's mtime: object-file.c `check_and_freshen_nonlocal`). So `add`, `write-tree` and `mktree` run
+// without the alternate and write their own copy into the store, and a sparse index is kept sparse (an
+// expansion rebuilds the cache tree, which writes trees). The tests pin the user's `.git` byte- and
+// mtime-identical, after a revert, mid-merge, mid-rebase and in a sparse checkout too.
 import { createHash, randomUUID } from "node:crypto";
 import { copyFile, lstat, mkdir, readdir, readFile, realpath, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 
 import { REVIEW_GIT_PREFIX } from "../workdir-review.ts";
 import { FULL_SHA, hardenedInvoke, isHiddenPath, spawnGit, type GitLimits, type GitRun, type GitRunner } from "../workdir-git.ts";
@@ -56,7 +59,7 @@ const ZERO_OID = "0".repeat(40);
  */
 export const CHECKPOINT_SUBCOMMANDS = {
   real: ["rev-parse", "config"],
-  private: ["init", "rev-parse", "update-index", "diff-files", "ls-files", "read-tree", "add", "write-tree", "commit-tree", "update-ref", "diff", "cat-file", "ls-tree", "for-each-ref", "gc"],
+  private: ["init", "rev-parse", "update-index", "diff-files", "ls-files", "read-tree", "add", "write-tree", "mktree", "commit-tree", "update-ref", "diff", "cat-file", "ls-tree", "rev-list", "for-each-ref", "gc"],
 } as const;
 
 /**
@@ -76,8 +79,11 @@ export const SNAPSHOT_CONFIG = [
 ] as const;
 
 /** Real-repo settings the scrubbed env hides but a snapshot must honour, so blobs match what the operator's `git status` sees. */
-const CONFIG_KEYS = ["core.autocrlf", "core.eol", "core.symlinks", "core.ignorecase", "core.filemode", "core.excludesfile"] as const;
-const CONFIG_RE = "^core\\.(autocrlf|eol|symlinks|ignorecase|filemode|excludesfile)$";
+// The sparse-checkout keys keep a sparse index sparse in the temp index: expanding one makes git rebuild
+// its cache tree, writing tree objects the real repo holds, which "freshens" them (touches their mtime).
+const CONFIG_KEYS = ["core.autocrlf", "core.eol", "core.symlinks", "core.ignorecase", "core.filemode", "core.excludesfile", "core.sparsecheckout", "core.sparsecheckoutcone", "index.sparse"] as const;
+const CONFIG_RE = "^(core\\.(autocrlf|eol|symlinks|ignorecase|filemode|excludesfile|sparsecheckout|sparsecheckoutcone)|index\\.sparse)$";
+const BOOL_KEYS = ["core.symlinks", "core.ignorecase", "core.filemode", "core.sparsecheckout", "core.sparsecheckoutcone", "index.sparse"];
 const BOOL_VALUES = new Set(["true", "false", "yes", "no", "on", "off", "1", "0"]);
 
 /** `-c key=value` pairs from `key value` lines (`git config --get-regexp`), keeping only values git would accept. */
@@ -90,7 +96,7 @@ export function configPairs(text: string, home = process.env.HOME ?? process.env
     if (!(CONFIG_KEYS as readonly string[]).includes(key)) continue;
     if (key === "core.autocrlf" && !["true", "false", "input"].includes(value)) continue;
     if (key === "core.eol" && !["lf", "crlf", "native"].includes(value)) continue;
-    if (["core.symlinks", "core.ignorecase", "core.filemode"].includes(key) && !BOOL_VALUES.has(value)) continue;
+    if (BOOL_KEYS.includes(key) && !BOOL_VALUES.has(value)) continue;
     if (key === "core.excludesfile") {
       if (!raw || raw.length > 4096 || /[\0\n]/.test(raw)) continue;
       const expanded = raw.startsWith("~/") && home ? join(home, raw.slice(2)) : raw;
@@ -129,6 +135,8 @@ export interface RepoInfo {
   indexPath: string;
   objectsDir: string;
   excludePath: string;
+  /** The real `info/sparse-checkout` (copied into the store like the exclude file). Optional for callers that build one by hand. */
+  sparsePath?: string;
   /** `-c` pairs for the effective {@link CONFIG_KEYS}. */
   config: string[];
 }
@@ -168,6 +176,14 @@ export function alternatesValue(dir: string, sep = process.platform === "win32" 
   return dir.includes(sep) || dir.includes('"') ? `"${dir.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"` : dir;
 }
 const samePath = (a: string, b: string): boolean => (process.platform === "win32" ? resolve(a).toLowerCase() === resolve(b).toLowerCase() : resolve(a) === resolve(b));
+/** `p` is strictly below `dir` (case-insensitive on Windows). */
+export function inside(p: string, dir: string): boolean {
+  const norm = (x: string) => (process.platform === "win32" ? resolve(x).toLowerCase() : resolve(x));
+  const a = norm(p), b = norm(dir);
+  return a.startsWith(b.endsWith(sep) ? b : b + sep);
+}
+/** git's words for an object it cannot reach (here: a sparse index that needs trees only the alternate has). */
+const MISSING_OBJECT_RE = /unable to read tree|bad object|missing (?:blob|tree|object)|not a valid object|invalid object|could not read/i;
 
 class Stop extends Error {
   constructor(readonly reason: SnapshotFailure, readonly truncated = false, detail?: string) { super(detail ?? reason); }
@@ -192,36 +208,63 @@ export function parseAddErrors(stderr: string): { paths: string[]; understood: b
   return { paths: [...new Set(paths)], understood };
 }
 
-/** A per-store FIFO with at most `maxActive` stores busy at once. `deadline` (epoch ms) gives up a wait: the result is `BUSY`. */
+/**
+ * One task per store at a time, FIFO per store, at most `maxActive` stores busy at once. A task with a
+ * `deadline` (epoch ms; the run-scope review reads) gives up while it is still waiting: `BUSY` as soon as
+ * the deadline passes, or at once when `maxQueued` deadline tasks already wait. Background work (snapshots,
+ * the sweep) has no deadline and always waits its turn.
+ */
 export const BUSY = Symbol("busy");
-export function createStoreQueue(maxActive = MAX_ACTIVE_STORES) {
-  const tails = new Map<string, Promise<unknown>>();
-  let active = 0; const waiting: Array<() => void> = [];
-  const acquire = (): Promise<void> => (active < maxActive ? (active++, Promise.resolve()) : new Promise<void>((r) => waiting.push(r)));
-  const release = () => { const next = waiting.shift(); if (next) next(); else active--; };
+/** Run-scope reads waiting for a store at once; one more is answered `busy` (T26's `REVIEW_QUEUE_MAX`). */
+export const MAX_QUEUED_READS = 32;
+export function createStoreQueue(maxActive = MAX_ACTIVE_STORES, maxQueued = MAX_QUEUED_READS) {
+  interface Job { key: string; start: () => void; deadline: boolean }
+  const waiting: Job[] = []; const busy = new Set<string>(); const inFlight = new Set<Promise<unknown>>();
+  let active = 0;
+  const pump = () => {
+    for (let i = 0; i < waiting.length && active < maxActive;) {
+      const job = waiting[i]!;
+      // An earlier job for the same store blocks this one, so each store stays FIFO.
+      if (busy.has(job.key) || waiting.slice(0, i).some((j) => j.key === job.key)) { i++; continue; }
+      waiting.splice(i, 1); job.start();
+    }
+  };
   return {
     get active() { return active; },
+    get waiting() { return waiting.length; },
     run<T>(key: string, task: () => Promise<T>, deadline?: number): Promise<T | typeof BUSY> {
-      const prev = tails.get(key) ?? Promise.resolve();
-      const p = prev.catch(() => {}).then(async (): Promise<T | typeof BUSY> => {
-        await acquire();
-        try {
-          if (deadline !== undefined && Date.now() >= deadline) return BUSY;
-          return await task();
-        } finally { release(); }
+      const p = new Promise<T | typeof BUSY>((resolve, reject) => {
+        if (deadline !== undefined && (Date.now() >= deadline || waiting.filter((j) => j.deadline).length >= maxQueued)) return resolve(BUSY);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const job: Job = {
+          key, deadline: deadline !== undefined,
+          start: () => {
+            if (timer) clearTimeout(timer);
+            active++; busy.add(key);
+            task().then(resolve, reject).finally(() => { active--; busy.delete(key); pump(); });
+          },
+        };
+        waiting.push(job);
+        if (deadline !== undefined) timer = setTimeout(() => { const i = waiting.indexOf(job); if (i >= 0) { waiting.splice(i, 1); resolve(BUSY); pump(); } }, deadline - Date.now());
+        pump();
       });
-      const tail = p.catch(() => {});
-      tails.set(key, tail);
-      void tail.then(() => { if (tails.get(key) === tail) tails.delete(key); });
+      const tracked = p.catch(() => {});
+      inFlight.add(tracked); void tracked.then(() => inFlight.delete(tracked));
       return p;
     },
     /** Resolves when every queued task has run (tests). */
-    async idle(): Promise<void> { while (tails.size > 0) await Promise.all([...tails.values()]); },
+    async idle(): Promise<void> { while (inFlight.size > 0) await Promise.all([...inFlight]); },
   };
 }
 
 export interface CheckpointGitOptions {
+  /** Resolved to an absolute path at once; every private call's `GIT_DIR` must lie under its `checkpoints/`. */
   stateDir: string;
+  /**
+   * The Files root. When set, a repo whose git dir, index, objects dir or exclude file lies outside it (a
+   * worktree `.git` file pointing elsewhere) is not snapshotted: the bridge would read files outside the root.
+   */
+  workRoot?: string;
   /** The runner (default workdir-git's `spawnGit`); an injected one gets the hardened prefix too. */
   run?: GitRunner;
   now?: () => number;
@@ -247,10 +290,23 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
   const settleDelayMs = opts.settleDelayMs ?? SETTLE_DELAY_MS;
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const readGlobal = opts.globalConfig ?? readGlobalCheckpointConfig;
-  const storesDir = join(opts.stateDir, STORES_DIR);
-  const tmpDir = join(opts.stateDir, TMP_DIR);
+  const stateDir = resolve(opts.stateDir);
+  const storesDir = join(stateDir, STORES_DIR);
+  const tmpDir = join(stateDir, TMP_DIR);
+  const workRoot = opts.workRoot ? resolve(opts.workRoot) : null;
   const queue = createStoreQueue(opts.maxActiveStores ?? MAX_ACTIVE_STORES);
   const caps: SnapshotCaps = { ...SNAPSHOT_CAPS, ...opts.caps };
+
+  /** The private-side env check: the store is an absolute path under `checkpoints/`, the temp index under `checkpoint-tmp/`. */
+  function privateEnvError(env: Record<string, string> | undefined): string | null {
+    const dir = env?.GIT_DIR;
+    if (!dir) return "a private call needs GIT_DIR";
+    if (!isAbsolute(dir) || !inside(dir, storesDir)) return "GIT_DIR is not a private store";
+    if (env.GIT_OBJECT_DIRECTORY !== undefined && (!isAbsolute(env.GIT_OBJECT_DIRECTORY) || !inside(env.GIT_OBJECT_DIRECTORY, storesDir))) return "GIT_OBJECT_DIRECTORY is not in a private store";
+    if (env.GIT_INDEX_FILE !== undefined && (!isAbsolute(env.GIT_INDEX_FILE) || !inside(env.GIT_INDEX_FILE, tmpDir))) return "GIT_INDEX_FILE is not a temp index";
+    for (const k of ["GIT_COMMON_DIR", "GIT_SHALLOW_FILE", "GIT_REPLACE_REF_BASE", "GIT_GRAFT_FILE"]) if (env[k] !== undefined) return `${k} is not allowed`;
+    return null;
+  }
 
   /** One checkpoint git call: allowlisted subcommand, review prefix, snapshot config, bounded stdout, a timeout. */
   async function call(side: "real" | "private", args: string[], cwd: string, limits: GitLimits & { config?: string[] } = {}): Promise<GitRun> {
@@ -258,7 +314,7 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
     if (sub === undefined || !(CHECKPOINT_SUBCOMMANDS[side] as readonly string[]).includes(sub)) throw new Error(`checkpoint: git ${sub} is not allowed (${side})`);
     if (side === "real" && sub === "config" && (args[1] !== "--get-regexp" || args.length !== 3)) throw new Error("checkpoint: only `config --get-regexp <re>` reads the real repo's config");
     if (side === "real" && limits.extraEnv) throw new Error("checkpoint: a real-repo call takes no extra env");
-    if (side === "private" && !limits.extraEnv?.GIT_DIR) throw new Error("checkpoint: a private call needs GIT_DIR");
+    if (side === "private") { const why = privateEnvError(limits.extraEnv); if (why) throw new Error(`checkpoint: ${why}`); }
     const { config = [], ...rest } = limits;
     return invoke([...REVIEW_GIT_PREFIX, ...SNAPSHOT_CONFIG, ...config, ...args], cwd, { maxStdoutBytes: SMALL_CAP_BYTES, ...rest });
   }
@@ -287,10 +343,10 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
     return info;
   }
   async function resolveRepoUncached(root: string): Promise<RepoInfo | null> {
-    const r = await call("real", ["rev-parse", "--path-format=absolute", "--absolute-git-dir", "--git-path", "index", "--git-path", "objects", "--git-path", "info/exclude"], root);
+    const r = await call("real", ["rev-parse", "--path-format=absolute", "--absolute-git-dir", "--git-path", "index", "--git-path", "objects", "--git-path", "info/exclude", "--git-path", "info/sparse-checkout"], root);
     if (r.failed || r.timedOut || r.code !== 0) return null;
-    const [gitDirRaw, indexRaw, objectsRaw, excludeRaw] = r.stdout.split("\n").map((l) => l.replace(/\r$/, ""));
-    if (!gitDirRaw || !indexRaw || !objectsRaw || !excludeRaw) return null;
+    const [gitDirRaw, indexRaw, objectsRaw, excludeRaw, sparseRaw] = r.stdout.split("\n").map((l) => l.replace(/\r$/, ""));
+    if (!gitDirRaw || !indexRaw || !objectsRaw || !excludeRaw || !sparseRaw) return null;
     const gitDir = await realpath(gitDirRaw);
     const objectsDir = await realpath(objectsRaw);
     // The index and exclude file may not exist yet; their folders do.
@@ -301,15 +357,27 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
     if (!local.failed && !local.timedOut && local.code === 0) for (const [k, v] of configPairs(local.stdout, undefined, root)) merged.set(k, v);
     const config: string[] = [];
     for (const [k, v] of merged) config.push("-c", `${k}=${v}`);
-    return { root, gitDir, repoKey, store: join(storesDir, `${repoKey}.git`), indexPath: await real(indexRaw), objectsDir, excludePath: await real(excludeRaw), config };
+    const indexPath = await real(indexRaw), excludePath = await real(excludeRaw), sparsePath = await real(sparseRaw);
+    // Containment like T26's roots: a worktree whose `.git` file points outside the Files root is not
+    // snapshotted, because the bridge itself reads its index and exclude file.
+    if (workRoot) {
+      const realRoot = await realpath(workRoot).catch(() => workRoot);
+      if (![gitDir, indexPath, objectsDir, excludePath, sparsePath].every((p) => inside(p, realRoot))) return null;
+    }
+    return { root, gitDir, repoKey, store: join(storesDir, `${repoKey}.git`), indexPath, objectsDir, excludePath, sparsePath, config };
   }
 
-  /** The env that points git at a private store; with `index`, a snapshot's temp index and the worktree too. */
-  function storeEnv(info: Pick<RepoInfo, "store" | "objectsDir" | "root">, index?: string): Record<string, string> {
+  /**
+   * The env that points git at a private store; with `index`, a snapshot's temp index and the worktree too.
+   * `alternate: false` leaves the real objects dir out: git then cannot see that the real repo already holds
+   * an object, so it writes its own copy into the store instead of "freshening" (touching the mtime of) the
+   * user's object. The object-writing calls (`add`, `write-tree`) run that way.
+   */
+  function storeEnv(info: Pick<RepoInfo, "store" | "objectsDir" | "root">, index?: string, alternate = true): Record<string, string> {
     return {
       GIT_DIR: info.store,
       GIT_OBJECT_DIRECTORY: join(info.store, "objects"),
-      GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue(info.objectsDir),
+      ...(alternate ? { GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue(info.objectsDir) } : {}),
       ...(index ? { GIT_INDEX_FILE: index, GIT_WORK_TREE: info.root } : {}),
     };
   }
@@ -331,24 +399,58 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
     const run = budgeted(deadline);
     const ref = checkpointRef(req.threadId, req.ordinal, req.side);
     const base = { config: info.config };
-    await ensureStore(info, run);
-    const store = storeEnv(info);
-    // A ref, once written, is never moved: a retry or a replay reuses it.
-    const have = await run("private", ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], info.store, { ...base, extraEnv: store });
-    if (have.code === 0 && FULL_SHA.test(have.stdout.trim())) return { ok: true, commit: have.stdout.trim(), reused: true, skipped: 0, skippedPaths: [], unsettled: false, hiddenStats: {}, capturedAt: now() };
-
-    const headRun = await run("real", ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], info.root);
-    const head = headRun.code === 0 && FULL_SHA.test(headRun.stdout.trim()) ? headRun.stdout.trim() : null;
-
-    // The real info/exclude (or an empty one) is the store's, so `--exclude-standard` reads the operator's rules.
-    await mkdir(join(info.store, "info"), { recursive: true });
-    await writeFile(join(info.store, "info", "exclude"), await readFile(info.excludePath).catch(() => ""));
-
-    await mkdir(tmpDir, { recursive: true, mode: 0o700 });
     const index = join(tmpDir, `${randomUUID()}.index`);
-    const env = storeEnv(info, index);
-    const priv = (args: string[], limits: GitLimits = {}) => run("private", args, info.root, { ...base, ...limits, extraEnv: { ...env, ...limits.extraEnv } });
+    // Every step is inside the `try`: whatever throws (the store's init, a read, a write under the state
+    // dir) becomes a failed outcome the caller records, never a lost one.
     try {
+      await ensureStore(info, run);
+      const store = storeEnv(info);
+      // A ref, once written, is never moved: a retry or a replay reuses it.
+      const have = await run("private", ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], info.store, { ...base, extraEnv: store });
+      if (have.code === 0 && FULL_SHA.test(have.stdout.trim())) return { ok: true, commit: have.stdout.trim(), reused: true, skipped: 0, skippedPaths: [], unsettled: false, hiddenStats: {}, capturedAt: now() };
+
+      // HEAD only seeds an index git refused; snapshots have no parent (see step 5).
+      const headRun = await run("real", ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], info.root);
+      const head = headRun.code === 0 && FULL_SHA.test(headRun.stdout.trim()) ? headRun.stdout.trim() : null;
+
+      // The real info/exclude (or an empty one) is the store's, so `--exclude-standard` reads the operator's rules.
+      await mkdir(join(info.store, "info"), { recursive: true });
+      await writeFile(join(info.store, "info", "exclude"), await readFile(info.excludePath).catch(() => ""));
+      // So is the sparse-checkout pattern file, so a sparse index stays sparse (see CONFIG_KEYS).
+      const sparse = info.sparsePath ? await readFile(info.sparsePath).catch(() => null) : null;
+      if (sparse === null) await rm(join(info.store, "info", "sparse-checkout"), { force: true });
+      else await writeFile(join(info.store, "info", "sparse-checkout"), sparse);
+
+      await mkdir(tmpDir, { recursive: true, mode: 0o700 });
+      const env = storeEnv(info, index);
+      const priv = (args: string[], limits: GitLimits = {}) => run("private", args, info.root, { ...base, ...limits, extraEnv: { ...env, ...limits.extraEnv } });
+      // The object writers run without the alternate (no freshening of the user's objects). A sparse index
+      // can need trees only the alternate has to expand; that failure, and only that, retries with it.
+      const noAlt = storeEnv(info, index, false);
+      const write = async (args: string[], limits: GitLimits = {}): Promise<GitRun> => {
+        const r = await run("private", args, info.root, { ...base, ...limits, extraEnv: { ...noAlt, ...limits.extraEnv } });
+        return r.code !== 0 && MISSING_OBJECT_RE.test(r.stderr) ? priv(args, limits) : r;
+      };
+      /** `oid` without the given paths (segment lists): every tree on the way is listed (a read) and rebuilt with `mktree` (no alternate). */
+      const pruneTree = async (oid: string, drop: string[][]): Promise<string> => {
+        const ls = await priv(["ls-tree", "-z", "--full-tree", oid], { maxStdoutBytes: LIST_CAP_BYTES });
+        if (ls.code !== 0 || ls.overflow) throw new Stop("git-failed", false, `ls-tree: ${ls.stderr.trim()}`);
+        const here = new Set(drop.filter((d) => d.length === 1).map((d) => d[0]!));
+        const below = new Map<string, string[][]>();
+        for (const d of drop) if (d.length > 1) below.set(d[0]!, [...(below.get(d[0]!) ?? []), d.slice(1)]);
+        let input = "";
+        for (const rec of ls.stdout.split("\0")) {
+          const m = /^(\d+) (\w+) ([0-9a-f]{40,64})\t([\s\S]+)$/.exec(rec); if (!m) continue;
+          const [, mode, type, child, name] = m as unknown as [string, string, string, string, string];
+          if (here.has(name)) continue;
+          const sub = below.get(name);
+          input += `${mode} ${type} ${sub && type === "tree" ? await pruneTree(child, sub) : child}\t${name}\0`;
+        }
+        const mk = await run("private", ["mktree", "-z", "--missing"], info.root, { ...base, extraEnv: noAlt, stdin: input });
+        const out = mk.stdout.trim();
+        if (mk.code !== 0 || !FULL_SHA.test(out)) throw new Stop("git-failed", false, `mktree: ${mk.stderr.trim()}`);
+        return out;
+      };
       // 1. Seed: a copy of the real index keeps its stat cache, so only changed files are rehashed. Its
       // mtime is set a second below the original's so git's racy-entry check still sees what it saw.
       let seeded = false;
@@ -391,10 +493,15 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
       }
 
       // Refused names never enter a snapshot: tracked ones leave the temp index before anything is hashed.
-      const cached = await priv(["ls-files", "-z", "--cached"], { maxStdoutBytes: LIST_CAP_BYTES });
+      // `--sparse`: a sparse index is listed as it is (a folder outside the cone is one `dir/` entry), not expanded.
+      const cached = await priv(["ls-files", "-z", "--cached", "--sparse"], { maxStdoutBytes: LIST_CAP_BYTES });
       if (cached.overflow) throw new Stop("too-large", true);
       if (cached.code !== 0) throw new Stop("git-failed", false, `ls-files: ${cached.stderr.trim()}`);
-      const hiddenTracked = [...new Set(cached.stdout.split("\0").filter((p) => p && isHiddenPath(p)))];
+      const cachedPaths = cached.stdout.split("\0").filter(Boolean);
+      // A folder outside a sparse cone is one index entry; `update-index` cannot drop it without expanding
+      // the index, so its refused names are cut from the finished tree instead (step 4b).
+      const sparseDirs = cachedPaths.some((p) => p.endsWith("/"));
+      const hiddenTracked = [...new Set(cachedPaths.filter((p) => !p.endsWith("/") && isHiddenPath(p)))];
       if (hiddenTracked.length > 0) {
         const rmh = await priv(["update-index", "--force-remove", "-z", "--stdin"], { stdin: hiddenTracked.join("\0") + "\0" });
         if (rmh.code !== 0) throw new Stop("git-failed", false, `update-index --force-remove: ${rmh.stderr.trim()}`);
@@ -409,7 +516,7 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
       // 3. Tracked edits and deletions, then the allowed untracked files (as literal paths).
       const unreadable = new Set<string>();
       const addTracked = async () => {
-        const a = await priv(["add", "-u", "--ignore-errors"]);
+        const a = await write(["add", "-u", "--ignore-errors"]);
         const e = parseAddErrors(a.stderr);
         if (a.code !== 0 && (!e.understood || e.paths.length === 0)) throw new Stop("git-failed", false, `add -u: ${a.stderr.trim()}`);
         for (const p of e.paths) unreadable.add(p);
@@ -417,7 +524,7 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
       await addTracked();
       let pending = allowed;
       for (let attempt = 0; pending.length > 0 && attempt < 5; attempt++) {
-        const a = await priv(["add", "--ignore-errors", "--pathspec-from-file=-", "--pathspec-file-nul"], { stdin: pending.join("\0") + "\0", extraEnv: { GIT_LITERAL_PATHSPECS: "1" } });
+        const a = await write(["add", "--ignore-errors", "--pathspec-from-file=-", "--pathspec-file-nul"], { stdin: pending.join("\0") + "\0", extraEnv: { GIT_LITERAL_PATHSPECS: "1" } });
         const gone = /^fatal: pathspec '(.+)' did not match any files$/m.exec(a.stderr);
         if (a.code !== 0 && gone) { pending = pending.filter((p) => p !== gone[1]); continue; } // deleted since the listing
         const e = parseAddErrors(a.stderr);
@@ -429,7 +536,8 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
 
       // 4. Settle: the agent may still be writing. Equal trees twice in a row, or keep the last and say so.
       const writeTree = async (): Promise<string> => {
-        const w = await priv(["write-tree"]);
+        // `--missing-ok`: the trees may name blobs only the real repo holds (they are not visible here).
+        const w = await write(["write-tree", "--missing-ok"]);
         const oid = w.stdout.trim();
         if (w.code !== 0 || !FULL_SHA.test(oid)) throw new Stop("git-failed", false, `write-tree: ${w.stderr.trim()}`);
         return oid;
@@ -444,9 +552,22 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
         tree = again;
       }
 
-      // 5. The commit: no hooks run, nothing is signed, HEAD (when born) is the parent.
+      // 4b. A sparse index: list the finished tree (a read through the alternate) and rebuild every tree on
+      // the way to a refused name without it (`mktree`, no alternate: new trees land in the store only).
+      if (sparseDirs) {
+        const all = await priv(["ls-tree", "-r", "-z", "--name-only", "--full-tree", tree], { maxStdoutBytes: LIST_CAP_BYTES });
+        if (all.overflow) throw new Stop("too-large", true);
+        if (all.code !== 0) throw new Stop("git-failed", false, `ls-tree: ${all.stderr.trim()}`);
+        const refused = all.stdout.split("\0").filter((p) => p && isHiddenPath(p));
+        if (refused.length > 0) tree = await pruneTree(tree, refused.map((p) => p.split("/")));
+      }
+
+      // 5. The commit: no hooks run, nothing is signed, and no parent. Parenting on HEAD would make every gc
+      // in the store walk the user's whole history, and in a shallow clone fail on the cut-off parents
+      // (the store has no `shallow` file); no diff or route reads the parent. With the alternate, so git
+      // can check a tree the real repo holds; the commit itself is always new, so nothing is freshened.
       const at = now(); const date = `@${Math.floor(at / 1000)} +0000`;
-      const ct = await priv(["commit-tree", tree, ...(head ? ["-p", head] : []), "-m", `sightr checkpoint ${refId(req.threadId)} ${Math.trunc(req.ordinal)} ${req.side}`], {
+      const ct = await priv(["commit-tree", tree, "-m", `sightr checkpoint ${refId(req.threadId)} ${Math.trunc(req.ordinal)} ${req.side}`], {
         extraEnv: { GIT_AUTHOR_NAME: "Sightr", GIT_AUTHOR_EMAIL: "sightr@localhost", GIT_COMMITTER_NAME: "Sightr", GIT_COMMITTER_EMAIL: "sightr@localhost", GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date },
       });
       const commit = ct.stdout.trim();
@@ -511,6 +632,21 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
     return r.code === 0 && !r.timedOut;
   }
   /**
+   * Whether every object a snapshot commit reaches is still readable (`rev-list --objects --missing=print`):
+   * true when something is missing (the user rewrote history and pruned what only their repo held), false
+   * when all is there, null when git could not say (a timeout, output past the cap). Snapshots have no
+   * parent, so this walks one tree, not the user's history.
+   */
+  async function objectsMissing(info: { store: string; objectsDir: string | null }, commits: string[]): Promise<boolean | null> {
+    if (commits.some((c) => !FULL_SHA.test(c))) return null;
+    const extraEnv: Record<string, string> = { GIT_DIR: info.store, GIT_OBJECT_DIRECTORY: join(info.store, "objects"), ...(info.objectsDir ? { GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue(info.objectsDir) } : {}) };
+    const r = await call("private", ["rev-list", "--objects", "--no-object-names", "--missing=print", ...commits, "--"], info.store, { extraEnv, maxStdoutBytes: LIST_CAP_BYTES, timeoutMs: GC_TIMEOUT_MS });
+    if (r.timedOut || r.failed || r.overflow) return null;
+    if (r.code !== 0) return MISSING_OBJECT_RE.test(r.stderr) || /bad object|unknown revision/i.test(r.stderr) ? true : null;
+    return r.stdout.split("\n").some((l) => l.startsWith("?"));
+  }
+
+  /**
    * The store's object bytes on disk: every file under its `objects/` (loose, packs, garbage). Measured on
    * the store, not summed from rows. Not `count-objects -v`: git for Windows reports loose objects as 0 KiB
    * there (it sizes them by `st_blocks`, which Windows leaves at 0).
@@ -551,6 +687,6 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
     resolveRepo, snapshot,
     /** {@link snapshot} for a caller already holding the store's queue slot (`queue.run(info.repoKey, …)`), so it can record the result before the slot is let go. */
     snapshotLocked: snapshotNow,
-    storeRunner, listRefs, deleteRefs, gc, storeBytes, listStores, removeStore, cleanTmp, queue, storesDir, tmpDir, storeEnv,
+    storeRunner, listRefs, deleteRefs, gc, objectsMissing, storeBytes, listStores, removeStore, cleanTmp, queue, storesDir, tmpDir, storeEnv,
   };
 }
