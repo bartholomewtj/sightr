@@ -47,33 +47,47 @@ export function readEffectiveAutocrlf(): Promise<string[]> {
   effectiveAutocrlf ??= (async () => { try { const proc = Bun.spawn(["git", "config", "--get", "core.autocrlf"], { cwd: tmpdir(), stdout: "pipe", stderr: "ignore", env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } }); await proc.exited; return autocrlfArgs(await new Response(proc.stdout).text()); } catch { return []; } })();
   return effectiveAutocrlf;
 }
-/** Read up to `cap` bytes of a stream; past that, stop reading, call `onOverflow` and say so. Lossy UTF-8 like `Response.text()`. */
-async function readCapped(stream: ReadableStream<Uint8Array>, cap: number, onOverflow: () => void): Promise<{ text: string; overflow: boolean }> {
+/** A bounded read of a stream: `done` holds up to `cap` bytes (past that it stops, calls `onOverflow` and says so); `stop()` ends it early with what it has. Lossy UTF-8 like `Response.text()`. */
+function readCapped(stream: ReadableStream<Uint8Array>, cap: number, onOverflow: () => void): { done: Promise<{ text: string; overflow: boolean }>; stop: () => void } {
   const reader = stream.getReader(); const chunks: Uint8Array[] = []; let size = 0, overflow = false;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read(); if (done) break;
-      const room = cap - size;
-      if (value.length > room) { if (room > 0) chunks.push(value.subarray(0, room)); size = cap; overflow = true; onOverflow(); break; }
-      chunks.push(value); size += value.length;
-    }
-  } finally { await reader.cancel().catch(() => {}); }
-  const bytes = new Uint8Array(size); let at = 0; for (const c of chunks) { bytes.set(c, at); at += c.length; }
-  return { text: new TextDecoder().decode(bytes), overflow };
+  const done = (async () => {
+    try {
+      for (;;) {
+        const { done: end, value } = await reader.read(); if (end) break;
+        const room = cap - size;
+        if (value.length > room) { if (room > 0) chunks.push(value.subarray(0, room)); size = cap; overflow = true; onOverflow(); break; }
+        chunks.push(value); size += value.length;
+      }
+    } finally { await reader.cancel().catch(() => {}); }
+    const bytes = new Uint8Array(size); let at = 0; for (const c of chunks) { bytes.set(c, at); at += c.length; }
+    return { text: new TextDecoder().decode(bytes), overflow };
+  })();
+  return { done, stop: () => { void reader.cancel().catch(() => {}); } };
+}
+/** How long a killed process's pipes may stay open (a grandchild, such as a filter driver, can hold them) before the read is cut and the concurrency slot freed. */
+export const KILL_GRACE_MS = 500;
+export interface BoundedProc { stdout: ReadableStream<Uint8Array>; stderr: ReadableStream<Uint8Array>; exited: Promise<number>; kill(): void }
+/** Run a spawned process to completion with stdout bounded, a timeout, and a grace period for its pipes after it dies. */
+export async function collectBounded(proc: BoundedProc, maxStdoutBytes: number, timeoutMs = GIT_TIMEOUT_MS, graceMs = KILL_GRACE_MS): Promise<GitRun> {
+  let timedOut = false; let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<number>((r) => { timer = setTimeout(() => { timedOut = true; proc.kill(); r(-1); }, timeoutMs); });
+  const out = readCapped(proc.stdout, maxStdoutBytes, () => proc.kill()), err = readCapped(proc.stderr, STDERR_CAP_BYTES, () => {});
+  const code = await Promise.race([proc.exited, timeout]); clearTimeout(timer!);
+  // The process is gone (or killed); its pipes close with it unless a child kept them. Give them a moment, then cut.
+  let grace: ReturnType<typeof setTimeout>;
+  await Promise.race([Promise.all([out.done, err.done]), new Promise<void>((r) => { grace = setTimeout(r, graceMs); })]); clearTimeout(grace!);
+  out.stop(); err.stop();
+  const [o, e] = await Promise.all([out.done, err.done]);
+  return { code, stdout: o.text, stderr: e.text, timedOut, failed: false, ...(o.overflow ? { overflow: true } : {}) };
 }
 export const spawnGit: GitRunner = async (args, cwd, limits) => {
   let proc: any;
   try { proc = Bun.spawn(["git", ...prefix, ...(await readEffectiveAutocrlf()), ...args], { cwd, env: env(), stdout: "pipe", stderr: "pipe" }); } catch { return { code: -1, stdout: "", stderr: "", timedOut: false, failed: true }; }
+  // Bounded read (the review routes): drain both pipes from the start, stop the process once stdout passes the cap.
+  if (limits?.maxStdoutBytes !== undefined) return collectBounded(proc, limits.maxStdoutBytes);
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<number>((r) => { timer = setTimeout(() => { timedOut = true; proc.kill(); r(-1); }, GIT_TIMEOUT_MS); });
-  if (limits?.maxStdoutBytes !== undefined) {
-    // Bounded read: drain both pipes from the start and stop the process once stdout passes the cap.
-    const out = readCapped(proc.stdout, limits.maxStdoutBytes, () => proc.kill()), err = readCapped(proc.stderr, STDERR_CAP_BYTES, () => {});
-    const bounded = await Promise.race([proc.exited, timeout]); clearTimeout(timer!);
-    const [o, e] = await Promise.all([out, err]);
-    return { code: bounded, stdout: o.text, stderr: e.text, timedOut, failed: false, ...(o.overflow ? { overflow: true } : {}) };
-  }
   const code = await Promise.race([proc.exited, timeout]); clearTimeout(timer!);
   const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
   return { code, stdout, stderr, timedOut, failed: false };

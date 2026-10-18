@@ -438,7 +438,11 @@ describe("workdir", () => {
       const branchPatch = await ask(paths[1]!, `path=repo&scope=branch&file=b.txt&from=${branchBody.from}&to=${branchBody.to}`); expect((await branchPatch.json() as { patch: string }).patch).toContain("+b");
       const contents = await ask(paths[2]!, "path=repo&scope=working-tree&file=a.txt"); const contentsBody = await contents.json(); expect(contentsBody).toMatchObject({ available: true, old: { state: "text", text: "one\n" }, new: { state: "text", text: "one\ntwo\n" } }); expect(contents.headers.get("etag")).toBe(`"${(contentsBody as { diffHash: string }).diffHash}"`);
       const secret = await ask(paths[2]!, "path=repo&scope=working-tree&file=.env"); expect(secret.status).toBe(404);
-      const branches = await ask(paths[3]!, "path=repo"); expect(await branches.json()).toMatchObject({ available: true, current: "other", branches: expect.arrayContaining([{ name: "main", remote: false, time: expect.any(Number) }]) });
+      const branches = await ask(paths[3]!, "path=repo");
+      // The branch list carries no diffHash, so it is not tagged: never `ETag: "undefined"`, and no 304 for that value.
+      expect(branches.headers.get("etag")).toBeNull(); expect(branches.headers.get("cache-control")).toBe("no-store");
+      expect((await ask(paths[3]!, "path=repo", { "if-none-match": '"undefined"' })).status).toBe(200);
+      expect(await branches.json()).toMatchObject({ available: true, current: "other", branches: expect.arrayContaining([{ name: "main", remote: false, time: expect.any(Number) }]) });
       expect(JSON.stringify(contentsBody)).not.toContain(root);
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 60_000);

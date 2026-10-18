@@ -1,7 +1,7 @@
 // The diff review API behind /api/files/git/review* and /api/files/git/branches (spec T26): a file list,
 // then one patch or one whole file at a time, for the working tree or a branch. READ-ONLY like
 // workdir-git.ts, whose hardened runner, repo discovery and base resolution it reuses: every git call is
-// `[...prefix, --no-optional-locks, <allowlisted subcommand>, ...]`, a client string only ever reaches git
+// `[...prefix, -c diff.autoRefreshIndex=false, --no-optional-locks, <allowlisted subcommand>, ...]`, a client string only ever reaches git
 // as a literal pathspec, a `refs/heads|remotes/` suffix, a full hex oid or the tail of `<oid>:<path>`, and
 // a path the Files refusal list hides is counted in `hidden` and never listed, diffed or read.
 // Pattern of T3 Code apps/server/src/checkpointing/Diffs.ts (the `-z` numstat parse), extended for renames
@@ -25,7 +25,7 @@ export const FILE_CONTENTS_CAP_BYTES = 1024 * 1024;
 export const MAX_REVIEW_FILES = 500;
 export const MAX_REVIEW_BRANCHES = 200;
 export const UNTRACKED_READ_BUDGET = 8 * 1024 * 1024;
-/** Bound on the text of any list-shaped git output (numstat, name-status, ls-files, for-each-ref). */
+/** Bound on the text of any list-shaped git output (numstat, raw, ls-files, for-each-ref). */
 export const LIST_OUTPUT_CAP_BYTES = 8 * 1024 * 1024;
 export const BRANCH_SCAN_COUNT = 1000;
 /** At most this many git processes at once across the bridge, and per repository. Tune after measuring on the real box. */
@@ -38,6 +38,12 @@ export const REVIEW_DEADLINE_MS = 25_000;
 export const SNIFF_BYTES = 8192;
 /** The only git subcommands this module runs; asserted on every call. */
 export const REVIEW_SUBCOMMANDS: readonly string[] = ["rev-parse", "merge-base", "for-each-ref", "diff", "ls-files", "cat-file", "status"];
+/**
+ * Added to the hardened prefix on every review call. `--no-optional-locks` covers `status` only; `git diff`
+ * and its kin otherwise refresh `.git/index` (taking `index.lock`) when a tracked file's mtime is stale but
+ * its content is not, so the refresh is switched off too. A review never writes into the repo.
+ */
+export const REVIEW_GIT_PREFIX = ["-c", "diff.autoRefreshIndex=false", "--no-optional-locks"];
 /** Flags on every patch and list call: no external diff, no textconv, no colour, no submodule walk, fixed `a/` `b/` prefixes, renames on. */
 const DIFF_FLAGS = ["-M", "--no-ext-diff", "--no-textconv", "--no-color", "--ignore-submodules=all", "--src-prefix=a/", "--dst-prefix=b/"];
 
@@ -58,14 +64,15 @@ export function parseNumstatZ(stdout: string): NumstatRow[] {
   return out;
 }
 
-export interface NameStatusRow { status: string; path: string; oldPath?: string }
-/** `diff -z --name-status -M`: `M\0path\0`, or `R100\0old\0new\0`. */
-export function parseNameStatusZ(stdout: string): NameStatusRow[] {
-  const records = stdout.split("\0"); const out: NameStatusRow[] = [];
+export interface RawRow { status: string; path: string; oldPath?: string; oldMode: string; newMode: string; oldOid: string; newOid: string }
+/** `diff -z --raw --no-abbrev -M`: `:100644 100644 <old oid> <new oid> M\0path\0`, or `... R100\0old\0new\0`. The new oid is all zeros for a file that differs from the index. */
+export function parseRawZ(stdout: string): RawRow[] {
+  const records = stdout.split("\0"); const out: RawRow[] = [];
   for (let i = 0; i < records.length; i++) {
-    const status = records[i]!; if (!/^[A-Z]\d*$/.test(status)) continue;
-    if (status[0] === "R" || status[0] === "C") { const oldPath = records[i + 1], path = records[i + 2]; i += 2; if (oldPath && path) out.push({ status, path, oldPath }); }
-    else { const path = records[i + 1]; i += 1; if (path) out.push({ status, path }); }
+    const m = /^:(\d+) (\d+) ([0-9a-f]+) ([0-9a-f]+) ([A-Z]\d*)$/.exec(records[i]!); if (!m) continue;
+    const [, oldMode = "", newMode = "", oldOid = "", newOid = "", status = ""] = m;
+    if (status[0] === "R" || status[0] === "C") { const oldPath = records[i + 1], path = records[i + 2]; i += 2; if (oldPath && path) out.push({ status, path, oldPath, oldMode, newMode, oldOid, newOid }); }
+    else { const path = records[i + 1]; i += 1; if (path) out.push({ status, path, oldMode, newMode, oldOid, newOid }); }
   }
   return out;
 }
@@ -215,7 +222,7 @@ export function createFolderReview(workRoot: string, run: GitRunner = spawnGit, 
       const sub = args[0];
       if (sub === undefined || !REVIEW_SUBCOMMANDS.includes(sub)) throw new Error(`review: git ${sub} is not allowed`);
       if (Date.now() >= deadline) return TIMED_OUT;
-      const r = await gate.schedule(cwd, deadline, () => invoke(["--no-optional-locks", ...args], cwd, limits));
+      const r = await gate.schedule(cwd, deadline, () => invoke([...REVIEW_GIT_PREFIX, ...args], cwd, limits));
       if (r === "busy") throw new ReviewStop("busy");
       return r === "timeout" ? TIMED_OUT : r;
     };
@@ -259,18 +266,22 @@ export function createFolderReview(workRoot: string, run: GitRunner = spawnGit, 
   // ── File list ──────────────────────────────────────────────────────────────────────────────────────
 
   /** Counts and kinds for `range` (`HEAD`, or `from to`), joined on the new path. */
-  async function trackedRows(inv: GitRunner, root: string, range: string[], ignoreWhitespace: boolean): Promise<{ rows: Array<{ s: NameStatusRow; n: NumstatRow | undefined }>; truncated: boolean }> {
+  async function trackedRows(inv: GitRunner, root: string, range: string[], ignoreWhitespace: boolean): Promise<{ rows: Array<{ s: RawRow; n: NumstatRow | undefined }>; truncated: boolean }> {
     const flags = ["diff", "-z", ...DIFF_FLAGS, ...(ignoreWhitespace ? ["-w"] : [])];
     const limits = { maxStdoutBytes: LIST_OUTPUT_CAP_BYTES };
-    const [num, names] = await Promise.all([git(inv, [...flags, "--numstat", ...range, "--"], root, limits), git(inv, [...flags, "--name-status", ...range, "--"], root, limits)]);
+    const [num, names] = await Promise.all([git(inv, [...flags, "--numstat", ...range, "--"], root, limits), git(inv, [...flags, "--raw", "--no-abbrev", ...range, "--"], root, limits)]);
     if (num.code !== 0 && !num.overflow) throw new ReviewStop("bad-commit");
     if (names.code !== 0 && !names.overflow) throw new ReviewStop("bad-commit");
     const a = listOut(num), b = listOut(names);
     const counts = new Map(parseNumstatZ(a.text).map((r) => [r.path, r] as const));
-    return { rows: parseNameStatusZ(b.text).map((s) => ({ s, n: counts.get(s.path) })), truncated: a.truncated || b.truncated };
+    // With the index refresh off (REVIEW_GIT_PREFIX), `--raw` also lists a tracked file whose stat is stale but whose
+    // content is the same; numstat compares content and omits it. A modified row with the same mode and no numstat
+    // entry is that file, not a change (a real mode change differs in mode and stays).
+    const rows = parseRawZ(b.text).map((s) => ({ s, n: counts.get(s.path) })).filter(({ s, n }) => n !== undefined || s.status !== "M" || s.oldMode !== s.newMode);
+    return { rows, truncated: a.truncated || b.truncated };
   }
 
-  function statOf(s: NameStatusRow, n: NumstatRow | undefined, ignoreWhitespace: boolean): Omit<ReviewFileStat, "rev"> {
+  function statOf(s: RawRow, n: NumstatRow | undefined, ignoreWhitespace: boolean): Omit<ReviewFileStat, "rev"> {
     const kind = KIND_BY_LETTER[s.status[0]!] ?? "modified"; const binary = n?.binary === true;
     const added = n?.added ?? 0, removed = n?.removed ?? 0;
     return { path: s.path, ...(s.oldPath === undefined ? {} : { oldPath: s.oldPath }), kind, added, removed, ...(binary ? { binary: true as const } : {}), ...(ignoreWhitespace && kind === "modified" && !binary && added === 0 && removed === 0 ? { whitespaceOnly: true as const } : {}) };
@@ -335,22 +346,24 @@ export function createFolderReview(workRoot: string, run: GitRunner = spawnGit, 
         let hidden = 0; const files: ReviewFileStat[] = [];
         for (const { s, n } of rows) {
           if (isHiddenPath(s.path) || (s.oldPath !== undefined && isHiddenPath(s.oldPath))) { hidden++; continue; }
-          const stat = statOf(s, n, w); files.push({ ...stat, rev: rowRev(stat, "") });
+          // Both blob ids: a one-line swap keeps the counts and the paths, but not the blob.
+          const stat = statOf(s, n, w); files.push({ ...stat, rev: rowRev(stat, `${s.oldOid}:${s.newOid}`) });
         }
         const capped = files.slice(0, MAX_REVIEW_FILES);
         return { available: true, scope: "branch", base: name, ...(isDefault ? { baseIsDefault: true } : {}), from, to: head, files: capped, hidden, truncated: truncated || files.length > capped.length, diffHash };
       }
 
       const { rows, truncated } = await trackedRows(inv, root, ["HEAD"], w);
-      let hidden = 0; const tracked: Array<Omit<ReviewFileStat, "rev">> = [];
+      let hidden = 0; const tracked: Array<{ f: Omit<ReviewFileStat, "rev">; oldOid: string }> = [];
       for (const { s, n } of rows) {
         if (isHiddenPath(s.path) || (s.oldPath !== undefined && isHiddenPath(s.oldPath))) { hidden++; continue; }
-        tracked.push(statOf(s, n, w));
+        tracked.push({ f: statOf(s, n, w), oldOid: s.oldOid });
       }
       const keptTracked = tracked.slice(0, MAX_REVIEW_FILES);
-      const files: ReviewFileStat[] = await Promise.all(keptTracked.map(async (f) => {
+      const files: ReviewFileStat[] = await Promise.all(keptTracked.map(async ({ f, oldOid }) => {
         const info = f.kind === "deleted" ? null : await lstat(join(root, ...f.path.split("/"))).catch(() => null);
-        return { ...f, rev: rowRev(f, info ? `${info.size}:${info.mtimeMs}` : "gone") };
+        // The HEAD blob (a commit that moves it changes the old side) plus the disk file's size and mtime (the new side).
+        return { ...f, rev: rowRev(f, `${oldOid}:${info ? `${info.size}:${info.mtimeMs}` : "gone"}`) };
       }));
       const more = await untrackedStats(inv, root, MAX_REVIEW_FILES - files.length);
       files.push(...more.files); hidden += more.hidden;

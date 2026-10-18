@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, rename, rm, symlink, unlink, utimes, writeFile, appendFile, realpath, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rename, rm, symlink, unlink, utimes, writeFile, appendFile, realpath, readFile, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   FILE_PATCH_CAP_BYTES, REVIEW_MAX_GIT, REVIEW_QUEUE_MAX, REVIEW_SUBCOMMANDS, createFolderReview, createGate, cutPatchAtHunk, hasNul, headerNamesAllowed, keepWholeHunks,
-  parseNameStatusZ, parseNumstatZ, patchHeadersMatch, synthesizeAddedPatch, validBase, type ListQuery,
+  parseRawZ, parseNumstatZ, REVIEW_GIT_PREFIX, patchHeadersMatch, synthesizeAddedPatch, validBase,
 } from "./workdir-review.ts";
-import { spawnGit, type GitRun, type GitRunner } from "./workdir-git.ts";
+import { KILL_GRACE_MS, collectBounded, spawnGit, type BoundedProc, type GitRun, type GitRunner } from "./workdir-git.ts";
 import type { ReviewBranches, ReviewDiffFileContents, ReviewDiffFilePatch, ReviewDiffPreview } from "../shared/v2/review.ts";
 
 const rootTemp = async (name: string) => realpath(await mkdtemp(join(tmpdir(), name)));
@@ -57,11 +58,13 @@ describe("review parsers and helpers", () => {
     ]);
     expect(parseNumstatZ("")).toEqual([]);
   });
-  test("parses name-status -z letters and R100 records", () => {
-    expect(parseNameStatusZ("M\0a.ts\0A\0b.ts\0D\0c.ts\0R100\0old.ts\0new.ts\0T\0d.ts\0")).toEqual([
-      { status: "M", path: "a.ts" }, { status: "A", path: "b.ts" }, { status: "D", path: "c.ts" }, { status: "R100", path: "new.ts", oldPath: "old.ts" }, { status: "T", path: "d.ts" },
+  test("parses diff --raw -z records: letters, blob ids and R100 renames", () => {
+    const o = "1".repeat(40), n = "2".repeat(40), z = "0".repeat(40);
+    expect(parseRawZ(`:100644 100644 ${o} ${n} M\0a.ts\0:000000 100644 ${z} ${n} A\0b.ts\0:100644 000000 ${o} ${z} D\0c.ts\0:100644 100644 ${o} ${n} R100\0old.ts\0new.ts\0:100644 120000 ${o} ${n} T\0d.ts\0`)).toEqual([
+      { status: "M", path: "a.ts", oldMode: "100644", newMode: "100644", oldOid: o, newOid: n }, { status: "A", path: "b.ts", oldMode: "000000", newMode: "100644", oldOid: z, newOid: n }, { status: "D", path: "c.ts", oldMode: "100644", newMode: "000000", oldOid: o, newOid: z },
+      { status: "R100", path: "new.ts", oldPath: "old.ts", oldMode: "100644", newMode: "100644", oldOid: o, newOid: n }, { status: "T", path: "d.ts", oldMode: "100644", newMode: "120000", oldOid: o, newOid: n },
     ]);
-    expect(parseNameStatusZ("garbage\0x\0")).toEqual([]);
+    expect(parseRawZ("garbage\0x\0")).toEqual([]);
   });
   test("validBase accepts short branch names and refuses anything git could read as more", () => {
     for (const ok2 of ["main", "origin/main", "release/1.2", "feat/ünï", "a+b@c", "x".repeat(200)]) expect(validBase(ok2)).toBe(true);
@@ -138,7 +141,8 @@ describe("review argv", () => {
       for (const args of calls) {
         expect(args).toContain("--no-pager"); expect(args).toContain("color.ui=false"); expect(args).toContain("diff.external="); expect(args).toContain("core.fsmonitor=false");
         expect(args.some((a) => a.startsWith("core.hooksPath="))).toBe(true);
-        expect(args.indexOf("--no-optional-locks")).toBe(11);   // right after the 11-item prefix
+        expect(args.indexOf("--no-optional-locks")).toBe(13);   // the 11-item prefix, then -c diff.autoRefreshIndex=false
+        expect(args.slice(11, 14)).toEqual(REVIEW_GIT_PREFIX);
         expect(REVIEW_SUBCOMMANDS).toContain(subOf(args));
         expect(args.filter((a) => a === "--no-optional-locks")).toHaveLength(1);
       }
@@ -153,7 +157,7 @@ describe("review argv", () => {
       await review.list(repo, { scope: "working-tree" });
       const plainList = calls.filter((a) => subOf(a) === "diff"); expect(plainList.length).toBe(2);
       for (const a of plainList) { expect(a).toContain("-M"); expect(a).not.toContain("-w"); expect(a).not.toContain("--no-renames"); expect(a).toContain("-z"); expect(a.at(-1)).toBe("--"); expect(a.at(-2)).toBe("HEAD"); }
-      expect(plainList.some((a) => a.includes("--numstat"))).toBe(true); expect(plainList.some((a) => a.includes("--name-status"))).toBe(true);
+      expect(plainList.some((a) => a.includes("--numstat"))).toBe(true); expect(plainList.some((a) => a.includes("--raw"))).toBe(true);
       calls.length = 0;
       await review.list(repo, { scope: "working-tree", ignoreWhitespace: true });
       for (const a of calls.filter((x) => subOf(x) === "diff")) expect(a).toContain("-w");
@@ -364,7 +368,7 @@ describe("review, working tree (real git)", () => {
 
   test("every git call the review made was allowlisted, read-only and carried --no-optional-locks", () => {
     expect(calls.length).toBeGreaterThanOrEqual(5);
-    for (const args of calls) { expect(args.indexOf("--no-optional-locks")).toBe(11); expect(REVIEW_SUBCOMMANDS).toContain(subOf(args)); }
+    for (const args of calls) { expect(args.indexOf("--no-optional-locks")).toBe(13); expect(args.slice(11, 13)).toEqual(["-c", "diff.autoRefreshIndex=false"]); expect(REVIEW_SUBCOMMANDS).toContain(subOf(args)); }
   });
 
   test("autocrlf=true folds a CRLF checkout away; autocrlf=false shows it as a whole-file edit", async () => {
@@ -376,7 +380,7 @@ describe("review, working tree (real git)", () => {
     const review = reviewer(work);
     const plain = byPath(asList(await review.list(repo, { scope: "working-tree" }))); expect(plain["ws.txt"]).toMatchObject({ added: 1, removed: 1 }); expect(plain["mix.txt"]).toMatchObject({ added: 2, removed: 1 });
     const w = byPath(asList(await review.list(repo, { scope: "working-tree", ignoreWhitespace: true })));
-    expect(w["ws.txt"]).toBeUndefined();   // verified at build: `git diff -w --numstat/--name-status` drops it entirely
+    expect(w["ws.txt"]).toBeUndefined();   // verified at build: `git diff -w --numstat/--raw` drops it entirely
     expect(w["mix.txt"]).toMatchObject({ added: 1, removed: 0 }); expect(w["mix.txt"]).not.toHaveProperty("whitespaceOnly");
     expect(asPatch(await review.patch(repo, { scope: "working-tree", file: "ws.txt", ignoreWhitespace: true })).patch).toBe("");
     const mixed = asPatch(await review.patch(repo, { scope: "working-tree", file: "mix.txt", ignoreWhitespace: true })).patch;
@@ -629,4 +633,176 @@ describe("review, branch scope and the branch list (real git)", () => {
   }, 60_000);
 });
 
-export type { ListQuery };
+// ── review fixes: the index is never written, rev follows both sides, pipes held open, hidden renames, Windows aliases ─────
+
+describe("review never writes the index", () => {
+  test("a stale mtime on an unchanged tracked file does not make list, patch or contents rewrite .git/index or take index.lock", async () => {
+    const work = await rootTemp("sightr-review-index-"); const repo = join(work, "repo"); await mkdir(repo);
+    try {
+      const git = gitIn(repo); await git("init", "-q", "-b", "main");
+      await writeFile(join(repo, "stale.txt"), "same\n"); await writeFile(join(repo, "edited.txt"), "one\n"); await git("add", "-A"); await git("commit", "-qm", "i");
+      await writeFile(join(repo, "edited.txt"), "one\ntwo\n");
+      const old = new Date(Date.now() - 3 * 86_400_000);
+      const makeStale = async () => { await utimes(join(repo, "stale.txt"), old, old); };
+      await makeStale();
+      const indexPath = join(repo, ".git", "index");
+      const before = { bytes: await readFile(indexPath), mtimeMs: (await stat(indexPath)).mtimeMs };
+      let sawLock = false, running = true;
+      const watch = (async () => { while (running) { if (existsSync(join(repo, ".git", "index.lock"))) sawLock = true; await sleep(1); } })();
+      const review = reviewer(work);
+      try {
+        const list = asList(await review.list(repo, { scope: "working-tree" }));
+        expect(list.files.map((f) => f.path)).toEqual(["edited.txt"]);   // the stale-but-identical file is not a change
+        expect(asPatch(await review.patch(repo, { scope: "working-tree", file: "stale.txt" })).patch).toBe("");
+        expect(asPatch(await review.patch(repo, { scope: "working-tree", file: "edited.txt" })).patch).toContain("+two");
+        expect(asContents(await review.contents(repo, { scope: "working-tree", file: "stale.txt" }))).toMatchObject({ old: { text: "same\n" }, new: { text: "same\n" } });
+        await review.list(repo, { scope: "working-tree", ignoreWhitespace: true });
+      } finally { running = false; await watch; }
+      expect(sawLock).toBe(false);
+      expect(await readFile(indexPath)).toEqual(before.bytes); expect((await stat(indexPath)).mtimeMs).toBe(before.mtimeMs);
+      // Control: the same staleness, read by a plain `git diff` (no flag), does rewrite the index. Without this the check above could pass vacuously.
+      await makeStale();
+      await spawnGit(["diff", "--numstat", "HEAD"], repo);
+      expect((await readFile(indexPath)).equals(before.bytes)).toBe(false);
+    } finally { await rm(work, { recursive: true, force: true }); }
+  }, 60_000);
+});
+
+describe("review rev follows both sides of a file", () => {
+  test("branch: a one-line swap in a new commit with equal counts changes that file's rev, an untouched file keeps its rev", async () => {
+    const work = await rootTemp("sightr-review-revbr-"); const repo = join(work, "repo"); await mkdir(repo);
+    try {
+      const g = gitIn(repo); await g("init", "-q", "-b", "main"); await writeFile(join(repo, "a.txt"), "one\ntwo\n"); await writeFile(join(repo, "b.txt"), "b\n"); await g("add", "-A"); await g("commit", "-qm", "c1");
+      await g("checkout", "-q", "-b", "work"); await writeFile(join(repo, "a.txt"), "one\nTWO\n"); await writeFile(join(repo, "b.txt"), "b\nb2\n"); await g("add", "-A"); await g("commit", "-qm", "w1");
+      const review = reviewer(work); const first = asList(await review.list(repo, { scope: "branch", base: "main" }));
+      await writeFile(join(repo, "a.txt"), "one\nTHREE\n"); await g("add", "-A"); await g("commit", "-qm", "w2");
+      const second = asList(await review.list(repo, { scope: "branch", base: "main" }));
+      expect(byPath(second)["a.txt"]).toMatchObject({ added: byPath(first)["a.txt"]!.added, removed: byPath(first)["a.txt"]!.removed });   // same counts, same paths
+      expect(byPath(second)["a.txt"]!.rev).not.toBe(byPath(first)["a.txt"]!.rev);
+      expect(byPath(second)["b.txt"]!.rev).toBe(byPath(first)["b.txt"]!.rev);
+      expect(second.to).not.toBe(first.to); expect(second.diffHash).not.toBe(first.diffHash);
+      expect(asList(await review.list(repo, { scope: "branch", base: "main" })).files.map((f) => f.rev)).toEqual(second.files.map((f) => f.rev));
+    } finally { await rm(work, { recursive: true, force: true }); }
+  }, 60_000);
+
+  test("working tree: moving HEAD under an unchanged disk file changes its rev; a file the new commit did not touch keeps it", async () => {
+    const work = await rootTemp("sightr-review-revwt-"); const repo = join(work, "repo"); await mkdir(repo);
+    try {
+      const g = gitIn(repo); await g("init", "-q", "-b", "main"); await writeFile(join(repo, "f.txt"), "a\n"); await writeFile(join(repo, "g.txt"), "g\n"); await g("add", "-A"); await g("commit", "-qm", "c1");
+      await writeFile(join(repo, "f.txt"), "b\n"); await writeFile(join(repo, "g.txt"), "g\ng2\n");
+      const when = new Date(Date.now() - 60_000); await utimes(join(repo, "f.txt"), when, when); await utimes(join(repo, "g.txt"), when, when);
+      const review = reviewer(work); const first = asList(await review.list(repo, { scope: "working-tree" }));
+      const fStat = await stat(join(repo, "f.txt"));
+      // A new commit changes f.txt's HEAD blob; the disk file is put back byte for byte with the same size and mtime.
+      await writeFile(join(repo, "f.txt"), "c\n"); await g("add", "f.txt"); await g("commit", "-qm", "c2");
+      await writeFile(join(repo, "f.txt"), "b\n"); await utimes(join(repo, "f.txt"), fStat.atime, fStat.mtime);
+      expect((await stat(join(repo, "f.txt"))).mtimeMs).toBe(fStat.mtimeMs); expect((await stat(join(repo, "f.txt"))).size).toBe(fStat.size);
+      const second = asList(await review.list(repo, { scope: "working-tree" }));
+      expect(byPath(second)["f.txt"]).toMatchObject({ added: 1, removed: 1 }); expect(byPath(first)["f.txt"]).toMatchObject({ added: 1, removed: 1 });
+      expect(byPath(second)["f.txt"]!.rev).not.toBe(byPath(first)["f.txt"]!.rev);
+      expect(byPath(second)["g.txt"]!.rev).toBe(byPath(first)["g.txt"]!.rev);
+      expect(asList(await review.list(repo, { scope: "working-tree" })).files.map((f) => f.rev)).toEqual(second.files.map((f) => f.rev));
+    } finally { await rm(work, { recursive: true, force: true }); }
+  }, 60_000);
+});
+
+describe("a killed process does not hold its slot", () => {
+  /** A process whose pipes a grandchild keeps open: stdout and/or stderr never close, and it dies when killed. */
+  function stub(opts: { stdout?: string; hangStdout?: boolean; hangStderr?: boolean; exitsAfterMs?: number }): BoundedProc & { killed: () => boolean } {
+    const open = () => new ReadableStream<Uint8Array>({ start() {} });
+    const closed = (text: string) => new ReadableStream<Uint8Array>({ start(c) { if (text) c.enqueue(new TextEncoder().encode(text)); c.close(); } });
+    let killed = false; let die!: (n: number) => void; const exited = new Promise<number>((r) => { die = r; });
+    if (opts.exitsAfterMs !== undefined) setTimeout(() => die(0), opts.exitsAfterMs);
+    return { stdout: opts.hangStdout ? open() : closed(opts.stdout ?? ""), stderr: opts.hangStderr ? open() : closed(""), exited, kill: () => { killed = true; die(137); }, killed: () => killed };
+  }
+
+  test("after the timeout kill, the pipes get a short grace and are then cut", async () => {
+    expect(KILL_GRACE_MS).toBeLessThanOrEqual(500);
+    for (const hang of [{ hangStdout: true, hangStderr: true }, { hangStdout: true }, { hangStderr: true }]) {
+      const proc = stub({ ...hang, stdout: "partial" }); const t0 = Date.now();
+      const run = await collectBounded(proc, 1000, 40, 120);
+      expect(run.timedOut).toBe(true); expect(proc.killed()).toBe(true);
+      expect(Date.now() - t0).toBeLessThan(1500);   // nowhere near the 45 s a held pipe took
+      if (!hang.hangStdout) expect(run.stdout).toBe("partial");
+    }
+  });
+  test("a process that exits normally but whose stderr stays open is also cut, and keeps what it printed", async () => {
+    const proc = stub({ stdout: "done\n", hangStderr: true, exitsAfterMs: 5 }); const t0 = Date.now();
+    const run = await collectBounded(proc, 1000, 5000, 100);
+    expect(run).toMatchObject({ code: 0, stdout: "done\n", timedOut: false }); expect(Date.now() - t0).toBeLessThan(1500);
+  });
+  test("stdout past the cap kills the process and the slot is still freed when stderr hangs", async () => {
+    const proc = stub({ stdout: "x".repeat(500), hangStderr: true }); const t0 = Date.now();
+    const run = await collectBounded(proc, 100, 5000, 100);
+    expect(run.overflow).toBe(true); expect(run.stdout).toHaveLength(100); expect(proc.killed()).toBe(true); expect(Date.now() - t0).toBeLessThan(1500);
+  });
+  test("the request answers timeout and the gate slot is released within the grace period", async () => {
+    const work = await rootTemp("sightr-review-grace-"); const repo = join(work, "repo"); await mkdir(join(repo, ".git"), { recursive: true });
+    try {
+      const runner: GitRunner = async (_args, _cwd, limits) => collectBounded(stub({ hangStdout: true, hangStderr: true }), limits?.maxStdoutBytes ?? 1000, 30, 80);
+      const review = createFolderReview(work, runner); const t0 = Date.now();
+      expect(await review.list(repo, { scope: "working-tree" })).toEqual({ available: false, reason: "timeout" });
+      expect(Date.now() - t0).toBeLessThan(1500); expect(review.gate.running).toBe(0);
+      expect(await review.patch(repo, { scope: "working-tree", file: "a.txt" })).toEqual({ available: false, reason: "timeout" }); expect(review.gate.running).toBe(0);
+    } finally { await rm(work, { recursive: true, force: true }); }
+  });
+});
+
+describe("a rename with a hidden side is counted, never listed", () => {
+  test("old side hidden (config/ -> moved.txt) and new side hidden (plain.txt -> .hid/plain.txt), in both scopes", async () => {
+    const work = await rootTemp("sightr-review-hidrename-"); const repo = join(work, "repo"); await mkdir(join(repo, "config"), { recursive: true });
+    try {
+      const g = gitIn(repo); const body = (tag: string) => Array.from({ length: 14 }, (_, i) => `${tag} line ${i}`).join("\n") + "\n";
+      await g("init", "-q", "-b", "main"); await writeFile(join(repo, "config", "old.txt"), body("old")); await writeFile(join(repo, "plain.txt"), body("plain")); await writeFile(join(repo, "keep.txt"), "k\n"); await g("add", "-A"); await g("commit", "-qm", "c1");
+      await g("checkout", "-q", "-b", "work"); await g("mv", "config/old.txt", "moved.txt"); await mkdir(join(repo, ".hid")); await g("mv", "plain.txt", ".hid/plain.txt");
+      const review = reviewer(work);
+      const check = (list: Extract<ReviewDiffPreview, { available: true }>) => {
+        expect(list.files).toEqual([]); expect(list.hidden).toBe(2);
+        const text = JSON.stringify(list); for (const leak of ["moved.txt", "config", "old.txt", ".hid", "plain.txt"]) expect(text).not.toContain(leak);
+      };
+      check(asList(await review.list(repo, { scope: "working-tree" })));   // staged renames
+      await g("commit", "-qm", "w1");
+      check(asList(await review.list(repo, { scope: "branch", base: "main" })));
+      // And their patches are not reachable by naming either side.
+      expect(await review.patch(repo, { scope: "working-tree", file: "moved.txt", oldFile: "config/old.txt" })).toEqual({ available: false, reason: "bad-file" });
+      expect(await review.patch(repo, { scope: "working-tree", file: ".hid/plain.txt", oldFile: "plain.txt" })).toEqual({ available: false, reason: "bad-file" });
+    } finally { await rm(work, { recursive: true, force: true }); }
+  }, 60_000);
+});
+
+describe("Windows name aliases do not get past the path check", () => {
+  const win = process.platform === "win32";
+  /** The 8.3 short name of `longName` inside `dir`, or null when the volume has none. */
+  function shortNameOf(dir: string, longName: string): string | null {
+    const out = Bun.spawnSync(["cmd", "/c", "dir", "/x", "/a", dir]).stdout.toString();
+    for (const line of out.split(/\r?\n/)) { const m = /(\S+~\d+)\s+(\S.*?)\s*$/.exec(line); if (m && m[2] === longName) return m[1]!; }
+    return null;
+  }
+  (win ? test : test.skip)("trailing dot, trailing space, NUL, CON and 8.3 aliases read nothing (and an alias of a hidden name is not read)", async () => {
+    const work = await rootTemp("sightr-review-alias-"); const repo = join(work, "repo"); await mkdir(join(repo, ".hiddendir"), { recursive: true });
+    try {
+      const g = gitIn(repo); await g("init", "-q", "-b", "main");
+      await writeFile(join(repo, "a.txt"), "alpha\n"); await writeFile(join(repo, ".env"), "ENV-SECRET\n"); await writeFile(join(repo, ".hiddendir", "s.txt"), "HIDDEN-SECRET\n");
+      await g("add", "-A"); await g("commit", "-qm", "i");
+      await writeFile(join(repo, "a.txt"), "beta\n"); await writeFile(join(repo, ".env"), "ENV-SECRET-2\n"); await writeFile(join(repo, ".hiddendir", "s.txt"), "HIDDEN-SECRET-2\n");
+      const review = reviewer(work);
+      // Sanity: the real name does read, so "absent" below is the alias being refused.
+      expect(asContents(await review.contents(repo, { scope: "working-tree", file: "a.txt" })).new).toMatchObject({ state: "text", text: "beta\n" });
+      const aliases = ["a.txt.", "a.txt ", "a.txt..", "NUL", "CON", "nul.txt"];
+      const short = [shortNameOf(repo, ".env"), shortNameOf(repo, ".hiddendir")];
+      if (short[0] === null || short[1] === null) console.warn("skipping the 8.3 short-name aliases: this volume has no short names for .env / .hiddendir (8.3 name creation is off)");
+      if (short[0]) aliases.push(short[0]); if (short[1]) aliases.push(`${short[1]}/s.txt`);
+      for (const file of aliases) {
+        const c = await review.contents(repo, { scope: "working-tree", file });
+        const p = await review.patch(repo, { scope: "working-tree", file });
+        const text = JSON.stringify([c, p]);
+        expect(text).not.toContain("beta"); expect(text).not.toContain("SECRET");
+        if (c.available) { expect(c.new).toEqual({ state: "absent" }); expect(c.old).toEqual({ state: "absent" }); }
+        if (p.available) expect(p.patch).toBe("");
+      }
+    } finally { await rm(work, { recursive: true, force: true }); }
+  }, 60_000);
+  if (!win) test("name aliases are Windows-only", () => { console.warn("skipping the Windows name-alias test: not Windows"); });
+});
+
+

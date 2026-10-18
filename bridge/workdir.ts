@@ -337,7 +337,8 @@ export function createWorkdir(cfg: Config, h: WorkdirHelpers) {
   const folderReview = createFolderReview(cfg.workRoot);
   /** A review answer: `diffHash` doubles as the ETag, and a matching If-None-Match gets an empty 304. */
   const reviewReply = (req: Request, data: { available?: boolean; diffHash?: string; notModified?: true }): Response => {
-    const etag = data.notModified === true || data.available === true ? `"${data.diffHash}"` : null;
+    // Only an answer that carries a hash is tagged: the branches route has none, and must not send `ETag: "undefined"`.
+    const etag = typeof data.diffHash === "string" && (data.notModified === true || data.available === true) ? `"${data.diffHash}"` : null;
     if (etag !== null && (data.notModified === true || notModified(req.headers.get("if-none-match"), etag))) return h.secure(new Response(null, { status: 304, headers: { etag, "cache-control": "no-store" } }));
     const res = h.json(data, req.headers.get("accept-encoding"));
     res.headers.set("cache-control", "no-store"); if (etag !== null) res.headers.set("etag", etag);
