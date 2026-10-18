@@ -56,7 +56,7 @@ const ZERO_OID = "0".repeat(40);
  */
 export const CHECKPOINT_SUBCOMMANDS = {
   real: ["rev-parse", "config"],
-  private: ["init", "rev-parse", "update-index", "diff-files", "ls-files", "read-tree", "add", "write-tree", "commit-tree", "update-ref", "diff", "cat-file", "for-each-ref", "gc", "count-objects"],
+  private: ["init", "rev-parse", "update-index", "diff-files", "ls-files", "read-tree", "add", "write-tree", "commit-tree", "update-ref", "diff", "cat-file", "ls-tree", "for-each-ref", "gc"],
 } as const;
 
 /**
@@ -510,13 +510,21 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
     const r = await call("private", ["gc", "--prune=now", "--quiet"], info.store, { extraEnv, timeoutMs: GC_TIMEOUT_MS });
     return r.code === 0 && !r.timedOut;
   }
-  /** The store's size on disk as git counts it (`count-objects -v`: loose, packs, garbage), in bytes. */
+  /**
+   * The store's object bytes on disk: every file under its `objects/` (loose, packs, garbage). Measured on
+   * the store, not summed from rows. Not `count-objects -v`: git for Windows reports loose objects as 0 KiB
+   * there (it sizes them by `st_blocks`, which Windows leaves at 0).
+   */
   async function storeBytes(store: string): Promise<number | null> {
-    const r = await bareRunner(store)(["count-objects", "-v"]);
-    if (r.code !== 0) return null;
-    let kib = 0;
-    for (const line of r.stdout.split("\n")) { const m = /^(size|size-pack|size-garbage): (\d+)/.exec(line.trim()); if (m) kib += Number(m[2]); }
-    return kib * 1024;
+    let total = 0;
+    const walk = async (dir: string): Promise<void> => {
+      for (const e of await readdir(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) await walk(p);
+        else if (e.isFile()) total += (await stat(p).catch(() => null))?.size ?? 0;
+      }
+    };
+    try { await walk(join(store, "objects")); return total; } catch { return null; }
   }
   /** Every private store on disk with the repo it names (null when its meta file is missing or unreadable). */
   async function listStores(): Promise<Array<{ store: string; root: string | null; objectsDir: string | null }>> {

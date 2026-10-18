@@ -1,15 +1,17 @@
-import { afterAll, describe, expect, test } from "bun:test";
-import { chmod, mkdir, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { chmod, mkdir, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { fingerprint, fixtureEnv, gitDirChanges, gitIn, makeRepo, rmrf, tempRoot, writeFiles } from "../test/git-fixtures.ts";
+import { fingerprint, gitDirChanges, gitIn, makeRepo, rmrf, tempRoot, writeFiles } from "../test/git-fixtures.ts";
 import { spawnGit, type GitRunner } from "../workdir-git.ts";
 import {
   alternatesValue, BUSY, CHECKPOINT_SUBCOMMANDS, checkpointRef, configPairs, createCheckpointGit, createStoreQueue, MAX_FILE_BYTES, parseAddErrors, refId, repoKeyOf, SNAPSHOT_CONFIG,
   type CheckpointGitOptions, type RepoInfo,
 } from "./checkpoint-git.ts";
 
+// Real git processes: under a loaded full run one test can pass bun's 5 s default.
+setDefaultTimeout(60_000);
 const roots: string[] = [];
 afterAll(async () => { for (const r of roots) await rmrf(r); });
 const root = async (name = "sightr-cp-") => { const r = await tempRoot(name); roots.push(r); return r; };
@@ -157,7 +159,7 @@ describe("checkpoint git: snapshots", () => {
   });
 
   test("the repo's hooks, filters and fsmonitor never run, and commit.gpgsign does not prompt", async () => {
-    const { repo, git, info, work } = await setup({ "a.txt": "a\n" });
+    const { repo, git, work } = await setup({ "a.txt": "a\n" });
     const marker = join(work, "MARKER");
     const sh = `#!/bin/sh\necho ran > "${marker.replaceAll("\\", "/")}"\n`;
     for (const hook of ["post-index-change", "pre-commit", "post-commit", "reference-transaction", "pre-auto-gc"]) {
@@ -236,6 +238,25 @@ describe("checkpoint git: snapshots", () => {
     expect(quiet.ok && quiet.unsettled).toBe(false);
   });
 
+  test("two snapshots on one store never overlap; two repos' snapshots may run side by side", async () => {
+    const work = await root();
+    const a = await makeRepo(work, "a"), b = await makeRepo(work, "b");
+    const active = new Map<string, number>(); const peak = new Map<string, number>(); let globalPeak = 0, global = 0;
+    const tracking: GitRunner = async (args, cwd, limits) => {
+      const key = limits?.extraEnv?.GIT_DIR;
+      if (!key) return spawnGit(args, cwd, limits);
+      active.set(key, (active.get(key) ?? 0) + 1); peak.set(key, Math.max(peak.get(key) ?? 0, active.get(key)!));
+      global++; globalPeak = Math.max(globalPeak, global);
+      try { await Bun.sleep(2); return await spawnGit(args, cwd, limits); } finally { active.set(key, active.get(key)! - 1); global--; }
+    };
+    const git = cg(join(work, "state"), { run: tracking });
+    const [ia, ib] = [(await git.resolveRepo(a.root))!, (await git.resolveRepo(b.root))!];
+    const outs = await Promise.all([git.snapshot(ia, req("start", 1)), git.snapshot(ia, req("start", 2)), git.snapshot(ib, req("start", 1)), git.snapshot(ia, req("end", 1))]);
+    expect(outs.every((o) => o.ok)).toBe(true);
+    for (const [, n] of peak) expect(n).toBe(1);
+    expect(globalPeak).toBeLessThanOrEqual(2);
+  });
+
   test("a retry or replay reuses the existing ref and moves nothing", async () => {
     const { repo, git, info } = await setup();
     const first = await git.snapshot(info, req());
@@ -270,7 +291,7 @@ describe("checkpoint git: snapshots", () => {
     const main = await makeRepo(work, "main", { "a.txt": "a\n" });
     await main.git("worktree", "add", "-q", join(work, "linked"), "-b", "side");
     const git = cg(join(work, "state"));
-    const linkedRoot = await (await import("node:fs/promises")).realpath(join(work, "linked"));
+    const linkedRoot = await realpath(join(work, "linked"));
     const lInfo = (await git.resolveRepo(linkedRoot))!;
     expect(lInfo.gitDir.toLowerCase()).toBe(join(main.root, ".git", "worktrees", "linked").toLowerCase());
     expect(lInfo.objectsDir.toLowerCase()).toBe(join(main.root, ".git", "objects").toLowerCase());
@@ -288,7 +309,7 @@ describe("checkpoint git: snapshots", () => {
     const sup = await makeRepo(work, "super", { "s.txt": "s\n" });
     await sup.git("submodule", "add", "-q", lib.root.replaceAll("\\", "/"), "sub");
     await sup.git("commit", "-qm", "sub");
-    const subRoot = await (await import("node:fs/promises")).realpath(join(sup.root, "sub"));
+    const subRoot = await realpath(join(sup.root, "sub"));
     const sInfo = (await git.resolveRepo(subRoot))!;
     expect(sInfo.gitDir.toLowerCase()).toBe(join(sup.root, ".git", "modules", "sub").toLowerCase());
     expect(sInfo.objectsDir.toLowerCase()).toBe(join(sup.root, ".git", "modules", "sub", "objects").toLowerCase());
@@ -394,8 +415,5 @@ describe.skipIf(process.platform !== "win32")("checkpoint git: Windows", () => {
     const { repo, git, info } = await setup();
     const other = (await git.resolveRepo(repo.root.toUpperCase()))!;
     expect(other.repoKey).toBe(info.repoKey);
-    void stat;
   });
 });
-
-void readFile; void fixtureEnv;
