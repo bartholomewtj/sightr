@@ -165,9 +165,13 @@ export function isNativeMaintenanceCommand(message: { text: string; attachments?
  * Is the thread compacting: its newest run is `running` and started from a maintenance command
  * (T3's `isCompacting`, which feeds `canSteer: !isCompacting`). The run's message is its
  * `userItemId`, else a `user_message` attributed to it, else the newest one no run has claimed yet.
+ * Sightr: or the bridge read the harness compacting on its own (`thread.compacting`, auto-compact).
  */
-export function isCompacting(state: { runs: Record<string, Run>; items: Record<string, TurnItem> } | null | undefined): boolean {
+export function isCompacting(
+  state: { runs: Record<string, Run>; items: Record<string, TurnItem>; thread?: Pick<Thread, "compacting"> | null } | null | undefined,
+): boolean {
   if (!state) return false;
+  if (state.thread?.compacting === true) return true;
   let latest: Run | null = null;
   for (const run of Object.values(state.runs)) if (!latest || run.ordinal > latest.ordinal) latest = run;
   if (!latest || latest.status !== "running") return false;

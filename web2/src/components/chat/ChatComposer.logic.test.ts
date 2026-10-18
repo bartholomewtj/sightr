@@ -259,6 +259,13 @@ describe("compaction (T3 #20184): canSteer", () => {
     ).toBe(false);
   });
 
+  it("isCompacting: the bridge saw the harness compact on its own (thread.compacting, no /compact)", () => {
+    const working = { runs: { r1: run("r1", 1, "running", "u1") }, items: { u1: user("u1", "r1", "fix it") } };
+    expect(isCompacting({ ...working, thread: { compacting: true } })).toBe(true);
+    expect(isCompacting({ ...working, thread: { compacting: false } })).toBe(false);
+    expect(isCompacting({ runs: {}, items: {}, thread: { compacting: true } })).toBe(true);
+  });
+
   it("canSteer false: the follow-up queues whatever the setting and the modifier say; Stop stays", () => {
     expect(workingMode("steer", false, ALL, false)).toBe("queue");
     expect(workingMode("queue", true, ALL, false)).toBe("queue");
