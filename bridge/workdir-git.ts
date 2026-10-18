@@ -15,8 +15,11 @@ export const MAX_DIFF_PATHS = 200;
 export const MAX_PATHSPEC_BYTES = 8_000;
 export const MAX_PANE_IDS = 50;
 export const MAX_WALK = 40;
-export interface GitRun { code: number; stdout: string; stderr: string; timedOut: boolean; failed: boolean }
-export type GitRunner = (args: string[], cwd: string) => Promise<GitRun>;
+export interface GitRun { code: number; stdout: string; stderr: string; timedOut: boolean; failed: boolean; /** stdout passed `maxStdoutBytes` and the process was stopped; `stdout` holds the first bytes only. */ overflow?: boolean }
+/** Optional per-call output bound. The review routes pass it; the Git tab does not, so its reads are unchanged. */
+export interface GitLimits { maxStdoutBytes?: number }
+export type GitRunner = (args: string[], cwd: string, limits?: GitLimits) => Promise<GitRun>;
+const STDERR_CAP_BYTES = 64 * 1024;
 const prefix = [
   "--no-pager", // never let a read block on or emit pager output
   "-c", `core.hooksPath=${devNull}`, // repo hooks must never execute during a read
@@ -40,16 +43,37 @@ function env(): Record<string, string> {
 // in), and passed back in explicitly.
 export function autocrlfArgs(raw: string | undefined): string[] { const value = raw?.trim().toLowerCase(); return value === "true" || value === "false" || value === "input" ? ["-c", `core.autocrlf=${value}`] : []; }
 let effectiveAutocrlf: Promise<string[]> | null = null;
-function readEffectiveAutocrlf(): Promise<string[]> {
+export function readEffectiveAutocrlf(): Promise<string[]> {
   effectiveAutocrlf ??= (async () => { try { const proc = Bun.spawn(["git", "config", "--get", "core.autocrlf"], { cwd: tmpdir(), stdout: "pipe", stderr: "ignore", env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } }); await proc.exited; return autocrlfArgs(await new Response(proc.stdout).text()); } catch { return []; } })();
   return effectiveAutocrlf;
 }
-export const spawnGit: GitRunner = async (args, cwd) => {
+/** Read up to `cap` bytes of a stream; past that, stop reading, call `onOverflow` and say so. Lossy UTF-8 like `Response.text()`. */
+async function readCapped(stream: ReadableStream<Uint8Array>, cap: number, onOverflow: () => void): Promise<{ text: string; overflow: boolean }> {
+  const reader = stream.getReader(); const chunks: Uint8Array[] = []; let size = 0, overflow = false;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read(); if (done) break;
+      const room = cap - size;
+      if (value.length > room) { if (room > 0) chunks.push(value.subarray(0, room)); size = cap; overflow = true; onOverflow(); break; }
+      chunks.push(value); size += value.length;
+    }
+  } finally { await reader.cancel().catch(() => {}); }
+  const bytes = new Uint8Array(size); let at = 0; for (const c of chunks) { bytes.set(c, at); at += c.length; }
+  return { text: new TextDecoder().decode(bytes), overflow };
+}
+export const spawnGit: GitRunner = async (args, cwd, limits) => {
   let proc: any;
   try { proc = Bun.spawn(["git", ...prefix, ...(await readEffectiveAutocrlf()), ...args], { cwd, env: env(), stdout: "pipe", stderr: "pipe" }); } catch { return { code: -1, stdout: "", stderr: "", timedOut: false, failed: true }; }
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<number>((r) => { timer = setTimeout(() => { timedOut = true; proc.kill(); r(-1); }, GIT_TIMEOUT_MS); });
+  if (limits?.maxStdoutBytes !== undefined) {
+    // Bounded read: drain both pipes from the start and stop the process once stdout passes the cap.
+    const out = readCapped(proc.stdout, limits.maxStdoutBytes, () => proc.kill()), err = readCapped(proc.stderr, STDERR_CAP_BYTES, () => {});
+    const bounded = await Promise.race([proc.exited, timeout]); clearTimeout(timer!);
+    const [o, e] = await Promise.all([out, err]);
+    return { code: bounded, stdout: o.text, stderr: e.text, timedOut, failed: false, ...(o.overflow ? { overflow: true } : {}) };
+  }
   const code = await Promise.race([proc.exited, timeout]); clearTimeout(timer!);
   const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
   return { code, stdout, stderr, timedOut, failed: false };
@@ -99,7 +123,7 @@ function cutDiff(text: string): { text: string; truncated: boolean } { const byt
 export const MAX_COMMITS = 20;
 /** A commit the client names: hex only, so it can never be read as an option or a revision expression. */
 export const SHA_RE = /^[0-9a-f]{7,40}$/;
-const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+export const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 /** Flags every patch or count call carries: no external diff, no textconv driver, no signature check, plain text. */
 const DIFF_FLAGS = ["--no-ext-diff", "--no-textconv", "--no-renames", "--no-color"];
 const LOG_FORMAT = "--format=%x1e%H%x1f%h%x1f%ct%x1f%P%x1f%an%x1f%s";
@@ -147,38 +171,44 @@ function literalSpecs(paths: string[]): { specs: string[]; truncated: boolean } 
   return { specs, truncated: false };
 }
 
-type RepoOpen = { ok: true; root: string; realCwd: string } | { ok: false; reason: FolderGitUnavailable };
+export type RepoOpen = { ok: true; root: string; realCwd: string } | { ok: false; reason: FolderGitUnavailable };
+
+/** Keep injected runners subject to the same hardened argv contract as the real runner. */
+export function hardenedInvoke(run: GitRunner): GitRunner { return run === spawnGit ? run : (args, cwd, limits) => run([...prefix, ...args], cwd, limits); }
+
+/** The worktree around a Files folder, proven by git itself. `invoke` is a {@link hardenedInvoke} runner. */
+export async function openRepo(workRoot: string, invoke: GitRunner, dir: string): Promise<RepoOpen> {
+  const realCwd = await containedRealpath(dir, workRoot); if (!realCwd) return { ok: false, reason: "outside-root" };
+  const root = await findWorktreeRoot(realCwd, workRoot); if (!root) return { ok: false, reason: "not-a-repo" };
+  const top = await invoke(["rev-parse", "--show-toplevel"], root); if (top.failed) return { ok: false, reason: "git-unavailable" }; if (top.timedOut) return { ok: false, reason: "timeout" }; if (top.code !== 0) return { ok: false, reason: "not-a-repo" };
+  const gitRoot = await realpath(top.stdout.trim()).catch(() => ""); const sameRoot = process.platform === "win32" ? resolve(gitRoot).toLowerCase() === resolve(root).toLowerCase() : resolve(gitRoot) === resolve(root); if (!gitRoot || !sameRoot) return { ok: false, reason: "not-a-repo" };
+  return { ok: true, root, realCwd };
+}
+
+export interface ResolvedBase { ref: string; name: string; upstream: boolean }
+/** The ref a branch range starts from: the upstream when git knows it, else origin's default branch, main or master (never the branch itself). */
+export async function resolveBase(invoke: GitRunner, root: string, st: Pick<ParsedStatus, "branch" | "upstream" | "ahead">): Promise<ResolvedBase | null> {
+  if (st.upstream && st.ahead !== undefined) return { ref: "@{upstream}", name: st.upstream, upstream: true };
+  for (const ref of BASE_FALLBACKS) {
+    const r = await invoke(["rev-parse", "--verify", "--quiet", "--symbolic-full-name", ref], root);
+    const full = r.code === 0 && !r.timedOut ? r.stdout.trim() : "";
+    if (!/^refs\/(?:heads|remotes)\/\S+$/.test(full)) continue;
+    if (st.branch && full === `refs/heads/${st.branch}`) continue;
+    return { ref: full, name: full.replace(/^refs\/(?:heads|remotes)\//, ""), upstream: false };
+  }
+  return null;
+}
 
 export function createFolderGit(workRoot: string, run: GitRunner = spawnGit) {
-  // Keep injected runners subject to the same hardened argv contract as the real runner.
-  const invoke: GitRunner = run === spawnGit ? run : (args, cwd) => run([...prefix, ...args], cwd);
-
-  async function openRepo(dir: string): Promise<RepoOpen> {
-    const realCwd = await containedRealpath(dir, workRoot); if (!realCwd) return { ok: false, reason: "outside-root" };
-    const root = await findWorktreeRoot(realCwd, workRoot); if (!root) return { ok: false, reason: "not-a-repo" };
-    const top = await invoke(["rev-parse", "--show-toplevel"], root); if (top.failed) return { ok: false, reason: "git-unavailable" }; if (top.timedOut) return { ok: false, reason: "timeout" }; if (top.code !== 0) return { ok: false, reason: "not-a-repo" };
-    const gitRoot = await realpath(top.stdout.trim()).catch(() => ""); const sameRoot = process.platform === "win32" ? resolve(gitRoot).toLowerCase() === resolve(root).toLowerCase() : resolve(gitRoot) === resolve(root); if (!gitRoot || !sameRoot) return { ok: false, reason: "not-a-repo" };
-    return { ok: true, root, realCwd };
-  }
-
-  /** The ref a branch range starts from: the upstream when git knows it, else origin's default branch, main or master (never the branch itself). */
-  async function resolveBase(root: string, st: Pick<ParsedStatus, "branch" | "upstream" | "ahead">): Promise<{ ref: string; name: string; upstream: boolean } | null> {
-    if (st.upstream && st.ahead !== undefined) return { ref: "@{upstream}", name: st.upstream, upstream: true };
-    for (const ref of BASE_FALLBACKS) {
-      const r = await invoke(["rev-parse", "--verify", "--quiet", "--symbolic-full-name", ref], root);
-      const full = r.code === 0 && !r.timedOut ? r.stdout.trim() : "";
-      if (!/^refs\/(?:heads|remotes)\/\S+$/.test(full)) continue;
-      if (st.branch && full === `refs/heads/${st.branch}`) continue;
-      return { ref: full, name: full.replace(/^refs\/(?:heads|remotes)\//, ""), upstream: false };
-    }
-    return null;
-  }
+  const invoke = hardenedInvoke(run);
+  const openRepoHere = (dir: string) => openRepo(workRoot, invoke, dir);
+  const resolveBaseHere = (root: string, st: Pick<ParsedStatus, "branch" | "upstream" | "ahead">) => resolveBase(invoke, root, st);
 
   /** Upstream, ahead/behind against the base, and the last commits on HEAD. Any failure leaves the field out. */
   async function history(root: string, st: ParsedStatus): Promise<Pick<Extract<FolderGitResponse, { available: true }>, "upstream" | "base" | "ahead" | "behind" | "commits">> {
     const out: Pick<Extract<FolderGitResponse, { available: true }>, "upstream" | "base" | "ahead" | "behind" | "commits"> = {};
     if (st.upstream) out.upstream = st.upstream;
-    const base = await resolveBase(root, st);
+    const base = await resolveBaseHere(root, st);
     let ahead: number | undefined, behind: number | undefined;
     if (base?.upstream) { ahead = st.ahead; behind = st.behind; }
     else if (base) {
@@ -209,7 +239,7 @@ export function createFolderGit(workRoot: string, run: GitRunner = spawnGit) {
 
   return {
     async inspect(dir: string, panes: Array<{ paneId: string; cwd: string }> = []): Promise<FolderGitResponse> {
-      const repo = await openRepo(dir); if (!repo.ok) return { available: false, reason: repo.reason };
+      const repo = await openRepoHere(dir); if (!repo.ok) return { available: false, reason: repo.reason };
       const { root, realCwd } = repo;
       const status = await invoke(["status", "--porcelain=v2", "--branch", "-z", "--no-renames", "--untracked-files=normal"], root); if (status.failed) return { available: false, reason: "git-unavailable" }; if (status.timedOut) return { available: false, reason: "timeout" };
       const parsed = parseStatusV2(status.stdout.split("\0").filter(Boolean)); let hidden = 0; const visible: Array<FolderGitEntry & { tracked: boolean }> = [];
@@ -227,7 +257,7 @@ export function createFolderGit(workRoot: string, run: GitRunner = spawnGit) {
     /** One commit's diff (against its first parent), or the branch range `base...HEAD` (from their merge base). */
     async diff(dir: string, q: { scope: "commit"; sha: string } | { scope: "branch" }): Promise<FolderGitDiffResponse> {
       if (q.scope === "commit" && !SHA_RE.test(q.sha)) return { available: false, reason: "bad-commit" };
-      const repo = await openRepo(dir); if (!repo.ok) return { available: false, reason: repo.reason };
+      const repo = await openRepoHere(dir); if (!repo.ok) return { available: false, reason: repo.reason };
       const { root } = repo;
       if (q.scope === "commit") {
         const v = await invoke(["rev-parse", "--verify", "--quiet", `${q.sha}^{commit}`], root);
@@ -242,7 +272,7 @@ export function createFolderGit(workRoot: string, run: GitRunner = spawnGit) {
       const status = await invoke(["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=no"], root);
       if (status.failed) return { available: false, reason: "git-unavailable" }; if (status.timedOut) return { available: false, reason: "timeout" };
       const st = parseStatusV2(status.stdout.split("\0").filter(Boolean)); if (st.noCommits) return { available: false, reason: "no-base" };
-      const base = await resolveBase(root, st); if (!base) return { available: false, reason: "no-base" };
+      const base = await resolveBaseHere(root, st); if (!base) return { available: false, reason: "no-base" };
       const range = `${base.ref}...HEAD`;
       const counts = await invoke(["diff", ...DIFF_FLAGS, "--numstat", "-z", range, "--"], root); if (counts.timedOut) return { available: false, reason: "timeout" };
       const raw = counts.code === 0 ? counts.stdout.split("\0").map(parseNumstatRecord).filter((s): s is FolderGitFileStat => s !== null) : [];
