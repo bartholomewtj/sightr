@@ -21,6 +21,7 @@ import {
   CircleStopIcon,
   ClockIcon,
   CopyIcon,
+  DiffIcon,
   FileIcon,
   FilesIcon,
   FolderIcon,
@@ -219,6 +220,7 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
       { value: "open-terminal", title: "Open Terminal", icon: icon(TerminalSquareIcon), shortcutCommand: "terminal.toggle", applies: applies.thread, run: () => openThreadTerminal(threadId) },
       { value: "open-files", title: "Open Files", icon: icon(FilesIcon), applies: applies.thread, run: () => openRightPanelSurface("files") },
       { value: "open-git", title: "Open Git", icon: icon(GitBranchIcon), applies: applies.thread, run: () => openRightPanelSurface("git") },
+      { value: "open-diff", title: "Open Diff", icon: icon(DiffIcon), shortcutCommand: "diff.toggle", applies: applies.thread, run: () => openRightPanelSurface("diff") },
       { value: "thread-details", title: "Thread details", icon: icon(InfoIcon), applies: applies.thread, run: () => { if (threadId) openThreadDetails(threadId); } },
       {
         value: "open-file",

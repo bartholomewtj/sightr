@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { Run } from "@shared/v2/contracts";
 import type { FolderGitDiffResponse, FolderGitResponse } from "@shared/wire";
+import { useDiffPanelStore } from "@/diffPanelStore";
 import { useRightPanelStore } from "@/rightPanelStore";
 import { threadFromSnapshot } from "@/stream/apply";
 import { useThreadStore } from "@/stream/stores";
@@ -106,51 +107,111 @@ beforeEach(() => {
   openThread();
 });
 
+/** The working-tree summary row. */
+async function summaryRow(): Promise<HTMLElement> {
+  return waitFor(() => {
+    const el = document.querySelector<HTMLElement>("[data-git-changes-summary]");
+    if (!el) throw new Error("no summary row");
+    return el;
+  });
+}
+
+/** Open the newest commit's file list (the per-file diffs the tab still draws inline). */
+async function openCommit() {
+  fireEvent.click(await screen.findByRole("button", { name: /Add the parser/ }));
+  await fileButton("src/parse.ts");
+}
+
 describe("GitPanel", () => {
-  it("shows the branch, how far it is ahead of its upstream, and the changed files with their status letters", async () => {
+  it("shows the branch, how far it is ahead of its upstream, and one row for the working tree's changes", async () => {
     render(<GitPanel threadId="t1" />);
     expect(await screen.findByText("main · proj")).toBeInTheDocument();
     const sync = document.querySelector("[data-git-sync]")!;
     expect(sync).toHaveTextContent("↑2 ↓0 · origin/main");
     expect(sync).toHaveAttribute("aria-label", "2 commits ahead of origin/main");
-    expect(screen.getByText("src/a.ts")).toBeInTheDocument();
-    expect(screen.getByText(".M")).toBeInTheDocument();
-    expect(screen.getByText("??")).toBeInTheDocument();
+    const summary = await summaryRow();
+    expect(summary).toHaveTextContent("3 files changed");
+    // The working-tree file list, with its status letters and inline diffs, lives in the Diff tab now.
+    expect(screen.queryByText("src/a.ts")).toBeNull();
+    expect(document.querySelector("[data-git-file]")).toBeNull();
     expect(gitCalls[0]?.searchParams.get("path")).toBe("proj");
     expect(gitCalls[0]?.searchParams.getAll("pane")).toEqual(["p-t1"]);
   });
 
-  it("counts each changed file's added and removed lines", async () => {
+  it("counts every entry (untracked and deleted files too) and the lines of the tracked diff", async () => {
     render(<GitPanel threadId="t1" />);
-    const li = (await fileButton("src/a.ts")).closest("li")!;
-    expect(within(li).getByRole("group", { name: "1 additions, 1 deletions" })).toHaveTextContent("+1-1");
+    const summary = await summaryRow();
+    expect(within(summary).getByRole("group", { name: "1 additions, 1 deletions" })).toHaveTextContent("+1-1");
+    expect(summary).toHaveTextContent("3 files changed");
   });
 
-  it("expands a file's diff on tap", async () => {
+  it("says the counts may be short when the diff was truncated, and counts one file in the singular", async () => {
+    answer = { ...dirty, available: true, entries: [{ path: "a.ts", x: ".", y: "M" }], diffTruncated: true } as FolderGitResponse;
     render(<GitPanel threadId="t1" />);
-    const row = await fileButton("src/a.ts");
+    const summary = await summaryRow();
+    expect(summary).toHaveTextContent("1 file changed");
+    expect(summary).toHaveTextContent("counts may be short");
+  });
+
+  it("Review in Diff opens the Diff tab on the working tree", async () => {
+    render(<GitPanel threadId="t1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Review in Diff" }));
+    expect(useDiffPanelStore.getState().scopes["t1"]).toEqual({ kind: "workingTree" });
+    expect(useDiffPanelStore.getState().reveal).toBeNull();
+    // 800 px is the phone layout: the Diff sheet opens.
+    expect(useRightPanelStore.getState().sheet).toBe("diff");
+  });
+
+  it("Open branch in Diff compares the branch with the response's base, and opens the desktop tab on a desktop", async () => {
+    setViewportWidth(1280);
+    render(<GitPanel threadId="t1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open branch in Diff" }));
+    expect(useDiffPanelStore.getState().scopes["t1"]).toEqual({ kind: "branch", baseRef: "origin/main" });
+    expect(useRightPanelStore.getState()).toMatchObject({ isOpen: true, activeSurfaceId: "diff", sheet: null });
+  });
+
+  it("has no Review button for a clean tree, and no branch button without commits ahead", async () => {
+    answer = { ...dirty, available: true, clean: true, entries: [], diff: "", ahead: 0 } as FolderGitResponse;
+    render(<GitPanel threadId="t1" />);
+    expect(await screen.findByText("Working tree clean.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Review in Diff" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open branch in Diff" })).toBeNull();
+  });
+
+  it("counts a commit's files' added and removed lines", async () => {
+    render(<GitPanel threadId="t1" />);
+    await openCommit();
+    const li = (await fileButton("src/parse.ts")).closest("li")!;
+    expect(within(li).getByRole("group", { name: "1 additions, 0 deletions" })).toHaveTextContent("+1-0");
+  });
+
+  it("expands a commit file's diff on tap", async () => {
+    render(<GitPanel threadId="t1" />);
+    await openCommit();
+    const row = await fileButton("src/parse.ts");
     expect(document.querySelector('[data-diff-line="+"]')).toBeNull();
     fireEvent.click(row);
     expect(row).toHaveAttribute("aria-expanded", "true");
-    expect(document.querySelector('[data-diff-line="+"]')).toHaveTextContent("+new");
-    expect(document.querySelector('[data-diff-line="-"]')).toHaveTextContent("-old");
-    // An untracked file has no diff to open.
-    expect(await fileButton("notes.md")).toBeDisabled();
+    expect(document.querySelector('[data-diff-line="+"]')).toHaveTextContent("+export const parse = 1;");
+    // A binary file has no diff to open.
+    expect(await fileButton("logo.png")).toBeDisabled();
   });
 
-  it("keeps the expanded file when the sheet is closed and reopened", async () => {
+  it("keeps the commit view and the expanded file when the sheet is closed and reopened", async () => {
     const first = render(<GitPanel threadId="t1" />);
-    fireEvent.click(await fileButton("src/a.ts"));
+    await openCommit();
+    fireEvent.click(await fileButton("src/parse.ts"));
     first.unmount();
     render(<GitPanel threadId="t1" />);
-    expect(await fileButton("src/a.ts")).toHaveAttribute("aria-expanded", "true");
-    expect(document.querySelector('[data-diff-line="+"]')).toHaveTextContent("+new");
+    expect(await fileButton("src/parse.ts")).toHaveAttribute("aria-expanded", "true");
+    expect(document.querySelector('[data-diff-line="+"]')).toHaveTextContent("+export const parse = 1;");
   });
 
   it("wraps long paths, wraps diff lines on a phone, and scrolls them sideways on their own when Wrap is off", async () => {
     render(<GitPanel threadId="t1" />);
-    const row = await fileButton("src/a.ts");
-    expect(row.querySelector("span.wrap-anywhere")).toHaveTextContent("src/a.ts");
+    await openCommit();
+    const row = await fileButton("src/parse.ts");
+    expect(row.querySelector("span.wrap-anywhere")).toHaveTextContent("src/parse.ts");
     expect(row.querySelector("span.truncate")).toBeNull();
     fireEvent.click(row);
     expect(document.querySelector("pre")?.className).toContain("whitespace-pre-wrap");
@@ -166,32 +227,34 @@ describe("GitPanel", () => {
   it("does not wrap by default on a desktop", async () => {
     setViewportWidth(1280);
     render(<GitPanel threadId="t1" />);
-    fireEvent.click(await fileButton("src/a.ts"));
+    await openCommit();
+    fireEvent.click(await fileButton("src/parse.ts"));
     expect(screen.getByRole("button", { name: "Wrap" })).toHaveAttribute("aria-pressed", "false");
     expect(document.querySelector("pre")?.className).toContain("overflow-x-auto");
   });
 
   it("collapses every open diff at once", async () => {
     render(<GitPanel threadId="t1" />);
+    await openCommit();
     const collapse = await screen.findByRole("button", { name: "Collapse all" });
     expect(collapse).toBeDisabled();
-    fireEvent.click(await fileButton("src/a.ts"));
+    fireEvent.click(await fileButton("src/parse.ts"));
     fireEvent.click(collapse);
-    expect(await fileButton("src/a.ts")).toHaveAttribute("aria-expanded", "false");
+    expect(await fileButton("src/parse.ts")).toHaveAttribute("aria-expanded", "false");
     expect(document.querySelector("pre")).toBeNull();
   });
 
-  it("copies a file's path and opens it in Files, except a deleted file", async () => {
+  it("copies a commit file's path and opens it in Files", async () => {
     const writes: string[] = [];
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (t: string) => void writes.push(t) } });
     render(<GitPanel threadId="t1" />);
-    fireEvent.click(await screen.findByRole("button", { name: "Copy path src/a.ts" }));
-    await waitFor(() => expect(writes).toEqual(["src/a.ts"]));
-    fireEvent.click(screen.getByRole("button", { name: "Open src/a.ts in Files" }));
-    expect(useRightPanelStore.getState().fileRequest).toMatchObject({ threadId: "t1", path: "proj/src/a.ts", kind: "file" });
+    await openCommit();
+    fireEvent.click(await screen.findByRole("button", { name: "Copy path src/parse.ts" }));
+    await waitFor(() => expect(writes).toEqual(["src/parse.ts"]));
+    fireEvent.click(screen.getByRole("button", { name: "Open src/parse.ts in Files" }));
+    expect(useRightPanelStore.getState().fileRequest).toMatchObject({ threadId: "t1", path: "proj/src/parse.ts", kind: "file" });
     // 800 px is the phone layout: the Files sheet opens.
     expect(useRightPanelStore.getState().sheet).toBe("files");
-    expect(screen.queryByRole("button", { name: "Open gone.ts in Files" })).toBeNull();
   });
 
   it("lists recent commits, marks the unpushed ones, and opens a commit's files and diffs", async () => {

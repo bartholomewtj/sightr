@@ -136,7 +136,7 @@ export default defineConfig({
     alias: [
       { find: "@shared", replacement: resolve(import.meta.dirname, "../shared") },
       { find: "@v1", replacement: resolve(import.meta.dirname, "../web/src") },
-      // The diff seam's adapter (T25 spike). Unset: today's `status` adapter. SIGHTR_DIFFS=hand|pierre: a candidate.
+      // The diff seam's adapter (T25 spike, T27). Unset: the `hand` renderer. SIGHTR_DIFFS=status|hand|pierre: a candidate, and the measurement page.
       diffsAlias(import.meta.dirname),
       ...t3Aliases(import.meta.dirname),
     ],

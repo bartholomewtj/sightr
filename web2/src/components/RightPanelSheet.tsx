@@ -1,12 +1,13 @@
 // Adapted from T3 Code apps/web/src/components/RightPanelSheet.tsx @ e3b35d1b (MIT, see THIRD_PARTY.md).
 // Changes: a full-height bottom sheet on a phone (T13), one tab at a time, not kept mounted (closing it
 // stops the tab's reads); the system back gesture closes it before it leaves the thread (one history
-// entry per open sheet, `popstate` closes, and asks the Files editor first when it holds unsaved edits);
-// a tab strip in the title bar switches Terminal / Files / Git without closing the sheet; the sheet
+// entry per open sheet, `popstate` closes the topmost sheet only (`sheetHistory.ts`), and asks the Files
+// editor first when it holds unsaved edits); a tab strip in the title bar (it scrolls sideways when four tabs
+// do not fit) switches Terminal / Files / Git / Diff without closing the sheet; the sheet
 // stops under the status bar (safe-area-top), pads for the home indicator, and shrinks above an iOS
 // soft keyboard (lib/keyboard-inset.ts) so the Terminal's key bar is never behind it.
 import { XIcon } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { watchKeyboardInset } from "@/lib/keyboard-inset";
@@ -14,49 +15,15 @@ import { RIGHT_PANEL_KINDS, RIGHT_PANEL_LABEL, useRightPanelStore } from "@/righ
 
 import { RIGHT_PANEL_ICON } from "./RightPanelTabs";
 import { guardPanelLeave } from "./right-panel/leaveGuard";
+import { useSheetHistory } from "./sheetHistory";
 import { Button } from "./ui/button";
 import { Sheet, SheetPopup, SheetTitle } from "./ui/sheet";
 
-const SHEET_STATE = "sightrSheet";
+// The other sheets (changed file, thread details, tasks) import it from here, where it always lived.
+export { useSheetHistory } from "./sheetHistory";
 
-/**
- * One history entry while a sheet is open. Back pops it (and closes the sheet) instead of leaving the
- * thread; closing the sheet any other way pops the entry it pushed.
- */
-export function useSheetHistory(open: boolean, onClose: () => void): void {
-  const pushed = useRef(false);
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-
-  useEffect(() => {
-    if (!open) return;
-    window.history.pushState({ ...(window.history.state as object | null), [SHEET_STATE]: true }, "");
-    pushed.current = true;
-    const onPop = () => {
-      if (!pushed.current) return;
-      pushed.current = false;
-      // Back with unsaved edits asks first. If the guard holds the close, our entry is already gone:
-      // put it back so the next back gesture still closes the sheet instead of leaving the thread.
-      let closed = false;
-      guardPanelLeave(() => {
-        closed = true;
-        closeRef.current();
-      });
-      if (!closed) {
-        window.history.pushState({ ...(window.history.state as object | null), [SHEET_STATE]: true }, "");
-        pushed.current = true;
-      }
-    };
-    window.addEventListener("popstate", onPop);
-    return () => {
-      window.removeEventListener("popstate", onPop);
-      // Closed from the sheet itself (X, Escape, backdrop): take our entry back off.
-      if (pushed.current) {
-        pushed.current = false;
-        if ((window.history.state as Record<string, unknown> | null)?.[SHEET_STATE]) window.history.back();
-      }
-    };
-  }, [open]);
+function showSelectedTab(strip: HTMLElement | null): void {
+  strip?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 export function RightPanelSheet(props: {
@@ -70,6 +37,13 @@ export function RightPanelSheet(props: {
   useEffect(() => (props.open ? watchKeyboardInset() : undefined), [props.open]);
   const active = useRightPanelStore((s) => s.sheet);
   const openSheet = useRightPanelStore((s) => s.openSheet);
+  // Four tabs do not fit a 320 px strip: it scrolls sideways, and the open tab is kept in view.
+  const strip = useRef<HTMLDivElement | null>(null);
+  const stripRef = useCallback((el: HTMLDivElement | null) => {
+    strip.current = el;
+    showSelectedTab(el); // the sheet opened on this tab
+  }, []);
+  useEffect(() => showSelectedTab(strip.current), [active]); // a tab was picked
   return (
     <Sheet
       open={props.open}
@@ -86,7 +60,12 @@ export function RightPanelSheet(props: {
       >
         <div className="flex items-center gap-1 border-b px-2 py-0.5">
           <SheetTitle className="sr-only">{props.title}</SheetTitle>
-          <div role="tablist" aria-label="Thread tools" className="flex min-w-0 flex-1 items-center gap-0.5">
+          <div
+            ref={stripRef}
+            role="tablist"
+            aria-label="Thread tools"
+            className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none]"
+          >
             {RIGHT_PANEL_KINDS.map((kind) => {
               const Icon = RIGHT_PANEL_ICON[kind];
               const selected = kind === active;
@@ -98,7 +77,7 @@ export function RightPanelSheet(props: {
                   aria-selected={selected}
                   onClick={() => (selected ? undefined : guardPanelLeave(() => openSheet(kind)))}
                   className={cn(
-                    "inline-flex h-9 pointer-coarse:h-11 min-w-0 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "inline-flex h-9 pointer-coarse:h-11 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     selected ? "bg-accent text-foreground" : "text-muted-foreground active:bg-accent/60",
                   )}
                 >

@@ -279,7 +279,7 @@
       "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
-      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list; db5919d87: event rows draw V2LifecycleRow and ProposedPlanCard, DiffStatLabel on file-change rows; timeline polish: file-change/read rows lead with the file name (folder dim, start-truncated as StartTruncatedPath), fetch group icon, OpenFileThreadContext for path links, ThreadDetailsSheet mounted beside the list; images: the user bubble draws T3's two-column image grid (TimelineAttachments), a tool row with output images carries an image mark; T24: the changed-files card row and ChangedFileSheet mounted beside the list"
+      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list; db5919d87: event rows draw V2LifecycleRow and ProposedPlanCard, DiffStatLabel on file-change rows; timeline polish: file-change/read rows lead with the file name (folder dim, start-truncated as StartTruncatedPath), fetch group icon, OpenFileThreadContext for path links, ThreadDetailsSheet mounted beside the list; images: the user bubble draws T3's two-column image grid (TimelineAttachments), a tool row with output images carries an image mark; T24: the changed-files card row (T27 removed the ChangedFileSheet that was mounted beside the list)"
     },
     {
       "local": "src/components/chat/TimelineAttachments.tsx",
@@ -320,7 +320,7 @@
       "upstream": "apps/web/src/components/chat/V2ItemInspector.tsx",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "pattern",
-      "note": "an open tool row's call and output; inline output, 200-line cap; db5919d87: diff stat + copy, failed-edit error text, todo checklist, dynamic-tool args list; timeline polish: Copy on command and output (CommandBlock pattern), paths open the Files tab, MCP tool names; images: a dynamic tool's output images as lazy thumbnails (TimelineAttachments); T24: FileChangeDetail extracted from the file_change branch for the changed-file sheet"
+      "note": "an open tool row's call and output; inline output, 200-line cap; db5919d87: diff stat + copy, failed-edit error text, todo checklist, dynamic-tool args list; timeline polish: Copy on command and output (CommandBlock pattern), paths open the Files tab, MCP tool names; images: a dynamic tool's output images as lazy thumbnails (TimelineAttachments); T24: FileChangeDetail extracted from the file_change branch (for T24's changed-file sheet, which T27 removed)"
     },
     {
       "local": "src/components/ChatMarkdown.tsx",
@@ -593,42 +593,42 @@
       "upstream": "packages/contracts/src/keybindings.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "plain TS types instead of Effect Schema; Sightr's command list; db5919d87: THREAD_JUMP_KEYBINDING_COMMANDS (thread.jump.1..9)"
+      "note": "plain TS types instead of Effect Schema; Sightr's command list; db5919d87: THREAD_JUMP_KEYBINDING_COMMANDS (thread.jump.1..9) ; T27: diff.toggle (T3's command)"
     },
     {
       "local": "src/t3/shared/keybindings.ts",
       "upstream": "packages/shared/src/keybindings.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "DEFAULT_KEYBINDINGS is Sightr's table; parser, matcher and when grammar unchanged; db5919d87: mod+1..9 thread.jump bindings"
+      "note": "DEFAULT_KEYBINDINGS is Sightr's table; parser, matcher and when grammar unchanged; db5919d87: mod+1..9 thread.jump bindings ; T27: mod+d diff.toggle (when !terminalFocus), T3's key"
     },
     {
       "local": "src/keybindings.ts",
       "upstream": "apps/web/src/keybindings.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "Sightr's when context, injectable platform, no unmodified binding in a text field, symbol keys ignore Shift; db5919d87: threadJumpCommandForIndex, threadJumpIndexFromCommand, shouldShowThreadJumpHintsForModifiers"
+      "note": "Sightr's when context, injectable platform, no unmodified binding in a text field, symbol keys ignore Shift; db5919d87: threadJumpCommandForIndex, threadJumpIndexFromCommand, shouldShowThreadJumpHintsForModifiers ; T27: COMMAND_LABEL for diff.toggle"
     },
     {
       "local": "src/rightPanelStore.ts",
       "upstream": "apps/web/src/rightPanelStore.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "pattern",
-      "note": "three fixed tabs, per-device open state, tab, width and font; phone sheet; openFile(threadId, rel path) opens the Files tab on a file"
+      "note": "three fixed tabs, per-device open state, tab, width and font; phone sheet; openFile(threadId, rel path) opens the Files tab on a file ; T27: a fourth tab, diff (appended)"
     },
     {
       "local": "src/components/RightPanelTabs.tsx",
       "upstream": "apps/web/src/components/RightPanelTabs.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "pattern",
-      "note": "Terminal, Files, Git; resize handle placed as T3's RightPanelResizeHandle"
+      "note": "Terminal, Files, Git; resize handle placed as T3's RightPanelResizeHandle ; T27: Terminal, Files, Git, Diff"
     },
     {
       "local": "src/components/RightPanelSheet.tsx",
       "upstream": "apps/web/src/components/RightPanelSheet.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "bottom sheet, not kept mounted, back closes it (asks the Files editor first), tab strip, safe-area and soft-keyboard sizing"
+      "note": "bottom sheet, not kept mounted, back closes it (asks the Files editor first), tab strip, safe-area and soft-keyboard sizing ; T27: popstate answered once, by the topmost sheet (sheetHistory.ts); the tab strip scrolls sideways"
     },
     {
       "local": "src/components/chat/DiffStatLabel.tsx",
@@ -966,7 +966,7 @@
       "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
       "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
       "mode": "pattern",
-      "note": "T24: the changed-files section under a run's reply; tree/flat toggle (per-device), Collapse all, 50-row cap, caveat line; a tap calls openChangedFile (T27 repoints it at the diff panel)"
+      "note": "T24: the changed-files section under a run's reply; tree/flat toggle (per-device), Collapse all, 50-row cap, caveat line; a tap calls openChangedFile, which T27 points at the Diff tab's run scope"
     },
     {
       "local": "src/components/chat/ChangedFiles.logic.ts",
@@ -995,16 +995,65 @@
       "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
       "mode": "pattern",
       "note": "T26: the -z numstat parse, extended for renames and name-status letters; the rest (routes, caps, gate) is Sightr's"
+    },
+    {
+      "local": "src/components/DiffPanel.tsx",
+      "upstream": "apps/web/src/components/DiffPanel.tsx",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "pattern",
+      "note": "T27: the Diff right-panel tab: scope (working tree, branch vs a base, a run), a changed-files tree and one section per file, patches fetched only for unfolded or near files (4 at once), phone sheet and 600 px two-column layout; written against the DiffCodeView seam. Not taken: @pierre/diffs CodeView, Effect atoms and RPC, T3's turn and PR views"
+    },
+    {
+      "local": "src/components/DiffPanelShell.tsx",
+      "upstream": "apps/web/src/components/DiffPanelShell.tsx",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "pattern",
+      "note": "T27: header slot over a body and the loading and message frames; T3's panel modes (inline, sheet, sidebar, embedded) and Electron drag region are not taken"
+    },
+    {
+      "local": "src/components/diffs/DiffFileStatus.tsx",
+      "upstream": "apps/web/src/components/diffs/DiffFileStatus.tsx",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "pattern",
+      "note": "T27: a visible letter chip (A, M, D, R, ?) with the word for a screen reader instead of T3's retry/partial icon with a hover tooltip (a phone has no hover); error, truncated and retry are drawn in the file body"
+    },
+    {
+      "local": "src/components/diffs/DiffFileTree.tsx",
+      "upstream": "apps/web/src/components/diffs/DiffFileTree.tsx",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "pattern",
+      "note": "T27: our own role=tree over buildTurnDiffTree (T24) with a status chip, +N/-M, wrapped paths and 44 px rows; @pierre/trees (a beta) is not taken"
+    },
+    {
+      "local": "src/diffPanelStore.ts",
+      "upstream": "apps/web/src/diffPanelStore.ts",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "pattern",
+      "note": "T27: a per-thread scope (working tree, branch with an optional base, run), newest 50 threads, safe storage; the reveal (file, requestId) is lifted out so the Git tab can use it for every scope. Not taken: scopedThreadKey, reconcileTurnSelection"
+    },
+    {
+      "local": "src/components/diffs/useDiffFilePatches.ts",
+      "upstream": "apps/web/src/components/diffs/useReviewFilePatches.ts",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "pattern",
+      "note": "T27: plain fetch to T26 through lib/diffApi.ts, a queue of 4, unfolded and revealed files first, If-None-Match on the list, stale-while-revalidate; Effect atoms are not taken"
+    },
+    {
+      "local": "src/components/diffs/diffFileTree.logic.ts",
+      "upstream": "apps/web/src/components/diffs/diffFileTree.logic.ts",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "adapted",
+      "note": "T27: collectDirectoryPaths and the per-path status folding of diffFileTreeEntries kept; Pierre's types, positions, comparator and batch updates (they drive @pierre/trees) left out; tree building is T24's buildTurnDiffTree"
+    },
+    {
+      "local": "src/components/diffs/diffFileTree.logic.test.ts",
+      "upstream": "apps/web/src/components/diffs/diffFileTree.logic.test.ts",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "adapted",
+      "note": "T27: the two diffFileTreeEntries cases and the collectDirectoryPaths case ported; the Pierre-bound reading-order and batch-update cases are not (they test @pierre/trees); Sightr's compression, sort-order, folder-total and treeOrder cases added"
     }
   ],
   "decisions": [
-    {
-      "upstream": "apps/web/src/components/DiffPanel.tsx",
-      "commit": "ea97e8ba3146",
-      "verdict": "skip",
-      "reason": "not ported yet: T27 replaces this row with a pattern port. Its renderer is not taken: T25 measured @pierre/diffs 1.5.2 over four limits (471.6 KB lazy gzip against 150, +2,284 KB dist against 400, 3.3 s cold open against 1.0, 58/1,194 ms first render against 50/300) and picked the hand-rolled highlight.js renderer behind DiffCodeView (docs/specs/t3/README.md, T25)",
-      "date": "2026-10-18"
-    },
     {
       "upstream": "apps/web/src/components/diffs/StyledDiffCodeView.tsx",
       "commit": "ea97e8ba3146",
@@ -1018,12 +1067,6 @@
       "verdict": "skip",
       "reason": "Pierre FileDiffMetadata helpers, theme CSS and client-side whitespace hiding; @pierre/diffs is not taken (T25, four limits failed) and T28 ignores whitespace in the bridge only. fnv1a32 is Pierre-free; T29 may take it as a pattern for its comment hash",
       "date": "2026-10-18"
-    },
-    {
-      "upstream": "apps/web/src/components/diffs/DiffFileStatus.tsx",
-      "commit": "db5919d87daf",
-      "verdict": "skip",
-      "reason": "hover-tooltip icon; the Git tab says inline that a truncated diff shows some files as counts only, and a file with no patch does not expand"
     },
     {
       "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",

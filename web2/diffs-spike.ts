@@ -2,19 +2,19 @@ import { resolve } from "node:path";
 
 /**
  * T25 diff-renderer spike switch (docs/specs/t3/README.md "Diff renderer spike"). `diffs-adapter` is the
- * module the `DiffCodeView` seam lazy-loads. Unset, it is `status` (today's lines) and the build is
- * untouched; `SIGHTR_DIFFS=hand|pierre` aliases it to that candidate and adds the `spike-diffs.html`
- * measurement page. The candidates' packages are not in package.json; to measure, install them unsaved:
+ * module the `DiffCodeView` seam lazy-loads. Unset, it is `hand` (T25's decision, flipped by T27) and the
+ * build has no measurement page; `SIGHTR_DIFFS=status|hand|pierre` aliases it to that candidate and adds the
+ * `spike-diffs.html` measurement page. highlight.js (B) is a dependency since T27; A's package is not, so to
+ * measure it install it unsaved:
  *   bun add -d --no-save @pierre/diffs@1.5.2                      (A)
- *   bun add -d --no-save highlight.js@11.12.0                     (B)
- * `tsconfig.json` excludes pierre.tsx, hand.tsx and hand.highlight.ts so a normal typecheck and build never need them.
+ * `tsconfig.json` excludes pierre.tsx so a normal typecheck and build never need it.
  */
 export const DIFF_ADAPTERS = ["status", "hand", "pierre"] as const;
 export type DiffAdapterName = (typeof DIFF_ADAPTERS)[number];
 
 export function diffsAdapter(env: Record<string, string | undefined> = process.env): DiffAdapterName {
   const raw = env.SIGHTR_DIFFS?.trim();
-  if (!raw) return "status";
+  if (!raw) return "hand";
   if ((DIFF_ADAPTERS as readonly string[]).includes(raw)) return raw as DiffAdapterName;
   throw new Error(`SIGHTR_DIFFS must be status, hand or pierre (or unset), got "${raw}"`);
 }

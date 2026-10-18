@@ -20,14 +20,6 @@ export default defineConfig({
   ],
   resolve: {
     alias: [
-      // highlight.js is not a dependency (T25), so the hand adapter's tests run against a stand-in. The jsdom
-      // harness (SIGHTR_SPIKE_ADAPTER) measures the real package.
-      ...(process.env.SIGHTR_SPIKE_ADAPTER
-        ? []
-        : [
-            { find: /^highlight\.js\/lib\/core$/, replacement: resolve(import.meta.dirname, "src/test/highlight-js-stub/core.ts") },
-            { find: /^highlight\.js\/lib\/languages\/.+$/, replacement: resolve(import.meta.dirname, "src/test/highlight-js-stub/language.ts") },
-          ]),
       { find: "@shared", replacement: resolve(import.meta.dirname, "../shared") },
       { find: "@v1", replacement: resolve(import.meta.dirname, "../web/src") },
       { find: "virtual:pwa-register", replacement: resolve(import.meta.dirname, "src/test/pwa-register-stub.ts") },

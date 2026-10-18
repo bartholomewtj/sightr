@@ -1,6 +1,6 @@
 // Same job and name as T3 Code apps/web/src/rightPanelStore.ts @ e3b35d1b (pattern; MIT, see
 // THIRD_PARTY.md). T3 keeps an open/closed panel with a list of surfaces per thread; Sightr's panel has
-// three fixed tabs (Terminal, Files, Git) and, per the T13 spec, its open state, active tab and width
+// four fixed tabs (Terminal, Files, Git, Diff) and, per the T13 spec, its open state, active tab and width
 // are per-device preferences rather than per thread. On a phone the same tabs open as one sheet at a
 // time. T3's action names are kept where the job is the same (`open`, `toggle`, `close`, `show`,
 // `toggleVisibility`).
@@ -9,10 +9,11 @@ import { createJSONStorage, persist, type StateStorage } from "zustand/middlewar
 
 import { DESKTOP_QUERY } from "@/hooks/useLayout";
 
-export const RIGHT_PANEL_KINDS = ["terminal", "files", "git"] as const;
+// "diff" is appended (T27), so a saved `activeSurfaceId` from before stays valid.
+export const RIGHT_PANEL_KINDS = ["terminal", "files", "git", "diff"] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
-export const RIGHT_PANEL_LABEL: Record<RightPanelKind, string> = { terminal: "Terminal", files: "Files", git: "Git" };
+export const RIGHT_PANEL_LABEL: Record<RightPanelKind, string> = { terminal: "Terminal", files: "Files", git: "Git", diff: "Diff" };
 
 export const RIGHT_PANEL_MIN = 320;
 export const RIGHT_PANEL_MAX = 720;

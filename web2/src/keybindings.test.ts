@@ -75,8 +75,17 @@ describe("matchBinding", () => {
     expect(matchBinding(altGraph, {}, WIN)).toBe("thread.previous");
   });
 
-  it("does not take the browser's mod+w, mod+t or mod+d", () => {
-    for (const k of ["w", "t", "d"]) expect(matchBinding(key(k, { ctrl: true }), {}, WIN)).toBeNull();
+  it("does not take the browser's mod+w or mod+t", () => {
+    for (const k of ["w", "t"]) expect(matchBinding(key(k, { ctrl: true }), {}, WIN)).toBeNull();
+  });
+
+  it("maps mod+d to diff.toggle (T3's key, T27) unless direct typing is armed, so ctrl+d still reaches the terminal", () => {
+    expect(matchBinding(key("d", { ctrl: true }), {}, WIN)).toBe("diff.toggle");
+    expect(matchBinding(key("d", { meta: true }), {}, MAC)).toBe("diff.toggle");
+    expect(matchBinding(key("d", { ctrl: true }), { editableFocus: true }, WIN)).toBe("diff.toggle");
+    expect(matchBinding(key("d", { ctrl: true }), { terminalFocus: true }, WIN)).toBeNull();
+    expect(matchBinding(key("d", { meta: true }), {}, WIN)).toBeNull();
+    expect(COMMAND_LABEL["diff.toggle"]).toBe("Open the Diff tab");
   });
 });
 

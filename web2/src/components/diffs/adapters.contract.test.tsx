@@ -10,7 +10,7 @@ import type { DiffAdapterCapabilities, DiffCodeViewProps } from "./DiffCodeView.
 import { queryDeep } from "./spike/files.ts";
 
 type Adapter = { default: ComponentType<DiffCodeViewProps>; capabilities: DiffAdapterCapabilities };
-const loaders = import.meta.glob<Adapter>("./adapters/*.tsx");
+const loaders = import.meta.glob<Adapter>(["./adapters/*.tsx", "!./adapters/*.test.tsx"]);
 const loaded = await Promise.all(
   Object.entries(loaders).map(async ([path, load]) => {
     const name = path.replace(/^.*\/|\.tsx$/g, "");

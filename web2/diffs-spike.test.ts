@@ -8,10 +8,10 @@ const root = import.meta.dirname;
 const adapterFile = (name: string) => resolve(root, "src/components/diffs/adapters", `${name}.tsx`).split("\\").join("/");
 
 describe("SIGHTR_DIFFS (the T25 spike switch)", () => {
-  it("is the status adapter with no page when unset, so a normal build is untouched", () => {
-    expect(diffsAdapter({})).toBe("status");
-    expect(diffsAdapter({ SIGHTR_DIFFS: "  " })).toBe("status");
-    expect(diffsAlias(root, {}).replacement).toBe(adapterFile("status"));
+  it("is the hand adapter with no page when unset (T27 flipped the default), so a normal build has no measurement page", () => {
+    expect(diffsAdapter({})).toBe("hand");
+    expect(diffsAdapter({ SIGHTR_DIFFS: "  " })).toBe("hand");
+    expect(diffsAlias(root, {}).replacement).toBe(adapterFile("hand"));
     expect(diffsInputs(root, {})).toBeUndefined();
   });
 
@@ -35,7 +35,8 @@ describe("SIGHTR_DIFFS (the T25 spike switch)", () => {
 
   it("matches the tsconfig path the typecheck resolves `diffs-adapter` through", () => {
     const tsconfig = readFileSync(resolve(root, "tsconfig.json"), "utf8");
-    expect(tsconfig).toContain(`"diffs-adapter": ["./src/components/diffs/adapters/status.tsx"]`);
-    for (const f of ["pierre.tsx", "hand.tsx", "hand.highlight.ts"]) expect(tsconfig).toContain(`src/components/diffs/adapters/${f}`);
+    expect(tsconfig).toContain(`"diffs-adapter": ["./src/components/diffs/adapters/hand.tsx"]`);
+    expect(tsconfig).toContain("src/components/diffs/adapters/pierre.tsx"); // the one candidate whose package is not installed
+    for (const f of ["hand.tsx", "hand.highlight.ts"]) expect(tsconfig).not.toMatch(new RegExp(`"exclude".*${f}`));
   });
 });

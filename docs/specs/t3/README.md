@@ -163,8 +163,8 @@ and first render at 58 / 1,194 ms (limits 50 / 300). Its worker alone is 296.3 K
 limit. B passes every decidable row on the reading the spec defines, so
 the rule adopts B; the rank step is not reached. C fails split/expand/annotations, highlighting and the touch target.
 `@pierre/diffs` stays untaken (so `docs/T3_ADAPTATION.md` is unchanged), and T3's Pierre-bound `StyledDiffCodeView.tsx`
-and `lib/diffRendering.ts` are `skip` rows in `web2/t3-upstream.json`. The `diffs-adapter` default stays `status` until
-T27, which flips it under the constraints below.
+and `lib/diffRendering.ts` are `skip` rows in `web2/t3-upstream.json`. The `diffs-adapter` default stayed `status` until
+T27, which flipped it to `hand` under the constraints below (after the reading-(b) re-measure further down).
 
 **How reading (b) counts.** The spec's rows say "first paint of the first file, large patch" and allow "files rendered
 on open" for the node count, so the state they measure is the 40-file patch with its first file open: reading (a). The
@@ -339,7 +339,41 @@ What bears on T27 to T29:
   a bridge slice, with the cold rows re-measured after. The real-phone trial (cold fetch over `tailscale serve`, large
   paint, scroll) runs after T27 and is appended here; a row that fails on the phone is fixed in `hand.tsx`.
 
-Re-measure: `bun add -d --no-save @pierre/diffs@1.5.2 highlight.js@11.12.0` in `web2`; `bun scripts/diff-spike.ts
+**Reading (b) re-measure, with the windowing in place (T27, 2026-10-18).** The adapter changes the section above lists
+are in `hand.tsx`, `hand.highlight.ts` and `hand.rows.ts`: a window closes at 60 rows or 12,000 characters of line text;
+only the first window mounts at once, and only when the caller says `eager` (the new optional `DiffCodeView` prop); each
+window highlights its own lines when it mounts, in slices of at most 200 lines per `highlight` call, and holds the result
+in its own state (only the registered grammars stay, module-level). Method as above, with the two flags recorded:
+Chrome 155.0.8059.40 started with `--enable-precise-memory-info --js-flags=--expose-gc` (headless, its own `ca` instance),
+390x844, DPR 2, mobile + touch emulation, `Emulation.setCPUThrottlingRate` 4, no network throttling (the page came from
+`vite preview` on localhost of a `SIGHTR_DIFFS=hand` build, not the bridge: no CSP, which `hand` does not touch), fixtures
+from `bun scripts/diff-spike.ts fixtures` (mix from this repo's `git log`), `spike-diffs.html?auto=large-worst`, eleven fresh
+page loads: six on the first windowed build and five more on the adapter as it shipped (it no longer draws the
+unchanged-lines button when the caller gives no way to load the file, which is two nodes fewer). `performance.memory`
+was precise (values move in 0.1 MB steps).
+
+| Measure (reading (b): the 3,000-line, 400-character file open) | Limit | T25, before windowing | T27, windowed (11 runs) |
+|---|---|---|---|
+| Mounted DOM nodes | <= 5,000 | 6,872 (FAIL) | 1,899 in each of the first six runs, 1,897 in each of the last five (pass) |
+| Heap after unmount | within 20% of base | 2.1 MB over a 10.2 MB base, 20.6% (FAIL) | 0.7 MB over a 4.4 MB base, 15.9%; +1.4 to +1.5 MB while open (pass) |
+| Longest task | <= 250 ms | 103 ms | none recorded (0 long tasks) in all eleven (pass) |
+| First lines in the DOM / painted / first highlight | (first paint <= 800 ms) | 185 ms paint | 15 to 52 ms / 91 to 130 ms / 192 to 289 ms |
+| React commits to settle | <= 3 | 2 | 2, stable |
+
+The 400-character file gets windows of 30 rows (12,000 / 400), so one window is about 1,900 nodes; the same run on
+`large-first` (the ordinary first file, reading (a)) mounts 522 nodes with no long task. **The gate passes, so the flip
+stands.** Two things the gate does not cover, recorded so they are not found later: (1) windows that have mounted stay
+mounted, so a scripted sweep through the whole worst-case file (600 px every 120 ms, 400 steps, same throttling) ended with 41
+of 104 windows mounted and about 70,000 nodes, and its longest tasks were 130 to 276 ms (one over 250 ms) while windows mounted
+under the sweep; the limits hold for the file at rest and for ordinary files, not after reading all of a pathological one.
+(2) The heap base was 4.4 MB in this run against 10.2 MB in T25's, so the percentage is on a smaller base; the absolute
+residue after unmount (0.7 MB) is a third of T25's 2.1 MB. The real-phone trial (after T27) still decides the paint and
+scroll rows on Bart's phone. Unmounting windows far from the screen (keeping their measured height) was not done in
+T27, because it would make browser find and scroll restore less predictable. **Owner: T29.** It has to build
+mount-on-demand for scroll-to-line anyway (the target's window mounts first, then the line scrolls into view), and
+unmounts far windows there; T27's panel needs no change for it.
+
+Re-measure: `bun add -d --no-save @pierre/diffs@1.5.2` in `web2` (only for A; highlight.js 11.12.0 is a dependency since T27); `bun scripts/diff-spike.ts
 fixtures`; `SIGHTR_DIFFS=hand|pierre|status bunx vite build --outDir <temp>` (add `SIGHTR_DIFFS_PAGE=0` to leave
 `spike-diffs.html` out for the size rows); copy the three fixtures into `<temp>/fixtures/<name>.json` as `{"patch": ...}`;
 open `spike-diffs.html?auto=small|medium|large-first|large-worst` with the throttling above. `bun scripts/diff-spike.ts

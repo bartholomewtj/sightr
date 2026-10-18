@@ -7,6 +7,8 @@ import {
   clampRightPanelWidth,
   clampTerminalFont,
   openRightPanelSurface,
+  RIGHT_PANEL_KINDS,
+  RIGHT_PANEL_LABEL,
   RIGHT_PANEL_MAX,
   RIGHT_PANEL_MIN,
   toggleRightPanelSurface,
@@ -25,6 +27,24 @@ describe("rightPanelStore", () => {
     expect(useRightPanelStore.getState().sheet).toBe("files");
     toggleRightPanelSurface("files");
     expect(useRightPanelStore.getState().sheet).toBeNull();
+  });
+
+  it("has four tabs, with Diff appended so a saved tab id from before stays valid", () => {
+    expect([...RIGHT_PANEL_KINDS]).toEqual(["terminal", "files", "git", "diff"]);
+    expect(RIGHT_PANEL_LABEL.diff).toBe("Diff");
+    for (const saved of ["terminal", "files", "git", "diff"]) {
+      localStorage.setItem("sightr:v2:right-panel-state:v1", JSON.stringify({ state: { activeSurfaceId: saved }, version: 1 }));
+      __resetRightPanelStore();
+      expect(useRightPanelStore.getState().activeSurfaceId).toBe(saved);
+    }
+    setViewportWidth(1280);
+    openRightPanelSurface("diff");
+    expect(useRightPanelStore.getState()).toMatchObject({ isOpen: true, activeSurfaceId: "diff", sheet: null });
+    toggleRightPanelSurface("diff");
+    expect(useRightPanelStore.getState().isOpen).toBe(false);
+    setViewportWidth(390);
+    openRightPanelSurface("diff");
+    expect(useRightPanelStore.getState().sheet).toBe("diff");
   });
 
   it("persists open state, tab, width and font per device, never the sheet", () => {

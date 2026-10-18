@@ -2,11 +2,11 @@
  * The desktop right panel (T13). Same job and name as T3 Code's
  * apps/web/src/components/RightPanelTabs.tsx @ e3b35d1b (pattern; MIT, see THIRD_PARTY.md): a tab strip
  * over the active surface, a drag handle on its left edge. T3's tabs are an open-ended list per thread
- * (browser, terminal, diff, files, PR…); Sightr's are three fixed tabs, Terminal, Files and Git, for the
+ * (browser, terminal, diff, files, PR…); Sightr's are four fixed tabs, Terminal, Files, Git and Diff, for the
  * open thread. Only the active tab's content is mounted, so closing the panel or switching tabs stops
  * that tab's network work.
  */
-import { FilesIcon, GitBranchIcon, TerminalSquareIcon, XIcon } from "lucide-react";
+import { DiffIcon, FilesIcon, GitBranchIcon, TerminalSquareIcon, XIcon } from "lucide-react";
 import { useRef, type KeyboardEvent, type PointerEvent } from "react";
 
 import { Button } from "~/components/ui/button";
@@ -22,6 +22,7 @@ import {
 } from "@/rightPanelStore";
 import { useThreadView, useThreadViewStore } from "@/threadViewStore";
 
+import { DiffPanel } from "./DiffPanel";
 import { FilesPanel } from "./right-panel/FilesPanel";
 import { guardPanelLeave } from "./right-panel/leaveGuard";
 import { GitPanel } from "./right-panel/GitPanel";
@@ -31,12 +32,14 @@ export const RIGHT_PANEL_ICON: Record<RightPanelKind, typeof TerminalSquareIcon>
   terminal: TerminalSquareIcon,
   files: FilesIcon,
   git: GitBranchIcon,
+  diff: DiffIcon,
 };
 
 /** The tab's content for a thread. Shared by the desktop panel and the phone sheet. */
 export function RightPanelSurface({ kind, threadId }: { kind: RightPanelKind; threadId: string }) {
   if (kind === "terminal") return <TerminalSurface threadId={threadId} />;
   if (kind === "files") return <FilesPanel threadId={threadId} />;
+  if (kind === "diff") return <DiffPanel threadId={threadId} />;
   return <GitPanel threadId={threadId} />;
 }
 
