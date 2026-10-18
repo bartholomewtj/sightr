@@ -19,6 +19,9 @@
  * Phone pass 2 (T3's CommandBlock pattern): Copy for a command, its output and a tool's output (a
  * 44 px target on touch); file paths (a change's file, search hits, a read's path) open in the Files
  * tab inside a thread (`OpenFileThreadContext`); an MCP tool is named "<tool> · <server>".
+ *
+ * Images: a dynamic tool's output images (a Read of a PNG, a screenshot; `attachments`) show as
+ * lazy thumbnails under its output, opening T3's ExpandedImageDialog (`TimelineAttachments`).
  */
 import type { TurnItem } from "@shared/v2/contracts";
 import { CheckIcon, CircleDotIcon, CircleIcon } from "lucide-react";
@@ -33,6 +36,7 @@ import { isSafeMarkdownHref } from "../ChatMarkdown";
 import { OpenFileLink, useOpenFileThread } from "../right-panel/OpenFileLink";
 import { DiffStatLabel } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
+import { TimelineAttachments } from "./TimelineAttachments";
 
 export const MAX_OUTPUT_LINES = 200;
 
@@ -95,7 +99,12 @@ export function toolItemHasDetail(item: TurnItem, label: string): boolean {
       return filled(item.output) || (item.exitCode !== undefined && item.exitCode !== 0) || commandDisplayText(item.input) !== label.trim();
     case "dynamic_tool": {
       const input = asText(item.input);
-      return filled(asText(item.output)) || (typeof item.input !== "string" && filled(input)) || argEntries(item.rawInput).length > 0;
+      return (
+        filled(asText(item.output)) ||
+        (typeof item.input !== "string" && filled(input)) ||
+        argEntries(item.rawInput).length > 0 ||
+        (item.attachments?.length ?? 0) > 0
+      );
     }
     case "file_change":
       return (
@@ -231,6 +240,9 @@ export function ToolItemDetail({ item }: { item: TurnItem }) {
             </dl>
           ) : null}
           {asText(item.output)?.trim() ? <OutputBlock text={asText(item.output)!} truncated={item.truncated} copy /> : null}
+          {item.attachments?.length ? (
+            <TimelineAttachments threadId={item.threadId} itemId={item.id} attachments={item.attachments} variant="tool" className="font-sans" />
+          ) : null}
         </div>
       ) : null}
 

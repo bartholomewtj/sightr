@@ -25,7 +25,10 @@
 //   start (`FilePathLabel`); a page-fetch group reads "Fetched <host>"; paths in tool details and in
 //   messages open the Files tab (`OpenFileThreadContext`); the thread details sheet
 //   (`ThreadDetailsPanel`) is mounted beside the list.
-// - Left out: minimap, citations, forks, revert, checkpoint diffs, attachment previews, worktree
+// - Images: a user bubble shows its pasted/uploaded images as T3's two-column grid, and a tool row
+//   with output images (a Read of a PNG, a screenshot) carries an image mark and shows them when
+//   opened (`TimelineAttachments`; bytes from the bridge's attachment route; T3's ExpandedImageDialog).
+// - Left out: minimap, citations, forks, revert, checkpoint diffs, video/file previews, worktree
 //   setup, MCP apps, HTML renders.
 import { LegendList, type LegendListRef, type MaintainScrollAtEndOptions } from "@legendapp/list/react";
 import { descriptorFor } from "@shared/agents";
@@ -43,7 +46,7 @@ import {
   HammerIcon,
   ListTodoIcon,
   MessageCircleIcon,
-  PaperclipIcon,
+  ImageIcon,
   RotateCcwIcon,
   SearchIcon,
   SquarePenIcon,
@@ -111,6 +114,7 @@ import { OpenFileThreadContext } from "../right-panel/OpenFileLink";
 import { ScreenTimelineRow } from "./ScreenTimelineRow";
 import { ThreadDetailsSheet } from "./ThreadDetailsPanel";
 import { isV2LifecycleItem, V2LifecycleRow } from "./V2LifecycleRow";
+import { TimelineAttachments } from "./TimelineAttachments";
 import { TimelineSystemDivider } from "./TimelineSystemDivider";
 import { ToolItemDetail, toolItemHasDetail } from "./ToolItemDetail";
 import { useTimelineFollow } from "./useTimelineFollow";
@@ -595,6 +599,7 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
 });
 
 function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
+  const ctx = use(TimelineRowCtx);
   const attachments = row.message.attachments ?? [];
   const status = row.projectedItem?.status;
   return (
@@ -605,18 +610,13 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       <div className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground">
         <MessageAuthorHeading>You</MessageAuthorHeading>
         {attachments.length > 0 ? (
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {attachments.map((attachment) => (
-              <span
-                key={attachment.path}
-                title={attachment.path}
-                className="inline-flex max-w-full items-center gap-1 rounded-md border border-border/70 bg-background/60 px-1.5 py-0.5 text-xs"
-              >
-                <PaperclipIcon className="size-3 shrink-0" />
-                <span className="truncate">{attachment.name}</span>
-              </span>
-            ))}
-          </div>
+          <TimelineAttachments
+            threadId={ctx.threadId}
+            itemId={row.message.id}
+            attachments={attachments}
+            variant="message"
+            className={row.message.text.trim() ? "mb-2" : undefined}
+          />
         ) : null}
         <CollapsibleUserMessageBody text={row.message.text} />
       </div>
@@ -1246,6 +1246,13 @@ function WorkEntryLogRow({ workEntry, displayLabel }: { workEntry: WorkLogEntry;
         <>
           {item?.type === "file_change" && (item.additions !== undefined || item.deletions !== undefined) ? (
             <DiffStatLabel additions={item.additions ?? 0} deletions={item.deletions ?? 0} layout="inline" className="shrink-0 text-xs" />
+          ) : null}
+          {item?.type === "dynamic_tool" && (item.attachments?.length ?? 0) > 0 ? (
+            <span className="flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground tabular-nums" data-tool-images={item.attachments!.length}>
+              <ImageIcon aria-hidden className="size-3.5" />
+              <span className="sr-only">{item.attachments!.length === 1 ? "1 image" : `${item.attachments!.length} images`}</span>
+              {item.attachments!.length > 1 ? <span aria-hidden>{item.attachments!.length}</span> : null}
+            </span>
           ) : null}
           {showFailedIndicator && !showDestructiveRowStyle ? (
             <XIcon aria-hidden className={cn("size-3 shrink-0", failedToolIconClassName)} />
