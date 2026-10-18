@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { useRightPanelStore } from "@/rightPanelStore";
 import { fakePatch } from "@/test/diffServer";
-import { fake, mountPanel, section, settle, useDiffPanelHarness } from "@/test/diffPanelHarness";
+import { drawWindows, fake, mountPanel, section, settle, useDiffPanelHarness } from "@/test/diffPanelHarness";
 
 const five = ["a", "b", "c", "d", "e"].map((n) => ({ path: `src/${n}.ts`, patch: fakePatch(`src/${n}.ts`, "old", "new"), wsPatch: fakePatch(`src/${n}.ts`, "old-w", "new-w") }));
 useDiffPanelHarness(five);
@@ -40,7 +40,7 @@ describe("DiffPanel: ignore whitespace", () => {
 
     // A file opened afterwards is fetched with the flag as it stands.
     fireEvent.click(toggle("src/b.ts"));
-    await waitFor(() => expect(text("src/b.ts")).toContain("new-w"));
+    await waitFor(() => { drawWindows(); expect(text("src/b.ts")).toContain("new-w"); }); // b is not the first file: its window mounts when it nears the screen
     expect(fake.patchCalls.at(-1) && wsParam(fake.patchCalls.at(-1)!)).toBe("1");
     expect(fake.patchPaths().filter((p) => p === "src/c.ts")).toEqual([]);
   });

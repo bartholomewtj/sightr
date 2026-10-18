@@ -25,7 +25,7 @@ const tap = (el: HTMLElement) => act(async () => { fireEvent.click(el); });
 const row = (n: number, path = FILE) => section(path).querySelector<HTMLElement>(`[data-new-line="${n}"]`);
 const ready = async () => {
   await mountPanel();
-  await waitFor(() => expect(section(FILE).querySelector("[data-diff-line]")).not.toBeNull());
+  await waitFor(() => expect(section(FILE).querySelector("[data-diff-adapter] [data-diff-line]")).not.toBeNull()); // the renderer, not the plain lines it shows while it loads
 };
 
 describe("DiffPanel: expand unchanged lines", () => {
@@ -90,7 +90,7 @@ describe("DiffPanel: expand unchanged lines", () => {
     await waitFor(() => expect(row(50)).not.toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "Ignore whitespace" }));
     await waitFor(() => expect(fake.listCalls.at(-1)?.searchParams.get("ignoreWhitespace")).toBe("1"));
-    await waitFor(() => expect(section(FILE).querySelector("[data-diff-line]")).not.toBeNull());
+    await waitFor(() => expect(section(FILE).querySelector("[data-diff-adapter] [data-diff-line]")).not.toBeNull());
     expect(row(50)).toBeNull();
     expect(controls()).toContain("Show all 90");
   });
@@ -102,9 +102,9 @@ describe("DiffPanel: expand, states", () => {
     const deleted = [...head("src/old.ts"), "deleted file mode 100644", "@@ -1,2 +0,0 @@", "-a", "-b", ""].join("\n").replace("+++ b/src/old.ts", "+++ /dev/null");
     fake.setFiles([{ path: "src/new.ts", kind: "added", patch: added }, { path: "src/old.ts", kind: "deleted", patch: deleted }]);
     await mountPanel();
-    await waitFor(() => expect(section("src/new.ts").querySelector("[data-diff-line]")).not.toBeNull());
+    await waitFor(() => expect(section("src/new.ts").querySelector("[data-diff-adapter] [data-diff-line]")).not.toBeNull());
     drawWindows();
-    await waitFor(() => expect(section("src/old.ts").querySelector("[data-diff-line]")).not.toBeNull());
+    await waitFor(() => expect(section("src/old.ts").querySelector("[data-diff-adapter] [data-diff-line]")).not.toBeNull());
     expect(document.querySelector("[data-diff-expand]")).toBeNull();
   });
 
