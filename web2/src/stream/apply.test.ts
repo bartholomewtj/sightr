@@ -81,6 +81,23 @@ describe("applyShellEvent", () => {
     expect(archived.threads.t1?.pinnedAt).toBeUndefined();
   });
 
+  it("thread.deleted drops the thread and its request summaries", () => {
+    const withRequest = applyShellEvent(base, {
+      sequence: 11,
+      threadId: "t1",
+      type: "runtime-request.updated",
+      payload: {
+        request: { id: "r1", threadId: "t1", kind: "question", prompt: "?", options: [], status: "pending", bindingHash: "h", createdAt: 1, updatedAt: 1 },
+      },
+      ts: 1,
+    } satisfies ThreadEvent);
+    expect(Object.keys(withRequest.requests)).toEqual(["r1"]);
+    const gone = applyShellEvent(withRequest, { sequence: 12, threadId: "t1", type: "thread.deleted", payload: { at: 7_000 }, ts: 7_000 } satisfies ThreadEvent);
+    expect(gone.threads.t1).toBeUndefined();
+    expect(gone.requests).toEqual({});
+    expect(gone.sequence).toBe(12);
+  });
+
   it("adds projects and threads, and keeps request summaries without options", () => {
     const withProject = applyShellEvent(base, {
       sequence: 11,

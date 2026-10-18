@@ -18,7 +18,8 @@
 // is answered by its option's keys like any question. A checkbox (multi-select) step and a preview
 // select need a closed-loop recipe (lib/dialog-recipes.ts), which the bridge runs from a fresh parse
 // of the screen (`dialogModel`); their options carry the digit at most. A focused free-text row is
-// published with no options and the operator answers it in the Terminal tab (T17).
+// published with no options (T17). An empty free-text row the adapter measured is `freeText`, and the
+// bridge types the operator's own answer into it, re-reading through `freeTextModel` between steps.
 
 import { normalizePromptRegion } from "../../../../shared/prompt-binding";
 import { parseLines, type Block, type StyledLine } from "../blocks";
@@ -70,6 +71,29 @@ export interface DialogParse {
   /** A draftr operator decision: answered through `whistlr reply`, never by typing into the pane. */
   via?: "whistlr";
   decision?: { thread: string; run: string };
+  /** The question has an empty free-text row the bridge can type an answer into ({@link freeTextModel}). */
+  freeText?: true;
+}
+
+/**
+ * A dialog's free-text row as the bridge types into it (v2 `runtime-request.respond` with `text`).
+ * Only rows whose walk an adapter measured live: a prompt-select `feedback` of `purpose: "free-text"`
+ * that carries `openKeys` (Claude's AskUserQuestion row, Pi's one-question card), or a wizard question's
+ * `feedback` (Pi; Claude). Grok's and Cursor's rows carry no `openKeys`, so they never type.
+ */
+export interface FreeTextRow {
+  /** The keys that make the row take typing from this screen; empty when it already does. */
+  openKeys: string[];
+  /** The row takes typing now (Claude: `❯` on it; Pi: its editor is open). */
+  ready: boolean;
+  /** What the row holds; `""` while it shows its placeholder. */
+  text: string;
+  /** Sightr may type here: the row is empty and holds no saved answer (the caret hazard otherwise). */
+  typeable: boolean;
+  /** The keys that submit the typed text. */
+  submitKeys: string[];
+  /** The dialog without the pointer, the row's state or its text: two reads of one dialog match. */
+  identity: string;
 }
 
 /**
@@ -240,6 +264,56 @@ function fromBlock(agent: string, block: DialogBlock): Lifted {
   }
 }
 
+function freeTextOfBlock(block: DialogBlock): FreeTextRow | null {
+  if (block.kind === "prompt-select") {
+    const m = block.prompt;
+    const f = m.feedback;
+    if (!f || f.purpose !== "free-text" || !f.openKeys || m.decision) return null;
+    const ready = f.editing ?? f.focused;
+    return {
+      openKeys: ready ? [] : [...f.openKeys],
+      ready,
+      text: f.text,
+      typeable: f.text === "",
+      submitKeys: ["Enter"],
+      identity: ["prompt-select", m.family, m.question, f.key, ...m.options.map((o) => `${o.keyLabel ?? o.keys.join(" ")}\t${o.label}`)].join("\n"),
+    };
+  }
+  if (block.kind === "wizard" && block.wizard.phase === "question") {
+    const w = block.wizard;
+    const f = w.feedback;
+    if (!f) return null;
+    return {
+      openKeys: f.editing ? [] : [...f.keys],
+      ready: f.editing,
+      text: f.text,
+      typeable: f.text === "" && !f.customChosen,
+      submitKeys: ["Enter"],
+      identity: [
+        "wizard",
+        ...w.steps.map((s) => `${s.label}\t${s.answered}\t${s.current}`),
+        w.question,
+        f.keyLabel,
+        String(f.customChosen),
+        ...w.options.map((o) => `${o.label}\t${o.chosen}`),
+      ].join("\n"),
+    };
+  }
+  return null;
+}
+
+/**
+ * The free-text row of the dialog at the tail of `ansiText`, as `agent`'s adapter lifts it, or null
+ * (no dialog, or one with no row the bridge may type). The bridge re-reads through this between the
+ * steps of a typed answer (bridge/threads/free-text.ts).
+ */
+export function freeTextModel(agent: string, ansiText: string): FreeTextRow | null {
+  const pipeline = dialogPipeline(agent);
+  if (!pipeline || ansiText.length === 0) return null;
+  const block = pipeline(parseLines(ansiText)).findLast(isDialogBlock);
+  return block ? freeTextOfBlock(block) : null;
+}
+
 /** `text` normalized the way `boundText` is (SGR and trailing spaces removed, blank lines dropped). */
 export function normalizeBound(text: string): string {
   return normalizePromptRegion(text).join("\n");
@@ -290,7 +364,11 @@ export function parseDialog(agent: string, ansiText: string): DialogParse | null
   if (boundText === "") return null;
   const lines = parseLines(ansiText);
   const block = pipeline(lines).findLast(isDialogBlock);
-  if (block) return { ...fromBlock(agent, block), boundText: boundTextFor(block, ansiText) };
+  if (block) {
+    const lifted = fromBlock(agent, block);
+    const free = lifted.kind === "question" && !lifted.via ? freeTextOfBlock(block) : null;
+    return { ...lifted, ...(free?.typeable ? { freeText: true as const } : {}), boundText: boundTextFor(block, ansiText) };
+  }
   const password = detectNoEchoPrompt(lines);
   if (password !== null) return { kind: "password", prompt: password, options: [], boundText };
   return null;

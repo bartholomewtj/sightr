@@ -23,24 +23,27 @@ const seed = (s: BridgeSettingsValues) => ({
   delay: seconds(s.notifyDelayMs),
   keys: s.submitKeys.join(", "),
   lines: String(s.readLines),
+  settle: String(s.autoSettleDays ?? 0),
 });
-type DraftKey = "allow" | "delay" | "keys" | "lines";
+type DraftKey = "allow" | "delay" | "keys" | "lines" | "settle";
 const ROWS: ReadonlyArray<readonly [label: string, key: DraftKey, setting: BridgeSettingKey, type: "text" | "number", hint: string]> = [
   ["Device allowlist", "allow", "deviceAllowlist", "text", "Device ids allowed to type into agents. Empty with the device header set = every device is read-only."],
   ["Notify delay (seconds)", "delay", "notifyDelayMs", "number", "How long a pane must stay blocked before it raises a push notification."],
   ["Submit keys", "keys", "submitKeys", "text", "Keys sent to submit a reply after the text. Agent-dependent."],
   ["Read lines", "lines", "readLines", "number", "Lines read when a request names no count, and the least read to check a prompt before sending."],
+  ["Auto-settle (days)", "settle", "autoSettleDays", "number", "Settle an active thread after this many days with no activity. 0 is off. Pinned, working and waiting threads are never settled."],
 ];
 const SHOWN: Record<BridgeSettingKey, (s: BridgeSettingsValues) => string> = {
   deviceAllowlist: (s) => s.deviceAllowlist.join(", ") || "empty",
   notifyDelayMs: (s) => `${seconds(s.notifyDelayMs)} s`,
   submitKeys: (s) => s.submitKeys.join(", "),
   readLines: (s) => String(s.readLines),
+  autoSettleDays: (s) => (s.autoSettleDays ? `${s.autoSettleDays} days` : "off"),
 };
 
 export function BridgeSettings({ readOnly = false, device }: { readOnly?: boolean; device?: V2DeviceAuth | null }) {
   const [settings, setSettings] = useState<BridgeSettingsView | null>(null);
-  const [draft, setDraft] = useState({ allow: "", delay: "", keys: "", lines: "" });
+  const [draft, setDraft] = useState({ allow: "", delay: "", keys: "", lines: "", settle: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -94,6 +97,7 @@ export function BridgeSettings({ readOnly = false, device }: { readOnly?: boolea
     if (delayMs !== settings.notifyDelayMs) patch.notifyDelayMs = delayMs;
     if (keys.join("\0") !== settings.submitKeys.join("\0")) patch.submitKeys = keys;
     if (Number(draft.lines) !== settings.readLines) patch.readLines = Number(draft.lines);
+    if (settings.autoSettleDays !== undefined && Number(draft.settle) !== settings.autoSettleDays) patch.autoSettleDays = Number(draft.settle);
     if (Object.keys(patch).length === 0) return;
     if (
       device?.enforced &&
@@ -115,6 +119,8 @@ export function BridgeSettings({ readOnly = false, device }: { readOnly?: boolea
   return (
     <>
       {ROWS.map(([label, key, setting, type, hint]) => {
+        // An older bridge has no auto-settle.
+        if (setting === "autoSettleDays" && settings && settings.autoSettleDays === undefined) return null;
         const overridden = known && settings!.overridden!.includes(setting);
         const inputId = `bridge-setting-${key}`;
         return (

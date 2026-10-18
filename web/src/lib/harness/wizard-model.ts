@@ -21,12 +21,13 @@ export interface WizardStepChip {
 }
 
 /**
- * Pi's `Type something.` row on a multi-question card. Not an option button: the phone walks the
- * pointer with `keys` (arrows, then Enter — never a digit), types, and Enter submits. `focused` /
- * `editing` / `text` are what OUR choreography changes, so identity ignores them.
+ * The `Type something.` row on a multi-question card. Not an option button: Pi's phone walk moves the
+ * pointer with `keys` (arrows, then Enter — never a digit), types, and Enter submits. Claude's row is
+ * inline: its digit focuses it (`editing` then follows `focused`), typing fills it, Enter answers.
+ * `focused` / `editing` / `text` are what OUR choreography changes, so identity ignores them.
  */
 export interface WizardFeedback {
-  /** Up/Down to the free-text row, then Enter to open the editor. Never a digit. */
+  /** The keys that make the row take typing: Pi's arrows then Enter; Claude's digit. */
   keys: string[];
   /** The row number Pi painted (`4`), shown as the badge. Not sent. */
   keyLabel: string;
@@ -82,7 +83,7 @@ export type WizardModel =
       question: string;
       options: WizardOption[];
       signature: string;
-      /** Pi multi-question cards. Absent on Claude, whose free-text row stays with the composer. */
+      /** The step's free-text row (Pi; Claude since 2026-10-18, whose `keys` are the row's digit). */
       feedback?: WizardFeedback;
     }
   | {

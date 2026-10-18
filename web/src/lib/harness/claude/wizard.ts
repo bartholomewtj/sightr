@@ -18,8 +18,9 @@
 import type { StyledLine } from "../../blocks";
 import { regionSignature } from "../scan";
 import { classifyTailFooter, isBlank, isHorizontalRule, lineText } from "./markers";
-import { checkboxState, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
+import { askFreeTextRow, checkboxState, freeTextValue, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
 import {
+  type WizardFeedback,
   WIZARD_BACK_KEYS,
   WIZARD_CANCEL_KEYS,
   WIZARD_NEXT_KEYS,
@@ -204,12 +205,16 @@ function detectQuestionPhase(
   if (questionLines.length === 0) return null;
   const question = questionLines.join(" ");
 
-  // Options: description sub-lines attach like prompt-select's; free-text rows ("Type something.")
-  // stay with the composer; "Chat about this" is kept but flagged — it aborts the whole wizard.
+  // Options: description sub-lines attach like prompt-select's; "Chat about this" is kept but
+  // flagged — it aborts the whole wizard. The free-text row ("Type something.", found by place once
+  // typed into: prompt-select's askFreeTextRow) is the step's `feedback`: its digit focuses it, typed
+  // text replaces the label, and Enter answers with it and advances (live 2026-10-18). While it is
+  // focused, digits are typed into it, so `editing` follows `focused` (the field is inline).
   const options: WizardOption[] = [];
+  const freeRow = askFreeTextRow(texts, menu);
+  let feedback: WizardFeedback | undefined;
   for (let r = 0; r < menu.length; r++) {
     const row = menu[r]!;
-    if (isFreeTextLabel(row.label)) continue;
     const nextIdx = r + 1 < menu.length ? menu[r + 1]!.index : scanEnd;
     const desc: string[] = [];
     for (let i = row.index + 1; i < nextIdx; i++) {
@@ -217,6 +222,19 @@ function detectQuestionPhase(
       if (isBlank(t) || isHorizontalRule(t) || parseOptionRow(t)) continue;
       desc.push(t.trim());
     }
+    if (r === freeRow) {
+      const focused = /^\s*❯/.test(texts[row.index]!);
+      feedback = {
+        keys: [String(row.n)],
+        keyLabel: String(row.n),
+        focused,
+        editing: focused,
+        text: freeTextValue(row.label, desc),
+        customChosen: false,
+      };
+      continue;
+    }
+    if (isFreeTextLabel(row.label)) continue;
     const chosen = CHOSEN_SUFFIX.test(row.label);
     const label = row.label.replace(CHOSEN_SUFFIX, "");
     options.push({
@@ -236,6 +254,7 @@ function detectQuestionPhase(
       question,
       options,
       signature: regionSignature(texts, stepperIdx, fi + 1),
+      ...(feedback ? { feedback } : {}),
     },
     startLine: stepperIdx,
   };

@@ -13,7 +13,7 @@ async function temp() { const d = await mkdtemp(join(process.env.TEMP ?? process
 describe("RuntimeSettingsStore", () => {
   test("uses env defaults and overlays only changed values", async () => {
     const d = await temp(); const c = cfg(d); const s = new RuntimeSettingsStore(c);
-    expect(s.current()).toEqual({ deviceAllowlist: ["phone"], notifyDelayMs: 30000, submitKeys: ["Enter"], readLines: 200 });
+    expect(s.current()).toEqual({ deviceAllowlist: ["phone"], notifyDelayMs: 30000, submitKeys: ["Enter"], readLines: 200, autoSettleDays: 0 });
     await s.set({ readLines: 400 });
     expect(s.current().readLines).toBe(400);
     expect(JSON.parse(await readFile(join(d, "settings.json"), "utf8"))).toEqual({ readLines: 400 });
@@ -44,6 +44,8 @@ describe("settings validation and route", () => {
     expect(validateSettingsPatch({ readLines: 50 }).ok).toBe(true); expect(validateSettingsPatch({ readLines: 10000 }).ok).toBe(true);
     expect(validateSettingsPatch({ submitKeys: ["ctrl+c"] }).ok).toBe(true); expect(validateSettingsPatch({ submitKeys: ["PageUp"] }).ok).toBe(false);
     expect(validateSettingsPatch({ submitKeys: [] }).ok).toBe(false); expect(validateSettingsPatch({ submitKeys: Array(9).fill("a") }).ok).toBe(false);
+    for (const n of [-1, 366, 1.5, NaN]) expect(validateSettingsPatch({ autoSettleDays: n }).ok).toBe(false);
+    expect(validateSettingsPatch({ autoSettleDays: 0 })).toEqual({ ok: true, patch: { autoSettleDays: 0 }, reset: [] }); expect(validateSettingsPatch({ autoSettleDays: 14 }).ok).toBe(true);
     expect(validateSettingsPatch({ nope: 1 }).ok).toBe(false);
     expect(validateSettingsPatch({ reset: ["readLines"] })).toEqual({ ok: true, patch: {}, reset: ["readLines"] });
     expect(validateSettingsPatch({ reset: ["nope"] }).ok).toBe(false);
@@ -72,5 +74,22 @@ describe("settings validation and route", () => {
     const d = await temp(); const s = new RuntimeSettingsStore(cfg(d));
     await s.set({ notifyDelayMs: 5000 }); expect(s.view().overridden).toEqual(["notifyDelayMs"]);
     await s.set({ notifyDelayMs: 30000 }); expect(s.view().overridden).toEqual([]);
+  });
+});
+
+describe("autoSettleDays", () => {
+  test("defaults to the .env value (0 = off), saves as an override, and loads back", async () => {
+    const d = await temp();
+    const s = new RuntimeSettingsStore({ ...cfg(d), autoSettleDays: 3 } as Config);
+    expect(s.current().autoSettleDays).toBe(3);
+    expect(new RuntimeSettingsStore(cfg(d)).current().autoSettleDays).toBe(0);
+    await s.set({ autoSettleDays: 14 });
+    expect(s.view().overridden).toEqual(["autoSettleDays"]);
+    const fresh = new RuntimeSettingsStore({ ...cfg(d), autoSettleDays: 3 } as Config);
+    await fresh.load();
+    expect(fresh.current().autoSettleDays).toBe(14);
+    await Bun.write(join(d, "settings.json"), JSON.stringify({ autoSettleDays: -2 }));
+    await fresh.load();
+    expect(fresh.current().autoSettleDays).toBe(3);
   });
 });

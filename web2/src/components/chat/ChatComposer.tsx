@@ -253,7 +253,11 @@ export function ChatComposer({ threadId }: { threadId: string }) {
   // T3 #20184: a `/compact` run cannot take steering; follow-ups queue (the bridge enforces it too).
   const runs = state?.runs;
   const items = state?.items;
-  const compacting = useMemo(() => (runs && items ? isCompacting({ runs, items }) : false), [runs, items]);
+  const threadCompacting = thread?.compacting === true;
+  const compacting = useMemo(
+    () => (runs && items ? isCompacting({ runs, items, thread: { compacting: threadCompacting } }) : threadCompacting),
+    [runs, items, threadCompacting],
+  );
   const canSteer = !compacting;
 
   const setText = (next: string, persist = true) => {

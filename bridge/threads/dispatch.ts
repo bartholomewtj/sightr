@@ -11,6 +11,8 @@ import { paneKey, PaneBusyError, type PaneQueue } from "../pane-queue.ts";
 import { sendKeysPaced, type SleepFn } from "../pane-write-routes.ts";
 import { failureText } from "../responses.ts";
 import type { StateEngine } from "../state-engine.ts";
+import { detectsCompaction, isCompactingScreen } from "../../web/src/lib/harness/dialog-sniff.ts";
+import { COMPACTION_READ_LINES } from "./compaction-watch.ts";
 import type { EventDraft, ServerThread } from "./events.ts";
 import type { JournalIngestor } from "./journal-ingest.ts";
 import {
@@ -34,8 +36,10 @@ import type { EffectContext, EffectHandler, EffectOutcome, EffectRegistry } from
 //   `/api/pane/:id/send` route runs), inside the pane write queue.
 // - queue: a row in `queued_messages`; the drainer (queue-drain.ts) sends it when the thread rests.
 // - steer: the interrupt key, a wait for the thread to rest (not holding the pane queue), then start.
-//   While the open run started from `/compact` (or `/logout`), a steer is a queue instead: the key
-//   would cancel the compaction (T3 #20184, `CommandPolicy.resolveMessageDispatchIntent`).
+//   While the open run started from `/compact` (or `/logout`), or the harness is compacting on its own
+//   (`Thread.compacting`, compaction-watch.ts; re-read off the screen right before the key), a steer
+//   is a queue instead: the key would cancel the compaction (T3 #20184,
+//   `CommandPolicy.resolveMessageDispatchIntent`).
 //
 // A blocked thread never receives a dispatch, and no decision here reads a harness id: only the
 // thread's capability flags.
@@ -69,7 +73,8 @@ export interface DispatchDeps {
     | "newId"
   >;
   sender: GuardedSender;
-  herdr: Pick<HerdrClient, "sendPaneKeys" | "sendPaneText">;
+  /** `readPane`, when given, lets a steer check the screen for a compaction right before its key. */
+  herdr: Pick<HerdrClient, "sendPaneKeys" | "sendPaneText"> & Partial<Pick<HerdrClient, "readPane">>;
   engine: Pick<StateEngine, "current">;
   queue: PaneQueue;
   journal?: Pick<JournalIngestor, "markInterrupted"> | null;
@@ -280,6 +285,16 @@ export function createDispatcher(deps: DispatchDeps): Dispatcher {
 
   type InterruptResult = { ok: true } | { ok: false; outcome: EffectOutcome } | { ok: false; maintenance: true };
 
+  /** The harness's compaction row is on screen now (a failed or missing read says no). */
+  const compactingNow = async (thread: ServerThread): Promise<boolean> => {
+    if (!detectsCompaction(thread.harness) || typeof herdr.readPane !== "function") return false;
+    try {
+      return isCompactingScreen(thread.harness, (await herdr.readPane(thread.paneId, "visible", COMPACTION_READ_LINES, "text")).text);
+    } catch {
+      return false;
+    }
+  };
+
   /**
    * One press of the thread's interrupt keys, in the pane's queue turn; marks the open run. With
    * `steering`, a run found to have started from `/compact` by then is left alone (no key).
@@ -293,7 +308,9 @@ export function createDispatcher(deps: DispatchDeps): Dispatcher {
         if (!pane || (thread.terminalId && pane.terminalId && pane.terminalId !== thread.terminalId)) {
           return { ok: false, outcome: conflict("pane-gone") };
         }
-        if (opts.steering && openRunIsMaintenance(store, thread.id)) return { ok: false, maintenance: true };
+        if (opts.steering && (openRunIsMaintenance(store, thread.id) || (await compactingNow(thread)))) {
+          return { ok: false, maintenance: true };
+        }
         try {
           await sendKeysPaced(herdr, thread.paneId, keys, deps.sleep);
         } catch (err) {

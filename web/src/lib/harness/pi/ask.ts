@@ -10,7 +10,8 @@
 // "Type something." is free-text. On a multi-question card it stays on the wizard as `feedback`:
 // the phone walks the pointer with arrows, Enter opens the editor, then types and Enter submits.
 // Digits are never sent. While the pointer sits on that row, or the editor is open, option buttons
-// lock. A one-question card still models the row as prompt-select feedback and does not type it.
+// lock. A one-question card models the row as prompt-select feedback (`openKeys`, `editing`); v1 does
+// not type it, the v2 bridge does (bridge/threads/free-text.ts).
 //
 // See ASK_NOTES.md for verified recipe, source references, and live observations.
 
@@ -128,6 +129,9 @@ function helpAbove(
 ): { start: number; multi: boolean; input: boolean } | null {
   if (c < 2) return null;
   let start = c - 1;
+  // Live 2026-10-18 (pi-coding-agent 0.85, one question and many): the open editor's help row has a
+  // blank row between it and the closing rule. The other two help rows sit right on the rule.
+  if (isBlank(texts[start]!) && start >= 1 && HELP_INPUT.test(texts[start - 1]!)) start -= 1;
   const kindOf = (row: string): "single" | "multi" | "input" | null => {
     if (HELP_SINGLE.test(row)) return "single";
     if (HELP_MULTI.test(row)) return "multi";
@@ -318,7 +322,7 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
   if (question === "") return null;
 
   // 5. Tab bar & Top rule. Input mode uses one help row for both shapes, so the tab bar
-  // decides. A one-question editor stays raw — the phone does not type that card.
+  // decides. A one-question editor lifts as a prompt-select whose feedback is `editing`.
   let topRule = -1;
   let steps: WizardStepChip[] = [];
 
@@ -326,7 +330,6 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
     if (qRow >= 0 && isBlank(texts[qRow]!)) multi = true;
     else if (qRow >= 0 && RULE.test(texts[qRow]!)) multi = false;
     else return null;
-    if (!multi) return null;
   }
 
   if (!multi) {
@@ -438,6 +441,10 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
     focused: p === n - 1,
     text: editorText,
     purpose: "free-text",
+    // Measured live 2026-10-18: arrows onto the row, Enter opens the editor, typed text lands in it,
+    // Enter submits it as the answer. The bridge's free-text answer drives exactly this.
+    openKeys: editing ? [] : openKeys,
+    editing,
   };
 
   // 7. Signature
@@ -466,8 +473,9 @@ export function detectPiAsk(lines: StyledLine[]): PiAskParse | null {
 export function detectPiPromptRegion(lines: StyledLine[]): PiPromptRegion | null {
   const parsed = detectPiAsk(lines);
   if (!parsed) return null;
-  // Multi frames, including the pointer on `Type something.` and the open editor, are wizards.
-  if (parsed.multi || parsed.editing) return null;
+  // Multi frames, including the pointer on `Type something.` and the open editor, are wizards. A
+  // one-question frame with its editor open stays this card: `feedback.focused` locks its options.
+  if (parsed.multi) return null;
 
   const model: PromptModel = {
     question: parsed.question,

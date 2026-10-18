@@ -188,6 +188,7 @@ export function createRequestIngestor(deps: RequestIngestorDeps): RequestIngesto
       ...(parsed.multiSelect ? { multiSelect: parsed.multiSelect } : {}),
       ...(parsed.preview ? { preview: parsed.preview } : {}),
       ...(parsed.answers ? { answers: parsed.answers } : {}),
+      ...(parsed.freeText ? { freeText: true } : {}),
     };
     commit(thread, pending, { fresh: request, boundText: parsed.boundText });
   };

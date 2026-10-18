@@ -45,6 +45,8 @@ describe("pi ask detector", () => {
       focused: false,
       text: "",
       purpose: "free-text",
+      openKeys: ["Down", "Down", "Down", "Enter"],
+      editing: false,
     });
     expect(m.family).toBe("select");
   });
@@ -63,7 +65,37 @@ describe("pi ask detector", () => {
       "Dogs are more social and active, and need more daily attention.",
     ]);
     expect(m.options.map((o) => o.keys)).toEqual([["Enter"], ["Down", "Enter"]]);
-    expect(m.feedback).toEqual({ key: "3", focused: false, text: "", purpose: "free-text" });
+    expect(m.feedback).toEqual({
+      key: "3",
+      focused: false,
+      text: "",
+      purpose: "free-text",
+      openKeys: ["Down", "Down", "Enter"],
+      editing: false,
+    });
+  });
+
+  describe("live captures, 2026-10-18 (fixtures/live-free-text)", () => {
+    const live = (name: string) =>
+      splitLines(parseAnsi(readFileSync(join(import.meta.dirname, "..", "..", "..", "fixtures", "live-free-text", name), "utf8")));
+
+    it("a one-question card with its editor open lifts as the same prompt, options locked by focus", () => {
+      const before = detectPiPromptRegion(live("pi--ask-radio-live.txt"))!.model;
+      expect(before.feedback).toMatchObject({ key: "3", focused: false, editing: false, openKeys: ["Down", "Down", "Enter"] });
+      const open = detectPiPromptRegion(live("pi--ask-radio-editing.txt"))!.model;
+      expect(open.question).toBe(before.question);
+      expect(open.options.map((o) => o.label)).toEqual(before.options.map((o) => o.label));
+      expect(open.feedback).toMatchObject({ focused: true, editing: true, text: "", openKeys: [] });
+      const typed = detectPiPromptRegion(live("pi--ask-radio-editing-typed.txt"))!.model;
+      expect(typed.feedback).toMatchObject({ focused: true, editing: true, text: "my pi answer Z" });
+    });
+
+    it("a wizard's open editor (help row, blank row, rule) still lifts as the wizard", () => {
+      const region = detectPiWizardRegion(live("pi--ask-wizard-editing.txt"));
+      expect(region?.model.phase).toBe("question");
+      if (region?.model.phase !== "question") return;
+      expect(region.model.feedback).toMatchObject({ focused: true, editing: true, text: "" });
+    });
   });
 
   it("2. pi--ask-radio-moved.txt calculates relative arrow steps and different signature", () => {

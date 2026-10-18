@@ -115,6 +115,8 @@ export interface Config {
   notifyDelayMs: number;
   /** How many lines of scrollback to pull for the agent detail view. */
   readLines: number;
+  /** v2: settle an active thread idle this many days (SIGHTR_AUTO_SETTLE_DAYS; 0 or absent = off). */
+  autoSettleDays?: number;
   /**
    * Serve agent conversation history from the agent's own on-disk session log. This is the only
    * way to get scrollback for most agent panes at all — they run on the terminal's alternate
@@ -338,6 +340,7 @@ export function loadConfig(): Config {
     pollIdleMs: envInt("SIGHTR_POLL_IDLE_MS", 12_000, { min: 1000 }),
     notifyDelayMs: envInt("SIGHTR_NOTIFY_DELAY_MS", 30_000, { min: 0 }),
     readLines: envInt("SIGHTR_READ_LINES", 200, { min: 1 }),
+    autoSettleDays: envInt("SIGHTR_AUTO_SETTLE_DAYS", 0, { min: 0 }),
     transcript: envBool("SIGHTR_TRANSCRIPT", true),
     journalRoots,
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],

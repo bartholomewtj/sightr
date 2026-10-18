@@ -190,6 +190,13 @@ export const MIGRATIONS: readonly Migration[] = [
       db.run(`ALTER TABLE projects ADD COLUMN branch TEXT`);
     },
   },
+  {
+    // Thread.compacting: the harness is compacting right now (read off the screen; 1 or null).
+    version: 5,
+    up(db) {
+      db.run(`ALTER TABLE threads ADD COLUMN compacting INTEGER`);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
@@ -279,6 +286,7 @@ interface ThreadRow {
   permission_mode: string | null;
   model: string | null;
   context_usage_json: string | null;
+  compacting: number | null;
 }
 
 interface RunRow {
@@ -369,6 +377,7 @@ function threadFromRow(r: ThreadRow): ServerThread {
   if (r.permission_mode !== null) t.permissionMode = r.permission_mode;
   if (r.model !== null) t.model = r.model;
   if (r.context_usage_json !== null) t.contextUsage = JSON.parse(r.context_usage_json) as Thread["contextUsage"] & object;
+  if (r.compacting === 1) t.compacting = true;
   return t;
 }
 
@@ -398,6 +407,7 @@ function threadParams(t: ServerThread) {
     permission_mode: t.permissionMode ?? null,
     model: t.model ?? null,
     context_usage_json: t.contextUsage ? JSON.stringify(t.contextUsage) : null,
+    compacting: t.compacting === true ? 1 : null,
   };
 }
 
@@ -539,6 +549,16 @@ export function applyEvent(tx: Database, event: StoredEvent): void {
       delete next.pinOrder;
       delete next.settledAt;
       saveThread(tx, next);
+      return;
+    }
+    case "thread.deleted": {
+      // `thread.delete` (archived threads only): the row goes, and with it (ON DELETE CASCADE) its
+      // runs, items, requests, queue and journal offset. Its older events go too, so the text they
+      // carried is not kept; this event stays, for clients that resume past it.
+      const threadId = requireThreadId(event);
+      const r = tx.query("DELETE FROM threads WHERE id = ?").run(threadId);
+      if (r.changes === 0) throw new Error(`no thread ${threadId}`);
+      tx.query("DELETE FROM events WHERE thread_id = ? AND sequence < ?").run(threadId, event.sequence);
       return;
     }
     case "run.started": {

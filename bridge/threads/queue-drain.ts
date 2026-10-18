@@ -38,15 +38,18 @@ export function isNativeMaintenanceCommand(message: { text: string; attachments?
 const UNLINKED_USER_ITEM_SCAN = 50;
 
 /**
- * Did the thread's open run start from a maintenance command (`/compact`)? A steer then becomes a
- * queued follow-up: it must never press the interrupt key into it (T3 #20184, `resolveMessageDispatchIntent`).
- * The run's message is its `userItemId`, else a `user_message` attributed to it, else the newest
- * `user_message` not yet claimed by a run (dispatch's own item, before T03 adopts it).
+ * Did the thread's open run start from a maintenance command (`/compact`), or is the harness
+ * compacting on its own (`Thread.compacting`, read off the screen by compaction-watch.ts: Claude's
+ * auto-compact has no user message)? A steer then becomes a queued follow-up: it must never press
+ * the interrupt key into it (T3 #20184, `resolveMessageDispatchIntent`). The run's message is its
+ * `userItemId`, else a `user_message` attributed to it, else the newest `user_message` not yet
+ * claimed by a run (dispatch's own item, before T03 adopts it).
  */
 export function openRunIsMaintenance(
-  store: Pick<ThreadStore, "openRun" | "getTurnItem" | "itemsForRun" | "recentItems">,
+  store: Pick<ThreadStore, "openRun" | "getTurnItem" | "itemsForRun" | "recentItems"> & Partial<Pick<ThreadStore, "getThread">>,
   threadId: string,
 ): boolean {
+  if (store.getThread?.(threadId)?.compacting === true) return true;
   const run = store.openRun(threadId);
   if (!run) return false;
   const linked = run.userItemId ? store.getTurnItem(run.userItemId) : null;

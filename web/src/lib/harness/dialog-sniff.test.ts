@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { lineText, parseLines } from "../blocks";
 import { hasParsedDialog } from "../dialog-presence";
-import { hasBlockingDialog, sniffsDialogs, sniffsDialogsAt } from "./dialog-sniff";
+import { detectsCompaction, hasBlockingDialog, isCompactingScreen, sniffsDialogs, sniffsDialogsAt } from "./dialog-sniff";
 import { adapterFor } from "./registry";
 
 // The bridge reads a resting Cursor / Antigravity pane as plain text (`format: "text"`) from the
@@ -135,5 +135,44 @@ describe("hasBlockingDialog — negatives", () => {
     expect(hasBlockingDialog("cursor", "")).toBe(false);
     expect(hasBlockingDialog("agy", "")).toBe(false);
     expect(hasBlockingDialog("pi", "")).toBe(false);
+  });
+});
+
+describe("isCompactingScreen", () => {
+  const live = readFileSync(join(PANES_DIR, "..", "live-free-text", "claude--compacting.txt"), "utf8");
+
+  it("Claude's live /compact screen (spinner row above the prompt box) is compacting", () => {
+    expect(isCompactingScreen("claude", live)).toBe(true);
+    // The same read as text: the spinner glyph cycles, the words stay.
+    for (const glyph of ["·", "✢", "✳", "✶", "✻", "✽", "*"]) {
+      expect(isCompactingScreen("claude", `${glyph} Compacting conversation… (3s · ↓ 330 tokens)\n─────\n❯\n─────\n  footer`)).toBe(true);
+    }
+  });
+
+  it("is never true for a resting or working Claude screen from the corpus", () => {
+    for (const file of fixtures("claude")) {
+      expect(isCompactingScreen("claude", readFileSync(join(PANES_DIR, file), "utf8"))).toBe(false);
+    }
+  });
+
+  it("only near the tail: a transcript line far above does not count", () => {
+    const far = ["✻ Compacting conversation… (2s)", ...Array.from({ length: 30 }, (_, i) => `line ${i}`)].join("\n");
+    expect(isCompactingScreen("claude", far)).toBe(false);
+  });
+
+  it("Pi: manual and automatic compaction status rows (pi-coding-agent CompactionStatusIndicator)", () => {
+    expect(isCompactingScreen("pi", " ⠴ Compacting context... (esc to cancel)\n────\n\n────\n~/x\n1%/200k")).toBe(true);
+    expect(isCompactingScreen("pi", "── ⠴ Auto-compacting... (esc to cancel) ──\n\n────\n~/x\n1%/200k")).toBe(true);
+    expect(isCompactingScreen("pi", " Context overflow detected, Auto-compacting... (esc to cancel)\n")).toBe(true);
+    expect(isCompactingScreen("pi", " Error: Compaction failed: Nothing to compact (session too small)\n")).toBe(false);
+    for (const file of fixtures("pi")) expect(isCompactingScreen("pi", readFileSync(join(PANES_DIR, file), "utf8"))).toBe(false);
+  });
+
+  it("other agents and empty text are never compacting", () => {
+    expect(detectsCompaction("claude")).toBe(true);
+    expect(detectsCompaction("pi")).toBe(true);
+    expect(detectsCompaction("grok")).toBe(false);
+    expect(isCompactingScreen("grok", live)).toBe(false);
+    expect(isCompactingScreen("claude", "")).toBe(false);
   });
 });
