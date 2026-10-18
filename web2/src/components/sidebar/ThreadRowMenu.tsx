@@ -4,6 +4,7 @@
  * click, `Space`, or a long press on touch). It is also the keyboard alternative to dragging. Copy thread id
  * and Copy folder path are the palette's actions (`threadCopy.ts`).
  */
+import type { ComponentType } from "react";
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator } from "~/components/ui/menu";
 
 import type { Thread } from "@shared/v2/contracts";
@@ -13,6 +14,14 @@ import { copyThreadFolderPath, copyThreadId } from "@/components/sidebar/threadC
 
 const TOUCH_ITEM = "pointer-coarse:min-h-11";
 
+/** An action the opener puts first in the menu (the phone header's Find and Command palette). */
+export interface ThreadMenuAction {
+  id: string;
+  label: string;
+  icon?: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  onSelect(): void;
+}
+
 export function ThreadRowMenu({
   thread,
   anchor,
@@ -20,6 +29,7 @@ export function ThreadRowMenu({
   run,
   onRename,
   onPickSnooze,
+  leadingActions = [],
 }: {
   thread: Thread | null;
   anchor: HTMLElement | null;
@@ -27,6 +37,8 @@ export function ThreadRowMenu({
   run(command: ShelfCommand): void;
   onRename(threadId: string): void;
   onPickSnooze(threadId: string): void;
+  /** Shown first, above Rename, then a separator. */
+  leadingActions?: readonly ThreadMenuAction[];
 }) {
   const open = thread !== null && anchor !== null;
   const threadId = thread?.id ?? "";
@@ -40,6 +52,8 @@ export function ThreadRowMenu({
     >
       {open ? (
         <MenuPopup anchor={anchor} align="start" side="bottom" aria-label={`Actions for ${thread.title}`}>
+          <ThreadMenuActionItems actions={leadingActions} />
+          {leadingActions.length > 0 ? <MenuSeparator /> : null}
           <MenuItem className={TOUCH_ITEM} onClick={() => onRename(threadId)}>Rename</MenuItem>
           {thread.shelf === "pinned" ? (
             <MenuItem className={TOUCH_ITEM} onClick={() => run({ type: "thread.unpin", threadId })}>Unpin</MenuItem>
@@ -81,5 +95,19 @@ export function ThreadRowMenu({
         </MenuPopup>
       ) : null}
     </Menu>
+  );
+}
+
+/** The opener's own actions as menu items (ThreadRowMenu's lead, or the header's read-only menu). */
+export function ThreadMenuActionItems({ actions }: { actions: readonly ThreadMenuAction[] }) {
+  return (
+    <>
+      {actions.map(({ id, label, icon: Icon, onSelect }) => (
+        <MenuItem key={id} className={TOUCH_ITEM} data-menu-action={id} onClick={onSelect}>
+          {Icon ? <Icon className="size-4 text-muted-foreground" aria-hidden /> : null}
+          {label}
+        </MenuItem>
+      ))}
+    </>
   );
 }

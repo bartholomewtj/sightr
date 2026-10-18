@@ -84,6 +84,17 @@ describe("ChatComposer: permission mode (CompactComposerControlsMenu)", () => {
     expect(commands("thread.permissionMode.set")[0]).toEqual({ commandId: "cmd-1", type: "thread.permissionMode.set", threadId: "t1", mode: "plan" });
   });
 
+  it("on a phone the chip shows the one-word name in full; the aria-label and menu keep the full name", async () => {
+    setViewportWidth(360);
+    show();
+    const trigger = modeTrigger()!;
+    expect(trigger).toHaveAccessibleName("Permission mode: Accept edits");
+    expect(trigger.textContent).toBe("Edits");
+    expect(trigger.className).toMatch(/shrink-0/);
+    const menu = await openModeMenu();
+    expect(within(menu).getAllByRole("menuitemradio").map((i) => i.textContent)).toContain("Accept edits");
+  });
+
   it("bypass needs a second tap on the confirm strip, which sends confirmBypass", async () => {
     show();
     const menu = await openModeMenu();

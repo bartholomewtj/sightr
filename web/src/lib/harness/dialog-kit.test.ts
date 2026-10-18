@@ -78,7 +78,9 @@ describe("parseDialog — agrees with the adapter on every fixture", () => {
           break;
         }
         expect(p.kind).toBe(model.family === "permission" ? "permission" : model.family === "trust" ? "trust" : "question");
-        expect(p.prompt).toBe(model.question);
+        // A trust question the terminal wrapped is rejoined (unwrapPrompt); it starts with the adapter's line.
+        if (p.kind === "trust") expect(p.prompt.startsWith(model.question)).toBe(true);
+        else expect(p.prompt).toBe(model.question);
         if (model.feedback?.focused) expect(p.options).toEqual([]);
         else expect(p.options.map((o) => ({ label: o.label, keys: o.keys }))).toEqual(model.options.map((o) => ({ label: o.label, keys: o.keys })));
         break;
@@ -411,5 +413,18 @@ describe("dialog kit — free-text rows", () => {
       expect(freeTextModel("claude", raw(file))).toBeNull();
       expect(parseDialog("claude", raw(file))?.freeText).toBeUndefined();
     }
+  });
+});
+
+describe("a wrapped trust question is rejoined", () => {
+  it("the unnumbered trust dialog's three-line sentence reads whole on the card", () => {
+    expect(parseDialog("claude", raw("claude--trust-prompt-unnumbered.txt"))?.prompt).toBe(
+      "Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work from your team). If not, take a moment to review what's in this folder first.",
+    );
+  });
+
+  it("a one-line question is left alone", () => {
+    expect(parseDialog("claude", raw("claude--trust-prompt.txt"))?.prompt).toMatch(/folder first\.$/);
+    expect(parseDialog("agy", raw("agy--trust-prompt.txt"))?.prompt).toBe("Do you trust the contents of this project?");
   });
 });

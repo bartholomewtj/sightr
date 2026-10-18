@@ -193,13 +193,15 @@ describe("find over the timeline", () => {
 });
 
 describe("find in the thread route", () => {
-  it("the header's search button opens the bar", async () => {
+  it("on a phone the title's menu opens the bar (no header button: the title keeps its room)", async () => {
     renderApp("/v2/thread/t1");
     await waitFor(() => expect(FakeEventSource.instances.some((es) => es.url.startsWith("/api/v2/shell"))).toBe(true));
     // A thread with a transcript: one without opens on the CLI, which has its own find.
     const t1 = threadFixture("t1", { capabilities: { ...threadFixture("t1").capabilities, hasJournal: true } });
     frame(() => FakeEventSource.instances.find((es) => es.url.startsWith("/api/v2/shell"))?.emit("snapshot", shellSnapshot(5, [t1])));
-    fireEvent.click(await screen.findByRole("button", { name: "Find in thread" }));
+    expect(screen.queryByRole("button", { name: "Find in thread" })).toBeNull();
+    fireEvent.click(await screen.findByTitle("Thread actions"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Find in thread" }));
     expect(await screen.findByRole("search", { name: "Find in thread" })).toBeInTheDocument();
   });
 });

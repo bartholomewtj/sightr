@@ -482,6 +482,22 @@ export interface RuntimeRequest {
   freeText?: boolean;
   /** The typed answer, once resolved with `text` (T3's `customAnswer`). */
   customAnswer?: string;
+  /**
+   * Sightr extension: what a permission dialog is about, read from the dialog's own text above its
+   * question ("Run command" · `git status`). Sent on the thread stream only: the shell summary drops it,
+   * so a command's text never reaches the thread list.
+   */
+  subject?: RuntimeRequestSubject;
+}
+
+/** A permission request's tool and target (Sightr extension). */
+export interface RuntimeRequestSubject {
+  /** What the tool does: "Run command", "Read file", "Edit file". */
+  title: string;
+  /** The command or path as the dialog shows it. */
+  target?: string;
+  /** The dialog's own description of the command. */
+  detail?: string;
 }
 
 /** One chip of a multi-question ask's stepper (v1's `WizardStepChip`). */
@@ -491,8 +507,8 @@ export interface RuntimeRequestStep {
   current: boolean;
 }
 
-/** What the shell snapshot carries per request: no options, steps or preview pane. */
-export type RuntimeRequestSummary = Omit<RuntimeRequest, "options" | "steps" | "preview">;
+/** What the shell snapshot carries per request: no options, steps, preview pane or subject. */
+export type RuntimeRequestSummary = Omit<RuntimeRequest, "options" | "steps" | "preview" | "subject">;
 
 export type QueuedMessageState = "queued" | "sending" | "held";
 

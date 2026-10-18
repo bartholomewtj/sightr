@@ -3,7 +3,9 @@
 // place of T3's command/file/MCP approvals. The panel replaces the composer box and is the page's
 // "you" step (accent fill, border and heading); it carries its own option buttons
 // (ComposerPendingApprovalActions). Password and whistlr requests have no buttons: Sightr never types
-// a password, and whistlr decisions are answered with `whistlr reply`.
+// a password, and whistlr decisions are answered with `whistlr reply`. A permission request names its
+// tool and target (`subject`, read by the bridge from the dialog's own text): the tool is the heading,
+// the command or path sits in a capped, scrollable monospace box, and the dialog's question follows.
 import { memo, type Ref } from "react";
 import { KeyRoundIcon, ShieldIcon, TerminalSquareIcon } from "lucide-react";
 
@@ -64,8 +66,9 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
 }: ComposerPendingApprovalPanelProps) {
   const whistlr = request.via === "whistlr";
   const password = request.kind === "password";
-  const label = whistlr ? "Decision for the operator" : KIND_LABEL[request.kind];
-  const commandLike = request.kind === "permission" || request.kind === "trust";
+  const subject = request.kind === "permission" ? request.subject : undefined;
+  const label = whistlr ? "Decision for the operator" : (subject?.title ?? KIND_LABEL[request.kind]);
+  const commandLike = !subject && (request.kind === "permission" || request.kind === "trust");
 
   return (
     <ComposerBanner.Root variant="you" density="spacious" data-request-kind={request.kind}>
@@ -76,9 +79,22 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
           ) : (
             <ShieldIcon className="size-4 text-house-accent" aria-hidden="true" />
           )}
-          <h2 className="font-semibold text-house-accent">{label}</h2>
+          <h2 className="min-w-0 truncate font-semibold text-house-accent" data-request-title="">
+            {label}
+          </h2>
           {pendingCount > 1 ? <span className="ml-auto tabular-nums text-muted-foreground">1/{pendingCount}</span> : null}
         </div>
+        {subject?.target ? (
+          <pre
+            className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border bg-background/60 px-2.5 py-2 font-[Consolas,ui-monospace,monospace] text-xs text-foreground"
+            tabIndex={0}
+            aria-label={subject.title === "Run command" ? "Command" : "Target"}
+            data-request-target=""
+          >
+            {subject.target}
+          </pre>
+        ) : null}
+        {subject?.detail ? <p className="text-xs text-muted-foreground">{subject.detail}</p> : null}
         {request.prompt ? (
           <p
             className={cn(

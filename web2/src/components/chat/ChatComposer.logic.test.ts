@@ -300,11 +300,11 @@ describe("phone: Enter mode and the box's height", () => {
 describe("permissionModeOptions", () => {
   it("lists the capability's modes in order with the launch table's labels; bypass is destructive", () => {
     expect(permissionModeOptions(capabilitiesFor("claude"), launchFor("claude")?.modes)).toEqual([
-      { id: "manual", label: "Ask first", destructive: false },
-      { id: "acceptEdits", label: "Accept edits", destructive: false },
-      { id: "plan", label: "Plan", destructive: false },
-      { id: "auto", label: "Auto", destructive: false },
-      { id: "bypassPermissions", label: "Bypass permissions", destructive: true },
+      { id: "manual", label: "Ask first", short: "Ask", destructive: false },
+      { id: "acceptEdits", label: "Accept edits", short: "Edits", destructive: false },
+      { id: "plan", label: "Plan", short: "Plan", destructive: false },
+      { id: "auto", label: "Auto", short: "Auto", destructive: false },
+      { id: "bypassPermissions", label: "Bypass permissions", short: "Bypass", destructive: true },
     ]);
   });
 
@@ -317,7 +317,7 @@ describe("permissionModeOptions", () => {
 
   it("an id the launch table does not name keeps its id", () => {
     expect(permissionModeOptions({ ...NO_CAPABILITIES, canSwitchPermissionMode: true, permissionModes: ["yolo"] }, [])).toEqual([
-      { id: "yolo", label: "yolo", destructive: false },
+      { id: "yolo", label: "yolo", short: "yolo", destructive: false },
     ]);
   });
 });

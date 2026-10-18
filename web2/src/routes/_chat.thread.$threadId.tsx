@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { CommandIcon, SearchIcon } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { ChatComposer } from "~/components/chat/ChatComposer";
 import { ChatHeader } from "~/components/chat/ChatHeader";
@@ -11,6 +11,7 @@ import { openCommandPalette } from "@/commandPaletteBus";
 import { RenderErrorBoundary } from "@/components/RenderErrorBoundary";
 import { ErrorFallback } from "@/components/shell/ErrorFallback";
 import { BackToThreads } from "@/components/shell/BackToThreads";
+import type { ThreadMenuAction } from "@/components/sidebar/ThreadRowMenu";
 import { useShortcutHandler } from "@/shortcutHandlers";
 import { Button } from "~/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
@@ -71,6 +72,16 @@ function ThreadRouteView() {
   // A thread with no transcript opens on its terminal (the CLI); the toggle flips it to the timeline.
   const { view, cliFirst } = useThreadView(threadId);
   const cli = view === "cli";
+  // Phone: the palette is the way to New thread and Settings, so it is always in the title's menu.
+  const phoneHeaderActions = useMemo<ThreadMenuAction[]>(
+    () => [
+      ...(!missing && !cli
+        ? [{ id: "find", label: "Find in thread", icon: SearchIcon, onSelect: () => openThreadFind(threadId) }]
+        : []),
+      { id: "palette", label: "Command palette", icon: CommandIcon, onSelect: () => openCommandPalette() },
+    ],
+    [missing, cli, threadId],
+  );
   // T19: mod+f (`chat.find`, not while the terminal has the keys) opens find over the timeline. The CLI
   // has its own find (the mirror takes mod+f while focused).
   useShortcutHandler("chat.find", () => {
@@ -82,18 +93,19 @@ function ThreadRouteView() {
     <section aria-label={title} className="flex min-h-0 flex-1 flex-col">
       <header className="relative flex items-center gap-2 border-b px-3 py-2">
         {!desktop && <BackToThreads />}
-        {/* The title opens this thread's menu (rename, pin, snooze, settle, archive, mark unread). */}
-        <ChatHeader title={title} thread={shellThread ?? state?.thread ?? null} canOperate={!missing && !readOnly} />
+        {/* The title opens this thread's menu (rename, pin, snooze, settle, archive, mark unread). On a
+            phone Find and the Command palette lead that menu instead of taking header buttons: at 360 px
+            back, title, find, palette and three panel buttons left the title ~10 characters. */}
+        <ChatHeader
+          title={title}
+          thread={shellThread ?? state?.thread ?? null}
+          canOperate={!missing && !readOnly}
+          leadingActions={desktop ? undefined : phoneHeaderActions}
+        />
         {cliFirst && !missing ? <ThreadViewToggle threadId={threadId} view={view} /> : null}
-        {!missing && !cli ? (
+        {desktop && !missing && !cli ? (
           <Button size="icon-sm" variant="ghost-muted" aria-label="Find in thread" onClick={() => openThreadFind(threadId)}>
             <SearchIcon />
-          </Button>
-        ) : null}
-        {/* Phone: the palette is the way to New thread and Settings. */}
-        {!desktop ? (
-          <Button size="icon-sm" variant="ghost-muted" aria-label="Command palette" onClick={() => openCommandPalette()}>
-            <CommandIcon />
           </Button>
         ) : null}
         {!desktop && !missing ? <PhonePanelButtons cli={cli} /> : null}

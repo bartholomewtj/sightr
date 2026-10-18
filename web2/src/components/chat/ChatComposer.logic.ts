@@ -317,6 +317,8 @@ export function orderRequestOptions(options: readonly RuntimeRequestOption[]): {
 export interface PermissionModeOption {
   id: string;
   label: string;
+  /** The chip's one-word name on a phone ("Edits"); the menu and the aria-label keep `label`. */
+  short: string;
   /** Needs a confirm step and `confirmBypass` (the bridge refuses it otherwise). */
   destructive: boolean;
 }
@@ -328,14 +330,15 @@ export interface PermissionModeOption {
  */
 export function permissionModeOptions(
   caps: Thread["capabilities"] | undefined,
-  launchModes: readonly { id: string; label: string; destructive?: boolean }[] | null | undefined,
+  launchModes: readonly { id: string; label: string; short?: string; destructive?: boolean }[] | null | undefined,
 ): PermissionModeOption[] | null {
   if (!caps?.canSwitchPermissionMode) return null;
   const ids = caps.permissionModes ?? [];
   if (ids.length === 0) return null;
   return ids.map((id) => {
     const known = launchModes?.find((m) => m.id === id);
-    return { id, label: known?.label ?? id, destructive: known?.destructive === true };
+    const label = known?.label ?? id;
+    return { id, label, short: known?.short ?? label, destructive: known?.destructive === true };
   });
 }
 
