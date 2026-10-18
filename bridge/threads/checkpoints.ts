@@ -111,20 +111,27 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
     if (!thread || thread.harness === SHELL_HARNESS) return;
     if (store.getCheckpoint(run.id)) return; // a replayed start
     if (!deps.enabled || !projectOn(run.threadId)) return append("start", absent(run, "disabled"));
+    // A run the bridge learns of late (a restart's catch-up) costs no git call at all.
+    if (now() - run.startedAt > START_WINDOW_MS) return append("start", absent(run, "start-missed"));
     const cwd = deps.paneCwd(thread.paneId);
     const repo = cwd === null ? null : await openRepo(deps.workRoot, invoke, cwd);
     if (!repo?.ok) return append("start", absent(run, "no-repo"));
     const info = await git.resolveRepo(repo.root);
     if (!info) return append("start", absent(run, "no-repo"));
-    // The window is checked when the snapshot is about to run (after any queue wait): a restart never snapshots a tree that moved on.
-    const out = await git.snapshot(info, { threadId: run.threadId, ordinal: run.ordinal, side: "start" }, () => (now() - run.startedAt > START_WINDOW_MS ? "start-missed" : null));
-    if (!out.ok) return append("start", absent(run, out.reason, "truncated" in out && out.truncated ? { truncated: true } : {}), { repoRoot: info.root });
-    const approximate = out.capturedAt - run.startedAt > APPROX_LAG_MS;
-    append(
-      "start",
-      { runId: run.id, threadId: run.threadId, ordinal: run.ordinal, status: "pending", live: true, files: [], additions: 0, deletions: 0, capturedAt: out.capturedAt, ...(out.skipped ? { skipped: out.skipped } : {}), ...(approximate ? { approximate: true } : {}) },
-      { repoRoot: info.root, startCommit: out.commit, skippedPaths: out.skippedPaths, ...(Object.keys(out.hiddenStats).length ? { hiddenStats: out.hiddenStats } : {}) },
-    );
+    // Snapshot and record in one slot of the store's queue, so the sweep never sees a ref without its row.
+    const done = await git.queue.run(info.repoKey, async () => {
+      // The window is checked when the snapshot is about to run (after any queue wait): a restart never snapshots a tree that moved on.
+      if (now() - run.startedAt > START_WINDOW_MS) return append("start", absent(run, "start-missed"), { repoRoot: info.root });
+      const out = await git.snapshotLocked(info, { threadId: run.threadId, ordinal: run.ordinal, side: "start" });
+      if (!out.ok) return append("start", absent(run, out.reason, out.truncated ? { truncated: true } : {}), { repoRoot: info.root });
+      const approximate = out.capturedAt - run.startedAt > APPROX_LAG_MS;
+      append(
+        "start",
+        { runId: run.id, threadId: run.threadId, ordinal: run.ordinal, status: "pending", live: true, files: [], additions: 0, deletions: 0, capturedAt: out.capturedAt, ...(out.skipped ? { skipped: out.skipped } : {}), ...(approximate ? { approximate: true } : {}) },
+        { repoRoot: info.root, startCommit: out.commit, skippedPaths: out.skippedPaths, ...(Object.keys(out.hiddenStats).length ? { hiddenStats: out.hiddenStats } : {}) },
+      );
+    });
+    if (done === BUSY) append("start", absent(run, "timeout"), { repoRoot: info.root });
   }
 
   // ── End ────────────────────────────────────────────────────────────────────────────────────────
@@ -156,34 +163,35 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
     const base: CapturedExtra = { repoRoot: row.repoRoot, startCommit };
     const info = await git.resolveRepo(row.repoRoot); // the stored root, not the pane (it may be gone)
     if (!info) return append("end", absent(run, "no-repo"), base);
-    const out = await git.snapshot(info, { threadId: run.threadId, ordinal: run.ordinal, side: "end" }, () => (now() - completedAt > END_WINDOW_MS ? "end-missed" : null));
-    if (!out.ok) return append("end", absent(run, out.reason, "truncated" in out && out.truncated ? { truncated: true } : {}), base);
-    const begin = startPayload(run.threadId, runId);
-    const skippedPaths = new Set([...(begin?.skippedPaths ?? []), ...out.skippedPaths]);
     const authored = authoredMatcher(info.root, store.itemsForRun(runId).flatMap((i) => (i.type === "file_change" ? [i.fileName] : [])));
     const storeRun = git.storeRunner(info);
-    const captured = await git.queue.run(info.repoKey, async () => {
+    // Snapshot, diff, patches and the record in one slot of the store's queue.
+    const done = await git.queue.run(info.repoKey, async () => {
+      if (now() - completedAt > END_WINDOW_MS) return append("end", absent(run, "end-missed"), base);
+      const out = await git.snapshotLocked(info, { threadId: run.threadId, ordinal: run.ordinal, side: "end" });
+      if (!out.ok) return append("end", absent(run, out.reason, out.truncated ? { truncated: true } : {}), base);
+      const begin = startPayload(run.threadId, runId);
+      const skippedPaths = new Set([...(begin?.skippedPaths ?? []), ...out.skippedPaths]);
       const diff = await diffRun(storeRun, startCommit, out.commit, { skippedPaths, authored });
-      if ("error" in diff) return null;
-      return { diff, patches: await capturePatches(storeRun, startCommit, out.commit, diff.files, { now }) };
+      if ("error" in diff) return append("end", absent(run, "git-failed"), { ...base, endCommit: out.commit });
+      const patches = await capturePatches(storeRun, startCommit, out.commit, diff.files, { now });
+      // Hidden: refused-name paths whose stat moved between the two snapshots (their content is never read or kept).
+      const before = begin?.hiddenStats ?? {}, after = out.hiddenStats;
+      let hidden = diff.hidden;
+      for (const p of new Set([...Object.keys(before), ...Object.keys(after)])) if (before[p] !== after[p]) hidden++;
+      const shared = overlapped(run.threadId, runId, info.root, run.startedAt, completedAt);
+      append(
+        "end",
+        {
+          runId, threadId: run.threadId, ordinal: run.ordinal, status: "ready", live: true, files: diff.files, additions: diff.additions, deletions: diff.deletions, capturedAt: out.capturedAt,
+          ...(diff.truncated ? { truncated: true } : {}), ...(hidden ? { hidden } : {}), ...(out.skipped ? { skipped: out.skipped } : {}),
+          ...(row.checkpoint.approximate ? { approximate: true } : {}), ...(shared ? { shared: true } : {}), ...(out.unsettled ? { unsettled: true } : {}),
+        },
+        { ...base, repoRoot: info.root, endCommit: out.commit, skippedPaths: out.skippedPaths },
+        { runId, rows: patches },
+      );
     });
-    if (captured === BUSY || captured === null) return append("end", absent(run, "git-failed"), { ...base, endCommit: out.commit });
-    const { diff, patches } = captured;
-    // Hidden: refused-name paths whose stat moved between the two snapshots (their content is never read or kept).
-    const before = begin?.hiddenStats ?? {}, after = out.hiddenStats;
-    let hidden = diff.hidden;
-    for (const p of new Set([...Object.keys(before), ...Object.keys(after)])) if (before[p] !== after[p]) hidden++;
-    const shared = overlapped(run.threadId, runId, info.root, run.startedAt, completedAt);
-    append(
-      "end",
-      {
-        runId, threadId: run.threadId, ordinal: run.ordinal, status: "ready", live: true, files: diff.files, additions: diff.additions, deletions: diff.deletions, capturedAt: out.capturedAt,
-        ...(diff.truncated ? { truncated: true } : {}), ...(hidden ? { hidden } : {}), ...(out.skipped ? { skipped: out.skipped } : {}),
-        ...(row.checkpoint.approximate ? { approximate: true } : {}), ...(shared ? { shared: true } : {}), ...(out.unsettled ? { unsettled: true } : {}),
-      },
-      { ...base, repoRoot: info.root, endCommit: out.commit, skippedPaths: out.skippedPaths },
-      { runId, rows: patches },
-    );
+    if (done === BUSY) append("end", absent(run, "timeout"), base);
   }
 
   function onEvents(events: ThreadEvent[]): void {
@@ -231,20 +239,20 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
   async function sweep(at = now()): Promise<SweepResult> {
     const result: SweepResult = { expired: [], refsDeleted: 0, storesRemoved: 0, patchRunsPruned: 0 };
     if (!deps.enabled) return result;
-    const rows = store.listCheckpoints();
-    const due = dueRows(rows, at);
     for (const s of await git.listStores()) {
-      const mine = s.root === null ? [] : rows.filter((r) => r.repoRoot !== "" && samePath(r.repoRoot, s.root!));
       const rootGone = s.root === null || !(await stat(s.root).catch(() => null));
-      const key = storeKey(s.store);
-      if (rootGone || mine.length === 0) {
-        // An orphan store: its repo is gone, or no run points at it any more.
-        const done = await git.queue.run(key, async () => { await git.removeStore(s.store); return true; });
-        if (done === true) result.storesRemoved++;
-        if (rootGone) result.expired.push(...expire(mine));
-        continue;
-      }
-      await git.queue.run(key, async () => {
+      // Rows are read inside the store's slot: a snapshot records its row in the same slot as its ref.
+      await git.queue.run(storeKey(s.store), async () => {
+        const rows = store.listCheckpoints();
+        const due = dueRows(rows, at);
+        const mine = s.root === null ? [] : rows.filter((r) => r.repoRoot !== "" && samePath(r.repoRoot, s.root!));
+        if (rootGone || mine.length === 0) {
+          // An orphan store: its repo is gone, or no run points at it any more.
+          await git.removeStore(s.store);
+          result.storesRemoved++;
+          if (rootGone) result.expired.push(...expire(mine));
+          return;
+        }
         const refs = await git.listRefs(s.store); if (refs === null) return;
         const byRef = new Map<string, CheckpointSweepRow>();
         for (const r of mine) for (const ref of refsOf(r)) byRef.set(ref, r);
@@ -277,7 +285,7 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
       });
     }
     // A row whose repo is gone (and whose store was never made, or went above): its objects went with it.
-    for (const r of rows) {
+    for (const r of store.listCheckpoints()) {
       if (r.objectsExpiredAt !== null || r.repoRoot === "" || r.startCommit === null || result.expired.includes(r.checkpoint.runId)) continue;
       if (!(await stat(r.repoRoot).catch(() => null))) result.expired.push(...expire([r]));
     }

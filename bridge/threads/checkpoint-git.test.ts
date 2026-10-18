@@ -257,6 +257,18 @@ describe("checkpoint git: snapshots", () => {
     expect(globalPeak).toBeLessThanOrEqual(2);
   });
 
+  test("a busy repo (the operator's git holds index.lock) still snapshots and its lock is left as it was; untracked names are literal, not globs", async () => {
+    const { repo, git, info } = await setup({ "a.txt": "a\n" });
+    await writeFile(join(repo.root, ".git", "index.lock"), "held by another git");
+    await writeFiles(repo.root, { "[a].txt": "bracket\n", "a.txt": "edited\n" });
+    const before = await fingerprint(join(repo.root, ".git"));
+    const out = await git.snapshot(info, req());
+    expect(gitDirChanges(before, await fingerprint(join(repo.root, ".git")))).toEqual([]);
+    expect(out.ok).toBe(true);
+    if (out.ok) { expect(await filesAt(info, out.commit)).toEqual(["[a].txt", "a.txt"]); expect(await blobAt(info, out.commit, "[a].txt")).toBe("bracket"); }
+    await rm(join(repo.root, ".git", "index.lock"));
+  });
+
   test("a retry or replay reuses the existing ref and moves nothing", async () => {
     const { repo, git, info } = await setup();
     const first = await git.snapshot(info, req());

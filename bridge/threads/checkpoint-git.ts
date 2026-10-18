@@ -547,5 +547,10 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
 
-  return { resolveRepo, snapshot, storeRunner, listRefs, deleteRefs, gc, storeBytes, listStores, removeStore, cleanTmp, queue, storesDir, tmpDir, storeEnv };
+  return {
+    resolveRepo, snapshot,
+    /** {@link snapshot} for a caller already holding the store's queue slot (`queue.run(info.repoKey, …)`), so it can record the result before the slot is let go. */
+    snapshotLocked: snapshotNow,
+    storeRunner, listRefs, deleteRefs, gc, storeBytes, listStores, removeStore, cleanTmp, queue, storesDir, tmpDir, storeEnv,
+  };
 }
