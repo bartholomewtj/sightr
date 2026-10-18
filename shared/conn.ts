@@ -180,8 +180,14 @@ export type BridgeEvent =
   | { kind: "sse.attach"; sid: string }
   /** `why`: the client went away (cancel), or the same page opened a newer stream (replaced). */
   | { kind: "sse.detach"; sid: string; upMs: number; why: "cancel" | "replaced" }
+  /** The link flipped: a socket error, or a second slow poll in a row. A real outage. */
   | { kind: "herdr.down"; err: string }
-  | { kind: "herdr.up"; downMs: number | null };
+  | { kind: "herdr.up"; downMs: number | null }
+  /**
+   * Herdr answered one poll late and the bridge absorbed it (the link stayed up). Once per episode;
+   * `ms` is the per-request budget it exceeded. Not an outage, and not counted as one.
+   */
+  | { kind: "herdr.slow"; ms: number };
 
 /** One line of `<stateDir>/conn.log`. `ts` is the bridge's clock at the moment it wrote the line. */
 export type ConnLine = { ts: string; src: "bridge" | "phone"; device?: string } & (BridgeEvent | PhoneEvent);

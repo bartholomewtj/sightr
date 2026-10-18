@@ -66,7 +66,8 @@ export interface ConnReport {
     opens: number; drops: number; neverOpened: number; stale: number; connectMs: Dist; upMs: Dist; bridgeUpMs: Dist;
     dropsPerVisibleHour: number | null; cut: { atMs: number; n: number; of: number } | null;
   };
-  bridge: { starts: string[]; herdrDowns: number; herdrDownMs: Dist };
+  /** `herdrDowns`: real link flips (herdr.down). `herdrSlow`: late answers the bridge absorbed (herdr.slow). */
+  bridge: { starts: string[]; herdrDowns: number; herdrDownMs: Dist; herdrSlow: number };
   findings: Finding[];
 }
 
@@ -319,7 +320,7 @@ export function analyseConn(all: ConnLine[], opts: { from: number; to: number; b
       connectMs: dist(opens.map((o) => o.connectMs)), upMs: dist(upMs), bridgeUpMs: dist(bridgeUp),
       dropsPerVisibleHour: perHour(drops.length), cut: findCluster(upMs),
     },
-    bridge: { starts: starts.map((s) => new Date(s).toISOString()), herdrDowns: herdrDown.length, herdrDownMs: dist(herdrDown.map((d) => d.to - d.from)) },
+    bridge: { starts: starts.map((s) => new Date(s).toISOString()), herdrDowns: herdrDown.length, herdrDownMs: dist(herdrDown.map((d) => d.to - d.from)), herdrSlow: bridge.filter(is("herdr.slow")).length },
     findings: [],
   };
   report.findings = findings(report);
@@ -364,6 +365,11 @@ export function findings(r: ConnReport): Finding[] {
     add({ id: "herdr-down", severity: h.ms > 60_000 ? "medium" : "info", title: `Herdr link dropped ${r.bridge.herdrDowns}×`,
       evidence: `Down p50 ${secs(r.bridge.herdrDownMs.p50)}, max ${secs(r.bridge.herdrDownMs.max)}; ${h.n} phone gaps overlap it.`,
       suggest: "Not the network: the bridge lost Herdr's socket. Check whether Herdr itself restarted (bridge/state-engine.ts poll errors in sightr-error.log)." });
+  }
+  if (r.bridge.herdrSlow > 0) {
+    add({ id: "herdr-slow", severity: "low", title: `Herdr answered late ${r.bridge.herdrSlow}× (absorbed)`,
+      evidence: `${r.bridge.herdrSlow} polls missed the per-request budget and the link stayed up; not counted in "Herdr link down".`,
+      suggest: "If the PC was running tests or a build, that is the cause. Two late polls in a row still flip the link (bridge/state-engine.ts TRANSIENT_FLIP_AT)." });
   }
 
   if (r.sse.cut) {
@@ -472,7 +478,7 @@ export function formatConnReport(r: ConnReport): string {
   }
   L.push(`Wake → live: ${r.wakes.n} wakes; p50 ${secs(r.wakes.liveMs.p50)}, p95 ${secs(r.wakes.liveMs.p95)}; amber on ${r.wakes.overTrouble}; no data before hide ${r.wakes.failed}`);
   L.push(`Stream (SSE): ${r.sse.opens} opens (connect p50 ${secs(r.sse.connectMs.p50)}), ${r.sse.drops} drops (${r.sse.neverOpened} never opened${r.sse.stale ? `, ${r.sse.stale} went silent` : ""}); lived p50 ${secs(r.sse.upMs.p50)}; bridge-side p50 ${secs(r.sse.bridgeUpMs.p50)}`);
-  L.push(`Bridge: ${r.bridge.starts.length} starts; Herdr link down ${r.bridge.herdrDowns}× (max ${secs(r.bridge.herdrDownMs.max)})`);
+  L.push(`Bridge: ${r.bridge.starts.length} starts; Herdr link down ${r.bridge.herdrDowns}× (max ${secs(r.bridge.herdrDownMs.max)})${r.bridge.herdrSlow ? `; Herdr slow ${r.bridge.herdrSlow}×` : ""}`);
   L.push("");
 
   const widths = [9, 7, 7, 8, 8, 6, 7, 7, 7];

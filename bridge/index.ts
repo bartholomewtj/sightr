@@ -140,6 +140,8 @@ engine.onLink((status, err) => {
     herdrDownAt = null;
   }
 });
+// A late answer the engine absorbed (spec 25): visible in `sightr-ctl conn`, not counted as down.
+engine.onSlow((ms) => conn.bridge({ kind: "herdr.slow", ms }));
 
 // Activity bookkeeping. A status change stamps `activeAt` (the only thing that can make a pane
 // read as unseen); every successful poll reconciles the ledger against the panes that exist, which

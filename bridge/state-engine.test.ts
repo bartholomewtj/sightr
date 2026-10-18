@@ -7,11 +7,13 @@ import {
   overlayFromAgent,
   engineCadence,
   DIALOG_SNIFF_TTL_MS,
+  isTransientPollError,
   StateEngine,
   STATUS_HOLD_MS,
   type EngineSnapshot,
 } from "./state-engine.ts";
-import type { HerdrClient, WireAgent } from "./herdr-client.ts";
+import { HerdrClient as RealHerdrClient, type HerdrClient, type WireAgent } from "./herdr-client.ts";
+import { startFakeHerdr } from "./test/fake-herdr.ts";
 import { toPaneWire } from "./snapshot-route.ts";
 import type { AgentStatus } from "../shared/wire.ts";
 
@@ -458,6 +460,146 @@ describe("StateEngine — snapshot vs legacy path", () => {
     await drivePoll(engine);
     expect(snapCalls).toBe(2); // still on the snapshot path
     expect(listCalls).toBe(0);
+  });
+});
+
+describe("StateEngine — a slow Herdr poll (spec 25)", () => {
+  const TIMEOUT = new Error("herdr session.snapshot: timed out after 5000ms");
+
+  /** An engine that has had one good poll, with every listener recorded. */
+  async function connected() {
+    const { herdr, engine, poll } = makeEngine();
+    herdr.panes = [pane("w1:p1", "w1", "idle", "claude")];
+    await poll();
+    expect(engine.current().bridge).toBe("connected");
+    const link: Array<[string, string | undefined]> = [];
+    const updates: EngineSnapshot[] = [];
+    const slow: number[] = [];
+    engine.onLink((s, err) => link.push([s, err]));
+    engine.onUpdate((s) => updates.push(s));
+    engine.onSlow((ms) => slow.push(ms));
+    const good = herdr.sessionSnapshot.bind(herdr);
+    const fail = (err: Error) => { herdr.sessionSnapshot = () => Promise.reject(err); };
+    const heal = () => { herdr.sessionSnapshot = good; };
+    return { herdr, engine, poll, link, updates, slow, fail, heal };
+  }
+
+  test("isTransientPollError: only the client's timeout is transient", () => {
+    expect(isTransientPollError(TIMEOUT)).toBe(true);
+    expect(isTransientPollError(new Error("herdr pane.list: timed out after 5000ms"))).toBe(true);
+    expect(isTransientPollError(new Error("write EPIPE"))).toBe(false);
+    expect(isTransientPollError(new Error("connect ECONNREFUSED \\\\.\\pipe\\herdr"))).toBe(false);
+    expect(isTransientPollError(new Error("herdr session.snapshot: pane_not_found: gone"))).toBe(false);
+    expect(isTransientPollError(new Error("herdr session.snapshot: connection closed before reply"))).toBe(false);
+    expect(isTransientPollError("timed out after 5000ms")).toBe(false); // not an Error
+  });
+
+  test("one timeout keeps the link and the herd, and fires no link or update listener", async () => {
+    const c = await connected();
+    const before = c.engine.current().agents;
+    c.fail(TIMEOUT);
+    await c.poll();
+    expect(c.engine.current().bridge).toBe("connected");
+    expect(c.engine.current().agents).toBe(before);
+    expect(c.link).toEqual([]);
+    expect(c.updates).toEqual([]);
+    expect(c.slow).toEqual([5000]); // once, with the budget it exceeded
+  });
+
+  test("a second timeout in a row flips to disconnected, once", async () => {
+    const c = await connected();
+    c.fail(TIMEOUT);
+    await c.poll();
+    await c.poll();
+    expect(c.engine.current().bridge).toBe("disconnected");
+    expect(c.link).toEqual([["disconnected", TIMEOUT.message]]);
+    await c.poll(); // still down: no second flip
+    expect(c.link.length).toBe(1);
+    expect(c.slow).toEqual([5000]); // one slow line per episode, not per attempt
+    c.heal();
+    await c.poll();
+    expect(c.link).toEqual([["disconnected", TIMEOUT.message], ["connected", undefined]]);
+  });
+
+  test("a good poll between two timeouts resets the count", async () => {
+    const c = await connected();
+    c.fail(TIMEOUT);
+    await c.poll();
+    c.heal();
+    await c.poll();
+    c.fail(TIMEOUT);
+    await c.poll();
+    expect(c.engine.current().bridge).toBe("connected");
+    expect(c.link).toEqual([]);
+    expect(c.slow).toEqual([5000, 5000]); // two separate episodes
+  });
+
+  test("EPIPE flips at once, and also after an absorbed timeout", async () => {
+    const c = await connected();
+    c.fail(new Error("write EPIPE"));
+    await c.poll();
+    expect(c.engine.current().bridge).toBe("disconnected");
+    expect(c.link).toEqual([["disconnected", "write EPIPE"]]);
+    expect(c.slow).toEqual([]);
+
+    const d = await connected();
+    d.fail(TIMEOUT);
+    await d.poll();
+    d.fail(new Error("write EPIPE"));
+    await d.poll();
+    expect(d.link).toEqual([["disconnected", "write EPIPE"]]);
+  });
+
+  test("a timeout while already disconnected changes nothing", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    const link: string[] = [];
+    const slow: number[] = [];
+    engine.onLink((s) => link.push(s));
+    engine.onSlow((ms) => slow.push(ms));
+    herdr.sessionSnapshot = () => Promise.reject(TIMEOUT);
+    await poll();
+    expect(engine.current().bridge).toBe("disconnected");
+    expect(link).toEqual([]);
+    expect(slow).toEqual([]);
+  });
+
+  test("after an absorbed timeout the retry runs at pollMs, not the idle cadence", async () => {
+    const c = await connected();
+    const internals = c.engine as unknown as { started: boolean; cadenceMs: number; retryTimer: unknown };
+    internals.started = true;
+    internals.cadenceMs = 12_000; // relaxed: the event stream is healthy and the herd is resting
+    const scheduled: number[] = [];
+    const realSetTimeout = globalThis.setTimeout;
+    let fire: (() => void) | undefined;
+    globalThis.setTimeout = ((fn: () => void, ms?: number) => {
+      scheduled.push(ms ?? 0);
+      fire = fn;
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    }) as typeof setTimeout;
+    try {
+      c.fail(TIMEOUT);
+      await c.poll();
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+    }
+    expect(scheduled).toEqual([1500]);
+    // The retry is the second attempt: a second timeout there flips the link.
+    fire!();
+    await new Promise((r) => realSetTimeout(r, 0));
+    expect(c.engine.current().bridge).toBe("disconnected");
+    expect(internals.retryTimer).toBeNull();
+    c.engine.stop();
+  });
+
+  test("on the fast cadence no extra retry is scheduled (the interval is the retry)", async () => {
+    const c = await connected();
+    const internals = c.engine as unknown as { started: boolean; cadenceMs: number; retryTimer: unknown };
+    internals.started = true;
+    internals.cadenceMs = 1500;
+    c.fail(TIMEOUT);
+    await c.poll();
+    expect(internals.retryTimer).toBeNull();
+    internals.started = false;
   });
 });
 
@@ -1285,5 +1427,51 @@ describe("StateEngine — dialog sniff", () => {
     advance(DIALOG_SNIFF_TTL_MS);
     await poll();
     expect(herdr.reads.length).toBe(2);
+  });
+});
+
+describe("StateEngine — a slow Herdr over the real client (spec 25)", () => {
+  // The real HerdrClient against the fake Herdr socket, with a short budget: a late reply is the
+  // client's own timeout rejection, and a stopped server is a connect error. This pins that the
+  // engine's classifier reads the messages the client actually produces.
+  test("one late snapshot is absorbed, two in a row flip, a gone socket flips at once", async () => {
+    let slow = 0;
+    const fake = await startFakeHerdr({ delayMs: (m) => (m === "session.snapshot" && slow-- > 0 ? 400 : 0) });
+    try {
+      const engine = new StateEngine(new RealHerdrClient(fake.socketPath, 100), 1500);
+      const poll = () => (engine as unknown as { poll(): Promise<void> }).poll();
+      const link: Array<[string, string | undefined]> = [];
+      const slowMs: number[] = [];
+      engine.onLink((s, err) => link.push([s, err]));
+      engine.onSlow((ms) => slowMs.push(ms));
+      await poll();
+      expect(engine.current().bridge).toBe("connected");
+      const herd = engine.current().agents;
+      expect(herd.length).toBe(1);
+
+      slow = 1;
+      await poll();
+      expect(engine.current().bridge).toBe("connected");
+      expect(engine.current().agents).toBe(herd);
+      expect(slowMs).toEqual([100]);
+      await poll(); // answered in time again
+      expect(link).toEqual([["connected", undefined]]);
+
+      slow = 2;
+      await poll();
+      await poll();
+      expect(engine.current().bridge).toBe("disconnected");
+      expect(link[1]).toEqual(["disconnected", "herdr session.snapshot: timed out after 100ms"]);
+      await poll();
+      expect(engine.current().bridge).toBe("connected");
+
+      await fake.stop();
+      await poll();
+      expect(engine.current().bridge).toBe("disconnected"); // fatal: no grace poll
+      expect(link.length).toBe(4);
+      expect(isTransientPollError(new Error(link[3]![1]))).toBe(false);
+    } finally {
+      await fake.stop().catch(() => {});
+    }
   });
 });
