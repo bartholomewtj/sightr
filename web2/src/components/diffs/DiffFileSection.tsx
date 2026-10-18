@@ -13,13 +13,13 @@ import { RenderErrorBoundary } from "../RenderErrorBoundary";
 import { Button } from "../ui/button";
 
 import { AnnotatableCodeView } from "./AnnotatableCodeView";
-import { PlainPatch, resetDiffRenderer } from "./DiffCodeView";
+import { PlainPatch, resetDiffRenderer, type DiffCodeViewProps } from "./DiffCodeView";
 import { editsLabel, fileLabel } from "./diffFileActions";
 import { DiffFileStatus } from "./DiffFileStatus";
 import { patchOf, type DiffFileEntry, type PatchState } from "./diffTypes";
 
 /** The diff, or plain lines if the renderer cannot load (with a Retry that asks for it again). */
-export function PatchBody({ patch, path, wrap, eager }: { patch: string; path: string; wrap: boolean; eager: boolean }) {
+export function PatchBody({ patch, path, wrap, eager, layout, truncated, onExpandContext }: { patch: string; path: string; wrap: boolean; eager: boolean } & Pick<DiffCodeViewProps, "layout" | "truncated" | "onExpandContext">) {
   const [attempt, setAttempt] = useState(0);
   return (
     <RenderErrorBoundary
@@ -44,7 +44,7 @@ export function PatchBody({ patch, path, wrap, eager }: { patch: string; path: s
         </div>
       }
     >
-      <AnnotatableCodeView patch={patch} path={path} wrap={wrap} eager={eager} />
+      <AnnotatableCodeView patch={patch} path={path} wrap={wrap} eager={eager} layout={layout} truncated={truncated} onExpandContext={onExpandContext} />
     </RenderErrorBoundary>
   );
 }
@@ -53,10 +53,13 @@ function Note({ children, tone = "muted" }: { children: ReactNode; tone?: "muted
   return <p className={cn("px-2 py-1.5 text-xs", tone === "warn" ? "text-[var(--warn)]" : "text-muted-foreground")}>{children}</p>;
 }
 
-function Body(props: { file: DiffFileEntry; state: PatchState; wrap: boolean; eager: boolean; canOpen: boolean; onRetry: () => void; onOpenInFiles: () => void }) {
-  const { file, state, wrap, eager, canOpen, onRetry, onOpenInFiles } = props;
+function Body(props: { file: DiffFileEntry; state: PatchState; wrap: boolean; eager: boolean; layout: "stacked" | "split"; onExpandContext: DiffCodeViewProps["onExpandContext"]; canOpen: boolean; onRetry: () => void; onOpenInFiles: () => void }) {
+  const { file, state, wrap, eager, layout, onExpandContext, canOpen, onRetry, onOpenInFiles } = props;
   const patch = patchOf(state);
-  const diff = patch !== null && patch.trim() !== "" ? <PatchBody patch={patch} path={file.path} wrap={wrap} eager={eager} /> : null;
+  const diff =
+    patch !== null && patch.trim() !== "" ? (
+      <PatchBody patch={patch} path={file.path} wrap={wrap} eager={eager} layout={layout} truncated={state.state === "truncated"} onExpandContext={onExpandContext} />
+    ) : null;
   switch (state.state) {
     case "idle":
     case "loading":
@@ -96,7 +99,7 @@ function Body(props: { file: DiffFileEntry; state: PatchState; wrap: boolean; ea
         </div>
       );
     case "ready":
-      return diff ?? <Note>{file.kind === "renamed" ? "Renamed, no content change." : "No changes to show."}</Note>;
+      return diff ?? <Note>{file.whitespaceOnly ? "Whitespace changes only." : file.kind === "renamed" ? "Renamed, no content change." : "No changes to show."}</Note>;
   }
 }
 
@@ -106,13 +109,17 @@ export const DiffFileSection = memo(function DiffFileSection(props: {
   unfolded: boolean;
   wrap: boolean;
   eager: boolean;
+  /** Split is only ever passed where the column is wide enough (T28); otherwise stacked. */
+  layout?: "stacked" | "split";
+  /** Reads the file for "expand unchanged lines"; undefined where it cannot (a run, no folder). Stable, so folded files do not redraw. */
+  onExpandContext?: DiffCodeViewProps["onExpandContext"];
   highlighted: boolean;
   canOpen: boolean;
   onToggle: (path: string) => void;
   onRetry: (path: string) => void;
   onOpenInFiles: (file: DiffFileEntry) => void;
 }) {
-  const { file, state, unfolded, wrap, eager, highlighted, canOpen, onToggle, onRetry, onOpenInFiles } = props;
+  const { file, state, unfolded, wrap, eager, layout = "stacked", onExpandContext, highlighted, canOpen, onToggle, onRetry, onOpenInFiles } = props;
   const bodyId = `diff-body-${file.path}`;
   const edits = editsLabel(file.edits);
   return (
@@ -133,6 +140,8 @@ export const DiffFileSection = memo(function DiffFileSection(props: {
           <span className="ml-auto shrink-0 text-xs">
             {file.binary ? (
               <span className="font-mono text-3xs text-muted-foreground">binary</span>
+            ) : file.whitespaceOnly ? (
+              <span className="font-mono text-3xs text-muted-foreground">whitespace only</span>
             ) : file.countsKnown ? (
               <DiffStatLabel additions={file.added} deletions={file.removed} layout="inline" />
             ) : null}
@@ -148,7 +157,7 @@ export const DiffFileSection = memo(function DiffFileSection(props: {
       </h3>
       {unfolded ? (
         <div id={bodyId} data-diff-body="">
-          <Body file={file} state={state} wrap={wrap} eager={eager} canOpen={canOpen} onRetry={() => onRetry(file.path)} onOpenInFiles={() => onOpenInFiles(file)} />
+          <Body file={file} state={state} wrap={wrap} eager={eager} layout={layout} onExpandContext={onExpandContext} canOpen={canOpen} onRetry={() => onRetry(file.path)} onOpenInFiles={() => onOpenInFiles(file)} />
         </div>
       ) : null}
     </section>

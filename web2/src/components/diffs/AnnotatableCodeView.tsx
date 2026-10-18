@@ -11,7 +11,7 @@ import { addLineComment, ADD_REFUSAL, editLineComment, reanchorFile, useLineComm
 import { deleteWithUndo } from "@/state/commentActions";
 import { clearLineReveal, currentNote, getOpenEditor, patchOpenEditor, setLiveNote, setOpenEditor, useLineReveal, useOpenEditor } from "@/state/commentsUi";
 
-import { DiffCodeView, type DiffAnnotation, type DiffLineRef, type DiffSelection } from "./DiffCodeView";
+import { DiffCodeView, type DiffAnnotation, type DiffCodeViewProps, type DiffLineRef, type DiffSelection } from "./DiffCodeView";
 import { DiffCommentAnnotation, rangeLabelOf } from "./DiffCommentAnnotation";
 import { DiffCommentEditor } from "./DiffCommentEditor";
 import { clearRange, extendGesture, quoteFor, rangeOf, startGesture } from "./lineSelection";
@@ -29,15 +29,21 @@ const LIMIT_NOTICE = "12 lines is the limit.";
 
 const isCoarse = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
 
-type BodyProps = { patch: string; path: string; wrap: boolean; eager: boolean };
+/** The seam props the panel passes through untouched (T28: layout and unchanged lines). */
+type BodyProps = { patch: string; path: string; wrap: boolean; eager: boolean } & Pick<DiffCodeViewProps, "layout" | "truncated" | "onExpandContext">;
+
+function passThrough({ layout, truncated, onExpandContext }: BodyProps): Partial<DiffCodeViewProps> {
+  return { ...(layout ? { layout } : {}), ...(truncated !== undefined ? { truncated } : {}), ...(onExpandContext ? { onExpandContext } : {}) };
+}
 
 export function AnnotatableCodeView(props: BodyProps) {
   const ctx = useContext(DiffCommentsContext);
-  if (!ctx) return <DiffCodeView patch={props.patch} filePath={props.path} wrap={props.wrap} eager={props.eager} header={false} />;
+  if (!ctx) return <DiffCodeView patch={props.patch} filePath={props.path} wrap={props.wrap} eager={props.eager} header={false} {...passThrough(props)} />;
   return <Commentable {...props} ctx={ctx} />;
 }
 
-function Commentable({ patch, path, wrap, eager, ctx }: BodyProps & { ctx: DiffCommentsContextValue }) {
+function Commentable(props: BodyProps & { ctx: DiffCommentsContextValue }) {
+  const { patch, path, wrap, eager, ctx } = props;
   const { threadId } = ctx;
   const file = useParsedFile(patch);
   const problem = commentPathProblem(path);
@@ -164,6 +170,7 @@ function Commentable({ patch, path, wrap, eager, ctx }: BodyProps & { ctx: DiffC
         wrap={wrap}
         eager={eager}
         header={false}
+        {...passThrough(props)}
         annotations={annotations}
         renderAnnotation={renderAnnotation}
         {...(off ? {} : { onLineAction })}

@@ -6,6 +6,9 @@
 // or its header is near the viewport (revealed and unfolded files first), the summary refreshed with
 // `If-None-Match` so an unchanged diff costs a 304, and a changed one keeps the old patches on screen while the
 // visible files refetch (stale-while-revalidate, no flash). A scope change or an unmount aborts everything.
+// T28: ignore-whitespace is a second variant of the same state (its own list, hash and patches, fetched with
+// `ignoreWhitespace=1`); both stay cached for the session, so toggling back costs no request unless a
+// refresh happened meanwhile (the other variant is then marked stale and asked again, with `If-None-Match`).
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import type { ReviewDiffPreview } from "@shared/v2/review";
@@ -24,7 +27,8 @@ type Preview = Extract<ReviewDiffPreview, { available: true }>;
 export type SummaryState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "ready"; preview: Preview; files: DiffFileEntry[] }
+  /** `plainMissing`: under -w, the plain list (which supplies the whitespace-only files) failed or is unavailable, so those files are not listed. */
+  | { status: "ready"; preview: Preview; files: DiffFileEntry[]; plainMissing?: true }
   /** `reason` is T26's code (`not-a-repo`, `bad-base`, ...); `reviewReason` words it. */
   | { status: "unavailable"; reason: string }
   | { status: "error" };
@@ -49,9 +53,43 @@ export interface Wants {
 const NO_WANTS: Wants = { unfolded: new Set(), near: new Set(), reveal: null };
 const isAbort = (err: unknown) => (err as { name?: string } | null)?.name === "AbortError";
 
-export function requestScope(scope: Exclude<DiffScope, { kind: "run" }>): DiffRequestScope {
-  return scope.kind === "workingTree" ? { kind: "working-tree" } : { kind: "branch", ...(scope.baseRef ? { base: scope.baseRef } : {}) };
+export function requestScope(scope: Exclude<DiffScope, { kind: "run" }>, ignoreWhitespace = false): DiffRequestScope {
+  const ws = ignoreWhitespace ? { ignoreWhitespace: true } : {};
+  return scope.kind === "workingTree" ? { kind: "working-tree", ...ws } : { kind: "branch", ...(scope.baseRef ? { base: scope.baseRef } : {}), ...ws };
 }
+
+/** One whitespace variant of the engine's state. */
+interface Variant {
+  snap: PatchSnapshot;
+  /** The files exactly as this variant's list sent them (`snap.summary.files` may add whitespace-only files under -w). */
+  raw: DiffFileEntry[] | null;
+  hash: string | null;
+  /** The other variant was refreshed since this one was last read: ask again (a 304 if nothing moved) when it is switched to. */
+  stale: boolean;
+  summaryAbort: AbortController | null;
+}
+const freshVariant = (): Variant => ({ snap: { summary: { status: "idle" }, entries: new Map() }, raw: null, hash: null, stale: false, summaryAbort: null });
+
+/**
+ * Under `-w` the host drops a file whose only changes are whitespace from its list (git lists nothing for it), so the tree
+ * would lose a row when the toggle is turned on. The plain list still has it: keep it, marked `whitespaceOnly` with 0/0 and no
+ * patch to ask for, in the plain list's order. This is the list only; no patch is ever edited on the client.
+ */
+export function withWhitespaceOnly(plain: readonly DiffFileEntry[], ws: readonly DiffFileEntry[]): DiffFileEntry[] {
+  const mine = new Map(ws.map((f) => [f.path, f] as const));
+  const out: DiffFileEntry[] = [];
+  const used = new Set<string>();
+  for (const f of plain) {
+    const hit = mine.get(f.path);
+    if (hit) {
+      out.push(hit);
+      used.add(f.path);
+    } else if (f.kind === "modified" && !f.binary && !f.tooLarge) out.push({ ...f, added: 0, removed: 0, whitespaceOnly: true, rev: `${f.rev}:w` });
+  }
+  for (const f of ws) if (!used.has(f.path)) out.push(f);
+  return out;
+}
+type Ws = 0 | 1;
 
 const TRUNCATED_NOTE = "This file's diff is longer than the host will send, so only the first part is shown. Counts include everything.";
 const NONE_SHOWN_NOTE = "This file's diff is longer than the host will send, so none of it is shown here. Counts include everything.";
@@ -59,90 +97,162 @@ const TOO_LARGE_NOTE = "This file is too large to show here.";
 
 /** The engine behind {@link useDiffFilePatches}: plain TypeScript, so it is tested without React. */
 export class PatchEngine {
-  private snap: PatchSnapshot = { summary: { status: "idle" }, entries: new Map() };
+  private variants: [Variant, Variant] = [freshVariant(), freshVariant()];
+  private ws: Ws = 0;
   private listeners = new Set<() => void>();
   private folder: string | null = null;
   private scope: Exclude<DiffScope, { kind: "run" }> | null = null;
   private key = "";
-  private hash: string | null = null;
   private wants: Wants = NO_WANTS;
-  private summaryAbort: AbortController | null = null;
-  private inflight = new Map<string, { rev: string; controller: AbortController }>();
+  private inflight = new Map<string, { w: Ws; path: string; rev: string; controller: AbortController }>();
 
   subscribe = (fn: () => void): (() => void) => {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   };
-  getSnapshot = (): PatchSnapshot => this.snap;
+  getSnapshot = (): PatchSnapshot => (this.variants[this.ws] as Variant).snap;
 
   /** Requests in flight right now (the cap is {@link PATCH_CONCURRENCY}). */
   get inFlight(): number {
     return this.inflight.size;
   }
 
-  private set(next: Partial<PatchSnapshot>): void {
-    this.snap = { ...this.snap, ...next };
+  private get cur(): Variant {
+    return this.variants[this.ws] as Variant;
+  }
+  private notify(): void {
     for (const l of this.listeners) l();
   }
-  private setEntry(path: string, entry: Entry): void {
-    const entries = new Map(this.snap.entries);
+  private setIn(w: Ws, next: Partial<PatchSnapshot>): void {
+    const v = this.variants[w] as Variant;
+    v.snap = { ...v.snap, ...next };
+    this.notify();
+  }
+  private setEntry(w: Ws, path: string, entry: Entry): void {
+    const entries = new Map((this.variants[w] as Variant).snap.entries);
     entries.set(path, entry);
-    this.set({ entries });
+    this.setIn(w, { entries });
   }
 
   private abortAll(): void {
-    this.summaryAbort?.abort();
-    this.summaryAbort = null;
+    for (const v of this.variants) {
+      v.summaryAbort?.abort();
+      v.summaryAbort = null;
+    }
     for (const f of this.inflight.values()) f.controller.abort();
     this.inflight.clear();
   }
 
   /** Point the engine at a folder and scope. A different target drops everything and starts the file list. */
-  target(folder: string | null, scope: Exclude<DiffScope, { kind: "run" }> | null): void {
+  target(folder: string | null, scope: Exclude<DiffScope, { kind: "run" }> | null, ignoreWhitespace = false): void {
     const key = folder && scope ? `${folder}\0${scopeKey(scope)}` : "";
     if (key === this.key) return;
     this.abortAll();
     this.key = key;
     this.folder = folder;
     this.scope = scope;
-    this.hash = null;
-    this.snap = { summary: key ? { status: "loading" } : { status: "idle" }, entries: new Map() };
-    for (const l of this.listeners) l();
-    if (key) void this.refresh();
+    this.ws = ignoreWhitespace ? 1 : 0;
+    this.variants = [freshVariant(), freshVariant()];
+    if (key) this.cur.snap = { summary: { status: "loading" }, entries: new Map() };
+    this.notify();
+    if (key) {
+      void this.load(this.ws, false);
+      // The whitespace variant lists whitespace-only files from the plain list, so a start in that mode reads both.
+      if (this.ws === 1) void this.load(0, false);
+    }
+  }
+
+  /**
+   * Show the whitespace-ignoring variant (or not). The variant already read is shown at once and costs no request;
+   * one never read is fetched, and one the other variant's refresh left behind is asked again (a 304 when unchanged).
+   */
+  setIgnoreWhitespace(on: boolean): void {
+    const ws: Ws = on ? 1 : 0;
+    if (ws === this.ws) return;
+    this.ws = ws;
+    this.notify();
+    if (!this.key) return;
+    const v = this.cur;
+    if (v.snap.summary.status === "idle" || v.stale || v.snap.summary.status === "error") {
+      if (v.snap.summary.status === "idle") v.snap = { ...v.snap, summary: { status: "loading" } };
+      void this.load(ws, false);
+      if (ws === 1 && this.variants[0].snap.summary.status === "idle") void this.load(0, false);
+    } else this.pump();
   }
 
   /** Ask for the file list again (the Refresh button, a run ending, the page coming back). */
-  async refresh(): Promise<void> {
+  refresh(): Promise<void> {
+    const w = this.ws;
+    // A refresh in the whitespace variant reads the plain list too (it supplies the whitespace-only files).
+    if (w === 1) void this.load(0, false);
+    return this.load(w, w === 0);
+  }
+
+  /** The plain list could not be had (failed, busy, not a repo): the whitespace variant cannot list whitespace-only files. */
+  private plainFailed(): boolean {
+    const status = this.variants[0].snap.summary.status;
+    return status === "error" || status === "unavailable";
+  }
+
+  private mergedWs(raw: DiffFileEntry[]): DiffFileEntry[] {
+    const plain = this.variants[0];
+    return plain.raw && plain.snap.summary.status === "ready" ? withWhitespaceOnly(plain.raw, raw) : raw;
+  }
+
+  /** The plain list changed: the whitespace variant's whitespace-only files follow it. */
+  private remergeWs(): void {
+    const v = this.variants[1];
+    if (!v.raw || v.snap.summary.status !== "ready") return;
+    const files = this.mergedWs(v.raw);
+    const key = (list: readonly DiffFileEntry[]) => list.map((f) => `${f.path}\0${f.rev}`).join("\n");
+    const missing = this.plainFailed();
+    if (key(files) === key(v.snap.summary.files) && missing === (v.snap.summary.plainMissing === true)) return;
+    const present = new Set(files.map((f) => f.path));
+    const { plainMissing: _was, ...rest } = v.snap.summary;
+    void _was;
+    this.setIn(1, { summary: { ...rest, files, ...(missing ? { plainMissing: true as const } : {}) }, entries: new Map([...v.snap.entries].filter(([path]) => present.has(path))) });
+    if (this.ws === 1) this.pump();
+  }
+
+  private async load(w: Ws, markOther: boolean): Promise<void> {
     if (!this.folder || !this.scope) return;
-    this.summaryAbort?.abort();
+    const v = this.variants[w] as Variant;
+    v.summaryAbort?.abort();
+    v.stale = false;
+    const other = this.variants[w === 0 ? 1 : 0] as Variant;
+    if (markOther && other.snap.summary.status === "ready") other.stale = true;
     const controller = new AbortController();
-    this.summaryAbort = controller;
+    v.summaryAbort = controller;
     const key = this.key;
     try {
-      const res = await fetchDiffSummary(this.folder, requestScope(this.scope), { ifNoneMatch: this.hash, signal: controller.signal });
+      const res = await fetchDiffSummary(this.folder, requestScope(this.scope, w === 1), { ifNoneMatch: v.hash, signal: controller.signal });
       if (controller.signal.aborted || key !== this.key) return;
-      this.summaryAbort = null;
+      v.summaryAbort = null;
       if (res.notModified) {
-        if (this.snap.summary.status !== "ready") this.set({ summary: { status: "loading" } });
+        if (v.snap.summary.status !== "ready") this.setIn(w, { summary: { status: "loading" } });
         return;
       }
       const preview = res.preview;
       if (!preview.available) {
-        this.hash = null;
-        this.set({ summary: { status: "unavailable", reason: preview.reason }, entries: new Map() });
+        v.hash = null;
+        this.setIn(w, { summary: { status: "unavailable", reason: preview.reason }, entries: new Map() });
+        if (w === 0) this.remergeWs();
         return;
       }
-      this.hash = preview.diffHash;
-      const files = preview.files.map(entryFromStat);
+      v.hash = preview.diffHash;
+      v.raw = preview.files.map(entryFromStat);
+      const files = w === 1 ? this.mergedWs(v.raw) : v.raw;
       const present = new Set(files.map((f) => f.path));
-      const entries = new Map([...this.snap.entries].filter(([path]) => present.has(path)));
-      this.set({ summary: { status: "ready", preview, files }, entries });
-      this.pump();
+      const entries = new Map([...v.snap.entries].filter(([path]) => present.has(path)));
+      this.setIn(w, { summary: { status: "ready", preview, files, ...(w === 1 && this.plainFailed() ? { plainMissing: true as const } : {}) }, entries });
+      if (w === 0) this.remergeWs();
+      if (w === this.ws) this.pump();
     } catch (err) {
       if (isAbort(err) || controller.signal.aborted || key !== this.key) return;
-      this.summaryAbort = null;
+      v.summaryAbort = null;
       // Keep what is on screen when the list was already there; otherwise say so.
-      if (this.snap.summary.status !== "ready") this.set({ summary: { status: "error" } });
+      if (v.snap.summary.status !== "ready") this.setIn(w, { summary: { status: "error" } });
+      if (w === 0) this.remergeWs();
     }
   }
 
@@ -154,7 +264,7 @@ export class PatchEngine {
 
   /** Fetch a file again, after an error. */
   retry(path: string): void {
-    if (this.snap.entries.has(path)) this.setEntry(path, { rev: "", state: IDLE });
+    if (this.cur.snap.entries.has(path)) this.setEntry(this.ws, path, { rev: "", state: IDLE });
     this.pump();
   }
 
@@ -164,8 +274,8 @@ export class PatchEngine {
     this.key = "";
     this.folder = null;
     this.scope = null;
-    this.hash = null;
-    this.snap = { summary: { status: "idle" }, entries: new Map() };
+    this.ws = 0;
+    this.variants = [freshVariant(), freshVariant()];
   }
 
   private priority(path: string): number {
@@ -174,16 +284,18 @@ export class PatchEngine {
   }
 
   private pump(): void {
-    const summary = this.snap.summary;
+    const w = this.ws;
+    const summary = this.cur.snap.summary;
     if (summary.status !== "ready" || !this.folder || !this.scope) return;
     const byPath = new Map(summary.files.map((f) => [f.path, f] as const));
     // A request for a file that changed again, or that is gone, is no use any more. Its entry keeps the old
     // patch and the old rev, so the file is fetched again (rev differs) when it is wanted.
-    for (const [path, f] of this.inflight) {
-      const file = byPath.get(path);
+    for (const [id, f] of this.inflight) {
+      if (f.w !== w) continue;
+      const file = byPath.get(f.path);
       if (!file || file.rev !== f.rev) {
         f.controller.abort();
-        this.inflight.delete(path);
+        this.inflight.delete(id);
       }
     }
     const order = new Map(summary.files.map((f, i) => [f.path, i] as const));
@@ -202,37 +314,45 @@ export class PatchEngine {
 
   /** A file the host will not send a patch for has its state set outright. True when it did. */
   private settle(file: DiffFileEntry): boolean {
-    const existing = this.snap.entries.get(file.path);
+    const w = this.ws;
+    const existing = this.cur.snap.entries.get(file.path);
     if (file.binary) {
-      if (existing?.rev !== file.rev || existing.state.state !== "binary") this.setEntry(file.path, { rev: file.rev, state: { state: "binary" } });
+      if (existing?.rev !== file.rev || existing.state.state !== "binary") this.setEntry(w, file.path, { rev: file.rev, state: { state: "binary" } });
       return true;
     }
     if (file.tooLarge) {
-      if (existing?.rev !== file.rev || existing.state.state !== "truncated") this.setEntry(file.path, { rev: file.rev, state: { state: "truncated", patch: null, message: TOO_LARGE_NOTE } });
+      if (existing?.rev !== file.rev || existing.state.state !== "truncated") this.setEntry(w, file.path, { rev: file.rev, state: { state: "truncated", patch: null, message: TOO_LARGE_NOTE } });
+      return true;
+    }
+    // Ignoring whitespace left nothing of this file to show: the host said so in the list, so no patch is asked for.
+    if (file.whitespaceOnly) {
+      if (existing?.rev !== file.rev || existing.state.state !== "ready") this.setEntry(w, file.path, { rev: file.rev, state: { state: "ready", patch: "" } });
       return true;
     }
     return false;
   }
 
   private needsFetch(file: DiffFileEntry): boolean {
-    if (this.inflight.has(file.path)) return false;
-    const e = this.snap.entries.get(file.path);
+    if (this.inflight.has(`${this.ws}\0${file.path}`)) return false;
+    const e = this.cur.snap.entries.get(file.path);
     return !e || e.state.state === "idle" || e.rev !== file.rev;
   }
 
   private start(file: DiffFileEntry, preview: Preview): void {
+    const w = this.ws;
+    const id = `${w}\0${file.path}`;
     const folder = this.folder as string;
-    const scope = requestScope(this.scope as Exclude<DiffScope, { kind: "run" }>);
-    const before = this.snap.entries.get(file.path);
+    const scope = requestScope(this.scope as Exclude<DiffScope, { kind: "run" }>, w === 1);
+    const before = this.cur.snap.entries.get(file.path);
     const previousPatch = before ? patchOf(before.state) : null;
     const controller = new AbortController();
-    this.inflight.set(file.path, { rev: file.rev, controller });
-    this.setEntry(file.path, { rev: file.rev, state: { state: "loading", ...(previousPatch === null ? {} : { patch: previousPatch }) } });
+    this.inflight.set(id, { w, path: file.path, rev: file.rev, controller });
+    this.setEntry(w, file.path, { rev: file.rev, state: { state: "loading", ...(previousPatch === null ? {} : { patch: previousPatch }) } });
     const keep = previousPatch === null ? {} : { patch: previousPatch };
     const done = (state: PatchState) => {
-      if (this.inflight.get(file.path)?.controller !== controller) return; // superseded
-      this.inflight.delete(file.path);
-      this.setEntry(file.path, { rev: file.rev, state });
+      if (this.inflight.get(id)?.controller !== controller) return; // superseded
+      this.inflight.delete(id);
+      this.setEntry(w, file.path, { rev: file.rev, state });
       this.pump();
     };
     fetchDiffFilePatch(folder, scope, file, { ...(preview.from === undefined ? {} : { from: preview.from }), ...(preview.to === undefined ? {} : { to: preview.to }) }, controller.signal).then(
@@ -261,6 +381,8 @@ export interface UseDiffFilePatchesArgs {
   revealPath: string | null;
   /** Bump to ask for the file list again. */
   refreshToken: number;
+  /** Ask the host for `git diff -w` (T28). Both variants stay cached, so flipping this back is instant. */
+  ignoreWhitespace?: boolean;
 }
 
 export interface DiffFilePatches {
@@ -273,7 +395,7 @@ export interface DiffFilePatches {
 const NO_FILES: DiffFileEntry[] = [];
 
 export function useDiffFilePatches(args: UseDiffFilePatchesArgs): DiffFilePatches {
-  const { folderPath, scope, unfolded, near, revealPath, refreshToken } = args;
+  const { folderPath, scope, unfolded, near, revealPath, refreshToken, ignoreWhitespace = false } = args;
   const engineRef = useRef<PatchEngine | null>(null);
   engineRef.current ??= new PatchEngine();
   const engine = engineRef.current;
@@ -284,9 +406,13 @@ export function useDiffFilePatches(args: UseDiffFilePatchesArgs): DiffFilePatche
   // The scope's key is its identity: a new object with the same key must not restart the engine.
   const target = useMemo(() => scope, [scopeId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    engine.target(folder, target);
-  }, [engine, folder, target]);
+    engine.target(folder, target, ignoreWhitespace);
+  }, [engine, folder, target]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => engine.dispose(), [engine]);
+  // A flip of the flag switches variants; the target above takes the flag it starts with.
+  useEffect(() => {
+    engine.setIgnoreWhitespace(ignoreWhitespace);
+  }, [engine, ignoreWhitespace]);
 
   // The refresh token changes after the first render; the first value is the initial fetch `target` made.
   const firstToken = useRef(refreshToken);

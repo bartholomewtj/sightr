@@ -81,4 +81,4 @@ Vitest, beside source, no network (msw for routes).
 
 - **T26:** does `numstat -w` list a whitespace-only file (as 0/0)? If not, the tree needs the unfiltered list as well, or T26 must keep the file with a flag.
 - **T26:** the contents route must say binary / too large / refused and return the new side for a deleted file as absent, not empty; confirm the shape and the size cap before building.
-- **T27:** at the 720 px panel cap, split is rarely offered. Should the diff panel get a "widen" or full-width mode on desktop? Out of this slice unless T27 already has one.
+- **T27:** at the 720 px panel cap, split is rarely offered. Should the diff panel get a "widen" or full-width mode on desktop? Out of this slice unless T27 already has one. **Built in T28 as a stopgap:** the wide layout's file column is 256 px, and 720 - 256 < 640, so split could never show; a "File list" button (per device, `diffFileList` in `rightPanelStore.ts`) hides that column so the diffs get the whole panel. A real widen or full-width mode is still open.
