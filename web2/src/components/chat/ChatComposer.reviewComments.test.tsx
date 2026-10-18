@@ -86,7 +86,7 @@ describe("Add to message", () => {
     expect(toasts()).toContain("Added 2 comments to your message.");
     // They stay in the list (the basket) and are marked as in the message; Add has nothing left to add.
     expect(getLineComments("t1")).toHaveLength(2);
-    expect(bar()).toHaveTextContent("(2 in your message)");
+    expect(bar()).toHaveTextContent("(2 in message)");
     expect(within(bar()!).getByRole("button", { name: "Add to message" })).toBeDisabled();
   });
 
@@ -107,6 +107,7 @@ describe("Add to message", () => {
     expect(useRightPanelStore.getState().sheet).toBeNull();
     expect(box().value).toContain("[review] src/a.ts:3 (new)");
     expect(box()).not.toHaveFocus();
+    expect(getListOpen()).toBe(false); // and the Diff tab opens on its files next time
   });
 
   it("the text it adds is plain: it starts with [ and the same blocks parse back", () => {

@@ -31,7 +31,7 @@ export function ReviewCommentsBar({ threadId, text }: { threadId: string; text: 
       <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 flex-1">
         {comments.length} review comment{comments.length === 1 ? "" : "s"}
-        {waiting.length < comments.length ? ` (${comments.length - waiting.length} in your message)` : ""}
+        {waiting.length < comments.length ? ` (${comments.length - waiting.length} in message)` : ""}
         {outdated > 0 ? ` (${outdated} outdated)` : ""}
       </span>
       <Button size="xs" variant="outline" disabled={!gate.ok || addable.length === 0} title={gate.ok ? undefined : gate.reason} onClick={() => addToMessage(threadId, comments, text, { phone })}>

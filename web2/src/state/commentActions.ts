@@ -6,6 +6,7 @@ import { useSidebarThread } from "@/state/sidebar";
 import { useBridgeInfo, useThread } from "@/stream/stores";
 import { formatReviewBlock } from "@/lib/reviewCommentContext";
 import { useRightPanelStore } from "@/rightPanelStore";
+import { setCommentsListOpen } from "@/state/commentsUi";
 import { requestInsert } from "@/state/composer";
 import {
   clearLineComments,
@@ -43,7 +44,11 @@ export function addToMessage(threadId: string, comments: readonly LineComment[],
   const chosen = comments.filter((c) => commentView(c, draft) !== "in message" && (opts.includeOutdated || c.state !== "outdated"));
   if (chosen.length === 0) return 0;
   requestInsert(threadId, chosen.map(blockOf), { focus: !opts.phone });
-  if (opts.phone) useRightPanelStore.getState().closeSheet();
+  if (opts.phone) {
+    // The sheet closes; the Diff tab opens on its files next time, not on a list that is no longer needed.
+    setCommentsListOpen(threadId, false);
+    useRightPanelStore.getState().closeSheet();
+  }
   return chosen.length;
 }
 
