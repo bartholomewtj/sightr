@@ -1,21 +1,49 @@
 // T27: one Back closes exactly one layer. Before, every `useSheetHistory` instance answered every `popstate`,
 // so a picker over the panel (or a changed-file sheet over the thread) closed together with what was under it.
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { setPanelLeaveGuard } from "./right-panel/leaveGuard";
 import { openSheetEntries, useSheetHistory } from "./sheetHistory";
 
-const sleep = (ms = 25) => new Promise((r) => setTimeout(r, ms));
-const back = () => act(async () => { window.history.back(); await sleep(); });
+// No fixed sleeps: jsdom takes a history step in two nested `setTimeout(0)`s, so how long a Back takes depends on the
+// load the machine is under. A Back is waited for by its `popstate`; a chain of them (an orphan's entry is skipped with
+// one more step) by what the test then expects, through `waitFor`.
+const popped = () => new Promise<void>((resolve) => window.addEventListener("popstate", () => resolve(), { once: true }));
+const back = async () => {
+  const stepped = popped();
+  await act(async () => { window.history.back(); });
+  await stepped; // the browser's step, and the sheet history's answer to it (it listens first)
+  await act(async () => {}); // what the answer set in React
+};
 const sheetFlag = () => (window.history.state as Record<string, unknown> | null)?.sightrSheet === true;
 const here = () => (window.history.state as Record<string, unknown> | null)?.page;
 const thread = () => `thread-${pageId}`;
-/** Let a state change flush (effects included) and the browser take the step it asked for. */
-const flush = async (fn: () => void) => {
+/**
+ * Let a state change flush (effects included). `steps`: the change makes the sheet history take its own entry off, so
+ * the browser's step is waited for (a sheet closed under another leaves its entry, and takes no step).
+ */
+const flush = async (fn: () => void, steps: boolean) => {
+  const stepped = steps ? popped() : Promise.resolve();
   await act(async () => { fn(); });
-  await act(async () => { await sleep(50); });
+  await stepped;
+  await act(async () => {});
+};
+/** Steps still on their way (one a test started and did not wait for, an orphan's skip) must not land in the next test. */
+const drain = async () => {
+  let seen = 0;
+  const count = () => { seen += 1; };
+  window.addEventListener("popstate", count);
+  try {
+    for (let quiet = 0; quiet < 2; ) {
+      const before = seen;
+      for (let i = 0; i < 4; i++) await new Promise<void>((r) => setTimeout(r, 0));
+      quiet = seen === before ? quiet + 1 : 0;
+    }
+  } finally {
+    window.removeEventListener("popstate", count);
+  }
 };
 
 let setA: (open: boolean) => void = () => {};
@@ -44,8 +72,9 @@ beforeEach(() => {
   pageId += 1;
   window.history.pushState({ page: `thread-${pageId}` }, "");
 });
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await drain();
 });
 
 describe("useSheetHistory with sheets stacked", () => {
@@ -90,7 +119,7 @@ describe("useSheetHistory with sheets stacked", () => {
     const { container } = render(<Harness initial={{ a: false, b: false, c: false }} />);
     act(() => setA(true));
     act(() => setB(true));
-    await flush(() => setB(false)); // a pick in the picker, or its X button
+    await flush(() => setB(false), true); // a pick in the picker, or its X button
     expect(container.textContent).toBe("A");
     expect(openSheetEntries()).toBe(1);
     expect(sheetFlag()).toBe(true);
@@ -104,15 +133,14 @@ describe("useSheetHistory with sheets stacked", () => {
     const { container } = render(<Harness initial={{ a: false, b: false, c: false }} />);
     act(() => setA(true));
     act(() => setB(true));
-    await flush(() => setA(false)); // the lower sheet goes first (a tab switch, a route change)
+    await flush(() => setA(false), false); // the lower sheet goes first (a tab switch, a route change)
     expect(container.textContent).toBe("B");
     await back(); // closes B ...
     expect(closed).toEqual(["B"]);
     expect(container.textContent).toBe("none");
     // ... and the entry A left behind is skipped by the next Back, which leaves the page in one press.
     await back();
-    await act(async () => sleep(50));
-    expect(here()).not.toBe(thread());
+    await waitFor(() => expect(here()).not.toBe(thread())); // one Back plus the skip over the entry A left behind
     expect(sheetFlag()).toBe(false);
     expect(openSheetEntries()).toBe(0);
   });
@@ -120,24 +148,23 @@ describe("useSheetHistory with sheets stacked", () => {
   it("unmounting every open sheet at once leaves entries that one Back skips, to leave the page", async () => {
     const { unmount } = render(<Harness initial={{ a: true, b: true, c: true }} />);
     expect(openSheetEntries()).toBe(3);
-    await flush(unmount);
+    await flush(unmount, true);
     // The top sheet's entry went; the two under it stay as skippable entries, so one Back leaves the page.
     expect(openSheetEntries()).toBe(2);
     await back();
-    await act(async () => sleep(50));
+    await waitFor(() => expect(here()).not.toBe(thread()));
     expect(openSheetEntries()).toBe(0);
-    expect(here()).not.toBe(thread());
   });
 
   // The router's own pushState, as `thread.next` does it: a new entry above whatever is there.
-  const route = (name: string) => act(async () => { window.history.pushState({ page: `${thread()}-${name}` }, ""); await sleep(5); });
+  const route = (name: string) => act(async () => { window.history.pushState({ page: `${thread()}-${name}` }, ""); });
 
   it("a sheet closed by a route change leaves its entry alone: Back over the router's entries is the router's (X to Y to Z)", async () => {
     render(<Harness initial={{ a: false, b: false, c: false }} />);
     act(() => setA(true)); // thread details open on X
     expect(openSheetEntries()).toBe(1);
     await route("Y");
-    await flush(() => setA(false)); // the route change unmounted the sheet: its entry is under Y now
+    await flush(() => setA(false), false); // the route change unmounted the sheet: its entry is under Y now
     expect(openSheetEntries()).toBe(1); // kept, as an orphan
     await route("Z");
 
@@ -148,8 +175,7 @@ describe("useSheetHistory with sheets stacked", () => {
     expect(here()).toBe(thread());
     expect(closed).toEqual([]);
     await back(); // off the orphan's entry: skipped, so this one Back is enough to leave X
-    await act(async () => sleep(50));
-    expect(here()).not.toBe(thread());
+    await waitFor(() => expect(here()).not.toBe(thread()));
     expect(String(here())).not.toContain("-Y");
     expect(openSheetEntries()).toBe(0);
   });
@@ -158,7 +184,7 @@ describe("useSheetHistory with sheets stacked", () => {
     const { container } = render(<Harness initial={{ a: false, b: false, c: false }} />);
     act(() => setA(true));
     await route("Y");
-    await flush(() => setA(false));
+    await flush(() => setA(false), false);
     act(() => setB(true)); // a sheet on Y
     expect(openSheetEntries()).toBe(2);
     await back();
@@ -213,10 +239,12 @@ describe("useSheetHistory with the Files editor's guard", () => {
     });
     await back();
     expect(container.textContent).toBe("A");
+    const stepped = popped();
     await act(async () => {
       (held as (() => void) | null)?.();
-      await sleep();
     });
+    await stepped; // the sheet closes, takes its entry off, and the browser steps
+    await act(async () => {});
     expect(closed).toEqual(["B", "A"]);
     expect(container.textContent).toBe("none");
     expect(here()).toBe(thread());
