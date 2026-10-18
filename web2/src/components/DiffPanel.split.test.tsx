@@ -104,6 +104,28 @@ describe("DiffPanel: split view", () => {
     expect(inner.getAttribute("style")).toMatch(/min-width:\s*100%/);
   });
 
+  it("lets a wide panel hide its file column, which is what gives the diffs 640 px (the panel stops at 720)", async () => {
+    setViewportWidth(1280);
+    await mountPanel();
+    resizePanel(720);
+    expect(document.querySelector("[data-diff-tree-column]")).not.toBeNull();
+    const filesToggle = screen.getByRole("button", { name: "Files" });
+    expect(filesToggle).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(filesToggle);
+    expect(document.querySelector("[data-diff-tree-column]")).toBeNull();
+    expect(filesToggle).toHaveAttribute("aria-pressed", "false");
+    expect(sections()).toHaveLength(2); // the diffs stay
+    fireEvent.click(filesToggle);
+    expect(document.querySelector("[data-diff-tree-column]")).not.toBeNull();
+  });
+
+  it("offers no Files column toggle on a phone, where the tree folds under its header", async () => {
+    setViewportWidth(390);
+    await mountPanel();
+    expect(screen.queryByRole("button", { name: "Files" })).toBeNull();
+    expect(document.querySelector("[data-diff-tree-toggle]")).not.toBeNull();
+  });
+
   it("keeps the file that was topmost topmost when the layout changes", async () => {
     await wide();
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {

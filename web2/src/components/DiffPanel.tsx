@@ -16,7 +16,7 @@
 // The diffs mount in windows (hand renderer), so two things are said in the panel, not hidden: the
 // browser's find (Ctrl+F) sees only lines already drawn, and the scroll position comes back to a file
 // and an offset into it, not to an exact line.
-import { ChevronRightIcon, ChevronsDownUpIcon, Columns2Icon, PilcrowIcon, RotateCwIcon, Rows2Icon, WrapTextIcon } from "lucide-react";
+import { ChevronRightIcon, ChevronsDownUpIcon, Columns2Icon, PanelLeftIcon, PilcrowIcon, RotateCwIcon, Rows2Icon, WrapTextIcon } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -118,9 +118,12 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
   });
   const [treeOpen, setTreeOpen] = useState<boolean>(() => readDiffMemory(memKey).treeOpen ?? true);
   const [collapsedDirs, setCollapsedDirs] = useState<ReadonlySet<string>>(() => new Set(readDiffMemory(memKey).collapsedDirs));
+  // The wide layout's file column can be hidden (T28): the panel is at most 720 px and the column takes 256 of it, so
+  // split view (a 640 px diff column) is only reachable with the column hidden.
+  const [treeColumn, setTreeColumn] = useState<boolean>(() => readDiffMemory(memKey).treeColumn ?? true);
   useEffect(() => {
-    writeDiffMemory(memKey, { unfolded: unfolded ? [...unfolded] : null, treeOpen, collapsedDirs: [...collapsedDirs] });
-  }, [memKey, unfolded, treeOpen, collapsedDirs]);
+    writeDiffMemory(memKey, { unfolded: unfolded ? [...unfolded] : null, treeOpen, collapsedDirs: [...collapsedDirs], treeColumn });
+  }, [memKey, unfolded, treeOpen, collapsedDirs, treeColumn]);
 
   const [near, setNear] = useState<ReadonlySet<string>>(() => new Set());
   const [revealPath, setRevealPath] = useState<string | null>(null);
@@ -355,6 +358,12 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
         onWantBranches={() => setBranchesWanted(true)}
       />
       <span className="flex-1" />
+      {wide ? (
+        <Button size="xs" variant="ghost-muted" aria-pressed={treeColumn} onClick={() => setTreeColumn((open) => !open)} className={cn(treeColumn && "bg-accent text-foreground")} data-diff-tree-column-toggle="">
+          <PanelLeftIcon aria-hidden="true" />
+          Files
+        </Button>
+      ) : null}
       {splitOk ? (
         <span role="group" aria-label="Diff layout" className="flex items-center" data-diff-layout-toggle="">
           <Button size="xs" variant="ghost-muted" aria-pressed={shownLayout === "stacked"} onClick={() => setLayoutPref("stacked")} className={cn(shownLayout === "stacked" && "bg-accent text-foreground")}>
@@ -435,14 +444,14 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
     const first = files[0]?.path;
     return (
       <div className={cn("flex min-h-0 flex-1", wide ? "flex-row" : "flex-col")}>
-        {wide ? (
+        {wide && treeColumn ? (
           <aside className="flex w-64 shrink-0 flex-col border-r" data-diff-tree-column="">
             <p className="shrink-0 border-b px-3 py-1.5 text-xs font-medium text-muted-foreground">{countsLine}</p>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
               <DiffFileTree files={files} collapsedDirs={collapsedDirs} onToggleDir={onToggleDir} onSelect={onSelect} activePath={revealPath} />
             </div>
           </aside>
-        ) : (
+        ) : wide ? null : (
           <div className="shrink-0 border-b">
             <button
               type="button"
@@ -461,7 +470,7 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
             ) : null}
           </div>
         )}
-        <div ref={setScrollerEl} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain" data-diff-scroller="">
+        <div ref={setScrollerEl} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain" data-diff-scroller="" data-diff-column={columnPx} data-diff-layout-shown={shownLayout}>
           <DiffScrollRootContext value={scrollerEl}>
             {scope.kind === "branch" && baseGone && storedBase ? (
               <p className="border-b px-3 py-1.5 text-xs text-muted-foreground" data-diff-note="base-gone">

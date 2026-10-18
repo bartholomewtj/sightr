@@ -14,6 +14,8 @@ export interface DiffMemory {
   /** null: the first visit (the tree is open); a pick folds it. */
   treeOpen: boolean | null;
   collapsedDirs: string[];
+  /** The wide layout's left column of files (T28: hide it to give the diffs the whole panel, which is what split needs). Absent: shown. */
+  treeColumn?: boolean;
   anchor: { path: string; offset: number } | null;
 }
 
