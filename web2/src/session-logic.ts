@@ -14,7 +14,7 @@
 //   `failed` gets a synthetic notice entry after its last item (there is no run_interrupt item here).
 // - Reasoning gets a duration (Sightr, `reasoningTime`), because journals record thinking as one
 //   finished block with the entry's timestamp.
-import type { Run, TurnItem } from "@shared/v2/contracts";
+import type { ChatAttachment, Run, TurnItem } from "@shared/v2/contracts";
 
 import {
   workEntryIndicatesToolFailure,
@@ -53,7 +53,7 @@ export interface ChatMessage {
   readonly id: string;
   readonly role: "user" | "assistant" | "system";
   readonly text: string;
-  readonly attachments?: ReadonlyArray<{ readonly name: string; readonly path: string }>;
+  readonly attachments?: ReadonlyArray<ChatAttachment>;
   readonly runId?: string | null;
   readonly streaming: boolean;
   readonly createdAt: number;

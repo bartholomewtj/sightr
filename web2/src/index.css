@@ -539,3 +539,19 @@ html {
     font-size: max(16px, 1em);
   }
 }
+
+/* "Open this message" from the palette's Messages results: the row the jump landed on, ringed for a
+   moment (the timeline removes the attribute after ~2.4 s). */
+[data-item-jump] {
+  border-radius: 0.5rem;
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 2px;
+  animation: item-jump-fade 2.4s ease-out forwards;
+}
+@keyframes item-jump-fade {
+  0% { background-color: color-mix(in srgb, var(--accent) 22%, transparent); }
+  100% { background-color: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-item-jump] { animation: none; }
+}

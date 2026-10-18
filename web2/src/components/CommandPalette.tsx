@@ -5,6 +5,8 @@
  * `CommandPalette.logic.ts`. Groups: Needs you and recent threads with no query, then Threads,
  * Projects and Actions as you type. Actions are the same functions the buttons call (shelf commands
  * and their undo toasts are T10's), and only those that apply to the open thread are offered.
+ * With 2+ characters a "Messages" group follows (text in any thread's messages and commands, from
+ * `GET /api/v2/search`, matched words in bold); a pick opens the thread and scrolls to the message.
  * "Open file…" switches the list to the Files search for the open thread; a pick opens in the Files tab
  * (`rightPanelStore.openFile`). "Find in thread" opens the thread's find bar; "Copy thread id" and "Copy
  * folder path" use the clipboard (with the execCommand fallback) and say so in a toast.
@@ -55,6 +57,7 @@ import { KEYBINDINGS } from "@/keybindings";
 import { openRightPanelSurface, useRightPanelStore } from "@/rightPanelStore";
 import { openThreadTerminal, useThreadView } from "@/threadViewStore";
 import { interruptRun } from "@/state/composer";
+import { requestItemJump } from "@/state/itemJump";
 import { performThreadCommand, useSidebarPrefs, useSidebarThreads } from "@/state/sidebar";
 import { useBridgeInfo, useShell } from "@/stream/stores";
 import { useUiState } from "@/uiStateStore";
@@ -63,6 +66,7 @@ import {
   applies,
   buildActionItems,
   buildFileItems,
+  buildMessageItems,
   buildNeedsYouItems,
   buildProjectActionItems,
   buildRootGroups,
@@ -78,6 +82,8 @@ import {
 } from "./CommandPalette.logic";
 import { CommandPaletteContent } from "./CommandPaletteContent";
 import { useFilePickerSearch } from "./CommandPaletteFiles";
+import { useMessageSearch } from "./CommandPaletteMessages";
+import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
 import { copyThreadFolderPath, copyThreadId } from "./sidebar/threadCopy";
 import { CommandPaletteResults } from "./CommandPaletteResults";
 import { Button } from "./ui/button";
@@ -308,7 +314,27 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
       threadSearchItems: buildThreadActionItems(threadInput),
     });
   }, [threads, projects, threadId, thread, timeline, query, readOnly, props, navigate]);
-  const groups = filesMode ? fileGroups : commandGroups;
+
+  // Messages: after the thread/project/action groups; not in the ">" actions-only filter.
+  const messageSearch = useMessageSearch(query, !filesMode && !query.startsWith(">"));
+  const messageGroups = useMemo(() => {
+    const items = buildMessageItems({
+      matches: messageSearch.matches,
+      icon: (m) => (m.role === "tool" ? icon(TerminalSquareIcon) : icon(MessageSquareIcon)),
+      renderExcerpt: (m) => <ThreadSearchMatchExcerpt match={m} />,
+      formatTimestamp: (ms) => timeAgoShort(ms),
+      openMatch: (m) => {
+        requestItemJump(m.threadId, m.itemId);
+        void navigate({ to: "/thread/$threadId", params: { threadId: m.threadId } });
+      },
+    });
+    return items.length === 0 ? [] : [{ value: "messages", label: "Messages", items }];
+  }, [messageSearch.matches, navigate]);
+  const groups = filesMode ? fileGroups : [...commandGroups, ...messageGroups];
+  const searchingMessages = !filesMode && groups.length === 0;
+  const commandsEmptyMessage = messageSearch.pending
+    ? "Searching messages…"
+    : (messageSearch.error ?? "No matching threads, projects, actions or messages.");
 
   const executeItem = (item: CommandPaletteActionItem) => {
     if (executed.current) return;
@@ -362,7 +388,7 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
     >
       {filesMode ? <FilesModeBar onBack={backToCommands} truncated={fileSearch.truncated} /> : null}
       <CommandPaletteResults
-        {...(filesMode ? { emptyStateMessage: filesEmptyMessage } : {})}
+        {...(filesMode ? { emptyStateMessage: filesEmptyMessage } : searchingMessages && query.trim().length >= 2 ? { emptyStateMessage: commandsEmptyMessage } : {})}
         groups={groups}
         highlightedItemValue={highlightedItemValue}
         keybindings={KEYBINDINGS}

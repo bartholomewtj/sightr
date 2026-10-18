@@ -8,7 +8,7 @@ import type { PaneRead } from "../herdr-client.ts";
 import { conversationRoot, parseClaudeTranscript } from "../journal/claude.ts";
 import { parseCodexTranscript } from "../journal/codex.ts";
 import { TranscriptStore } from "../journal/store.ts";
-import type { AgentSessionRef, JournalAdapter } from "../journal/types.ts";
+import type { AgentSessionRef, JournalAdapter, ParseContext } from "../journal/types.ts";
 import type { AgentView, EngineSnapshot } from "../state-engine.ts";
 import { claudeRow, memoryLogs, type MemoryLogs } from "../test/journal-fakes.ts";
 import { createProject, createThread, project, thread } from "../test/thread-fixtures.ts";
@@ -21,7 +21,7 @@ import {
   screenText,
 } from "./journal-ingest.ts";
 import { openThreadStore, type ThreadStore } from "./store.ts";
-import { entryItemIds } from "./turn-items.ts";
+import { entryItemIds, logTag, parseJournalAttachmentId } from "./turn-items.ts";
 
 // ── Harness ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -59,7 +59,7 @@ interface Rig {
   restart(): Rig;
 }
 
-function rig(opts: { pollMs?: number; harness?: string; screen?: string; threadOver?: Partial<ServerThread>; parse?: (t: string) => ReturnType<typeof parseClaudeTranscript>; dbPath?: string; logs?: MemoryLogs; seed?: boolean } = {}): Rig {
+function rig(opts: { pollMs?: number; harness?: string; screen?: string; threadOver?: Partial<ServerThread>; parse?: (t: string, ctx?: ParseContext) => ReturnType<typeof parseClaudeTranscript>; dbPath?: string; logs?: MemoryLogs; seed?: boolean } = {}): Rig {
   const dbPath = opts.dbPath ?? join((() => {
     const d = mkdtempSync(join(tmpdir(), "sightr-journal-ingest-"));
     dirs.push(d);
@@ -76,7 +76,7 @@ function rig(opts: { pollMs?: number; harness?: string; screen?: string; threadO
   const adapter: JournalAdapter = {
     agent: "claude",
     source: logs.source,
-    parse: opts.parse ?? ((t) => parseClaudeTranscript(t)),
+    parse: opts.parse ?? ((t, ctx) => parseClaudeTranscript(t, { byteOffset: ctx?.byteOffset })),
     sessionLineage: async (ref: AgentSessionRef) => {
       const path = await logs.source.resolve(ref);
       return path === null ? null : conversationRoot(logs.text(ref.value));
@@ -178,6 +178,33 @@ describe("journal ingest: items and idempotence", () => {
     await r.ingestor.catchUp("t1");
     const item = items(r).find((i) => i.id === "a1:0")!;
     expect(item).toMatchObject({ status: "completed", output: "a.txt", ordinal });
+  });
+});
+
+describe("journal ingest: images", () => {
+  test("a tool's logged image becomes an attachment pointing at its row's byte offset, stable across reads", async () => {
+    const r = rig();
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const head = claudeRow.user("u1", "read it ✓", T0) + claudeRow.toolUse("a1", "toolu_r", "Read", { file_path: "logo.png" }, T0 + 1);
+    const result =
+      JSON.stringify({
+        type: "user",
+        uuid: "x1",
+        timestamp: new Date(T0 + 2).toISOString(),
+        message: { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_r", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png } }] }] },
+      }) + "\n";
+    r.logs.write("s1", head + result);
+    await r.ingestor.catchUp("t1");
+    const item = items(r).find((i) => i.id === "a1:0") as Extract<TurnItem, { type: "dynamic_tool" }>;
+    const attachment = item.attachments![0]!;
+    expect(attachment).toMatchObject({ type: "image", name: "logo.png", path: "", mimeType: "image/png" });
+    expect(parseJournalAttachmentId(attachment.id!)).toMatchObject({ tag: logTag(r.logs.pathOf("s1")), at: new TextEncoder().encode(head).length, n: 0 });
+    expect(JSON.stringify(items(r))).not.toContain(png.slice(0, 16));
+    const seq = r.store.lastSequence();
+    r.logs.append("s1", claudeRow.assistant("a2", "a dot", T0 + 3));
+    await r.ingestor.catchUp("t1");
+    expect((items(r).find((i) => i.id === "a1:0") as typeof item).attachments).toEqual(item.attachments);
+    expect(r.store.lastSequence()).toBe(seq + 1);
   });
 });
 

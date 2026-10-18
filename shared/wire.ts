@@ -183,11 +183,32 @@ export interface TranscriptUsage {
   cost?: number;
 }
 
+/**
+ * An image the harness logged (a pasted image, a Read of a PNG, a screenshot), kept as a REFERENCE to
+ * the log row that holds its bytes, never as the bytes (journal/images.ts). The v2 attachment route
+ * reads it back from the log on demand.
+ */
+export interface TranscriptImage {
+  mimeType: string;
+  /** Decoded size, from the base64 length. */
+  sizeBytes: number;
+  /** A short label for alt text and the viewer (`shot.png`, "Pasted image 1"). */
+  name: string;
+  /** Byte offset of the row's line in the log. Absent when the parse was not given one (v1 history). */
+  at?: number;
+  /** The row's own id (Claude `uuid`, pi `id`), checked when the bytes are read back. */
+  row: string;
+  /** Which image of the row, 0-based, in `rowImages` order. */
+  n: number;
+}
+
 export type TranscriptPart =
   | {
       kind: "text";
       text: string;
       truncated?: boolean;
+      /** Images that came with this text (a user's pasted image). */
+      images?: TranscriptImage[];
       /** The text is a provider failure the harness logged, not speech. */
       error?: TranscriptError;
       /** The text is a lifecycle marker: the operator interrupted the run. */
@@ -208,6 +229,8 @@ export type TranscriptPart =
       inputTruncated?: boolean;
       /** Structured data from the call or its result (a diff, a task list, a plan, a subagent). */
       detail?: TranscriptToolDetail;
+      /** Images in the call's result (a Read of an image, a screenshot). */
+      images?: TranscriptImage[];
     };
 export interface TranscriptEntry {
   uuid: string;

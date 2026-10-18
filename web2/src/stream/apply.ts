@@ -89,7 +89,7 @@ const byId = <T extends { id: string }>(list: readonly T[]): Record<string, T> =
   Object.fromEntries(list.map((x) => [x.id, x]));
 
 export function summarize(request: RuntimeRequest): RuntimeRequestSummary {
-  const { options: _options, steps: _steps, ...summary } = request;
+  const { options: _options, steps: _steps, subject: _subject, ...summary } = request;
   return summary;
 }
 

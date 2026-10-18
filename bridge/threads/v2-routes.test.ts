@@ -242,7 +242,7 @@ function startRun(id: string, threadId: string, ordinal: number): EventDraft {
 // ── Floor ────────────────────────────────────────────────────────────────────────────────────────
 
 describe("herdr floor and v2 switch", () => {
-  const PATHS = ["/api/v2/shell", "/api/v2/thread/t1", "/api/v2/thread/t1/history"];
+  const PATHS = ["/api/v2/shell", "/api/v2/thread/t1", "/api/v2/thread/t1/history", "/api/v2/search?q=hello"];
 
   test("too-old: every v2 route answers 503 herdr-too-old with the reason", async () => {
     const gate = createV2Gate({ log: () => {} });
@@ -889,6 +889,83 @@ describe("GET /api/v2/thread/:id/history", () => {
   test("unknown thread is 404", async () => {
     const r = await rig();
     expect((await call(r, get("/api/v2/thread/nope/history"))).status).toBe(404);
+  });
+});
+
+describe("GET /api/v2/search", () => {
+  type Hit = { threadId: string; itemId: string; role: string; excerpt: string; ranges: { start: number; end: number }[]; archived: boolean };
+  const search = async (r: Rig, q: string, headers: Record<string, string> = {}) => {
+    const res = await call(r, get(`/api/v2/search${q}`, headers));
+    return { status: res.status, body: (await res.json()) as { results: Hit[]; truncated: boolean; query: string; code?: string; error?: string } };
+  };
+
+  async function withText(): Promise<Rig> {
+    const r = await rig();
+    r.store.append([
+      item("m1", "t1", null, "the quick brown fox jumps"),
+      item("m2", "t1", null, "another fox in the henhouse"),
+      item("m3", "t2", null, "fox hunting is a topic"),
+      item("m4", "t2", null, "nothing relevant"),
+    ]);
+    return r;
+  }
+
+  test("answers matches with thread, item, role, excerpt and ranges", async () => {
+    const r = await withText();
+    const { status, body: b } = await search(r, "?q=fox");
+    expect(status).toBe(200);
+    expect(b.query).toBe("fox");
+    expect(b.results.map((x) => x.itemId)).toEqual(["m3", "m2", "m1"]);
+    const m3 = b.results[0]!;
+    expect(m3).toMatchObject({ threadId: "t2", role: "assistant", excerpt: "fox hunting is a topic", archived: false });
+    expect(m3.ranges).toEqual([{ start: 0, end: 3 }]);
+  });
+
+  test("a missing, overlong or one-character query: 400 for the first two, no results for the last", async () => {
+    const r = await withText();
+    expect((await search(r, "")).status).toBe(400);
+    expect((await search(r, "?q=" + "a".repeat(201))).status).toBe(400);
+    expect((await search(r, "?q=" + "a".repeat(200))).status).toBe(200);
+    const one = await search(r, "?q=f");
+    expect(one.status).toBe(200);
+    expect(one.body.results).toEqual([]);
+    expect((await search(r, "?q=%22%20AND%20NEAR(")).status).toBe(200);
+  });
+
+  test("limit: junk is 400, zero or negative is the default, and it never exceeds 50", async () => {
+    const r = await withText();
+    expect((await search(r, "?q=fox&limit=abc")).status).toBe(400);
+    expect((await search(r, "?q=fox&limit=1.5")).status).toBe(400);
+    expect((await search(r, "?q=fox&limit=2")).body.results).toHaveLength(2);
+    expect((await search(r, "?q=fox&limit=0")).body.results).toHaveLength(3);
+    expect((await search(r, "?q=fox&limit=-4")).body.results).toHaveLength(3);
+    const wide = await rig();
+    for (let k = 0; k < 30; k++) wide.store.append([createThread(thread(`x${k}`, { paneId: `w1:p-x${k}`, terminalId: `tm-x${k}` })), item(`w${k}`, `x${k}`, null, "omega")]);
+    const big = await search(wide, "?q=omega&limit=500");
+    expect(big.body.results.length).toBe(30);
+    expect(big.body.results.length).toBeLessThanOrEqual(50);
+  });
+
+  test("archived threads only with ?archived=1", async () => {
+    const r = await withText();
+    r.store.append([{ type: "thread.archived", threadId: "t2", payload: { reason: "user", at: 5 } }]);
+    expect((await search(r, "?q=hunting")).body.results).toEqual([]);
+    const all = await search(r, "?q=hunting&archived=1");
+    expect(all.body.results.map((x) => [x.itemId, x.archived])).toEqual([["m3", true]]);
+  });
+
+  test("a read-only device may search; POST is 405", async () => {
+    const r = await rig({ cfg: cfg({ deviceHeader: "x-device", deviceAllowlist: ["phone"] }) });
+    expect((await search(r, "?q=hello", { "x-device": "laptop" })).status).toBe(200);
+    const res = await call(r, new Request(`${URL_BASE}/api/v2/search?q=hi`, { method: "POST" }));
+    expect(res.status).toBe(405);
+  });
+
+  test("with v2 off the route answers v2-disabled", async () => {
+    const r = await rig({ store: null });
+    const { status, body: b } = await search(r, "?q=hello");
+    expect(status).toBe(503);
+    expect(b.code).toBe("v2-disabled");
   });
 });
 

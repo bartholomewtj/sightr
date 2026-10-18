@@ -313,12 +313,23 @@ export async function respondWithText(threadId: string, requestId: string, text:
   patchComposer(threadId, { responding: { requestId, optionIndex: RESPONDING_TEXT }, verdict: null });
   try {
     await post("runtime-request.respond", { requestId, text });
-    patchComposer(threadId, { verdict: "Sent to the agent." });
+    verdictFor(threadId, requestId, "Sent to the agent.");
     return true;
   } catch (err) {
-    patchComposer(threadId, { responding: null, verdict: refusalText(err) });
+    verdictFor(threadId, requestId, refusalText(err), { responding: null });
     return false;
   }
+}
+
+/**
+ * The answer's word, only while its card is still the one up. The bridge publishes the next dialog
+ * as soon as the keys land, often before the respond reply arrives; by then the composer has moved
+ * to the next card (ChatComposer clears `responding`), and a late "Sent to the agent." would sit under
+ * a question nobody has answered yet (live 2026-10-18: Claude's second Read card).
+ */
+function verdictFor(threadId: string, requestId: string, verdict: string, extra: Partial<ThreadComposer> = {}): void {
+  if (getThreadComposer(threadId).responding?.requestId !== requestId) return;
+  patchComposer(threadId, { ...extra, verdict });
 }
 
 /** Answer a request: one option by index, or a checkbox step's wanted set of boxes (T17). */
@@ -332,9 +343,9 @@ export async function respondToRequest(threadId: string, requestId: string, answ
       "runtime-request.respond",
       typeof answer === "number" ? { requestId, optionIndex: answer } : { requestId, optionIndices: [...answer] },
     );
-    patchComposer(threadId, { verdict: "Sent to the agent." });
+    verdictFor(threadId, requestId, "Sent to the agent.");
   } catch (err) {
-    patchComposer(threadId, { responding: null, verdict: refusalText(err) });
+    verdictFor(threadId, requestId, refusalText(err), { responding: null });
   }
 }
 

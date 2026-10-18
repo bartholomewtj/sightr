@@ -43,6 +43,7 @@ import {
   todoDetail,
   todoStepStatus,
 } from "./structured.ts";
+import { imageRef, logLines, rowImages, toolImageName } from "./images.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
   AgentSessionRef,
@@ -191,12 +192,12 @@ function isOperatorAbort(message: string | undefined): boolean {
  * Unparseable lines are skipped: the log is appended to live, so the last line can be a partial
  * write, and a tail-read window starts mid-line by construction.
  */
-export function parsePiTranscript(text: string): TranscriptEntry[] {
+export function parsePiTranscript(text: string, opts: { byteOffset?: number | undefined } = {}): TranscriptEntry[] {
   const entries: TranscriptEntry[] = [];
   // toolCall id → the part awaiting its result, so a later `toolResult` row lands on its own call.
   const pendingTools = new Map<string, Extract<TranscriptPart, { kind: "tool" }>>();
 
-  for (const line of text.split("\n")) {
+  for (const { line, at } of logLines(text, opts.byteOffset)) {
     if (line.trim() === "") continue;
     let row: PiRow;
     try {
@@ -211,16 +212,20 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
     const m = message as Record<string, unknown>;
     const uuid = typeof row.id === "string" ? row.id : "";
     const ts = typeof row.timestamp === "string" ? row.timestamp : "";
+    // The row's images as references (journal/images.ts); `rowImages` order is the content order.
+    const raw = line.includes('"image"') ? rowImages(row) : [];
 
     if (m.role === "toolResult") {
       const id = typeof m.toolCallId === "string" ? m.toolCallId : "";
       const target = pendingTools.get(id);
       const resultText = stripAnsi(textBlocks(m.content));
       const isError = m.isError === true;
+      const images = raw.map((img, n) => imageRef(img, { at, row: uuid, n, name: toolImageName(target?.input, n, raw.length) }));
       if (target) {
         // Mutated in place — the part already sits in an emitted entry, which is why results attach
         // without reordering anything.
         pendingTools.delete(id);
+        if (images.length > 0) target.images = images;
         const exit = /(?:exited with code|exit code:?)\s*(\d+)/i.exec(resultText.slice(-200));
         target.result = {
           ...clamp(resultText, MAX_RESULT_CHARS),
@@ -228,7 +233,7 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
           ...(isError && exit && target.name === "bash" ? { exitCode: Number(exit[1]) } : {}),
         };
         if (!isError) applyPiDetails(target, m.details);
-      } else if (resultText.trim() !== "") {
+      } else if (resultText.trim() !== "" || images.length > 0) {
         // Orphan result (its call fell outside a tail-read window) — kept unattached so the window
         // never silently drops output.
         entries.push({
@@ -241,6 +246,7 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
               name: typeof m.toolName === "string" ? m.toolName : "result",
               summary: "",
               result: { ...clamp(resultText, MAX_RESULT_CHARS), ...(isError ? { isError: true } : {}) },
+              ...(images.length > 0 ? { images } : {}),
             },
           ],
         });
@@ -286,6 +292,14 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
       const code = /\[code=([\w.-]+)\]/.exec(message)?.[1] ?? null;
       const at = typeof m.timestamp === "number" ? m.timestamp : Date.parse(ts) || 0;
       parts.push({ kind: "text", ...clamp(message, MAX_TEXT_CHARS), error: providerFailure(message, { code, at }) });
+    }
+
+    // A user's image goes with the words it was sent with, or is a message of its own.
+    if (role === "user" && raw.length > 0) {
+      const images = raw.map((img, n) => imageRef(img, { at, row: uuid, n, name: `Pasted image ${n + 1}` }));
+      const words = parts.find((p): p is Extract<TranscriptPart, { kind: "text" }> => p.kind === "text");
+      if (words) words.images = images;
+      else parts.push({ kind: "text", text: "", images });
     }
 
     if (parts.length === 0) continue; // a row with nothing renderable
@@ -377,6 +391,6 @@ export function piJournal(roots: string | readonly string[]): JournalAdapter {
   return {
     agent: "pi",
     source: new PiTranscriptSource(roots),
-    parse: parsePiTranscript,
+    parse: (text, ctx) => parsePiTranscript(text, { byteOffset: ctx?.byteOffset }),
   };
 }

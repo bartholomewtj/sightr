@@ -3,6 +3,8 @@
 // mode). No chat/plan toggle (plan is one of the harness's modes) and no traits (effort and model are
 // fixed at spawn). The trigger names the current mode instead of "…", since a phone has no hover. A
 // destructive mode is not switched from here: `onModeChange` gets it, and the composer asks to confirm.
+// On a phone (`xs`) the chip shows the mode's one-word `short` name in full ("Edits", not "Accept…");
+// the full name stays in the aria-label and the menu.
 import { memo } from "react";
 import { Loader2Icon, ShieldIcon } from "lucide-react";
 
@@ -25,7 +27,8 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
 }) {
   const size = props.size ?? "sm";
   const current = props.runtimeModeOptions.find((o) => o.id === props.runtimeMode);
-  const label = props.switching ? "Switching…" : (current?.label ?? "Mode");
+  const name = size === "xs" ? current?.short : current?.label;
+  const label = props.switching ? "Switching…" : (name ?? "Mode");
 
   return (
     <Menu>
@@ -33,7 +36,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
         render={
           <ComposerControl
             size={size}
-            className="min-w-0 shrink"
+            className={size === "xs" ? "shrink-0" : "min-w-0 shrink"}
             aria-label={`Permission mode: ${current?.label ?? "unknown"}`}
             data-composer-control="permission-mode"
             data-mode={props.runtimeMode ?? ""}
@@ -45,7 +48,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
         ) : (
           <ComposerControlIcon icon={ShieldIcon} size={size} className={current?.destructive ? "text-destructive" : undefined} />
         )}
-        <span className="min-w-0 max-w-[7.5rem] truncate">{label}</span>
+        <span className={size === "xs" ? "whitespace-nowrap" : "min-w-0 max-w-[7.5rem] truncate"}>{label}</span>
         <ComposerControlChevron size={size} />
       </MenuTrigger>
       <MenuPopup align="start" side="top">

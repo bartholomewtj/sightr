@@ -13,6 +13,7 @@ import type {
   ThreadEvent,
   ThreadEventType,
   ThreadSnapshot,
+  ThreadSearchResponse,
   TurnItem,
 } from "../../shared/v2/contracts.ts";
 import type { AgentSessionRef } from "../journal/types.ts";
@@ -24,6 +25,7 @@ import {
   type ServerThread,
   type StoredEvent,
 } from "./events.ts";
+import { createSearchIndex, searchItems, type SearchOptions } from "./search.ts";
 
 // The v2 event store: one `bun:sqlite` file at `<stateDir>/threads.sqlite`.
 //
@@ -195,6 +197,13 @@ export const MIGRATIONS: readonly Migration[] = [
     version: 5,
     up(db) {
       db.run(`ALTER TABLE threads ADD COLUMN compacting INTEGER`);
+    },
+  },
+  {
+    // Message search: an FTS5 index over user/assistant text and command inputs, kept by triggers.
+    version: 6,
+    up(db) {
+      createSearchIndex(db);
     },
   },
 ];
@@ -457,7 +466,7 @@ function eventFromRow(r: EventRow): StoredEvent {
 }
 
 function summary(request: RuntimeRequest): RuntimeRequestSummary {
-  const { options: _options, steps: _steps, preview: _preview, ...rest } = request;
+  const { options: _options, steps: _steps, preview: _preview, subject: _subject, ...rest } = request;
   return rest;
 }
 
@@ -764,6 +773,10 @@ export interface ThreadStore {
    * (`LOOSE_PAGE_ITEMS` at a time).
    */
   historyPage(threadId: string, before: number | null, limit: number): HistoryPage;
+  /** Message search over user/assistant text and command inputs (`GET /api/v2/search`). */
+  search(opts: SearchOptions): ThreadSearchResponse;
+  /** Message search over user/assistant text and command inputs (`GET /api/v2/search`). */
+  search(opts: SearchOptions): ThreadSearchResponse;
   /** A thread's queued messages by position, or every thread's (by thread, then position) with no id (T06). */
   listQueued(threadId?: string): QueuedMessage[];
   /** One queued message by id (T06). */
@@ -1193,7 +1206,13 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
       },
     },
 
+    search(opts) {
+      return searchItems(db, opts);
+    },
+
     prune(at) {
+      // `run().changes` counts rows a cascade and the search triggers delete too; `changes()` does not.
+      const directChanges = () => db.query<{ n: number }, []>("SELECT changes() AS n").get()?.n ?? 0;
       const result = db.transaction((): PruneResult => {
         const last = lastSequence();
         const events = db
@@ -1213,18 +1232,18 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
           )
           .all(MAX_ITEMS_PER_THREAD);
         for (const { thread_id, n } of crowded) {
-          items += db
+          db
             .query(
               `DELETE FROM turn_items WHERE id IN (
                  SELECT id FROM turn_items WHERE thread_id = ?
                    AND (run_id IS NULL OR run_id NOT IN (SELECT id FROM runs WHERE status = 'running'))
                  ORDER BY position LIMIT ?)`,
             )
-            .run(thread_id, n - MAX_ITEMS_PER_THREAD).changes;
+            .run(thread_id, n - MAX_ITEMS_PER_THREAD);
+          items += directChanges();
         }
-        const threads = db
-          .query("DELETE FROM threads WHERE shelf = 'archived' AND archived_at < ?")
-          .run(at - RETAIN_ARCHIVED_MS).changes;
+        db.query("DELETE FROM threads WHERE shelf = 'archived' AND archived_at < ?").run(at - RETAIN_ARCHIVED_MS);
+        const threads = directChanges();
         return { events, receipts, items, threads };
       }).immediate();
       if (path !== ":memory:") {

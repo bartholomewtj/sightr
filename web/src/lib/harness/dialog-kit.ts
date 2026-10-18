@@ -27,6 +27,7 @@ import { DIALOG_CONTRACT, dialogModelOf, type DialogKind, type DialogModels } fr
 import { detectNoEchoPrompt } from "../no-echo";
 import { agyBuildBlocks } from "./agy/index";
 import { claudeBuildBlocks } from "./claude/index";
+import { claudePermissionSubject, type PermissionSubject } from "./claude/permission-subject";
 import { cursorBuildBlocks } from "./cursor/index";
 import { isSkipLabel } from "./cursor/permission";
 import { grokBuildBlocks } from "./grok/index";
@@ -73,7 +74,11 @@ export interface DialogParse {
   decision?: { thread: string; run: string };
   /** The question has an empty free-text row the bridge can type an answer into ({@link freeTextModel}). */
   freeText?: true;
+  /** A permission dialog's tool and target ("Run command" · `git status`), when the adapter reads one. */
+  subject?: PermissionSubject;
 }
+
+export type { PermissionSubject };
 
 /**
  * A dialog's free-text row as the bridge types into it (v2 `runtime-request.respond` with `text`).
@@ -120,12 +125,46 @@ const DENY_LABEL: Record<string, (label: string) => boolean> = {
   grok: isRejectLabel,
 };
 
+/** An adapter's reader for what a permission dialog is about. Agents without one publish no subject. */
+const SUBJECT: Record<string, (lines: StyledLine[], question: string) => PermissionSubject | null> = {
+  claude: claudePermissionSubject,
+};
+
 /** The agents this file parses, for the parity test. */
 export const DIALOG_KIT_AGENTS: readonly string[] = Object.keys(PIPELINES);
 
 /** The block pipeline the kit runs for `agent` (the adapter's own), or undefined. Exact string. */
 export function dialogPipeline(agent: string): Pipeline | undefined {
   return Object.hasOwn(PIPELINES, agent) ? PIPELINES[agent] : undefined;
+}
+
+/** How many wrapped lines a prompt may continue onto. */
+const MAX_PROMPT_WRAP = 4;
+
+/**
+ * A prompt the terminal wrapped mid-sentence, rejoined: Claude's trust dialog wraps "Quick safety
+ * check: Is this a project you created or one you trust? (Like your own code, …, or work" and the
+ * card cut the sentence there (live 2026-10-18, 135 columns). The adapter lifts only the line with
+ * the "?"; the lines under it continue the sentence until one ends it or a blank line comes.
+ */
+export function unwrapPrompt(lines: readonly StyledLine[], prompt: string): string {
+  const texts = lines.map((l) => l.segments.map((s) => s.text).join(""));
+  let at = -1;
+  for (let i = texts.length - 1; i >= 0; i--) {
+    if (texts[i]!.trim() === prompt) {
+      at = i;
+      break;
+    }
+  }
+  if (at < 0) return prompt;
+  const out = [prompt];
+  for (let i = at + 1; i < texts.length && out.length <= MAX_PROMPT_WRAP; i++) {
+    if (/[.?!:)]$/.test(out.at(-1)!)) break;
+    const t = texts[i]!.trim();
+    if (t === "") break;
+    out.push(t);
+  }
+  return out.join(" ");
 }
 
 /** The last BOUND_TEXT_LINES non-blank lines of `text`, SGR and trailing spaces removed. */
@@ -367,7 +406,15 @@ export function parseDialog(agent: string, ansiText: string): DialogParse | null
   if (block) {
     const lifted = fromBlock(agent, block);
     const free = lifted.kind === "question" && !lifted.via ? freeTextOfBlock(block) : null;
-    return { ...lifted, ...(free?.typeable ? { freeText: true as const } : {}), boundText: boundTextFor(block, ansiText) };
+    const subject =
+      lifted.kind === "permission" && Object.hasOwn(SUBJECT, agent) ? SUBJECT[agent]!(lines, lifted.prompt) : null;
+    return {
+      ...lifted,
+      ...(lifted.kind === "trust" ? { prompt: unwrapPrompt(lines, lifted.prompt) } : {}),
+      ...(free?.typeable ? { freeText: true as const } : {}),
+      ...(subject ? { subject } : {}),
+      boundText: boundTextFor(block, ansiText),
+    };
   }
   const password = detectNoEchoPrompt(lines);
   if (password !== null) return { kind: "password", prompt: password, options: [], boundText };

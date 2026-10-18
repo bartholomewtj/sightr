@@ -202,6 +202,12 @@ export type UserMessageInputIntent = "turn_start" | "queued_turn" | "steer" | "p
 /**
  * T3's `ChatAttachment`, loosened: Sightr's attachments are files uploaded to the bridge and named by
  * the path the agent reads (T12), so `path` is required and the size/mime fields are optional.
+ *
+ * On a journal item (a user message, a tool's output images) `id` names where the bytes are: `u_<name>`
+ * for a file uploaded from the phone, `j_…` for an image read back from the harness log (opaque to
+ * clients). `path` is then the upload's path, or `""` for an image that only exists inside the log.
+ * Its bytes are served by `GET /api/v2/thread/:threadId/item/:itemId/attachment/:index`
+ * ({@link v2AttachmentPath}).
  */
 export interface ChatAttachment {
   type?: "image" | "file";
@@ -366,6 +372,8 @@ export type TurnItem =
       outputOmitted?: boolean;
       /** Sightr: the call's own arguments, capped (the item's `truncated` says when they were cut). */
       rawInput?: unknown;
+      /** Sightr: images in the call's result (a Read of an image, a screenshot), in T3's attachment shape. */
+      attachments?: ChatAttachment[];
     })
   /**
    * T3's `subagent`: a child agent the harness ran (Claude `Agent`, Pi `subagent`). Sightr's journals
@@ -474,6 +482,22 @@ export interface RuntimeRequest {
   freeText?: boolean;
   /** The typed answer, once resolved with `text` (T3's `customAnswer`). */
   customAnswer?: string;
+  /**
+   * Sightr extension: what a permission dialog is about, read from the dialog's own text above its
+   * question ("Run command" · `git status`). Sent on the thread stream only: the shell summary drops it,
+   * so a command's text never reaches the thread list.
+   */
+  subject?: RuntimeRequestSubject;
+}
+
+/** A permission request's tool and target (Sightr extension). */
+export interface RuntimeRequestSubject {
+  /** What the tool does: "Run command", "Read file", "Edit file". */
+  title: string;
+  /** The command or path as the dialog shows it. */
+  target?: string;
+  /** The dialog's own description of the command. */
+  detail?: string;
 }
 
 /** One chip of a multi-question ask's stepper (v1's `WizardStepChip`). */
@@ -483,8 +507,8 @@ export interface RuntimeRequestStep {
   current: boolean;
 }
 
-/** What the shell snapshot carries per request: no options, steps or preview pane. */
-export type RuntimeRequestSummary = Omit<RuntimeRequest, "options" | "steps" | "preview">;
+/** What the shell snapshot carries per request: no options, steps, preview pane or subject. */
+export type RuntimeRequestSummary = Omit<RuntimeRequest, "options" | "steps" | "preview" | "subject">;
 
 export type QueuedMessageState = "queued" | "sending" | "held";
 
@@ -696,8 +720,45 @@ export type ThreadEvent = { [K in ThreadEventType]: ThreadEventOf<K> }[ThreadEve
 
 export const V2_SHELL_PATH = "/api/v2/shell";
 export const V2_COMMAND_PATH = "/api/v2/command";
+export const V2_SEARCH_PATH = "/api/v2/search";
+
+// ── Message search (`GET /api/v2/search?q=&limit=&archived=`) ────────────────────────────────────
+/** Fewest characters of a query the bridge searches for (shorter answers no results). */
+export const SEARCH_MIN_CHARS = 2;
+export const SEARCH_MAX_QUERY_CHARS = 200;
+export const SEARCH_DEFAULT_LIMIT = 20;
+export const SEARCH_MAX_LIMIT = 50;
+export const SEARCH_EXCERPT_CHARS = 160;
+
+/** Which kind of item matched: a user message, an assistant message or a command's input. */
+export type SearchRole = "user" | "assistant" | "tool";
+
+/** One match. `ranges` are [start, end) offsets into `excerpt` for the matched words. */
+export interface ThreadSearchMatch {
+  threadId: string;
+  threadTitle: string;
+  projectId: string;
+  projectLabel: string;
+  archived: boolean;
+  itemId: string;
+  role: SearchRole;
+  excerpt: string;
+  ranges: { start: number; end: number }[];
+  /** When the item was written (epoch ms). */
+  at: number;
+}
+
+export interface ThreadSearchResponse {
+  query: string;
+  results: ThreadSearchMatch[];
+  /** More matches exist than `limit` (or than the per-thread cap let through). */
+  truncated: boolean;
+}
 export const v2ThreadPath = (threadId: string): string => `/api/v2/thread/${encodeURIComponent(threadId)}`;
 export const v2HistoryPath = (threadId: string): string => `${v2ThreadPath(threadId)}/history`;
+/** An item's attachment bytes (an image), by its index in the item's `attachments`. */
+export const v2AttachmentPath = (threadId: string, itemId: string, index: number): string =>
+  `${v2ThreadPath(threadId)}/item/${encodeURIComponent(itemId)}/attachment/${index}`;
 
 /** A resume longer than this many events gets a snapshot instead of a replay. */
 export const V2_REPLAY_LIMIT = 128;

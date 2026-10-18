@@ -3,14 +3,17 @@
 // title tap) and opens the sidebar's ThreadRowMenu (rename, pin, mark unread, snooze, settle,
 // archive) with the same commands; no breadcrumb, parent link or double-click (touch has none):
 // Rename is a menu item that turns the title into a field. Read-only devices and archived threads
-// get the plain title.
+// get the plain title. On a phone the route hands in `leadingActions` (Find in thread, Command
+// palette): they lead the menu instead of taking header buttons, so at 360 px the title keeps ~20
+// characters (it was cut to ~10). A read-only or archived thread's title then opens a menu of just those.
 import { ChevronDownIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { Thread } from "@shared/v2/contracts";
 import { CustomSnoozeDialog } from "@/components/CustomSnoozeDialog";
 import type { ShelfCommand } from "@/components/Sidebar.logic";
-import { ThreadRowMenu } from "@/components/sidebar/ThreadRowMenu";
+import { ThreadMenuActionItems, ThreadRowMenu, type ThreadMenuAction } from "@/components/sidebar/ThreadRowMenu";
+import { Menu, MenuPopup } from "~/components/ui/menu";
 import { performThreadCommand } from "@/state/sidebar";
 import { cn } from "~/lib/utils";
 
@@ -28,12 +31,15 @@ export function ChatHeader({
   title,
   thread,
   canOperate,
+  leadingActions = [],
 }: {
   title: string;
   /** The thread the menu acts on; null while it loads. */
   thread: Thread | null;
   /** False on a read-only device or a missing thread: the title is plain text. */
   canOperate: boolean;
+  /** Actions that lead the title's menu (the phone header's Find and Command palette). */
+  leadingActions?: readonly ThreadMenuAction[];
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -47,8 +53,42 @@ export function ChatHeader({
   }, [threadId]);
 
   const operable = canOperate && thread !== null && thread.shelf !== "archived";
-  if (!operable) {
+  if (!operable && leadingActions.length === 0) {
     return <h1 className="min-w-0 flex-1 truncate font-semibold">{title}</h1>;
+  }
+
+  const trigger = (
+    <h1 className="flex min-w-0 flex-1">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        title="Thread actions"
+        data-thread-title-menu=""
+        className="-mx-1.5 flex min-w-0 max-w-full items-center gap-1 rounded-md px-1.5 py-1 text-start font-semibold outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11"
+        onClick={() => setMenuOpen(true)}
+      >
+        <span className="min-w-0 truncate">{title}</span>
+        <ChevronDownIcon aria-hidden="true" className={cn("size-4 shrink-0 text-muted-foreground transition-transform", menuOpen && "rotate-180")} />
+      </button>
+    </h1>
+  );
+
+  if (!operable) {
+    // Read-only or archived: only the opener's own actions.
+    return (
+      <>
+        {trigger}
+        <Menu open={menuOpen} onOpenChange={setMenuOpen}>
+          {menuOpen ? (
+            <MenuPopup anchor={triggerRef.current} align="start" side="bottom" aria-label={`Actions for ${title}`}>
+              <ThreadMenuActionItems actions={leadingActions} />
+            </MenuPopup>
+          ) : null}
+        </Menu>
+      </>
+    );
   }
 
   const run = (command: ShelfCommand) => void performThreadCommand(command);
@@ -70,22 +110,9 @@ export function ChatHeader({
 
   return (
     <>
-      <h1 className="flex min-w-0 flex-1">
-        <button
-          ref={triggerRef}
-          type="button"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          title="Thread actions"
-          data-thread-title-menu=""
-          className="-mx-1.5 flex min-w-0 max-w-full items-center gap-1 rounded-md px-1.5 py-1 text-start font-semibold outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11"
-          onClick={() => setMenuOpen(true)}
-        >
-          <span className="min-w-0 truncate">{title}</span>
-          <ChevronDownIcon aria-hidden="true" className={cn("size-4 shrink-0 text-muted-foreground transition-transform", menuOpen && "rotate-180")} />
-        </button>
-      </h1>
+      {trigger}
       <ThreadRowMenu
+        leadingActions={leadingActions}
         thread={menuOpen ? thread : null}
         anchor={menuOpen ? triggerRef.current : null}
         onClose={() => setMenuOpen(false)}

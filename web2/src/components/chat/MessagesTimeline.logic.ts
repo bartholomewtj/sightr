@@ -11,6 +11,8 @@
 //   (`insertDayDividers`).
 // - Follow re-arms within 80 px of the end (T11), not 40.
 // - A dynamic tool's row leads with `dynamicToolDisplayName` (an MCP tool as "<tool> · <server>").
+// - The live row names a command by its first 40 characters (`commandPreview`), not its first word:
+//   a Pi loop read "Running for" (live 2026-10-18). The row adds the elapsed time (MessagesTimeline).
 import type { Run, TurnItem } from "@shared/v2/contracts";
 
 import {
@@ -160,6 +162,20 @@ export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string
   return `${heading.charAt(0).toUpperCase()}${heading.slice(1)}`;
 }
 
+/** How much of a command the live row shows. */
+export const COMMAND_PREVIEW_CHARS = 40;
+
+/** A command's first {@link COMMAND_PREVIEW_CHARS} characters on one line, with "…" when cut. */
+export function commandPreview(command: string, max = COMMAND_PREVIEW_CHARS): string {
+  const flat = commandDisplayText(command).replace(/\s+/g, " ");
+  return flat.length > max ? `${flat.slice(0, max).trimEnd()}…` : flat;
+}
+
+/** The live row is a command still running: it shows its elapsed time next to the label. */
+export function liveWorkEntryIsRunningCommand(entry: WorkLogEntry, active: boolean): boolean {
+  return Boolean(entry.command?.trim()) && entry.itemType !== "reasoning" && liveActivityToolStatus(entry.toolLifecycleStatus, active) === "inProgress";
+}
+
 export function liveWorkEntryLabel(
   entry: WorkLogEntry,
   workspaceRoot: string | undefined,
@@ -189,7 +205,7 @@ export function liveWorkEntryLabel(
             : status === "stopped"
               ? "Stopped"
               : "Ran";
-    return `${verb} ${commandProgramName(command) ?? "command"}`;
+    return `${verb} ${commandPreview(command) || commandProgramName(command) || "command"}`;
   }
   return workEntryDisplayLabel(entry, workspaceRoot);
 }

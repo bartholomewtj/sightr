@@ -189,6 +189,7 @@ export function createRequestIngestor(deps: RequestIngestorDeps): RequestIngesto
       ...(parsed.preview ? { preview: parsed.preview } : {}),
       ...(parsed.answers ? { answers: parsed.answers } : {}),
       ...(parsed.freeText ? { freeText: true } : {}),
+      ...(parsed.subject ? { subject: { ...parsed.subject } } : {}),
     };
     commit(thread, pending, { fresh: request, boundText: parsed.boundText });
   };

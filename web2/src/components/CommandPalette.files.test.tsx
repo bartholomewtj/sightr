@@ -121,7 +121,8 @@ describe("palette: Open file…", () => {
   it("on a phone the pick opens the Files sheet", async () => {
     filesApi([{ path: "a.txt", name: "a.txt", kind: "file" }]);
     await boot("/v2/thread/t1", 390);
-    fireEvent.click(await screen.findByRole("button", { name: "Command palette" }));
+    fireEvent.click(await screen.findByTitle("Thread actions"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Command palette" }));
     const dialog = await palette();
     fireEvent.change(within(dialog).getByRole("combobox"), { target: { value: ">open file" } });
     fireEvent.click(await within(dialog).findByRole("option", { name: /Open file/ }));

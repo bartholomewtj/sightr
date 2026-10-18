@@ -559,6 +559,36 @@ describe("ChatComposer: a pending request replaces the box", () => {
     expect(screen.queryByText("Answered elsewhere.")).toBeNull();
   });
 
+  it("a reply that lands after the next card is up says nothing under that card (live: Claude's second Read)", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    server.use(
+      http.post("/api/v2/command", async () => {
+        await gate;
+        return HttpResponse.json({ ok: true, sequence: 400 });
+      }),
+    );
+    show({
+      thread: { status: "approval" },
+      requests: [request({ kind: "menu", prompt: "Pick", options: [{ label: "One", keys: ["Enter"] }] })],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "One" }));
+    // The bridge publishes the next dialog before its reply to the respond arrives.
+    patchThread((cur) => ({
+      requests: {
+        r1: { ...cur.requests.r1!, status: "resolved" },
+        r2: request({ id: "r2", kind: "permission", prompt: "Do you want to proceed?", createdAt: 2 }),
+      },
+    }));
+    expect(await screen.findByText("Do you want to proceed?")).toBeInTheDocument();
+    await act(async () => {
+      release();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(screen.queryByText("Sent to the agent.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Yes" })).not.toHaveAttribute("aria-busy");
+  });
+
   it("password: no input, no options, Open terminal", () => {
     show({ thread: { status: "approval" }, requests: [request({ kind: "password", prompt: "[sudo] password:", options: [] })] });
     const panel = screen.getByRole("region", { name: "The agent is asking" });
