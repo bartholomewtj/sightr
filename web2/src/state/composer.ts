@@ -14,7 +14,8 @@ import type { ChatAttachment, DispatchMode, QueuedMessage } from "@shared/v2/con
 import { showToast } from "@/components/toast";
 import { dismissThreadUndoNotice, showThreadUndoNotice } from "@/hooks/showThreadUndoNotice";
 import { uploadImage } from "@/lib/api";
-import { clearDraft } from "@/lib/drafts";
+import { clearDraft, loadDraft } from "@/lib/drafts";
+import { consumeSent } from "@/state/lineComments";
 import { followTimeline } from "@/state/timeline";
 import { defaultCommandDeps, sendCommand, V2CommandError, type CommandDeps, type CommandPayload } from "@/stream/commands";
 import { useThreadStore } from "@/stream/stores";
@@ -122,6 +123,15 @@ export interface ThreadComposer {
   responding: { requestId: string; optionIndex: number } | null;
   /** The bridge's word on the last answer from here (menus show it). */
   verdict: string | null;
+  /** T29: review-comment blocks waiting to be appended to the box (the composer takes them once, through its own `setText`). */
+  insertion: ComposerInsertion | null;
+}
+
+/** Blocks to append to the draft, newest request wins; `focus` says whether the box takes focus (a desktop; a phone must not raise its keyboard). */
+export interface ComposerInsertion {
+  id: number;
+  blocks: string[];
+  focus: boolean;
 }
 
 export const EMPTY_COMPOSER: ThreadComposer = {
@@ -132,6 +142,7 @@ export const EMPTY_COMPOSER: ThreadComposer = {
   notice: null,
   responding: null,
   verdict: null,
+  insertion: null,
 };
 
 /** What this client sent, by commandId, so a later `dispatch.failed` can offer Retry with the same text. */
@@ -164,6 +175,32 @@ export function patchComposer(threadId: string, patch: Partial<ThreadComposer>):
 
 export function sentMessage(commandId: string | undefined): SentMessage | null {
   return commandId ? (useComposerStore.getState().sent[commandId] ?? null) : null;
+}
+
+// ── Review comments (T29) ───────────────────────────────────────────────────────────────────────
+
+let nextInsertId = 1;
+
+/** Ask the composer to append these blocks to its text. It limits them (10 a message, 12,000 characters) and says what went in. */
+export function requestInsert(threadId: string, blocks: string[], opts: { focus?: boolean } = {}): void {
+  patchComposer(threadId, { insertion: { id: nextInsertId++, blocks, focus: opts.focus ?? false } });
+}
+
+export function consumeInsert(threadId: string, id: number): void {
+  if (getThreadComposer(threadId).insertion?.id === id) patchComposer(threadId, { insertion: null });
+}
+
+/** The box's text as the composer last published it (a queued edit's buffer included), for the "in message" marks. */
+const useComposerText = create<{ text: Record<string, string> }>(() => ({ text: {} }));
+
+export function publishComposerText(threadId: string, text: string): void {
+  if (useComposerText.getState().text[threadId] === text) return;
+  useComposerText.setState((s) => ({ text: { ...s.text, [threadId]: text } }));
+}
+
+/** What the box holds now: the published text, else the saved draft. */
+export function useDraftText(threadId: string): string {
+  return useComposerText((s) => s.text[threadId]) ?? loadDraft(threadId) ?? "";
 }
 
 // ── Seams ───────────────────────────────────────────────────────────────────────────────────────
@@ -240,6 +277,7 @@ export async function dispatchMessage(input: {
   patchComposer(threadId, { busy: "send", error: null });
   try {
     await post("message.dispatch", { threadId, text, mode, ...(attachments.length > 0 ? { attachments } : {}) }, commandId);
+    consumeSent(threadId, text); // T29: the review comments whose block went out
     clearDraft(threadId);
     patchComposer(threadId, { busy: null, attachments: [] });
     followTimeline();
@@ -397,6 +435,7 @@ export async function saveQueuedEdit(threadId: string, text: string): Promise<bo
   patchComposer(threadId, { busy: "edit" });
   try {
     await post("queued.edit", { id: editing.id, text });
+    consumeSent(threadId, text);
     patchComposer(threadId, { busy: null });
     return true;
   } catch (err) {
@@ -566,6 +605,7 @@ export function __resetComposerState(): void {
   commandDeps = defaultCommandDeps;
   upload = uploadImage;
   useComposerStore.setState({ byThread: {}, sent: {} }, true);
+  useComposerText.setState({ text: {} }, true);
   useComposerSettings.setState(initialSettings(), true);
   dismissThreadUndoNotice();
 }
