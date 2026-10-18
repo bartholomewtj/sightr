@@ -326,6 +326,14 @@ What bears on T27 to T29:
   control on a truncated patch) go into `hand.rows.ts` (today it reveals a whole gap at once and keeps a trailing `\r`),
   and T28's fixtures run at the seam. Revealed lines are highlighted through the same per-window path (today they are
   plain).
+- **What T28 added to the seam (built, for T29 and later).** `DiffCodeViewProps.truncated?: boolean`: the host cut the
+  patch, so the adapter draws no control after the last hunk. `onExpandContext` now resolves to `DiffExpandContents | null`
+  (type in `web2/src/lib/diffFileContents.ts`, re-exported by `DiffCodeView.tsx`): `{ oldText, newText }`, or
+  `{ unavailable: "binary" | "too-large" | "refused" | "absent" }` when the file cannot be expanded; `null` means the read
+  failed (the adapter says "Couldn't read this file" and offers Retry, and asks again on the next tap). The adapter reads
+  `newText` only. `GapRow` in `hand.rows.ts` carries `up` / `down` / `hidden`, and `stackedRows(file, newLines, reveals,
+  { truncated, controls, cache })` takes the revealed counts per gap; a window's row count and character count include a
+  split pair's two sides.
 - **T29 extends the seam for its three needs.** Gutter action: `onLineAction(at)` gains a second argument
   `{ shiftKey: boolean }`. Selection: a new optional prop `selection?: { side: DiffSide; start: number; end: number }`
   that `hand.tsx` marks on its rows. Annotation under a range: the existing `annotations` / `renderAnnotation`, with `at`

@@ -1001,7 +1001,7 @@
       "upstream": "apps/web/src/components/DiffPanel.tsx",
       "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
       "mode": "pattern",
-      "note": "T27: the Diff right-panel tab: scope (working tree, branch vs a base, a run), a changed-files tree and one section per file, patches fetched only for unfolded or near files (4 at once), phone sheet and 600 px two-column layout; written against the DiffCodeView seam. Not taken: @pierre/diffs CodeView, Effect atoms and RPC, T3's turn and PR views ; T28: header toggles for split (desktop, 640 px column) and ignore whitespace (the host's -w only, T3's client-side hiding is left out), unchanged-line expansion wired to the contents route; a Files button hides the wide layout's file column so the diffs can have 640 px"
+      "note": "T27: the Diff right-panel tab: scope (working tree, branch vs a base, a run), a changed-files tree and one section per file, patches fetched only for unfolded or near files (4 at once), phone sheet and 600 px two-column layout; written against the DiffCodeView seam. Not taken: @pierre/diffs CodeView, Effect atoms and RPC, T3's turn and PR views ; T28: header toggles for split (desktop, 640 px column) and ignore whitespace (the host's -w only, T3's client-side hiding is left out), unchanged-line expansion wired to the contents route; a File list button (per device, in rightPanelStore) hides the wide layout's file list so the diffs can have 640 px"
     },
     {
       "local": "src/components/DiffPanelShell.tsx",
