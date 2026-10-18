@@ -521,6 +521,10 @@ describe("DiffPanel: run scope", () => {
     const note = document.querySelector("[data-diff-note=run]")!;
     expect(note).toHaveTextContent("From the agent's edits");
     expect(note).toHaveTextContent("may not match what is on disk");
+    // T28: a run's line numbers are its own, so no unchanged lines to open, and no -w to ask the host for.
+    expect(note).toHaveTextContent("not available for this run");
+    expect(section("src/a.ts").querySelector("[data-diff-expand]")).toBeNull();
+    expect(screen.getByRole("button", { name: "Ignore whitespace" })).toBeDisabled();
     expect(fake.listCalls).toHaveLength(0);
     expect(fake.patchCalls).toHaveLength(0);
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull(); // it follows the thread stream

@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDiffServer, fakePatch, SHA_FROM, SHA_TO, type FakeFile } from "@/test/diffServer";
 import { server } from "@/test/setup";
 
-import { PATCH_CONCURRENCY, PatchEngine, useDiffFilePatches, type Wants } from "./useDiffFilePatches";
+import type { DiffFileEntry } from "./diffTypes";
+import { PATCH_CONCURRENCY, PatchEngine, useDiffFilePatches, withWhitespaceOnly, type Wants } from "./useDiffFilePatches";
 
 const files = (n: number): FakeFile[] => Array.from({ length: n }, (_, i) => ({ path: `src/f${String(i).padStart(2, "0")}.ts` }));
 const set = (...paths: string[]): ReadonlySet<string> => new Set(paths);
@@ -30,6 +31,77 @@ beforeEach(() => {
 afterEach(() => {
   for (const e of engines.splice(0)) e.dispose();
   vi.restoreAllMocks();
+});
+
+describe("withWhitespaceOnly (T28)", () => {
+  const f = (path: string, over: Partial<DiffFileEntry> = {}): DiffFileEntry => ({ path, kind: "modified", added: 2, removed: 1, countsKnown: true, rev: `${path}:1`, ...over });
+
+  it("keeps a modified file the -w list dropped, marked and without counts, in the plain list's order", () => {
+    const out = withWhitespaceOnly([f("a"), f("b"), f("c")], [f("a", { added: 1 }), f("c")]);
+    expect(out.map((x) => x.path)).toEqual(["a", "b", "c"]);
+    expect(out[0]).toMatchObject({ added: 1 });
+    expect(out[1]).toMatchObject({ path: "b", added: 0, removed: 0, whitespaceOnly: true, rev: "b:1:w" });
+  });
+
+  it("does not invent a file for a binary, added, deleted or too-large one, and keeps what only -w lists", () => {
+    const out = withWhitespaceOnly([f("bin", { binary: true }), f("new", { kind: "added" }), f("gone", { kind: "deleted" }), f("big", { tooLarge: true })], [f("extra")]);
+    expect(out.map((x) => x.path)).toEqual(["extra"]);
+  });
+});
+
+describe("PatchEngine: ignore whitespace (T28)", () => {
+  const wsOf = (u: URL) => u.searchParams.get("ignoreWhitespace");
+
+  it("starts in the variant it is given, and reads the plain list too (it supplies the whitespace-only files)", async () => {
+    fake.files = files(2);
+    const e = engine();
+    e.target("proj", { kind: "workingTree" }, true);
+    await ready(e);
+    await waitFor(() => expect(fake.listCalls.map(wsOf).sort()).toEqual(["1", null]));
+    e.want(wants({ unfolded: set("src/f00.ts") }));
+    await waitFor(() => expect(stateOf(e, "src/f00.ts")?.state).toBe("ready"));
+    expect(fake.patchCalls.map(wsOf)).toEqual(["1"]);
+  });
+
+  it("flips to a variant never read with its own list and the opened files' patches, and back with no request", async () => {
+    fake.files = [{ path: "a.ts", patch: fakePatch("a.ts", "p", "q"), wsPatch: fakePatch("a.ts", "pw", "qw") }, { path: "b.ts" }];
+    const e = engine();
+    e.target("proj", { kind: "workingTree" });
+    await ready(e);
+    e.want(wants({ unfolded: set("a.ts") }));
+    await waitFor(() => expect(stateOf(e, "a.ts")?.state).toBe("ready"));
+
+    e.setIgnoreWhitespace(true);
+    expect(e.getSnapshot().summary.status).toBe("loading");
+    await ready(e);
+    await waitFor(() => expect(stateOf(e, "a.ts")?.state).toBe("ready"));
+    expect(JSON.stringify(stateOf(e, "a.ts"))).toContain("qw");
+    expect(fake.listCalls.map(wsOf)).toEqual([null, "1"]);
+    expect(fake.patchCalls.map((u) => [u.searchParams.get("file"), wsOf(u)])).toEqual([["a.ts", null], ["a.ts", "1"]]);
+
+    e.setIgnoreWhitespace(false);
+    expect(e.getSnapshot().summary.status).toBe("ready");
+    expect(JSON.stringify(stateOf(e, "a.ts"))).not.toContain("qw");
+    await new Promise((r) => setTimeout(r, 30));
+    expect(fake.listCalls).toHaveLength(2);
+    expect(fake.patchCalls).toHaveLength(2);
+  });
+
+  it("lets a request in flight for the variant it left finish into that variant", async () => {
+    fake.files = files(1);
+    fake.hold = true;
+    const e = engine();
+    e.target("proj", { kind: "workingTree" });
+    await ready(e);
+    e.want(wants({ unfolded: set("src/f00.ts") }));
+    await waitFor(() => expect(fake.inflight).toBe(1));
+    e.setIgnoreWhitespace(true);
+    act(() => fake.release());
+    await ready(e);
+    e.setIgnoreWhitespace(false);
+    await waitFor(() => expect(stateOf(e, "src/f00.ts")?.state).toBe("ready"));
+    expect(fake.patchCalls.filter((u) => wsOf(u) === null)).toHaveLength(1);
+  });
 });
 
 describe("PatchEngine", () => {

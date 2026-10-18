@@ -9,13 +9,14 @@
 //   - phone (a sheet, one column): the tree folds open and shut under a "Files · 12 · +230 -41" header;
 //     desktop, when the panel itself is 600 px wide or more: the tree is a left column;
 //   - refresh on the button, when the run ends, and when the page comes back (the Git tab's triggers).
-// Read-only: no staging, commit, revert or rollback. Not here: split view, ignore whitespace, expand
-// unchanged lines (T28) and line comments (T29).
+// Read-only: no staging, commit, revert or rollback. T28 adds the reading aids: split view (a wide desktop column
+// only), ignore whitespace (the host's `git diff -w`, never a client-side edit of a patch) and expand unchanged
+// lines (the host's whole-file route, asked for on the first tap of a control). Not here: line comments (T29).
 //
 // The diffs mount in windows (hand renderer), so two things are said in the panel, not hidden: the
 // browser's find (Ctrl+F) sees only lines already drawn, and the scroll position comes back to a file
 // and an offset into it, not to an exact line.
-import { ChevronRightIcon, ChevronsDownUpIcon, RotateCwIcon, WrapTextIcon } from "lucide-react";
+import { ChevronRightIcon, ChevronsDownUpIcon, Columns2Icon, PanelLeftIcon, PilcrowIcon, RotateCwIcon, Rows2Icon, WrapTextIcon } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -24,7 +25,8 @@ import { DiffStatLabel } from "@/components/chat/DiffStatLabel";
 import { showToast } from "@/components/toast";
 import { useLayout } from "@/hooks/useLayout";
 import { useDiffPanelStore, useDiffScope, type DiffScope } from "@/diffPanelStore";
-import { useDiffWrap, useRightPanelStore } from "@/rightPanelStore";
+import { DiffContentsCache } from "@/lib/diffFileContents";
+import { useDiffFileList, useDiffIgnoreWhitespace, useDiffLayout, useDiffWrap, useRightPanelStore } from "@/rightPanelStore";
 import { useSidebarThread } from "@/state/sidebar";
 import { useThread } from "@/stream/stores";
 
@@ -35,13 +37,14 @@ import { DiffFileSection } from "./diffs/DiffFileSection";
 import { DiffFileTree } from "./diffs/DiffFileTree";
 import { DiffScopePicker } from "./diffs/DiffScopePicker";
 import { canOpenInFiles, filesPathOf } from "./diffs/diffFileActions";
+import { effectiveDiffLayout, splitAvailable } from "./diffs/diffLayout.logic";
 import { diffTotals, treeOrder } from "./diffs/diffFileTree.logic";
 import { repoRootPath } from "./diffs/diffRootPath";
-import { attachAnchorMemory, diffMemoryKey, readDiffMemory, writeDiffMemory, type AnchorMemory } from "./diffs/diffPanelMemory";
+import { attachAnchorMemory, diffMemoryKey, readAnchor, readDiffMemory, writeDiffMemory, type AnchorMemory } from "./diffs/diffPanelMemory";
 import { reviewReason } from "./diffs/diffReasons";
 import { IDLE, type DiffFileEntry, type PatchState } from "./diffs/diffTypes";
 import { useRunOptions, useRunScopeFiles } from "./diffs/runScope";
-import { useDiffFilePatches } from "./diffs/useDiffFilePatches";
+import { requestScope, useDiffFilePatches } from "./diffs/useDiffFilePatches";
 import { openPrintedPath } from "./right-panel/OpenFileLink";
 import { useRefreshTriggers } from "./right-panel/useRefreshTriggers";
 import { usePaneFolder } from "./right-panel/usePaneFolder";
@@ -77,6 +80,8 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
   const layout = useLayout();
   const { refreshes, refresh } = useRefreshTriggers(threadId);
   const [wrap, setWrap] = useDiffWrap();
+  const [layoutPref, setLayoutPref] = useDiffLayout();
+  const [wsPref, setWsPref] = useDiffIgnoreWhitespace();
   const setScope = useDiffPanelStore((s) => s.setScope);
   const reveal = useDiffPanelStore((s) => s.reveal);
   const consumeReveal = useDiffPanelStore((s) => s.consumeReveal);
@@ -113,6 +118,9 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
   });
   const [treeOpen, setTreeOpen] = useState<boolean>(() => readDiffMemory(memKey).treeOpen ?? true);
   const [collapsedDirs, setCollapsedDirs] = useState<ReadonlySet<string>>(() => new Set(readDiffMemory(memKey).collapsedDirs));
+  // The wide layout's file list column can be hidden (T28), per device: the panel is at most 720 px and the column takes
+  // 256 of it, so split view (a 640 px diff column) is only reachable with the column hidden.
+  const [treeColumn, setTreeColumn] = useDiffFileList();
   useEffect(() => {
     writeDiffMemory(memKey, { unfolded: unfolded ? [...unfolded] : null, treeOpen, collapsedDirs: [...collapsedDirs] });
   }, [memKey, unfolded, treeOpen, collapsedDirs]);
@@ -124,6 +132,8 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
   const [scrollerEl, setScrollerEl] = useState<HTMLElement | null>(null);
 
   // ── The files and their patches ──
+  // A run reads the journal, which `-w` cannot change: the preference stays stored but does not apply there.
+  const ignoreWs = wsPref && scope.kind !== "run";
   const patches = useDiffFilePatches({
     folderPath: scope.kind === "run" ? null : folderPath,
     scope: fetchScope,
@@ -131,6 +141,7 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
     near,
     revealPath,
     refreshToken: refreshes,
+    ignoreWhitespace: ignoreWs,
   });
   const run = useRunScopeFiles(threadId, scope.kind === "run" ? scope.runId : "");
   const runs = useRunOptions(threadId);
@@ -232,6 +243,70 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
     return () => io.disconnect();
   }, [scrollerEl, fileKey]);
 
+  // ── Split view: a desktop viewport and a diff column of 640 px (624 once split) ──
+  const [columnPx, setColumnPx] = useState(0);
+  useLayoutEffect(() => {
+    if (!scrollerEl) return;
+    setColumnPx(Math.round(scrollerEl.clientWidth));
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => setColumnPx(Math.round(entries[0]?.contentRect.width ?? scrollerEl.clientWidth)));
+    ro.observe(scrollerEl);
+    return () => ro.disconnect();
+  }, [scrollerEl]);
+  // Hysteresis on what is showing: a split view stays down to 624 px, a stacked one needs 640 px to offer the toggle.
+  const [showingSplit, setShowingSplit] = useState(false);
+  const splitOk = splitAvailable({ layout, columnPx, showingSplit });
+  const shownLayout = effectiveDiffLayout(layoutPref, splitOk);
+  useEffect(() => setShowingSplit(shownLayout === "split"), [shownLayout]);
+
+  // Heights differ between layouts, so when the layout changes the file that was topmost stays topmost.
+  const topFile = useRef<string | null>(null);
+  useEffect(() => {
+    if (!scrollerEl) return;
+    let frame = 0;
+    const note = () => {
+      frame = 0;
+      topFile.current = readAnchor(scrollerEl)?.path ?? null;
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(note);
+    };
+    scrollerEl.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      scrollerEl.removeEventListener("scroll", onScroll);
+    };
+  }, [scrollerEl]);
+  const lastLayout = useRef(shownLayout);
+  useLayoutEffect(() => {
+    if (lastLayout.current === shownLayout) return;
+    lastLayout.current = shownLayout;
+    const path = topFile.current;
+    if (!path || !scrollerEl) return;
+    Array.from(scrollerEl.querySelectorAll<HTMLElement>("[data-diff-file]")).find((s) => s.dataset.diffFile === path)?.scrollIntoView({ block: "start" });
+  }, [shownLayout, scrollerEl]);
+
+  // ── Expand unchanged lines: the whole file, once per file, on the first tap of a control ──
+  const contents = useRef<DiffContentsCache | null>(null);
+  contents.current ??= new DiffContentsCache();
+  useEffect(() => () => contents.current?.dispose(), []);
+  const readyPreview = summary.status === "ready" ? summary.preview : null;
+  const expandSource = useRef({ folderPath, scope: fetchScope, preview: readyPreview, files: patches.files });
+  expandSource.current = { folderPath, scope: fetchScope, preview: readyPreview, files: patches.files };
+  const onExpandContext = useCallback(async (filePath: string) => {
+    const src = expandSource.current;
+    const file = src.files.find((f) => f.path === filePath);
+    if (!src.scope || src.folderPath == null || !src.preview || !file) return null;
+    return (contents.current as DiffContentsCache).load({
+      folder: src.folderPath,
+      scope: requestScope(src.scope),
+      diffHash: src.preview.diffHash,
+      file: { path: file.path, ...(file.oldPath === undefined ? {} : { oldPath: file.oldPath }) },
+      range: { ...(src.preview.from === undefined ? {} : { from: src.preview.from }), ...(src.preview.to === undefined ? {} : { to: src.preview.to }) },
+    });
+  }, []);
+  const canExpand = scope.kind !== "run" && folderPath != null;
+
   // ── Actions ──
   const onToggle = useCallback((path: string) => setUnfolded((prev) => {
     const next = new Set(prev ?? []);
@@ -284,6 +359,36 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
         onWantBranches={() => setBranchesWanted(true)}
       />
       <span className="flex-1" />
+      {wide ? (
+        <Button size="xs" variant="ghost-muted" aria-label={treeColumn ? "Hide file list" : "Show file list"} onClick={() => setTreeColumn(!treeColumn)} className={cn(treeColumn && "bg-accent text-foreground")} data-diff-tree-column-toggle="">
+          <PanelLeftIcon aria-hidden="true" />
+          File list
+        </Button>
+      ) : null}
+      {splitOk ? (
+        <span role="group" aria-label="Diff layout" className="flex items-center" data-diff-layout-toggle="">
+          <Button size="xs" variant="ghost-muted" aria-pressed={shownLayout === "stacked"} onClick={() => setLayoutPref("stacked")} className={cn(shownLayout === "stacked" && "bg-accent text-foreground")}>
+            <Rows2Icon aria-hidden="true" />
+            Stacked
+          </Button>
+          <Button size="xs" variant="ghost-muted" aria-pressed={shownLayout === "split"} onClick={() => setLayoutPref("split")} className={cn(shownLayout === "split" && "bg-accent text-foreground")}>
+            <Columns2Icon aria-hidden="true" />
+            Split
+          </Button>
+        </span>
+      ) : null}
+      <Button
+        size="xs"
+        variant="ghost-muted"
+        aria-pressed={ignoreWs}
+        disabled={scope.kind === "run"}
+        title={scope.kind === "run" ? "Not available for this run" : undefined}
+        onClick={() => setWsPref(!wsPref)}
+        className={cn(ignoreWs && "bg-accent text-foreground")}
+      >
+        <PilcrowIcon aria-hidden="true" />
+        Ignore whitespace
+      </Button>
       <Button size="xs" variant="ghost-muted" aria-pressed={wrap} onClick={() => setWrap(!wrap)} className={cn(wrap && "bg-accent text-foreground")}>
         <WrapTextIcon aria-hidden="true" />
         Wrap
@@ -340,14 +445,14 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
     const first = files[0]?.path;
     return (
       <div className={cn("flex min-h-0 flex-1", wide ? "flex-row" : "flex-col")}>
-        {wide ? (
+        {wide && treeColumn ? (
           <aside className="flex w-64 shrink-0 flex-col border-r" data-diff-tree-column="">
             <p className="shrink-0 border-b px-3 py-1.5 text-xs font-medium text-muted-foreground">{countsLine}</p>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
               <DiffFileTree files={files} collapsedDirs={collapsedDirs} onToggleDir={onToggleDir} onSelect={onSelect} activePath={revealPath} />
             </div>
           </aside>
-        ) : (
+        ) : wide ? null : (
           <div className="shrink-0 border-b">
             <button
               type="button"
@@ -366,8 +471,13 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
             ) : null}
           </div>
         )}
-        <div ref={setScrollerEl} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain" data-diff-scroller="">
+        <div ref={setScrollerEl} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain" data-diff-scroller="" data-diff-column={columnPx} data-diff-layout-shown={shownLayout}>
           <DiffScrollRootContext value={scrollerEl}>
+            {ignoreWs && summary.status === "ready" && summary.plainMissing ? (
+              <p className="border-b px-3 py-1.5 text-xs text-muted-foreground" data-diff-note="whitespace-only-missing">
+                Whitespace-only files can't be shown right now.
+              </p>
+            ) : null}
             {scope.kind === "branch" && baseGone && storedBase ? (
               <p className="border-b px-3 py-1.5 text-xs text-muted-foreground" data-diff-note="base-gone">
                 {storedBase} isn't a branch here any more, so this is against the default base{defaultBase ? ` (${defaultBase})` : ""}.
@@ -376,7 +486,7 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
             {scope.kind === "run" ? (
               <p className="border-b px-3 py-1.5 text-xs text-muted-foreground" data-diff-note="run">
                 From the agent's edits in this run, one after another; it may not match what is on disk now. Each edit's line numbers are its own.
-                {run.shellRan ? " A shell command ran too, and files it changed are not listed." : ""}
+                {run.shellRan ? " A shell command ran too, and files it changed are not listed." : ""} Ignore whitespace and unchanged lines are not available for this run.
               </p>
             ) : null}
             {files.map((file) => (
@@ -387,6 +497,8 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
                 unfolded={unfolded?.has(file.path) ?? false}
                 wrap={wrap}
                 eager={file.path === first || file.path === revealPath}
+                layout={shownLayout}
+                {...(canExpand ? { onExpandContext } : {})}
                 highlighted={highlight === file.path}
                 canOpen={canOpenInFiles(file)}
                 onToggle={onToggle}
