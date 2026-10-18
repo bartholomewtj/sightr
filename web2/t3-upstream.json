@@ -279,7 +279,14 @@
       "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
-      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list; db5919d87: event rows draw V2LifecycleRow and ProposedPlanCard, DiffStatLabel on file-change rows; timeline polish: file-change/read rows lead with the file name (folder dim, start-truncated as StartTruncatedPath), fetch group icon, OpenFileThreadContext for path links, ThreadDetailsSheet mounted beside the list"
+      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list; db5919d87: event rows draw V2LifecycleRow and ProposedPlanCard, DiffStatLabel on file-change rows; timeline polish: file-change/read rows lead with the file name (folder dim, start-truncated as StartTruncatedPath), fetch group icon, OpenFileThreadContext for path links, ThreadDetailsSheet mounted beside the list; images: the user bubble draws T3's two-column image grid (TimelineAttachments), a tool row with output images carries an image mark"
+    },
+    {
+      "local": "src/components/chat/TimelineAttachments.tsx",
+      "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "UserTimelineRow's image grid (max-w-[210px] grid-cols-2, aspect-[4/3] tiles, Preview button, ExpandedImageDialog) for user and tool-output images; bytes from the bridge's attachment route, lazy, failed-load placeholder; no video, file preview/download, SnapShot or context chips"
     },
     {
       "local": "src/components/chat/WorkLog.tsx",
@@ -313,7 +320,7 @@
       "upstream": "apps/web/src/components/chat/V2ItemInspector.tsx",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "pattern",
-      "note": "an open tool row's call and output; inline output, 200-line cap; db5919d87: diff stat + copy, failed-edit error text, todo checklist, dynamic-tool args list; timeline polish: Copy on command and output (CommandBlock pattern), paths open the Files tab, MCP tool names"
+      "note": "an open tool row's call and output; inline output, 200-line cap; db5919d87: diff stat + copy, failed-edit error text, todo checklist, dynamic-tool args list; timeline polish: Copy on command and output (CommandBlock pattern), paths open the Files tab, MCP tool names; images: a dynamic tool's output images as lazy thumbnails (TimelineAttachments)"
     },
     {
       "local": "src/components/ChatMarkdown.tsx",
@@ -499,7 +506,7 @@
       "upstream": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
-      "note": "staged composer images only: no video, assets, SnapShot, MediaActions or atom host; touch swipe pages"
+      "note": "images only (composer staging and timeline attachments): no video, assets, SnapShot, MediaActions or atom host; touch swipe pages"
     },
     {
       "local": "src/components/chat/ComposerPromptLengthValidation.tsx",

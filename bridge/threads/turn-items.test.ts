@@ -1,13 +1,18 @@
 import { describe, expect, test } from "bun:test";
 
+import type { TurnItem } from "../../shared/v2/contracts.ts";
 import type { TranscriptEntry } from "../journal/types.ts";
 import {
   entryItems,
   entryKey,
   type ItemContext,
   parseEntryTime,
+  parseJournalAttachmentId,
   sameItemBody,
   searchResults,
+  shortHash,
+  splitUploads,
+  uploadNameOf,
   toolItemType,
   type ToolItemType,
 } from "./turn-items.ts";
@@ -302,5 +307,52 @@ describe("helpers", () => {
     const [item] = entryItems(entry({ parts: [{ kind: "text", text: "x" }] }), CTX);
     expect(sameItemBody({ ...item!, ordinal: 4, updatedAt: 1 }, item!)).toBe(true);
     expect(sameItemBody({ ...item!, runId: null }, item!)).toBe(false);
+  });
+});
+
+describe("attachments", () => {
+  const UP = String.raw`C:\Users\op\.sightr\uploads\w1_p2-mgx0a1-0123abcd.png`;
+  const NOTE = "/home/op/.sightr/uploads/w1_p2-mgx0a1-89abcdef.md";
+
+  test("splitUploads takes the paths Sightr appended back out of the words", () => {
+    expect(splitUploads(`what is this? ${UP}`)).toEqual({
+      text: "what is this?",
+      attachments: [{ type: "image", id: "u_w1_p2-mgx0a1-0123abcd.png", name: "w1_p2-mgx0a1-0123abcd.png", path: UP, mimeType: "image/png" }],
+    });
+    expect(splitUploads(`${UP} ${NOTE}`).attachments.map((a) => a.type)).toEqual(["image", "file"]);
+    expect(splitUploads(`${UP} ${NOTE}`).text).toBe("");
+  });
+
+  test("splitUploads leaves anything that is not a bridge-named upload alone", () => {
+    for (const text of [String.raw`see C:\src\uploads\logo.png`, "uploads/a-b-c.png", String.raw`C:\x\notuploads\w1_p2-mgx0a1-0123abcd.png`, "no paths"]) {
+      expect(splitUploads(text)).toEqual({ text, attachments: [] });
+    }
+    expect(uploadNameOf(String.raw`C:\x\uploads\..\w1_p2-mgx0a1-0123abcd.png`)).toBeNull();
+  });
+
+  test("a user message's logged image and appended upload both become attachments", () => {
+    const image = { mimeType: "image/png", sizeBytes: 70, name: "Pasted image 1", at: 1234, row: "e1", n: 0 };
+    const [item] = entryItems(entry({ role: "user", parts: [{ kind: "text", text: `[Image #1] and ${UP}`, images: [image] }] }), { ...CTX, logTag: "tag1" });
+    expect(item).toMatchObject({ type: "user_message", text: "[Image #1] and" });
+    const attachments = (item as Extract<TurnItem, { type: "user_message" }>).attachments;
+    expect(attachments[0]).toEqual({ type: "image", id: `j_tag1_1234_0_${shortHash("e1")}`, name: "Pasted image 1", path: "", mimeType: "image/png", sizeBytes: 70 });
+    expect(parseJournalAttachmentId(attachments[0]!.id!)).toEqual({ tag: "tag1", at: 1234, n: 0, rowTag: shortHash("e1") });
+    expect(attachments[1]!.id).toBe("u_w1_p2-mgx0a1-0123abcd.png");
+  });
+
+  test("a tool's output images ride on its dynamic_tool item; none without a log tag or an offset", () => {
+    const tool = (images: NonNullable<Extract<TranscriptEntry["parts"][number], { kind: "tool" }>["images"]>) =>
+      entry({ parts: [{ kind: "tool", name: "Read", summary: "logo.png", result: { text: "" }, images }] });
+    const image = { mimeType: "image/png", sizeBytes: 70, name: "logo.png", at: 9, row: "r", n: 1 };
+    const [withTag] = entryItems(tool([image]), { ...CTX, logTag: "t" });
+    expect((withTag as Extract<TurnItem, { type: "dynamic_tool" }>).attachments).toEqual([
+      expect.objectContaining({ type: "image", id: `j_t_9_1_${shortHash("r")}`, name: "logo.png" }),
+    ]);
+    const [noTag] = entryItems(tool([image]), CTX);
+    expect("attachments" in noTag!).toBe(false);
+    const { at: _at, ...noOffset } = image;
+    const [noAt] = entryItems(tool([noOffset]), { ...CTX, logTag: "t" });
+    expect("attachments" in noAt!).toBe(false);
+    expect(parseJournalAttachmentId("j_../x_1_0_a")).toBeNull();
   });
 });

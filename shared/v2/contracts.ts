@@ -202,6 +202,12 @@ export type UserMessageInputIntent = "turn_start" | "queued_turn" | "steer" | "p
 /**
  * T3's `ChatAttachment`, loosened: Sightr's attachments are files uploaded to the bridge and named by
  * the path the agent reads (T12), so `path` is required and the size/mime fields are optional.
+ *
+ * On a journal item (a user message, a tool's output images) `id` names where the bytes are: `u_<name>`
+ * for a file uploaded from the phone, `j_…` for an image read back from the harness log (opaque to
+ * clients). `path` is then the upload's path, or `""` for an image that only exists inside the log.
+ * Its bytes are served by `GET /api/v2/thread/:threadId/item/:itemId/attachment/:index`
+ * ({@link v2AttachmentPath}).
  */
 export interface ChatAttachment {
   type?: "image" | "file";
@@ -366,6 +372,8 @@ export type TurnItem =
       outputOmitted?: boolean;
       /** Sightr: the call's own arguments, capped (the item's `truncated` says when they were cut). */
       rawInput?: unknown;
+      /** Sightr: images in the call's result (a Read of an image, a screenshot), in T3's attachment shape. */
+      attachments?: ChatAttachment[];
     })
   /**
    * T3's `subagent`: a child agent the harness ran (Claude `Agent`, Pi `subagent`). Sightr's journals
@@ -732,6 +740,9 @@ export interface ThreadSearchResponse {
 }
 export const v2ThreadPath = (threadId: string): string => `/api/v2/thread/${encodeURIComponent(threadId)}`;
 export const v2HistoryPath = (threadId: string): string => `${v2ThreadPath(threadId)}/history`;
+/** An item's attachment bytes (an image), by its index in the item's `attachments`. */
+export const v2AttachmentPath = (threadId: string, itemId: string, index: number): string =>
+  `${v2ThreadPath(threadId)}/item/${encodeURIComponent(itemId)}/attachment/${index}`;
 
 /** A resume longer than this many events gets a snapshot instead of a replay. */
 export const V2_REPLAY_LIMIT = 128;

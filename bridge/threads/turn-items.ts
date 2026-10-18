@@ -1,4 +1,5 @@
-import type { FileSearchResult, TurnItem, TurnItemStatus } from "../../shared/v2/contracts.ts";
+import type { ChatAttachment, FileSearchResult, TurnItem, TurnItemStatus } from "../../shared/v2/contracts.ts";
+import type { TranscriptImage } from "../../shared/wire.ts";
 import type { TranscriptEntry, TranscriptPart } from "../journal/types.ts";
 import type { TurnItemDraft } from "./events.ts";
 
@@ -66,10 +67,91 @@ export function parseEntryTime(ts: string): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-function shortHash(text: string): string {
+export function shortHash(text: string): string {
   let hash = 5381;
   for (let i = 0; i < text.length; i++) hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0;
   return (hash >>> 0).toString(36);
+}
+
+// ── Attachments ──────────────────────────────────────────────────────────────────────────────────
+//
+// An item's images travel as T3 `ChatAttachment`s whose `id` says where the bytes are; the v2
+// attachment route (threads/attachments.ts) reads them back. Nothing here holds image bytes.
+
+/** A log's tag in a journal attachment id: which file (of the thread's log and its siblings) holds the row. */
+export const logTag = (path: string): string => shortHash(path);
+
+/** `j_<log tag>_<line offset>_<ordinal>_<row tag>`: an image inside a harness log row. */
+const JOURNAL_ATTACHMENT_ID = /^j_([0-9a-z]{1,8})_(\d{1,15})_(\d{1,4})_([0-9a-z]{1,8})$/;
+
+export function journalAttachmentId(tag: string, image: TranscriptImage & { at: number }): string {
+  return `j_${tag}_${image.at}_${image.n}_${shortHash(image.row)}`;
+}
+
+export function parseJournalAttachmentId(id: string): { tag: string; at: number; n: number; rowTag: string } | null {
+  const m = JOURNAL_ATTACHMENT_ID.exec(id);
+  if (!m) return null;
+  return { tag: m[1]!, at: Number(m[2]), n: Number(m[3]), rowTag: m[4]! };
+}
+
+/**
+ * The name the bridge gives a phone upload (pane-write-routes.ts `uploadPane`):
+ * `<pane>-<base36 time>-<8 hex>.<ext>`. Anything else is not an upload.
+ */
+export const UPLOAD_NAME = /^[A-Za-z0-9_-]{1,128}-[0-9a-z]{1,13}-[0-9a-f]{8}\.([a-z0-9]{1,10})$/;
+const UPLOAD_IMAGE_EXTS: ReadonlySet<string> = new Set(["png", "jpg", "gif", "webp"]);
+const UPLOAD_MIME: Readonly<Record<string, string>> = { png: "image/png", jpg: "image/jpeg", gif: "image/gif", webp: "image/webp" };
+
+/** An upload's file name when `path` is a file in an `uploads` directory with the bridge's naming, else null. */
+export function uploadNameOf(path: string): string | null {
+  const segments = path.split(/[\\/]/);
+  const name = segments.pop() ?? "";
+  if (segments.pop()?.toLowerCase() !== "uploads") return null;
+  return UPLOAD_NAME.test(name) ? name : null;
+}
+
+/** The attachment for an uploaded file's path (`u_<name>`): an image chip for an image, a file chip otherwise. */
+export function uploadAttachment(path: string): ChatAttachment | null {
+  const name = uploadNameOf(path);
+  if (name === null) return null;
+  const ext = UPLOAD_NAME.exec(name)![1]!;
+  const image = UPLOAD_IMAGE_EXTS.has(ext);
+  return { type: image ? "image" : "file", id: `u_${name}`, name, path, ...(image ? { mimeType: UPLOAD_MIME[ext]! } : {}) };
+}
+
+/**
+ * A user message as the agent got it, split back into words and the uploads Sightr appended to them
+ * (`dispatch.ts messageText`: the text, then each upload's path, space-joined). A path with a space
+ * in it is not recognised and stays in the text.
+ */
+export function splitUploads(text: string): { text: string; attachments: ChatAttachment[] } {
+  const attachments: ChatAttachment[] = [];
+  const rest = text.replace(/(^|\s)(\S+[\\/]uploads[\\/][^\s\\/]+)(?=\s|$)/gi, (whole, lead: string, path: string) => {
+    const attachment = uploadAttachment(path);
+    if (attachment === null) return whole;
+    attachments.push(attachment);
+    return lead;
+  });
+  return attachments.length === 0 ? { text, attachments } : { text: rest.replace(/[ \t]+$/gm, "").trimEnd(), attachments };
+}
+
+/** A part's logged images as attachments, when the read knew its log (`logTag`) and each image's offset. */
+export function imageAttachments(images: readonly TranscriptImage[] | undefined, tag: string | undefined): ChatAttachment[] {
+  if (!images || tag === undefined) return [];
+  return images.flatMap((image) =>
+    image.at === undefined
+      ? []
+      : [
+          {
+            type: "image" as const,
+            id: journalAttachmentId(tag, image as TranscriptImage & { at: number }),
+            name: image.name,
+            path: "",
+            ...(image.mimeType ? { mimeType: image.mimeType } : {}),
+            sizeBytes: image.sizeBytes,
+          },
+        ],
+  );
 }
 
 function partHead(part: TranscriptPart | undefined): string {
@@ -110,6 +192,8 @@ export interface ItemContext {
   updatedAt: number;
   /** The thread's harness, for a `subagent` item's `driver` (T3's provider kind). */
   harness?: string;
+  /** {@link logTag} of the log these entries were read from; without it logged images get no attachment. */
+  logTag?: string;
 }
 
 /** A subagent's own status word (Claude `Agent`, Pi `subagent`) as the item status, when it overrides the call's. */
@@ -197,7 +281,9 @@ export function entryItems(entry: TranscriptEntry, ctx: ItemContext): TurnItemDr
         // The summary Claude writes when it compacts a session: a short divider, the text behind it.
         items.push({ ...base, status: "completed", type: "compaction", driver: ctx.harness ?? null, summary: part.text });
       } else if (entry.role === "user") {
-        items.push({ ...base, status: "completed", type: "user_message", messageId: key, text: part.text, attachments: [] });
+        const words = splitUploads(part.text);
+        const attachments = [...imageAttachments(part.images, ctx.logTag), ...words.attachments];
+        items.push({ ...base, status: "completed", type: "user_message", messageId: key, text: words.text, attachments });
       } else if (entry.role === "assistant") {
         items.push({ ...base, status: "completed", type: "assistant_message", messageId: key, text: part.text, streaming: false });
       } else {
@@ -291,7 +377,8 @@ export function entryItems(entry: TranscriptEntry, ctx: ItemContext): TurnItemDr
         });
         return;
       }
-      default:
+      default: {
+        const attachments = imageAttachments(part.images, ctx.logTag);
         items.push({
           ...tool,
           type: "dynamic_tool",
@@ -299,7 +386,9 @@ export function entryItems(entry: TranscriptEntry, ctx: ItemContext): TurnItemDr
           input: part.summary,
           ...(result ? { output: result.text } : {}),
           ...(part.input !== undefined ? { rawInput: part.input } : {}),
+          ...(attachments.length > 0 ? { attachments } : {}),
         });
+      }
     }
   });
   return items;

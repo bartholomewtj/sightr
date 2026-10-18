@@ -205,7 +205,7 @@ export class TranscriptStore {
     return {
       kind: "read",
       path,
-      entries: text === "" ? [] : adapter.parse(text),
+      entries: text === "" ? [] : adapter.parse(text, { byteOffset: start + first }),
       nextOffset,
       size: meta.size,
       mtimeMs: meta.mtimeMs,
