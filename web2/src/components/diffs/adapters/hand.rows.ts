@@ -190,9 +190,23 @@ export function lineMatches(line: ParsedLine | undefined, side: "old" | "new", n
   return !!line && (side === "old" ? line.kind !== "add" && line.oldLine === n : line.kind !== "del" && line.newLine === n);
 }
 
-/** A window closes at this many rows or {@link WINDOW_MAX_CHARS} characters of line text, whichever comes first (T27). */
+/** The row-level form of {@link lineMatches}: whether a stacked row or a split pair draws that line (T29). */
+export function itemHasLine(item: Row | SplitRow, side: "old" | "new", n: number): boolean {
+  if (item.type === "line") return lineMatches(item.line, side, n);
+  if (item.type === "pair") return lineMatches(side === "old" ? item.left : item.right, side, n);
+  return false;
+}
+
+/** Whether `line` is drawn inside the selection (a context line answers to either side). */
+export function lineInRange(line: ParsedLine | undefined, side: "old" | "new", start: number, end: number): boolean {
+  if (!line) return false;
+  const n = side === "old" ? (line.kind === "add" ? undefined : line.oldLine) : line.kind === "del" ? undefined : line.newLine;
+  return n !== undefined && n >= start && n <= end;
+}
+
+/** A window closes at this many rows or {@link WINDOW_MAX_CHARS} characters of line text, whichever comes first (T27; T29 cut the characters from 12,000 to 4,000: a 1,900-node window of 400-character lines took up to 430 ms to mount on a throttled CPU, a 630-node one a third of that). */
 export const WINDOW_MAX_ROWS = 60;
-export const WINDOW_MAX_CHARS = 12_000;
+export const WINDOW_MAX_CHARS = 4_000;
 
 function textLength(row: Row | SplitRow): number {
   if (row.type === "line") return row.line.text.length;
@@ -202,8 +216,8 @@ function textLength(row: Row | SplitRow): number {
 }
 
 /**
- * Cut rows into windows that mount one at a time: 60 rows or 12,000 characters of line text, whichever
- * comes first (a file of 400-character lines gets about 30 rows a window). A row longer than the cap
+ * Cut rows into windows that mount one at a time: 60 rows or 4,000 characters of line text, whichever
+ * comes first (a file of 400-character lines gets about 10 rows a window). A row longer than the cap
  * still gets a window of its own.
  */
 export function windowRows<T extends Row | SplitRow>(rows: readonly T[], maxRows = WINDOW_MAX_ROWS, maxChars = WINDOW_MAX_CHARS): T[][] {

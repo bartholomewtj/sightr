@@ -24,7 +24,9 @@ import { __resetDiffMemory } from "@/components/diffs/diffPanelMemory";
 import { __resetDiffRootPaths } from "@/components/diffs/diffRootPath";
 import { __resetSheetHistory } from "@/components/sheetHistory";
 import { __resetRightPanelStore } from "@/rightPanelStore";
+import { __resetCommentsUi } from "@/state/commentsUi";
 import { __resetComposerState } from "@/state/composer";
+import { __resetLineComments } from "@/state/lineComments";
 import { __resetDraftThread } from "@/state/draft-thread";
 import { __resetSidebarState } from "@/state/sidebar";
 import { __resetTextPrefs } from "@/state/text-prefs";
@@ -85,6 +87,8 @@ beforeEach(() => {
   __resetSidebarState();
   __resetTimelineState();
   __resetComposerState();
+  __resetLineComments();
+  __resetCommentsUi();
   __resetDraftThread();
   __resetDraftPrune();
   __resetOperatorCommands();

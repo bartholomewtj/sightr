@@ -1,5 +1,5 @@
-// T27: the hand adapter's windowing (README "What T27 to T29 inherit"): a window closes at 60 rows or 12,000
-// characters, only the first mounts at once (and only when `eager`), a window highlights its own lines in slices
+// T27: the hand adapter's windowing (README "What T27 to T29 inherit"): a window closes at 60 rows or 4,000
+// characters (T29: was 12,000), only the first mounts at once (and only when `eager`), a window highlights its own lines in slices
 // of at most 200, and nothing highlight-related outlives the component.
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,12 +24,12 @@ describe("windowRows", () => {
     expect(windows.flat()).toEqual(rows);
   });
 
-  it("closes a window at 12,000 characters of line text: 400-character lines get 30 rows", () => {
+  it("closes a window at 4,000 characters of line text: 400-character lines get 10 rows", () => {
     const rows = stackedRows(parsePatch(addedFile(100, () => "x".repeat(400)))[0]!);
     const windows = windowRows(rows);
-    expect(WINDOW_MAX_CHARS).toBe(12_000);
-    expect(windows[0]).toHaveLength(31); // the hunk header costs no characters
-    expect(windows[1]).toHaveLength(30);
+    expect(WINDOW_MAX_CHARS).toBe(4_000);
+    expect(windows[0]).toHaveLength(11); // the hunk header costs no characters
+    expect(windows[1]).toHaveLength(10);
     for (const w of windows) {
       const chars = w.reduce((n, r) => n + (r.type === "line" ? r.line.text.length : 0), 0);
       expect(chars).toBeLessThanOrEqual(WINDOW_MAX_CHARS);
