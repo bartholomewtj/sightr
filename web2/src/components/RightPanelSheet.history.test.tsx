@@ -1,0 +1,183 @@
+// T27: one Back closes exactly one layer. Before, every `useSheetHistory` instance answered every `popstate`,
+// so a picker over the panel (or a changed-file sheet over the thread) closed together with what was under it.
+import { act, cleanup, render } from "@testing-library/react";
+import { useState } from "react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { setPanelLeaveGuard } from "./right-panel/leaveGuard";
+import { openSheetEntries, useSheetHistory } from "./sheetHistory";
+
+const sleep = (ms = 25) => new Promise((r) => setTimeout(r, ms));
+const back = () => act(async () => { window.history.back(); await sleep(); });
+const sheetFlag = () => (window.history.state as Record<string, unknown> | null)?.sightrSheet === true;
+const here = () => (window.history.state as Record<string, unknown> | null)?.page;
+const thread = () => `thread-${pageId}`;
+/** Let a state change flush (effects included) and the browser take the step it asked for. */
+const flush = async (fn: () => void) => {
+  await act(async () => { fn(); });
+  await act(async () => { await sleep(50); });
+};
+
+let setA: (open: boolean) => void = () => {};
+let setB: (open: boolean) => void = () => {};
+let setC: (open: boolean) => void = () => {};
+let closed: string[] = [];
+
+/** Three independent sheets, as the thread can have: the Diff panel (A), a picker over it (B), another sheet (C). */
+function Harness({ initial }: { initial: { a: boolean; b: boolean; c: boolean } }) {
+  const [a, sa] = useState(initial.a);
+  const [b, sb] = useState(initial.b);
+  const [c, sc] = useState(initial.c);
+  setA = sa;
+  setB = sb;
+  setC = sc;
+  useSheetHistory(a, () => { closed.push("A"); sa(false); });
+  useSheetHistory(b, () => { closed.push("B"); sb(false); });
+  useSheetHistory(c, () => { closed.push("C"); sc(false); });
+  return <p>{[a && "A", b && "B", c && "C"].filter(Boolean).join("") || "none"}</p>;
+}
+
+let pageId = 0;
+beforeEach(() => {
+  closed = [];
+  // The thread page the sheets sit over (each test gets its own, since jsdom keeps one history for the file).
+  pageId += 1;
+  window.history.pushState({ page: `thread-${pageId}` }, "");
+});
+afterEach(() => {
+  cleanup();
+});
+
+describe("useSheetHistory with sheets stacked", () => {
+  it("Back closes the sheet opened last and leaves the one under it; the next Back closes that one; the third leaves the page", async () => {
+    const { container } = render(<Harness initial={{ a: false, b: false, c: false }} />);
+    act(() => setA(true));
+    act(() => setB(true));
+    expect(container.textContent).toBe("AB");
+    expect(openSheetEntries()).toBe(2);
+
+    await back();
+    expect(closed).toEqual(["B"]);
+    expect(container.textContent).toBe("A");
+
+    await back();
+    expect(closed).toEqual(["B", "A"]);
+    expect(container.textContent).toBe("none");
+    expect(here()).toBe(thread());
+    expect(openSheetEntries()).toBe(0);
+
+    // With nothing open, Back is the page's own: no sheet answers it.
+    await back();
+    expect(closed).toEqual(["B", "A"]);
+    expect(here()).not.toBe(thread());
+  });
+
+  it("answers in the order the sheets opened, whichever way round they were declared", async () => {
+    const { container } = render(<Harness initial={{ a: false, b: false, c: false }} />);
+    act(() => setC(true));
+    act(() => setA(true));
+    act(() => setB(true));
+    await back();
+    await back();
+    expect(closed).toEqual(["B", "A"]);
+    expect(container.textContent).toBe("C");
+    await back();
+    expect(closed).toEqual(["B", "A", "C"]);
+    expect(here()).toBe(thread());
+  });
+
+  it("closing the top sheet by hand takes its own entry off, so one Back still closes the one under it, not the page", async () => {
+    const { container } = render(<Harness initial={{ a: false, b: false, c: false }} />);
+    act(() => setA(true));
+    act(() => setB(true));
+    await flush(() => setB(false)); // a pick in the picker, or its X button
+    expect(container.textContent).toBe("A");
+    expect(openSheetEntries()).toBe(1);
+    expect(sheetFlag()).toBe(true);
+    expect(closed).toEqual([]); // by hand, so the Back handler did not run
+    await back();
+    expect(closed).toEqual(["A"]);
+    expect(here()).toBe(thread());
+  });
+
+  it("closing a sheet under an open one leaves its entry for a Back that skips it, so no Back is wasted", async () => {
+    const { container } = render(<Harness initial={{ a: false, b: false, c: false }} />);
+    act(() => setA(true));
+    act(() => setB(true));
+    await flush(() => setA(false)); // the lower sheet goes first (a tab switch, a route change)
+    expect(container.textContent).toBe("B");
+    await back(); // closes B ...
+    expect(closed).toEqual(["B"]);
+    expect(container.textContent).toBe("none");
+    // ... and the entry A left behind is skipped by the next Back, which leaves the page in one press.
+    await back();
+    await act(async () => sleep(50));
+    expect(here()).not.toBe(thread());
+    expect(sheetFlag()).toBe(false);
+    expect(openSheetEntries()).toBe(0);
+  });
+
+  it("unmounting every open sheet at once leaves entries that one Back skips, to leave the page", async () => {
+    const { unmount } = render(<Harness initial={{ a: true, b: true, c: true }} />);
+    expect(openSheetEntries()).toBe(3);
+    await flush(unmount);
+    // The top sheet's entry went; the two under it stay as skippable entries, so one Back leaves the page.
+    expect(openSheetEntries()).toBe(2);
+    await back();
+    await act(async () => sleep(50));
+    expect(openSheetEntries()).toBe(0);
+    expect(here()).not.toBe(thread());
+  });
+
+  it("opens with the page already showing a sheet entry, and closes each in turn", async () => {
+    const { container } = render(<Harness initial={{ a: true, b: false, c: false }} />);
+    act(() => setC(true));
+    expect(container.textContent).toBe("AC");
+    await back();
+    expect(container.textContent).toBe("A");
+    await back();
+    expect(container.textContent).toBe("none");
+    expect(here()).toBe(thread());
+  });
+});
+
+describe("useSheetHistory with the Files editor's guard", () => {
+  afterEach(() => setPanelLeaveGuard(null));
+
+  it("when the guard holds the close, the sheet stays and its entry is back, so the next Back is still its own", async () => {
+    let held: (() => void) | null = null;
+    const { container } = render(<Harness initial={{ a: false, b: false, c: false }} />);
+    act(() => setA(true));
+    act(() => setB(true));
+    setPanelLeaveGuard((go) => {
+      held = go;
+      return true;
+    });
+    await back();
+    expect(container.textContent).toBe("AB"); // held
+    expect(closed).toEqual([]);
+    expect(sheetFlag()).toBe(true);
+    expect(openSheetEntries()).toBe(2);
+
+    // Stay: the guard goes away, the next Back closes B as before.
+    setPanelLeaveGuard(null);
+    await back();
+    expect(closed).toEqual(["B"]);
+    expect(container.textContent).toBe("A");
+
+    // Discard: the held close runs later and takes the entry off.
+    setPanelLeaveGuard((go) => {
+      held = go;
+      return true;
+    });
+    await back();
+    expect(container.textContent).toBe("A");
+    await act(async () => {
+      (held as (() => void) | null)?.();
+      await sleep();
+    });
+    expect(closed).toEqual(["B", "A"]);
+    expect(container.textContent).toBe("none");
+    expect(here()).toBe(thread());
+  });
+});
