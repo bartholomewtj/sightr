@@ -1,0 +1,27 @@
+
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.302[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mHaiku 5.5 · Claude Max[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m~\AppData\Local\Temp\claude\C--claudeOS\7f0ebd9f-0eff-4f9b-a880-4f979b275e41\scratchpad\rough\repo · [0m[38;2;78;186;101m/rc[0m
+
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mRun exactly this with the Bash tool, nothing else: git status --short && git log --oneline -3 && echo "permission card check with a [0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mfairly long command line so it wraps on a phone"[0m[48;2;55;55;55m                                                                                     [0m
+
+[0m[38;2;153;153;153m  [0mShowing short git status, last 3 commits, and echo check line
+[0m[38;2;153;153;153m  ⎿  $ git status --short && git log --oneline -3 && echo "permission card check with a fairly long command line so it wraps on a [0m
+     [0m[38;2;153;153;153mphone"[0m
+
+[0m[38;2;177;185;249m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;2;177;185;249mBash command[0m
+ [0m[38;2;153;153;153mShow short git status, last 3 commits, and echo check line[0m
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ [0m[2m│ [0mgit status --short && git log --oneline -3 && echo "permission card check with a fairly long command line so it wraps on a phone"
+[0m[38;2;80;80;80m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ Permission rule [0m[1mBash [0mrequires confirmation for this command.
+ [0m[38;2;153;153;153m/permissions to update rules[0m
+
+ Do you want to proceed?
+ [0m[38;2;177;185;249m❯ [0m[38;2;153;153;153m1. [0m[38;2;177;185;249mYes[0m
+   [0m[38;2;153;153;153m2. [0mNo
+
+ [0m[38;2;153;153;153mEsc to cancel · Tab to amend[0m

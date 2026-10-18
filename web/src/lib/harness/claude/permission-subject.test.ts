@@ -45,6 +45,20 @@ describe("claudePermissionSubject", () => {
     });
   });
 
+  it("the boxed layout (live, 2.1.302): the command from its `│` box, the dim description as detail", () => {
+    expect(subjectOf(live("claude--bash-boxed.txt"))).toEqual({
+      title: "Run command",
+      target:
+        'git status --short && git log --oneline -3 && echo "permission card check with a fairly long command line so it wraps on a phone"',
+      detail: "Show short git status, last 3 commits, and echo check line",
+    });
+  });
+
+  it("a boxed command that wrapped keeps one line per box row", () => {
+    const text = dialog([" Bash command", " Two steps", "╌".repeat(60), " │ git add -A &&", " │ git commit -m x", "╌".repeat(60), " Permission rule Bash requires confirmation for this command."]);
+    expect(subjectOf(text)?.target).toBe("git add -A &&\ngit commit -m x");
+  });
+
   it("a file creation: the heading and the file name, never the diff", () => {
     expect(claudePermissionSubject(parseLines(pane("claude--permission-edit.txt")), "Do you want to create hello.txt?")).toEqual({
       title: "Create file",

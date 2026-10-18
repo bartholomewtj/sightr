@@ -11,6 +11,8 @@
 //    This command requires approval
 //    Do you want to proceed?
 //
+// Claude 2.1.302 also boxes a command under its description (`│ git status` between dashed rules);
+// that box is the target and the description the detail.
 // Measured on Claude Code 2.1.302 (fixtures/permission-subject, fixtures/panes/claude--permission-*).
 // Pure and leaf-only (the bridge imports it through dialog-kit.ts): no `react`, no `@shared`.
 
@@ -44,6 +46,8 @@ const TITLES: Record<string, string> = {
 const COUNTER = /\s{2,}\d+\s+of\s+\d+$/;
 /** A tool-call echo whose argument is the target: `Read(C:\x\notes.md)`. */
 const CALL = /^[A-Z][A-Za-z]*\(([\s\S]+)\)$/;
+/** A boxed command's gutter: `│ ` before each of its lines. */
+const GUTTER = /^\s*│ ?/;
 /** Lines that are the dialog's own boilerplate, never the target. */
 const BOILERPLATE = /^(this command requires approval|permission rule .* requires confirmation)/i;
 
@@ -97,6 +101,26 @@ export function claudePermissionSubject(lines: readonly StyledLine[], question: 
   if (heading === "" || isDashedRule(heading)) return null;
   const title = TITLES[heading.toLowerCase()] ?? heading;
   i++;
+
+  // Claude 2.1.302's boxed layout: the dim description under the heading, then the command in a
+  // dashed box with a `│ ` gutter on each of its lines.
+  let end = i;
+  while (end < q && !BOILERPLATE.test(texts[end]!.trim())) end++;
+  const boxed = texts.slice(i, end).findIndex((t) => GUTTER.test(t));
+  if (boxed >= 0) {
+    const g = i + boxed;
+    const command: string[] = [];
+    for (let k = g; k < end && GUTTER.test(texts[k]!) && command.length < SUBJECT_MAX_LINES; k++) {
+      command.push(texts[k]!.replace(GUTTER, "").trimEnd());
+    }
+    const about = texts.slice(i, g).filter((t, k) => !isBlank(t) && !isDashedRule(t) && isDim(lines[i + k]!));
+    const commandText = command.join("\n").trim();
+    return {
+      title,
+      ...(commandText !== "" ? { target: cap(commandText) } : {}),
+      ...(about.length > 0 ? { detail: about.map((t) => t.trim()).join(" ") } : {}),
+    };
+  }
 
   // The target: the first run of lines after the heading (dashed rules and blanks skipped before
   // it), up to a blank, a dashed rule or the dim description. Its first line may itself be dim (an
