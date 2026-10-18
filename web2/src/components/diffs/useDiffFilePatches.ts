@@ -27,7 +27,8 @@ type Preview = Extract<ReviewDiffPreview, { available: true }>;
 export type SummaryState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "ready"; preview: Preview; files: DiffFileEntry[] }
+  /** `plainMissing`: under -w, the plain list (which supplies the whitespace-only files) failed or is unavailable, so those files are not listed. */
+  | { status: "ready"; preview: Preview; files: DiffFileEntry[]; plainMissing?: true }
   /** `reason` is T26's code (`not-a-repo`, `bad-base`, ...); `reviewReason` words it. */
   | { status: "unavailable"; reason: string }
   | { status: "error" };
@@ -187,6 +188,12 @@ export class PatchEngine {
     return this.load(w, w === 0);
   }
 
+  /** The plain list could not be had (failed, busy, not a repo): the whitespace variant cannot list whitespace-only files. */
+  private plainFailed(): boolean {
+    const status = this.variants[0].snap.summary.status;
+    return status === "error" || status === "unavailable";
+  }
+
   private mergedWs(raw: DiffFileEntry[]): DiffFileEntry[] {
     const plain = this.variants[0];
     return plain.raw && plain.snap.summary.status === "ready" ? withWhitespaceOnly(plain.raw, raw) : raw;
@@ -198,9 +205,12 @@ export class PatchEngine {
     if (!v.raw || v.snap.summary.status !== "ready") return;
     const files = this.mergedWs(v.raw);
     const key = (list: readonly DiffFileEntry[]) => list.map((f) => `${f.path}\0${f.rev}`).join("\n");
-    if (key(files) === key(v.snap.summary.files)) return;
+    const missing = this.plainFailed();
+    if (key(files) === key(v.snap.summary.files) && missing === (v.snap.summary.plainMissing === true)) return;
     const present = new Set(files.map((f) => f.path));
-    this.setIn(1, { summary: { ...v.snap.summary, files }, entries: new Map([...v.snap.entries].filter(([path]) => present.has(path))) });
+    const { plainMissing: _was, ...rest } = v.snap.summary;
+    void _was;
+    this.setIn(1, { summary: { ...rest, files, ...(missing ? { plainMissing: true as const } : {}) }, entries: new Map([...v.snap.entries].filter(([path]) => present.has(path))) });
     if (this.ws === 1) this.pump();
   }
 
@@ -226,6 +236,7 @@ export class PatchEngine {
       if (!preview.available) {
         v.hash = null;
         this.setIn(w, { summary: { status: "unavailable", reason: preview.reason }, entries: new Map() });
+        if (w === 0) this.remergeWs();
         return;
       }
       v.hash = preview.diffHash;
@@ -233,7 +244,7 @@ export class PatchEngine {
       const files = w === 1 ? this.mergedWs(v.raw) : v.raw;
       const present = new Set(files.map((f) => f.path));
       const entries = new Map([...v.snap.entries].filter(([path]) => present.has(path)));
-      this.setIn(w, { summary: { status: "ready", preview, files }, entries });
+      this.setIn(w, { summary: { status: "ready", preview, files, ...(w === 1 && this.plainFailed() ? { plainMissing: true as const } : {}) }, entries });
       if (w === 0) this.remergeWs();
       if (w === this.ws) this.pump();
     } catch (err) {
@@ -241,6 +252,7 @@ export class PatchEngine {
       v.summaryAbort = null;
       // Keep what is on screen when the list was already there; otherwise say so.
       if (v.snap.summary.status !== "ready") this.setIn(w, { summary: { status: "error" } });
+      if (w === 0) this.remergeWs();
     }
   }
 

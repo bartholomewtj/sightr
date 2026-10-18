@@ -65,6 +65,8 @@ export interface DiffServer {
   patchDelayMs: number;
   /** A list request answers `available: false` with this reason. */
   listUnavailable: string | null;
+  /** Only the plain list (no `ignoreWhitespace`) answers `available: false` with this reason (T28). */
+  plainListUnavailable: string | null;
   /** Change the list: new `diffHash`, so a refresh sees a change. */
   setFiles(files: FakeFile[]): void;
   /** Let the held patch responses go. */
@@ -100,6 +102,7 @@ export function createDiffServer(initial: FakeFile[] = []): DiffServer {
     hold: false,
     patchDelayMs: 0,
     listUnavailable: null,
+    plainListUnavailable: null,
     setFiles(files) {
       server.files = files;
       hash += 1;
@@ -137,6 +140,7 @@ export function createDiffServer(initial: FakeFile[] = []): DiffServer {
       const ifNoneMatch = request.headers.get("if-none-match");
       server.listHeaders.push({ ifNoneMatch });
       if (server.listUnavailable) return HttpResponse.json({ available: false, reason: server.listUnavailable });
+      if (server.plainListUnavailable && url.searchParams.get("ignoreWhitespace") !== "1") return HttpResponse.json({ available: false, reason: server.plainListUnavailable });
       const scope = url.searchParams.get("scope");
       const base = url.searchParams.get("base");
       if (scope === "branch" && base !== null && !server.knownBases.has(base)) return HttpResponse.json({ available: false, reason: "bad-base" });

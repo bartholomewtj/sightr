@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parsePatch } from "../parsePatch.ts";
+import { parsePatch, type ParsedPatchFile } from "../parsePatch.ts";
 import { EXPAND_STEP, gapSpans, lineMatches, NO_REVEALS, revealMore, splitFileText, splitRows, stackedRows, staleAgainst, type Reveals } from "./hand.rows.ts";
 
 const patch = [
@@ -222,6 +222,46 @@ describe("splitRows", () => {
   it("gives every row its own key, also across runs", () => {
     const keys = splitRows(stackedRows(parsed(["@@ -1,3 +1,3 @@", "-a", "+x", " m", "-b", "+y", "-c", "+z"]))).map((r) => r.key);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe("a bare @@ @@ hunk (T28)", () => {
+  // `parsePatch` only reads numbered headers, and the Diff panel's run scope rewrites the journal's `@@ @@` to numbered ones
+  // before it gets here; an adapter can still be handed a hunk with no numbers, and must pair it the same way and not guess gaps.
+  const bare: ParsedPatchFile = {
+    path: "f.ts",
+    status: "modified",
+    additions: 2,
+    deletions: 3,
+    unknown: [],
+    hunks: [{
+      header: "@@ @@",
+      oldStart: 0,
+      oldCount: 0,
+      newStart: 0,
+      newCount: 0,
+      section: "",
+      lines: [
+        { kind: "context", text: "ctx" },
+        { kind: "del", text: "a" },
+        { kind: "del", text: "b" },
+        { kind: "del", text: "c" },
+        { kind: "add", text: "x" },
+        { kind: "add", text: "y" },
+        { kind: "context", text: "ctx2" },
+      ],
+    }],
+  };
+
+  it("pairs the way a numbered hunk does, and carries no numbers", () => {
+    const pairs = splitRows(stackedRows(bare)).flatMap((r) => (r.type === "pair" ? [r] : []));
+    expect(pairs.map((p) => [p.left?.text, p.right?.text])).toEqual([["ctx", "ctx"], ["a", "x"], ["b", "y"], ["c", undefined], ["ctx2", "ctx2"]]);
+    expect(pairs.every((p) => p.left?.oldLine === undefined && p.right?.newLine === undefined)).toBe(true);
+  });
+
+  it("offers no gaps to open", () => {
+    expect(gapSpans(bare)).toBeNull();
+    expect(stackedRows(bare, ["l1", "l2"]).some((r) => r.type === "gap")).toBe(false);
   });
 });
 

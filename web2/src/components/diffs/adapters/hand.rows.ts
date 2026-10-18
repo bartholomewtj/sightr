@@ -39,7 +39,7 @@ export function gapSpans(file: ParsedPatchFile): Span[] | null {
   let newNext = 1;
   let oldNext = 1;
   for (const h of file.hunks) {
-    if (h.mismatch) return null;
+    if (h.mismatch || !/^@@ -\d/.test(h.header)) return null; // a bare `@@ @@` header has no numbers to place a gap by
     const newFirst = h.newCount === 0 ? h.newStart + 1 : h.newStart;
     const oldFirst = h.oldCount === 0 ? h.oldStart + 1 : h.oldStart;
     const len = newFirst - newNext;

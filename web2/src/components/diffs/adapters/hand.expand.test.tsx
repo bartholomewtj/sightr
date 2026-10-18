@@ -203,6 +203,17 @@ describe("split layout", () => {
     expect(container.querySelector(".whitespace-pre-wrap")).toBeNull();
   });
 
+  it("draws a bare @@ @@ hunk in two halves with blank numbers and no controls", () => {
+    const parsed = {
+      path: FILE, status: "modified" as const, additions: 1, deletions: 1, unknown: [],
+      hunks: [{ header: "@@ @@", oldStart: 0, oldCount: 0, newStart: 0, newCount: 0, section: "", lines: [{ kind: "del" as const, text: "old" }, { kind: "add" as const, text: "new" }] }],
+    };
+    const { container } = view({ patch: "", parsed, layout: "split" });
+    const halves = Array.from(container.querySelectorAll<HTMLElement>("[data-diff-side]")).map((h) => h.textContent);
+    expect(halves).toEqual(["-old", "+new"]); // no number in front of either
+    expect(container.querySelector("[data-diff-expand]")).toBeNull();
+  });
+
   it("keeps the no-newline note on the side of its line", () => {
     const eof = [...HEAD, "@@ -1 +1 @@", "-a", "\\ No newline at end of file", "+b", ""].join("\n");
     const { container } = view({ patch: eof, layout: "split", onExpandContext: undefined });

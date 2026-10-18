@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { useRightPanelStore } from "@/rightPanelStore";
 import { fakePatch } from "@/test/diffServer";
-import { drawWindows, fake, mountPanel, section, settle, useDiffPanelHarness } from "@/test/diffPanelHarness";
+import { drawWindows, fake, mountPanel, section, sections, settle, useDiffPanelHarness } from "@/test/diffPanelHarness";
 
 const five = ["a", "b", "c", "d", "e"].map((n) => ({ path: `src/${n}.ts`, patch: fakePatch(`src/${n}.ts`, "old", "new"), wsPatch: fakePatch(`src/${n}.ts`, "old-w", "new-w") }));
 useDiffPanelHarness(five);
@@ -114,6 +114,27 @@ describe("DiffPanel: ignore whitespace", () => {
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("title", "Not available for this run");
     expect(button).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+describe("DiffPanel: ignore whitespace, the plain list cannot be had", () => {
+  it("says whitespace-only files can't be shown, rather than dropping them silently, and drops the note when the list comes back", async () => {
+    useRightPanelStore.getState().setDiffIgnoreWhitespace(true);
+    fake.plainListUnavailable = "busy";
+    await mountPanel();
+    // The whitespace list still shows its files.
+    expect(sections().map((s) => s.dataset.diffFile)).toEqual(five.map((f) => f.path));
+    await waitFor(() => expect(document.querySelector("[data-diff-note=whitespace-only-missing]")).toHaveTextContent("Whitespace-only files can't be shown right now."));
+    fake.plainListUnavailable = null;
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(document.querySelector("[data-diff-note=whitespace-only-missing]")).toBeNull());
+  });
+
+  it("shows no note in the plain view, where nothing is merged", async () => {
+    fake.plainListUnavailable = "busy";
+    await mountPanel();
+    await settle();
+    expect(document.querySelector("[data-diff-note=whitespace-only-missing]")).toBeNull();
   });
 });
 
