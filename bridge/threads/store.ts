@@ -183,6 +183,13 @@ export const MIGRATIONS: readonly Migration[] = [
       db.run(`ALTER TABLE threads ADD COLUMN context_usage_json TEXT`);
     },
   },
+  {
+    // Thread.compacting: the harness is compacting right now (read off the screen; 1 or null).
+    version: 4,
+    up(db) {
+      db.run(`ALTER TABLE threads ADD COLUMN compacting INTEGER`);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
@@ -271,6 +278,7 @@ interface ThreadRow {
   permission_mode: string | null;
   model: string | null;
   context_usage_json: string | null;
+  compacting: number | null;
 }
 
 interface RunRow {
@@ -359,6 +367,7 @@ function threadFromRow(r: ThreadRow): ServerThread {
   if (r.permission_mode !== null) t.permissionMode = r.permission_mode;
   if (r.model !== null) t.model = r.model;
   if (r.context_usage_json !== null) t.contextUsage = JSON.parse(r.context_usage_json) as Thread["contextUsage"] & object;
+  if (r.compacting === 1) t.compacting = true;
   return t;
 }
 
@@ -388,6 +397,7 @@ function threadParams(t: ServerThread) {
     permission_mode: t.permissionMode ?? null,
     model: t.model ?? null,
     context_usage_json: t.contextUsage ? JSON.stringify(t.contextUsage) : null,
+    compacting: t.compacting === true ? 1 : null,
   };
 }
 

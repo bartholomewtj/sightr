@@ -144,6 +144,12 @@ export interface Thread {
    * from the newest assistant usage in the journal. Absent when the harness records none.
    */
   contextUsage?: ThreadTokenUsageSnapshot;
+  /**
+   * Sightr: the harness is compacting its context right now, read off the screen while the thread
+   * works (Claude's auto-compact has no `/compact` message). T3 derives `isCompacting` from the run;
+   * a steer would cancel the compaction, so follow-ups queue while this is true. Absent = false.
+   */
+  compacting?: boolean;
 }
 
 /**
@@ -605,6 +611,7 @@ export type ThreadPatch = Partial<
     | "permissionMode"
     | "model"
     | "contextUsage"
+    | "compacting"
   >
 > & {
   /** `null` clears it. */
