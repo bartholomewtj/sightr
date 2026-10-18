@@ -50,7 +50,13 @@ const rowsOf = (c: HTMLElement, kind: "add" | "del") =>
 const gutterOf = (c: HTMLElement, side: "old" | "new", line: number) =>
   (queryDeep(c, `[data-diff-gutter="${side}"]`).find((g) => g.textContent === String(line)) ??
     queryDeep(c, `[data-gutter] [data-column-number="${line}"]`).find((g) => (g.getAttribute("data-line-type") === "change-deletion") === (side === "old"))) as HTMLElement | undefined;
-const gutterNodes = (c: HTMLElement) => queryDeep(c, "[data-diff-gutter], [data-gutter] [data-column-number]");
+/** What the layout says about long lines: wrapped (`whitespace-pre-wrap`, pierre's data-overflow) or a scrolling block. */
+const wrapMode = (c: HTMLElement) => {
+  if (queryDeep(c, ".whitespace-pre-wrap, [data-overflow='wrap']").length > 0) return "wrap";
+  if (queryDeep(c, ".overflow-x-auto, [data-overflow='scroll']").length > 0) return "scroll";
+  return "none";
+};
+const gutterNodes =(c: HTMLElement) => queryDeep(c, "[data-diff-gutter], [data-gutter] [data-column-number]");
 const expandNodes = (c: HTMLElement) => queryDeep(c, "[data-diff-expand], [data-separator] [data-expand-button]") as HTMLElement[];
 /** A line is told apart from context by more than colour: a +/- in the text, or classic indicators on the block. */
 const marked = (c: HTMLElement, row: Element, prefix: string) =>
@@ -90,11 +96,15 @@ describe.each(loaded)("diff adapter: $name", ({ name, mod, skip }) => {
     expect(marked(container, add, "+")).toBe(true);
   });
 
-  it("wrap changes the layout", async () => {
+  it("wrap changes the layout: wrapped text against a scrolling block", async () => {
     const { container, rerender } = render(<Adapter {...base({ wrap: true })} />);
-    await waitFor(() => expect(container.querySelector("[data-diff-wrap]")).not.toBeNull());
+    await waitFor(() => expect(rowsOf(container, "add").length).toBeGreaterThan(0));
+    expect(container.querySelector("[data-diff-wrap]")).not.toBeNull();
+    expect(wrapMode(container)).toBe("wrap");
     rerender(<Adapter {...base({ wrap: false })} />);
     await waitFor(() => expect(container.querySelector("[data-diff-wrap]")).toBeNull());
+    expect(wrapMode(container)).toBe("scroll");
+    expect(queryDeep(container, ".whitespace-pre-wrap, [data-overflow='wrap']")).toHaveLength(0);
   });
 
   it("renders stacked when split is unsupported, and split when it is", async () => {
@@ -109,13 +119,23 @@ describe.each(loaded)("diff adapter: $name", ({ name, mod, skip }) => {
     try {
       const { container } = render(<Adapter {...base({ onLineAction: () => undefined })} />);
       await waitFor(() => expect(gutterNodes(container).length).toBeGreaterThan(0));
-      // hand: Tailwind's pointer-coarse variant (min-w-11 is 44 px). pierre: a coarse-pointer rule in its injected CSS.
+      // hand: every gutter carries Tailwind's pointer-coarse variants (min-w-11 is 44 px; the ::after reaches 12 px above
+      // and below a 20 px row, a 44 px hit area). pierre: a coarse-pointer rule in its injected CSS. jsdom has no
+      // layout, so this is the declared size, checked on every gutter rather than the first.
+      const nodes = gutterNodes(container);
       const styles = queryDeep(container, "style").map((s) => s.textContent ?? "").join("\n");
-      const tailwind = /pointer-coarse:min-w-11/.test(gutterNodes(container)[0]?.className ?? "");
-      expect(tailwind || /pointer:\s*coarse\)\s*\{[^}]*\{[^}]*min-width:\s*44px/.test(styles)).toBe(true);
+      const declared = (n: Element) => /pointer-coarse:min-w-11/.test(n.className) && /pointer-coarse:after:-inset-y-3/.test(n.className);
+      const css = /pointer:\s*coarse\)\s*\{[^}]*\{[^}]*min-width:\s*44px/.test(styles) && /::after\s*\{[^}]*inset:\s*-12px/.test(styles);
+      expect(nodes.length).toBeGreaterThan(3);
+      expect(nodes.every(declared) || css).toBe(true);
     } finally {
       window.matchMedia = original;
     }
+  });
+
+  it.runIf(caps.highlight)("highlights the code (a token element appears)", async () => {
+    const { container } = render(<Adapter {...base()} filePath="src/app.ts" patch={PATCH.replace("line 1\n", "const line 1\n")} />);
+    await waitFor(() => expect(queryDeep(container, "[class*='hljs-'], [data-content] [data-line] span[style*='--diffs-token']").length).toBeGreaterThan(0));
   });
 
   it.runIf(caps.annotations)("reports a tapped line: the old side for a removed line", async () => {

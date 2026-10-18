@@ -287,7 +287,7 @@ What bears on T27 to T29:
   `hand.rows.ts`, `hand.highlight.ts` and `hand.langs.ts`.
 - **All**: the seam's main-chunk cost is 0.67 to 0.70 KB gzip; `DiffCodeView` shows `DiffLines` while the adapter loads.
   `parsePatch` replaces `parseDiff` for hunk-aware numbering (a removed line starting `-- `, quoted names, CRLF, no
-  newline at EOF, rename, binary); `gitPatchPath.ts` is T3's, verbatim at `6a6ebb27`.
+  newline at EOF, rename, binary); `parsePatch` decodes names with T26's `shared/v2/gitPatchPath.ts` (T3's decoder, adapted).
 - jsdom ranking data (commits settled / nodes with every row mounted): A 2, 1, 1, 1 / 746, 18,579, 1,535, 485,413;
   B 3, 5, 2, 2 / 404, 11,611, 947, 12,365; C 2, 1, 1, 1 / 61, 1,581, 203, 3,198 (50 lines, 1,500 lines, large first file,
   3,000-line file).

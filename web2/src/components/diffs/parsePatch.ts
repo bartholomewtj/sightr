@@ -3,7 +3,7 @@
 // header and vanishes, and a quoted name such as "a/caf\303\251.ts" is never decoded. This parser reads
 // each hunk header's counts and, while lines are still owed, takes every row as body whatever it looks
 // like; when a hunk's body disagrees with its header it says so (`mismatch`) and trusts the body.
-import { unquoteGitPatchPath } from "../../t3/shared/gitPatchPath.ts";
+import { gitPatchSidePath, unquoteGitPatchPath } from "@shared/v2/gitPatchPath";
 
 export type PatchFileStatus = "modified" | "added" | "deleted" | "renamed" | "binary";
 
@@ -78,12 +78,8 @@ function parseGitHeader(rest: string): { oldPath: string; path: string } | null 
   return i > 0 ? { oldPath: stripSide(rest.slice(0, i)), path: stripSide(rest.slice(i + 1)) } : null;
 }
 
-/** `--- a/x` / `+++ b/x` names; a tab after the name (diff -u timestamps) is dropped. `/dev/null` is null. */
-function parseMarker(rest: string): string | null {
-  const name = rest.replace(/\t.*$/, "");
-  const tok = name.startsWith('"') ? takeToken(name) : [name];
-  return !tok || tok[0] === "/dev/null" ? null : stripSide(tok[0]);
-}
+/** `--- a/x` / `+++ b/x` names (the shared decoder: unquoted, side prefix off, a tab ends the name, `/dev/null` is null). */
+const parseMarker = gitPatchSidePath;
 
 /** One file's header facts, gathered until its first hunk and resolved by `settle`. */
 type Pending = {

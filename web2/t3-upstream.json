@@ -589,19 +589,6 @@
       "note": "imports vitest instead of vite-plus/test"
     },
     {
-      "local": "src/t3/shared/gitPatchPath.ts",
-      "upstream": "packages/shared/src/gitPatchPath.ts",
-      "commit": "6a6ebb278dc70dd859439a3c28960a7d23a1e645",
-      "mode": "verbatim"
-    },
-    {
-      "local": "src/t3/shared/gitPatchPath.test.ts",
-      "upstream": "packages/shared/src/gitPatchPath.test.ts",
-      "commit": "6a6ebb278dc70dd859439a3c28960a7d23a1e645",
-      "mode": "adapted",
-      "note": "imports vitest instead of vite-plus/test"
-    },
-    {
       "local": "src/t3/contracts/keybindings.ts",
       "upstream": "packages/contracts/src/keybindings.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
