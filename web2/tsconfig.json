@@ -30,6 +30,7 @@
       "@/*": ["./src/*", "../web/src/*"],
       "@shared/*": ["../shared/*"],
       "@v1/*": ["../web/src/*"],
+      "diffs-adapter": ["./src/components/diffs/adapters/status.tsx"],
       "~/lib/windowControlsOverlay": ["./src/t3/shims/windowControlsOverlay.ts"],
       "@t3tools/client-runtime/work-log/presentation": ["./src/t3/client-runtime/work-log/presentation.ts"],
       "@t3tools/client-runtime/work-log/command-label": ["./src/t3/shims/commandLabel.ts"],
@@ -45,5 +46,6 @@
   },
   // src/sw.ts runs in a service-worker context; tsconfig.worker.json checks it.
   "include": ["src", "../shared", "*.ts"],
-  "exclude": ["src/sw.ts"]
+  // The T25 candidates' files import packages that are not in package.json (see diffs-spike.ts).
+  "exclude": ["src/sw.ts", "src/components/diffs/adapters/pierre.tsx", "src/components/diffs/adapters/hand.tsx", "src/components/diffs/adapters/hand.highlight.ts"]
 }

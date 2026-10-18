@@ -59,3 +59,6 @@ docs/archify/*.html
 
 # Local pickup notes; never committed.
 /STATE.md
+
+# T25 diff-renderer spike fixtures (bun scripts/diff-spike.ts fixtures)
+web2/.spike-diffs/

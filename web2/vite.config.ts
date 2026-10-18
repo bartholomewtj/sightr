@@ -7,6 +7,7 @@ import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { diffsAlias, diffsInputs } from "./diffs-spike.ts";
 import { t3Aliases } from "./t3-shims.ts";
 import { v1Scope } from "./v1-scope.ts";
 
@@ -135,6 +136,8 @@ export default defineConfig({
     alias: [
       { find: "@shared", replacement: resolve(import.meta.dirname, "../shared") },
       { find: "@v1", replacement: resolve(import.meta.dirname, "../web/src") },
+      // The diff seam's adapter (T25 spike). Unset: today's `status` adapter. SIGHTR_DIFFS=hand|pierre: a candidate.
+      diffsAlias(import.meta.dirname),
       ...t3Aliases(import.meta.dirname),
     ],
   },
@@ -142,6 +145,8 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     chunkSizeWarningLimit: 900,
+    // SIGHTR_DIFFS also builds spike-diffs.html, the page that renders the fixtures and prints timings.
+    rollupOptions: { input: diffsInputs(import.meta.dirname) },
   },
   server: {
     port: 5174,
