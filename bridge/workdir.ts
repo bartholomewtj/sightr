@@ -15,6 +15,9 @@ type WorkdirListing = Extract<Wire.FilesResponse, { kind: "dir" }>;
 type WorkdirFile = Extract<Wire.FilesResponse, { kind: "file" }>;
 import { planZip, zipStream, zipName } from "./workdir-zip.ts";
 import { createFolderGit, MAX_PANE_IDS } from "./workdir-git.ts";
+import { createFolderReview, type FileQuery } from "./workdir-review.ts";
+import { notModified } from "./http-cache.ts";
+import { REVIEW_PATHS } from "../shared/v2/review.ts";
 
 export const MAX_ENTRIES = 2000;
 export const PREVIEW_CAP_BYTES = 512 * 1024;
@@ -331,6 +334,16 @@ export async function search(root: string, q: string, budgetMs = SEARCH_BUDGET_M
 export function createWorkdir(cfg: Config, h: WorkdirHelpers) {
   const enabled = cfg.workRoot !== "";
   const folderGit = createFolderGit(cfg.workRoot);
+  const folderReview = createFolderReview(cfg.workRoot);
+  /** A review answer: `diffHash` doubles as the ETag, and a matching If-None-Match gets an empty 304. */
+  const reviewReply = (req: Request, data: { available?: boolean; diffHash?: string; notModified?: true }): Response => {
+    // Only an answer that carries a hash is tagged: the branches route has none, and must not send `ETag: "undefined"`.
+    const etag = typeof data.diffHash === "string" && (data.notModified === true || data.available === true) ? `"${data.diffHash}"` : null;
+    if (etag !== null && (data.notModified === true || notModified(req.headers.get("if-none-match"), etag))) return h.secure(new Response(null, { status: 304, headers: { etag, "cache-control": "no-store" } }));
+    const res = h.json(data, req.headers.get("accept-encoding"));
+    res.headers.set("cache-control", "no-store"); if (etag !== null) res.headers.set("etag", etag);
+    return res;
+  };
   const owns = (pathname: string) => enabled && (pathname === "/api/files" || pathname.startsWith("/api/files/"));
   async function handle(req: Request, url: URL): Promise<Response> {
     if (url.pathname === "/api/files/delete") {
@@ -390,6 +403,29 @@ export function createWorkdir(cfg: Config, h: WorkdirHelpers) {
         const res = h.json(await folderGit.diff(real, q), req.headers.get("accept-encoding"));
         res.headers.set("cache-control", "no-store");
         return res;
+      }
+      if (url.pathname === REVIEW_PATHS.list || url.pathname === REVIEW_PATHS.patch || url.pathname === REVIEW_PATHS.contents || url.pathname === REVIEW_PATHS.branches) {
+        // Read-only review data for the repo around a Files folder (T26): a file list, one patch, one file's
+        // whole contents, the branches for the base picker. Same folder rule as the Git tab; `file`/`oldFile`
+        // are repo-root-relative and get the Files refusal list per segment (a hidden name is a 404).
+        const segs = parseRelPath(url.searchParams.get("path") ?? "");
+        if (!segs) return notFound(h);
+        const real = await resolveInRoot(cfg.workRoot, segs);
+        if (!real || !(await stat(real).catch(() => null))?.isDirectory()) return notFound(h);
+        if (url.pathname === REVIEW_PATHS.branches) return reviewReply(req, await folderReview.branches(real));
+        const scope = url.searchParams.get("scope");
+        if (scope === "run") return h.json({ error: "run scope not available" }, req.headers.get("accept-encoding"), 501);
+        if (scope !== "working-tree" && scope !== "branch") return h.text("scope must be working-tree, branch or run", 400);
+        const ignoreWhitespace = url.searchParams.get("ignoreWhitespace") === "1";
+        if (url.pathname === REVIEW_PATHS.list) {
+          const base = url.searchParams.get("base");
+          return reviewReply(req, await folderReview.list(real, { scope, ...(base === null ? {} : { base }), ignoreWhitespace, ifNoneMatch: req.headers.get("if-none-match") }));
+        }
+        const file = url.searchParams.get("file"), oldFile = url.searchParams.get("oldFile");
+        const fileSegs = file === null ? null : parseRelPath(file), oldSegs = oldFile === null ? [] : parseRelPath(oldFile);
+        if (!fileSegs?.length || !oldSegs) return notFound(h);
+        const q: FileQuery = { scope, file: fileSegs.join("/"), ...(oldFile === null ? {} : { oldFile: oldSegs.join("/") }), from: url.searchParams.get("from") ?? "", to: url.searchParams.get("to") ?? "", ignoreWhitespace };
+        return reviewReply(req, url.pathname === REVIEW_PATHS.patch ? await folderReview.patch(real, q) : await folderReview.contents(real, q));
       }
       if (url.pathname === "/api/files/resolve") {
         // A path an agent printed (absolute, or relative to the pane's folder) as a Files rel path, so

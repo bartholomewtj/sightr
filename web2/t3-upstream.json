@@ -974,6 +974,27 @@
       "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
       "mode": "pattern",
       "note": "T24: the job of deriveThreadCheckpointSummaries, from the journal's file_change items per run instead of git checkpoints (T30/T31 replace the source)"
+    },
+    {
+      "local": "../shared/v2/review.ts",
+      "upstream": "packages/contracts/src/review.ts",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "shape",
+      "note": "T26: ReviewDiffPreview/ReviewDiffFileContents split and field names; Sightr serves them over plain HTTP with repo-relative paths, a per-file rev and an ETag diffHash"
+    },
+    {
+      "local": "../shared/v2/gitPatchPath.ts",
+      "upstream": "packages/shared/src/gitPatchPath.ts",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "adapted",
+      "note": "T26: upstream body unchanged (no Effect import); adds gitPatchSidePath (strip a/ b/, /dev/null) for keying patches by path"
+    },
+    {
+      "local": "../bridge/workdir-review.ts",
+      "upstream": "apps/server/src/checkpointing/Diffs.ts",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "pattern",
+      "note": "T26: the -z numstat parse, extended for renames and name-status letters; the rest (routes, caps, gate) is Sightr's"
     }
   ],
   "decisions": [

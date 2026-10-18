@@ -390,6 +390,63 @@ describe("workdir", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   });
 
+  // Real git processes: under a loaded full run these have passed 5 s, so they get their own budget.
+  test("routes review data (T26): refuses traversal, hidden names, bad scopes; run is 501; ETag answers 304", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sightr-workdir-review-"));
+    const paths = ["/api/files/git/review", "/api/files/git/review/patch", "/api/files/git/review/contents", "/api/files/git/branches"];
+    try {
+      const w = createWorkdir(cfg(root), helpers);
+      const ask = (route: string, q: string, headers: Record<string, string> = {}) => w.handle(new Request(`http://x${route}?${q}`, { headers }), new URL(`http://x${route}?${q}`));
+      for (const route of paths) for (const path of ["../escape", "/abs", ".env", "missing", "a/../../b", "C:/x"]) expect((await ask(route, `path=${encodeURIComponent(path)}&scope=working-tree&file=a.txt`)).status).toBe(404);
+      // A folder that is not a repo: the same honest 200 as the Git tab, never an error or a path.
+      for (const [route, extra] of [[paths[0]!, ""], [paths[1]!, "&file=a.txt"], [paths[2]!, "&file=a.txt"]] as const) {
+        const r = await ask(route, `path=&scope=working-tree${extra}`); expect(r.status).toBe(200); expect(await r.json()).toEqual({ available: false, reason: "not-a-repo" }); expect(r.headers.get("cache-control")).toBe("no-store"); expect(r.headers.get("etag")).toBeNull();
+      }
+      expect(await (await ask(paths[3]!, "path=")).json()).toEqual({ available: false, reason: "not-a-repo" });
+      for (const route of paths.slice(0, 3)) {
+        expect((await ask(route, "path=&scope=worktree&file=a.txt")).status).toBe(400); expect((await ask(route, "path=&file=a.txt")).status).toBe(400); expect((await ask(route, "path=&scope=&file=a.txt")).status).toBe(400);
+        const run = await ask(route, "path=&scope=run&file=a.txt"); expect(run.status).toBe(501); expect(await run.json()).toEqual({ error: "run scope not available" });
+      }
+      // `file` and `oldFile` get the Files refusal list per segment: a hidden or malformed name is a 404, not a git answer.
+      for (const route of paths.slice(1, 3)) {
+        for (const file of [".env", "config/x.json", "../x", "/abs", "", "a//b", "a\\b", "node_modules/x", "id_rsa"]) expect((await ask(route, `path=&scope=working-tree&file=${encodeURIComponent(file)}`)).status).toBe(404);
+        expect((await ask(route, "path=&scope=working-tree")).status).toBe(404);
+        expect((await ask(route, "path=&scope=working-tree&file=a.txt&oldFile=.env")).status).toBe(404);
+        const badSha = await ask(route, `path=&scope=branch&file=a.txt&from=${encodeURIComponent("--output=x")}&to=${"a".repeat(40)}`); expect(badSha.status).toBe(200); expect(await badSha.json()).toEqual({ available: false, reason: "bad-commit" });
+      }
+      const badBase = await ask(paths[0]!, `path=&scope=branch&base=${encodeURIComponent("--output=x")}`); expect(badBase.status).toBe(200); expect(await badBase.json()).toEqual({ available: false, reason: "bad-base" });
+      const gated = createWorkdir(cfg(root), { ...helpers, guard: () => new Response("forbidden", { status: 403 }) });
+      for (const route of paths) expect((await gated.handle(new Request(`http://x${route}?path=&scope=working-tree&file=a.txt`), new URL(`http://x${route}?path=&scope=working-tree&file=a.txt`))).status).toBe(403);
+
+      // A real repo: ETag = diffHash, a matching If-None-Match is an empty 304, and nothing holds the temp root.
+      const repo = join(root, "repo"); await mkdir(repo);
+      const git = async (...args: string[]) => { const p = Bun.spawn(["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "core.autocrlf=false", ...args], { cwd: repo, stdout: "ignore", stderr: "ignore" }); expect(await p.exited).toBe(0); };
+      await git("init", "-q", "-b", "main"); await writeFile(join(repo, "a.txt"), "one\n"); await git("add", "-A"); await git("commit", "-qm", "c1"); await git("checkout", "-q", "-b", "other"); await writeFile(join(repo, "b.txt"), "b\n"); await git("add", "-A"); await git("commit", "-qm", "c2");
+      await writeFile(join(repo, "a.txt"), "one\ntwo\n"); await writeFile(join(repo, "u.txt"), "new\n"); await writeFile(join(repo, ".env"), "SECRET\n");
+      const list = await ask(paths[0]!, "path=repo&scope=working-tree"); const body = await list.json() as { available: true; diffHash: string; files: Array<{ path: string; rev: string }>; hidden: number };
+      expect(list.status).toBe(200); expect(list.headers.get("etag")).toBe(`"${body.diffHash}"`); expect(list.headers.get("cache-control")).toBe("no-store");
+      expect(body.files.map((f) => f.path).sort()).toEqual(["a.txt", "u.txt"]); expect(body.hidden).toBe(1);
+      expect(JSON.stringify(body)).not.toContain(root); expect(JSON.stringify(body)).not.toContain("SECRET");
+      const cached = await ask(paths[0]!, "path=repo&scope=working-tree", { "if-none-match": list.headers.get("etag")! });
+      expect(cached.status).toBe(304); expect(await cached.text()).toBe(""); expect(cached.headers.get("etag")).toBe(`"${body.diffHash}"`); expect(cached.headers.get("cache-control")).toBe("no-store");
+      expect((await ask(paths[0]!, "path=repo&scope=working-tree", { "if-none-match": '"stale"' })).status).toBe(200);
+      const branch = await ask(paths[0]!, "path=repo&scope=branch&base=main"); const branchBody = await branch.json() as { available: true; diffHash: string; from: string; to: string; base: string; files: Array<{ path: string }> };
+      expect(branchBody).toMatchObject({ available: true, base: "main", files: [{ path: "b.txt" }] }); expect(branch.headers.get("etag")).toBe(`"${branchBody.diffHash}"`);
+      const branch304 = await ask(paths[0]!, "path=repo&scope=branch&base=main", { "if-none-match": branch.headers.get("etag")! }); expect(branch304.status).toBe(304); expect(await branch304.text()).toBe("");
+      const patch = await ask(paths[1]!, "path=repo&scope=working-tree&file=a.txt"); const patchBody = await patch.json() as { available: true; patch: string; diffHash: string };
+      expect(patchBody.patch).toContain("+two"); expect(patch.headers.get("etag")).toBe(`"${patchBody.diffHash}"`); expect((await ask(paths[1]!, "path=repo&scope=working-tree&file=a.txt", { "if-none-match": patch.headers.get("etag")! })).status).toBe(304);
+      const branchPatch = await ask(paths[1]!, `path=repo&scope=branch&file=b.txt&from=${branchBody.from}&to=${branchBody.to}`); expect((await branchPatch.json() as { patch: string }).patch).toContain("+b");
+      const contents = await ask(paths[2]!, "path=repo&scope=working-tree&file=a.txt"); const contentsBody = await contents.json(); expect(contentsBody).toMatchObject({ available: true, old: { state: "text", text: "one\n" }, new: { state: "text", text: "one\ntwo\n" } }); expect(contents.headers.get("etag")).toBe(`"${(contentsBody as { diffHash: string }).diffHash}"`);
+      const secret = await ask(paths[2]!, "path=repo&scope=working-tree&file=.env"); expect(secret.status).toBe(404);
+      const branches = await ask(paths[3]!, "path=repo");
+      // The branch list carries no diffHash, so it is not tagged: never `ETag: "undefined"`, and no 304 for that value.
+      expect(branches.headers.get("etag")).toBeNull(); expect(branches.headers.get("cache-control")).toBe("no-store");
+      expect((await ask(paths[3]!, "path=repo", { "if-none-match": '"undefined"' })).status).toBe(200);
+      expect(await branches.json()).toMatchObject({ available: true, current: "other", branches: expect.arrayContaining([{ name: "main", remote: false, time: expect.any(Number) }]) });
+      expect(JSON.stringify(contentsBody)).not.toContain(root);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 60_000);
+
   test("resolves a printed path to a Files rel path, refusing outside, hidden and traversal", async () => {
     const root = await mkdtemp(join(tmpdir(), "sightr-workdir-resolve-"));
     const outside = await mkdtemp(join(tmpdir(), "sightr-workdir-resolve-out-"));
