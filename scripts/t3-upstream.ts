@@ -273,17 +273,17 @@ export function contractNames(source: string, only?: string): Set<string> {
   for (const line of source.split("\n")) {
     const top = /^(?:export\s+)?(?:const|function|type|interface|class)\s+([A-Za-z_$][\w$]*)/.exec(line);
     if (top) {
-      decl = top[1];
+      decl = top[1]!;
       inLiterals = false;
     }
     if (only && !decl.startsWith(only)) continue;
     const tags: string[] = [];
     for (const m of line.matchAll(/Schema\.Literals?\(\s*\[?([^)\]]*)/g)) {
-      for (const s of m[1].matchAll(/"([^"]*)"/g)) tags.push(s[1]);
+      for (const s of (m[1] ?? "").matchAll(/"([^"]*)"/g)) tags.push(s[1]!);
       if (/Schema\.Literals\(\s*\[[^\]]*$/.test(line.slice(m.index))) inLiterals = true;
     }
     if (inLiterals && !/Schema\.Literals\(/.test(line)) {
-      for (const s of line.matchAll(/"([^"]*)"/g)) tags.push(s[1]);
+      for (const s of line.matchAll(/"([^"]*)"/g)) tags.push(s[1]!);
       if (line.includes("]")) inLiterals = false;
     }
     for (const t of tags) names.add(`${decl} "${t}"`);
@@ -292,7 +292,7 @@ export function contractNames(source: string, only?: string): Set<string> {
     if (own) names.add(`${decl}.${own[1]}`);
     const inline = /Schema\.Struct\(\{(.*)/.exec(line);
     if (inline) {
-      for (const k of inline[1].matchAll(/(?:^|[{,])\s*([A-Za-z_$][\w$]*)\??\s*:\s*(?:Schema\.|[A-Z])/g)) names.add(`${decl}.${k[1]}`);
+      for (const k of (inline[1] ?? "").matchAll(/(?:^|[{,])\s*([A-Za-z_$][\w$]*)\??\s*:\s*(?:Schema\.|[A-Z])/g)) names.add(`${decl}.${k[1]}`);
     }
   }
   return names;
