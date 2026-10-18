@@ -75,7 +75,9 @@ describe("command palette", () => {
 
   it("a phone gets a Close button, no keyboard-only 'Show keyboard shortcuts', and the thread header opens it", async () => {
     await boot("/v2/thread/t1", 390);
-    fireEvent.click(await screen.findByRole("button", { name: "Command palette" }));
+    // The thread header's palette is an item of the title's menu on a phone.
+    fireEvent.click(await screen.findByTitle("Thread actions"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Command palette" }));
     const dialog = await palette();
     const input = within(dialog).getByRole("combobox");
     fireEvent.change(input, { target: { value: ">keyboard" } });

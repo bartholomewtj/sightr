@@ -112,3 +112,32 @@ describe("ChatHeader: the title opens the thread menu", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 });
+
+describe("ChatHeader: the phone header's actions lead the title's menu", () => {
+  const actions = (calls: string[]) => [
+    { id: "find", label: "Find in thread", onSelect: () => calls.push("find") },
+    { id: "palette", label: "Command palette", onSelect: () => calls.push("palette") },
+  ];
+
+  it("they come first, above Rename, and run on a tap", async () => {
+    const calls: string[] = [];
+    const t = threadFixture("t1", { title: "Fix the build" });
+    render(<ChatHeader title={t.title} thread={t} canOperate leadingActions={actions(calls)} />);
+    fireEvent.click(trigger());
+    const items = await screen.findAllByRole("menuitem");
+    expect(items.slice(0, 3).map((i) => i.textContent)).toEqual(["Find in thread", "Command palette", "Rename"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Command palette" }));
+    expect(calls).toEqual(["palette"]);
+  });
+
+  it("a read-only device still reaches them: the title opens a menu of just those", async () => {
+    const calls: string[] = [];
+    const t = threadFixture("t1", { title: "Fix the build" });
+    render(<ChatHeader title={t.title} thread={t} canOperate={false} leadingActions={actions(calls)} />);
+    fireEvent.click(trigger());
+    const items = await screen.findAllByRole("menuitem");
+    expect(items.map((i) => i.textContent)).toEqual(["Find in thread", "Command palette"]);
+    fireEvent.click(items[0]!);
+    expect(calls).toEqual(["find"]);
+  });
+});
