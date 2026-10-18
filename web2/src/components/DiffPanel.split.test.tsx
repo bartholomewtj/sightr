@@ -104,25 +104,46 @@ describe("DiffPanel: split view", () => {
     expect(inner.getAttribute("style")).toMatch(/min-width:\s*100%/);
   });
 
-  it("lets a wide panel hide its file column, which is what gives the diffs 640 px (the panel stops at 720)", async () => {
+  it("lets a wide panel hide its file list, which is what gives the diffs 640 px (the panel stops at 720); the choice is kept per device", async () => {
     setViewportWidth(1280);
-    await mountPanel();
+    const first = await mountPanel();
     resizePanel(720);
     expect(document.querySelector("[data-diff-tree-column]")).not.toBeNull();
-    const filesToggle = screen.getByRole("button", { name: "Files" });
-    expect(filesToggle).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(filesToggle);
+    fireEvent.click(screen.getByRole("button", { name: "Hide file list" }));
     expect(document.querySelector("[data-diff-tree-column]")).toBeNull();
-    expect(filesToggle).toHaveAttribute("aria-pressed", "false");
+    expect(useRightPanelStore.getState().diffFileList).toBe(false);
     expect(sections()).toHaveLength(2); // the diffs stay
-    fireEvent.click(filesToggle);
+    // Another mount (another thread, another scope) starts the same way.
+    first.unmount();
+    await mountPanel();
+    resizePanel(720);
+    expect(document.querySelector("[data-diff-tree-column]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show file list" }));
     expect(document.querySelector("[data-diff-tree-column]")).not.toBeNull();
+    expect(useRightPanelStore.getState().diffFileList).toBe(true);
   });
 
-  it("offers no Files column toggle on a phone, where the tree folds under its header", async () => {
+  it("a stacked choice at a 630 px column shows no toggle; a split that is showing stays to 624", async () => {
+    await wide(1280, 630);
+    expect(layoutToggle()).toBeNull();
+    resizePanel(640);
+    await waitFor(() => expect(layoutToggle()).not.toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Split" }));
+    await waitFor(() => expect(layoutOf("src/a.ts")).toBe("split"));
+    resizePanel(630);
+    await settle(10);
+    expect(layoutToggle()).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Stacked" }));
+    await waitFor(() => expect(layoutOf("src/a.ts")).toBe("stacked"));
+    // Stacked shown at 630: the toggle is gone until the column is 640 again.
+    await waitFor(() => expect(layoutToggle()).toBeNull());
+    expect(stored()).toBe("stacked");
+  });
+
+  it("offers no file list toggle on a phone, where the tree folds under its header", async () => {
     setViewportWidth(390);
     await mountPanel();
-    expect(screen.queryByRole("button", { name: "Files" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /file list/i })).toBeNull();
     expect(document.querySelector("[data-diff-tree-toggle]")).not.toBeNull();
   });
 

@@ -96,6 +96,21 @@ describe("rightPanelStore", () => {
     expect(useRightPanelStore.getState()).toMatchObject({ diffLayout: null, diffIgnoreWhitespace: false, diffWrap: false });
   });
 
+  it("keeps the Diff file list choice per device: shown until hidden, a wrong type ignored", () => {
+    const KEY = "sightr:v2:right-panel-state:v1";
+    const stored = () => JSON.parse(localStorage.getItem(KEY) ?? "{}").state;
+    expect(useRightPanelStore.getState().diffFileList).toBe(true);
+    useRightPanelStore.getState().setDiffFileList(false);
+    expect(stored().diffFileList).toBe(false);
+    __resetRightPanelStore();
+    expect(useRightPanelStore.getState().diffFileList).toBe(false);
+    useRightPanelStore.getState().setDiffFileList(true);
+    expect(stored().diffFileList).toBeUndefined();
+    localStorage.setItem(KEY, JSON.stringify({ state: { diffFileList: "no" }, version: 1 }));
+    __resetRightPanelStore();
+    expect(useRightPanelStore.getState().diffFileList).toBe(true);
+  });
+
   it("opens the Files tab on a path for one thread, in the panel or the sheet, and hands it over once", () => {
     setViewportWidth(1280);
     useRightPanelStore.setState({ isOpen: false, activeSurfaceId: "git" });

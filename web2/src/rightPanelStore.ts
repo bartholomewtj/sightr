@@ -69,6 +69,8 @@ interface RightPanelStoreState {
   diffLayout: "stacked" | "split" | null;
   /** The Diff tab asks the host for `git diff -w` (T28). Off by default. Per device. */
   diffIgnoreWhitespace: boolean;
+  /** The Diff tab's file list column on the wide layout (T28): hidden, the diffs get the whole panel, which split view needs. Per device. */
+  diffFileList: boolean;
   open: (kind: RightPanelKind) => void;
   toggle: (kind: RightPanelKind) => void;
   show: () => void;
@@ -86,6 +88,7 @@ interface RightPanelStoreState {
   setDiffWrap: (wrap: boolean) => void;
   setDiffLayout: (layout: "stacked" | "split") => void;
   setDiffIgnoreWhitespace: (on: boolean) => void;
+  setDiffFileList: (shown: boolean) => void;
 }
 
 /** localStorage behind try/catch: a private window keeps the state for the page only. */
@@ -126,6 +129,7 @@ const initial = () => ({
   diffWrap: null,
   diffLayout: null,
   diffIgnoreWhitespace: false,
+  diffFileList: true,
 });
 
 export const useRightPanelStore = create<RightPanelStoreState>()(
@@ -160,12 +164,13 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       setDiffWrap: (wrap) => set({ diffWrap: wrap }),
       setDiffLayout: (layout) => set({ diffLayout: layout }),
       setDiffIgnoreWhitespace: (on) => set({ diffIgnoreWhitespace: on }),
+      setDiffFileList: (shown) => set({ diffFileList: shown }),
     }),
     {
       name: RIGHT_PANEL_STORAGE_KEY,
       version: 1,
       storage: createJSONStorage(() => safeStorage),
-      partialize: (s) => ({ isOpen: s.isOpen, activeSurfaceId: s.activeSurfaceId, width: s.width, terminalFontSize: s.terminalFontSize, ...(s.diffWrap === null ? {} : { diffWrap: s.diffWrap }), ...(s.diffLayout === null ? {} : { diffLayout: s.diffLayout }), ...(s.diffIgnoreWhitespace ? { diffIgnoreWhitespace: true } : {}) }),
+      partialize: (s) => ({ isOpen: s.isOpen, activeSurfaceId: s.activeSurfaceId, width: s.width, terminalFontSize: s.terminalFontSize, ...(s.diffWrap === null ? {} : { diffWrap: s.diffWrap }), ...(s.diffLayout === null ? {} : { diffLayout: s.diffLayout }), ...(s.diffIgnoreWhitespace ? { diffIgnoreWhitespace: true } : {}), ...(s.diffFileList ? {} : { diffFileList: false }) }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<RightPanelStoreState>;
         return {
@@ -177,6 +182,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           ...(typeof p.diffWrap === "boolean" ? { diffWrap: p.diffWrap } : {}),
           ...(p.diffLayout === "stacked" || p.diffLayout === "split" ? { diffLayout: p.diffLayout } : {}),
           ...(typeof p.diffIgnoreWhitespace === "boolean" ? { diffIgnoreWhitespace: p.diffIgnoreWhitespace } : {}),
+          ...(typeof p.diffFileList === "boolean" ? { diffFileList: p.diffFileList } : {}),
         };
       },
     },
@@ -221,6 +227,13 @@ export function useDiffIgnoreWhitespace(): [boolean, (on: boolean) => void] {
   const on = useRightPanelStore((s) => s.diffIgnoreWhitespace);
   const set = useRightPanelStore((s) => s.setDiffIgnoreWhitespace);
   return [on, set];
+}
+
+/** Whether the Diff tab's wide layout shows its file list column (T28). Shown until the operator hides it. */
+export function useDiffFileList(): [boolean, (shown: boolean) => void] {
+  const shown = useRightPanelStore((s) => s.diffFileList);
+  const set = useRightPanelStore((s) => s.setDiffFileList);
+  return [shown, set];
 }
 
 /** The panel or a sheet is showing. */

@@ -26,7 +26,7 @@ import { showToast } from "@/components/toast";
 import { useLayout } from "@/hooks/useLayout";
 import { useDiffPanelStore, useDiffScope, type DiffScope } from "@/diffPanelStore";
 import { DiffContentsCache } from "@/lib/diffFileContents";
-import { useDiffIgnoreWhitespace, useDiffLayout, useDiffWrap, useRightPanelStore } from "@/rightPanelStore";
+import { useDiffFileList, useDiffIgnoreWhitespace, useDiffLayout, useDiffWrap, useRightPanelStore } from "@/rightPanelStore";
 import { useSidebarThread } from "@/state/sidebar";
 import { useThread } from "@/stream/stores";
 
@@ -118,12 +118,12 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
   });
   const [treeOpen, setTreeOpen] = useState<boolean>(() => readDiffMemory(memKey).treeOpen ?? true);
   const [collapsedDirs, setCollapsedDirs] = useState<ReadonlySet<string>>(() => new Set(readDiffMemory(memKey).collapsedDirs));
-  // The wide layout's file column can be hidden (T28): the panel is at most 720 px and the column takes 256 of it, so
-  // split view (a 640 px diff column) is only reachable with the column hidden.
-  const [treeColumn, setTreeColumn] = useState<boolean>(() => readDiffMemory(memKey).treeColumn ?? true);
+  // The wide layout's file list column can be hidden (T28), per device: the panel is at most 720 px and the column takes
+  // 256 of it, so split view (a 640 px diff column) is only reachable with the column hidden.
+  const [treeColumn, setTreeColumn] = useDiffFileList();
   useEffect(() => {
-    writeDiffMemory(memKey, { unfolded: unfolded ? [...unfolded] : null, treeOpen, collapsedDirs: [...collapsedDirs], treeColumn });
-  }, [memKey, unfolded, treeOpen, collapsedDirs, treeColumn]);
+    writeDiffMemory(memKey, { unfolded: unfolded ? [...unfolded] : null, treeOpen, collapsedDirs: [...collapsedDirs] });
+  }, [memKey, unfolded, treeOpen, collapsedDirs]);
 
   const [near, setNear] = useState<ReadonlySet<string>>(() => new Set());
   const [revealPath, setRevealPath] = useState<string | null>(null);
@@ -253,10 +253,11 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
     ro.observe(scrollerEl);
     return () => ro.disconnect();
   }, [scrollerEl]);
-  const [wasSplit, setWasSplit] = useState(false);
-  const splitOk = splitAvailable({ layout, columnPx, wasSplit });
-  useEffect(() => setWasSplit(splitOk), [splitOk]);
+  // Hysteresis on what is showing: a split view stays down to 624 px, a stacked one needs 640 px to offer the toggle.
+  const [showingSplit, setShowingSplit] = useState(false);
+  const splitOk = splitAvailable({ layout, columnPx, showingSplit });
   const shownLayout = effectiveDiffLayout(layoutPref, splitOk);
+  useEffect(() => setShowingSplit(shownLayout === "split"), [shownLayout]);
 
   // Heights differ between layouts, so when the layout changes the file that was topmost stays topmost.
   const topFile = useRef<string | null>(null);
@@ -359,9 +360,9 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
       />
       <span className="flex-1" />
       {wide ? (
-        <Button size="xs" variant="ghost-muted" aria-pressed={treeColumn} onClick={() => setTreeColumn((open) => !open)} className={cn(treeColumn && "bg-accent text-foreground")} data-diff-tree-column-toggle="">
+        <Button size="xs" variant="ghost-muted" aria-label={treeColumn ? "Hide file list" : "Show file list"} onClick={() => setTreeColumn(!treeColumn)} className={cn(treeColumn && "bg-accent text-foreground")} data-diff-tree-column-toggle="">
           <PanelLeftIcon aria-hidden="true" />
-          Files
+          File list
         </Button>
       ) : null}
       {splitOk ? (
@@ -472,6 +473,11 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
         )}
         <div ref={setScrollerEl} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain" data-diff-scroller="" data-diff-column={columnPx} data-diff-layout-shown={shownLayout}>
           <DiffScrollRootContext value={scrollerEl}>
+            {ignoreWs && summary.status === "ready" && summary.plainMissing ? (
+              <p className="border-b px-3 py-1.5 text-xs text-muted-foreground" data-diff-note="whitespace-only-missing">
+                Whitespace-only files can't be shown right now.
+              </p>
+            ) : null}
             {scope.kind === "branch" && baseGone && storedBase ? (
               <p className="border-b px-3 py-1.5 text-xs text-muted-foreground" data-diff-note="base-gone">
                 {storedBase} isn't a branch here any more, so this is against the default base{defaultBase ? ` (${defaultBase})` : ""}.
