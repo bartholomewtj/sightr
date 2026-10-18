@@ -480,6 +480,7 @@ describe("review, working tree (real git)", () => {
   }, 60_000);
 
   // A directory junction (no privilege needed on Windows) stands in for a symlinked folder that points out of the root.
+  // On Linux the same call makes a plain symlink, which git lists as a file entry: a folder link must stay unlisted there too.
   test("a folder link out of the repo is never listed, diffed or read", async () => {
     const outside = await rootTemp("sightr-review-junction-"); await writeFile(join(outside, "secret.txt"), "outside-secret\n");
     try {
@@ -498,6 +499,8 @@ describe("review, working tree (real git)", () => {
       const review = reviewer(work);
       expect(asContents(await review.contents(repo, { scope: "working-tree", file: "dotgit-link/HEAD" })).new).toEqual({ state: "absent" });
       expect(asPatch(await review.patch(repo, { scope: "working-tree", file: "dotgit-link/HEAD" })).patch).toBe("");
+      expect(asPatch(await review.patch(repo, { scope: "working-tree", file: "dotgit-link" })).patch).toBe("");   // the link itself: no synthesized patch either
+      expect(asContents(await review.contents(repo, { scope: "working-tree", file: "dotgit-link" })).new).toEqual({ state: "absent" });
       expect(JSON.stringify(asList(await review.list(repo, { scope: "working-tree" })))).not.toContain("dotgit-link");
     } finally { await rm(join(repo, "dotgit-link"), { recursive: true, force: true }).catch(() => {}); }
   }, 60_000);

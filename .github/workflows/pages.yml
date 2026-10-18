@@ -27,6 +27,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4
         with:
           repository: tt-a1i/archify
+          # Pinned: archify main moves daily and has since required `meta.output` in every map and
+          # tightened the sequence layout and readability checks, which fails these two maps.
+          # This is the commit the last green Pages run (27 Sep 2026) compiled with. To move it,
+          # bump the sha, then add `meta.output` to both JSON maps and re-fit the sequence map.
+          ref: 9e35d2b0b39b155553ba9fcfe0b4f2a5198dd993
           path: .archify-tool
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020   # v4
         with:

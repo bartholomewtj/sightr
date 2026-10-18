@@ -7,7 +7,7 @@
 // Pattern of T3 Code apps/server/src/checkpointing/Diffs.ts (the `-z` numstat parse), extended for renames
 // and status letters; the response shapes are shared/v2/review.ts.
 import { createHash } from "node:crypto";
-import { lstat } from "node:fs/promises";
+import { lstat, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { containedRealpath } from "./containment.ts";
 import { parseRelPath } from "./workdir.ts";
@@ -97,6 +97,10 @@ const foldCrlf = (text: string): string => text.replace(/\r\n/g, "\n");
 const unavailable = (reason: ReviewUnavailable): { available: false; reason: ReviewUnavailable } => ({ available: false, reason });
 /** A repo-root-relative path the client may name: the Files refusal list per segment, no traversal, not empty. */
 const validFile = (p: string | undefined): p is string => p !== undefined && (parseRelPath(p)?.length ?? 0) > 0;
+/** A folder link: a symlink (a Windows junction counts too) whose target is a directory. Git lists one as a file entry on Linux and not at all on Windows; either way it is not a repo file, so it is never listed, diffed or read. */
+async function isFolderLink(abs: string, info: { isSymbolicLink(): boolean }): Promise<boolean> {
+  return info.isSymbolicLink() && (await stat(abs).catch(() => null))?.isDirectory() === true;
+}
 const samePath = (a: string, b: string): boolean => process.platform === "win32" ? resolve(a).toLowerCase() === resolve(b).toLowerCase() : resolve(a) === resolve(b);
 const literal = (p: string): string => `:(literal,top)${p}`;
 
@@ -310,7 +314,7 @@ export function createFolderReview(workRoot: string, run: GitRunner = spawnGit, 
     for (const path of paths) {
       if (files.length >= room) { truncated = true; break; }
       const info = await lstat(join(root, ...path.split("/"))).catch(() => null);
-      if (!info) continue;
+      if (!info || await isFolderLink(join(root, ...path.split("/")), info)) continue;
       const base = { path, kind: "untracked" as const, added: 0, removed: 0 };
       if (!info.isFile()) { files.push({ ...base, binary: true, rev: rowRev({ ...base, binary: true }, `link:${info.mtimeMs}`) }); continue; }
       if (info.size > FILE_CONTENTS_CAP_BYTES || info.size > budget) { files.push({ ...base, tooLarge: true, rev: rowRev({ ...base }, `big:${info.size}:${info.mtimeMs}`) }); continue; }
@@ -416,7 +420,7 @@ export function createFolderReview(workRoot: string, run: GitRunner = spawnGit, 
   function finish(p: { patch: string; truncated: boolean }): ReviewDiffFilePatch { return { available: true, patch: p.patch, truncated: p.truncated, diffHash: sha("patch", p.truncated ? "t" : "", p.patch).slice(0, 32) }; }
   async function untrackedPatch(root: string, file: string): Promise<{ patch: string; truncated: boolean }> {
     const info = await lstat(join(root, ...file.split("/"))).catch(() => null);
-    if (!info) return { patch: "", truncated: false };
+    if (!info || await isFolderLink(join(root, ...file.split("/")), info)) return { patch: "", truncated: false };
     if (!info.isFile()) return { patch: synthesizeBinaryPatch(file), truncated: false };
     if (info.size > FILE_CONTENTS_CAP_BYTES) return { patch: "", truncated: true };
     const bytes = await readDisk(root, file, info.size); if (bytes === null) return { patch: "", truncated: false };
