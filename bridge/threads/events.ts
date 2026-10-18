@@ -11,9 +11,10 @@ import type {
 import type { AgentSessionRef } from "../journal/types.ts";
 
 // The server-side forms of the v2 events. They differ from the wire forms in `shared/v2/contracts.ts`
-// in exactly two places, both things a browser must never see: a session ref may be a `path`, and a
-// runtime request carries the screen text it was bound to. `toWireEvent` is the one place that strips
-// them; the store applies it to every event it hands out.
+// in three places, all things a browser must never see: a session ref may be a `path`, a runtime
+// request carries the screen text it was bound to, and a checkpoint event names its repo root and
+// commits (T30). `toWireEvent` is the one place that strips them; the store applies it to every event
+// it hands out.
 
 /** The thread as the store keeps it: the full session ref, path refs included. */
 export type ServerThread = Omit<Thread, "sessionRef"> & { sessionRef?: AgentSessionRef };
@@ -23,13 +24,28 @@ type DraftOf<I> = I extends TurnItem ? Omit<I, "ordinal"> & { ordinal?: number }
 /** A turn item before the store has given it an ordinal (a new item takes the next one). */
 export type TurnItemDraft = DraftOf<TurnItem>;
 
+/**
+ * T30's `checkpoint.captured` as the store keeps it: the wire payload plus where the snapshot lives.
+ * `repoRoot` is the real worktree root, the commits are the private store's, `skippedPaths` the paths
+ * git could not read (dropped from every file list). None of it reaches a client.
+ */
+export type ServerCheckpointCaptured = EventPayloads["checkpoint.captured"] & {
+  repoRoot?: string;
+  startCommit?: string;
+  endCommit?: string;
+  skippedPaths?: string[];
+  /** Start phase: tracked refused-name paths that differed from the index, as `size:mtime` (names and stats only, never content), to count `hidden` at the end. */
+  hiddenStats?: Record<string, string>;
+};
+
 export interface ServerEventPayloads
-  extends Omit<EventPayloads, "thread.created" | "thread.updated" | "turn-item.updated" | "runtime-request.updated"> {
+  extends Omit<EventPayloads, "thread.created" | "thread.updated" | "turn-item.updated" | "runtime-request.updated" | "checkpoint.captured"> {
   "thread.created": { thread: ServerThread };
   "thread.updated": { patch: ServerThreadPatch; at: number };
   "turn-item.updated": { item: TurnItemDraft };
   /** `boundText` is the screen region the request was parsed from (T04). Server-side only. */
   "runtime-request.updated": { request: RuntimeRequest; boundText?: string };
+  "checkpoint.captured": ServerCheckpointCaptured;
 }
 
 export type EventDraftOf<T extends ThreadEventType> = {
@@ -75,6 +91,9 @@ export function toWireEvent(event: StoredEvent): ThreadEvent {
     case "turn-item.updated":
       // The store fills `ordinal` before it writes the event, so a stored item is complete.
       return { ...event, payload: { item: event.payload.item as TurnItem } };
+    case "checkpoint.captured":
+      // No absolute path (the repo root, the private store) and no commit sha leaves the bridge.
+      return { ...event, payload: { checkpoint: event.payload.checkpoint, phase: event.payload.phase } };
     default:
       return event;
   }

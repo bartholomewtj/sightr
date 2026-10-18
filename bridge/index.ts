@@ -35,6 +35,7 @@ import { createGuardedSender } from "./guarded-send-route.ts";
 import { createDispatcher } from "./threads/dispatch.ts";
 import { createSpawner } from "./threads/spawn.ts";
 import { createLiveModes } from "./threads/live-modes.ts";
+import { createCheckpointService } from "./threads/checkpoints.ts";
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
 // loadConfig throws on a config that would be unsafe to serve (a non-loopback bind). Print the
@@ -220,6 +221,24 @@ const liveModes = threadStore
   ? createLiveModes({ store: threadStore, sender: guardedSender, herdr, drainer: dispatcher?.drainer ?? null, audit })
   : null;
 
+// v2 git checkpoints (T30): a snapshot of the run's repo at each run's start and end, kept in a private
+// bare repo under the state dir (nothing is written into the user's repo), for exact per-run diffs.
+// SIGHTR_CHECKPOINTS=0 is the bridge-wide kill switch: no git runs and no sweep, every run reads
+// `absent: disabled`. Per project: `project.checkpoints.set`.
+const checkpointsEnabled = process.env.SIGHTR_CHECKPOINTS?.trim() !== "0";
+const checkpoints = threadStore
+  ? createCheckpointService({
+      store: threadStore,
+      stateDir: cfg.stateDir,
+      workRoot: cfg.workRoot,
+      enabled: checkpointsEnabled,
+      paneCwd: (paneId) => {
+        const { agents, shellPanes } = engine.current();
+        return [...agents, ...shellPanes].find((p) => p.paneId === paneId)?.cwd ?? null;
+      },
+    })
+  : null;
+
 // v2 needs herdr >= 0.9.0 (T05). The version is asked once: right after the start-up ping below, or,
 // if herdr is not answering then, when the link first comes up. Below the floor nothing ingests and
 // every /api/v2/* route answers 503 with the reason; v1 is unaffected. A restart re-checks.
@@ -227,6 +246,8 @@ const v2Gate = createV2Gate();
 if (threadStore) {
   v2Gate.whenOk(() => {
     console.log(`[threads] v2 on (herdr ${v2Gate.version()})`);
+    // First, so it sees the first run boundaries the ingestors write.
+    checkpoints?.start();
     herdIngestor?.start();
     journalIngestor?.start();
     requestIngestor?.start();
@@ -298,6 +319,7 @@ const server = startServer({
     },
     watchers: threadWatchers,
     herdIngestor,
+    runReview: checkpoints,
   },
 });
 
@@ -317,6 +339,7 @@ const shutdown = async () => {
   modeWatcher?.stop();
   autoSettler?.stop();
   dispatcher?.stop();
+  checkpoints?.stop();
   poker.stop();
   // Retract anything still on the lock screen — nothing live stands behind it once we exit.
   notifications.clearAll();

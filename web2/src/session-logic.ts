@@ -12,6 +12,7 @@
 // - An MCP tool (`mcp__server__tool`) is labelled "<tool> · <server>" (`dynamicToolDisplayName`).
 // - Sightr items: `session` and `screen` become `event` entries; a run that ended `interrupted` or
 //   `failed` gets a synthetic notice entry after its last item (there is no run_interrupt item here).
+// - A run's `checkpoint` item (T30) draws no row; the changed-files card reads it (T31).
 // - Reasoning gets a duration (Sightr, `reasoningTime`), because journals record thinking as one
 //   finished block with the entry's timestamp.
 import type { ChatAttachment, Run, TurnItem } from "@shared/v2/contracts";
@@ -474,7 +475,8 @@ function runEndItem(run: Run, after: number): TurnItem | null {
 }
 
 export function deriveTimelineEntries(input: TimelineEntriesInput): TimelineEntry[] {
-  const items = input.items;
+  // Sightr: a run's `checkpoint` item (T30) draws no timeline row; T31's changed-files card reads it.
+  const items = input.items.filter((item) => item.type !== "checkpoint");
   const runningRunId = input.runs.find((run) => run.status === "running")?.id ?? null;
   const lastIndexByRun = new Map<string, number>();
   // A run whose journal recorded the interrupt already has T3's divider; no synthetic "Stopped".

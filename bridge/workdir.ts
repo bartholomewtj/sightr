@@ -18,6 +18,7 @@ import { createFolderGit, MAX_PANE_IDS } from "./workdir-git.ts";
 import { createFolderReview, type FileQuery } from "./workdir-review.ts";
 import { notModified } from "./http-cache.ts";
 import { REVIEW_PATHS } from "../shared/v2/review.ts";
+import type { RunReview } from "./threads/checkpoints.ts";
 
 export const MAX_ENTRIES = 2000;
 export const PREVIEW_CAP_BYTES = 512 * 1024;
@@ -189,6 +190,8 @@ export interface WorkdirHelpers {
   secure: (res: Response) => Response;
   contentTypes: Record<string, string>;
   paneCwd: (paneId: string) => string | null;
+  /** T30's run scope on the review patch and contents routes; absent (v2 off) they answer 501. */
+  runReview?: RunReview | null;
   requireJsonBody: (req: Request) => Response | null;
   auditFor: (req: Request) => AuditLog;
   unlink?: (path: string) => Promise<void>;
@@ -404,6 +407,20 @@ export function createWorkdir(cfg: Config, h: WorkdirHelpers) {
         res.headers.set("cache-control", "no-store");
         return res;
       }
+      if ((url.pathname === REVIEW_PATHS.list || url.pathname === REVIEW_PATHS.patch || url.pathname === REVIEW_PATHS.contents) && url.searchParams.get("scope") === "run") {
+        // A thread run's checkpoint range (T30). No `path`: the checkpoint row names the repo, so an archived
+        // thread's run works with its pane gone. The file list is `Run.checkpoint.files` on the thread stream.
+        if (!h.runReview) return h.json({ error: "run scope not available" }, req.headers.get("accept-encoding"), 501);
+        if (url.pathname === REVIEW_PATHS.list) return h.text("the run's file list is on the thread stream (Run.checkpoint)", 400);
+        const threadId = url.searchParams.get("threadId") ?? "", runId = url.searchParams.get("runId") ?? "";
+        if (!/^[\w.:-]{1,128}$/.test(threadId) || !/^[\w.:-]{1,128}$/.test(runId)) return h.text("threadId and runId required", 400);
+        const fileSegs = parseRelPath(url.searchParams.get("file") ?? "");
+        if (!fileSegs?.length) return notFound(h);
+        const w = url.searchParams.get("w") ?? url.searchParams.get("ignoreWhitespace") ?? "0";
+        if (w !== "0" && w !== "1") return h.text("w must be 0 or 1", 400);
+        const file = fileSegs.join("/");
+        return reviewReply(req, url.pathname === REVIEW_PATHS.patch ? await h.runReview.patch({ threadId, runId, file, w: w === "1" }) : await h.runReview.contents({ threadId, runId, file }));
+      }
       if (url.pathname === REVIEW_PATHS.list || url.pathname === REVIEW_PATHS.patch || url.pathname === REVIEW_PATHS.contents || url.pathname === REVIEW_PATHS.branches) {
         // Read-only review data for the repo around a Files folder (T26): a file list, one patch, one file's
         // whole contents, the branches for the base picker. Same folder rule as the Git tab; `file`/`oldFile`
@@ -414,7 +431,6 @@ export function createWorkdir(cfg: Config, h: WorkdirHelpers) {
         if (!real || !(await stat(real).catch(() => null))?.isDirectory()) return notFound(h);
         if (url.pathname === REVIEW_PATHS.branches) return reviewReply(req, await folderReview.branches(real));
         const scope = url.searchParams.get("scope");
-        if (scope === "run") return h.json({ error: "run scope not available" }, req.headers.get("accept-encoding"), 501);
         if (scope !== "working-tree" && scope !== "branch") return h.text("scope must be working-tree, branch or run", 400);
         const ignoreWhitespace = url.searchParams.get("ignoreWhitespace") === "1";
         if (url.pathname === REVIEW_PATHS.list) {

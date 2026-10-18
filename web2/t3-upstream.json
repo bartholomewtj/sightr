@@ -931,7 +931,8 @@
       "local": "../shared/v2/contracts.ts",
       "upstream": "packages/contracts/src/orchestrationV2.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
-      "mode": "shape"
+      "mode": "shape",
+      "note": "T30 added RunCheckpoint, CheckpointFile, checkpoint.captured and the checkpoint turn item (checkpointId, files) from OrchestrationV2Checkpoint, OrchestrationV2CheckpointFileSummary and T3's checkpoint item as they stand at 9c161462 (field names only; the row's commit is not moved for them)"
     },
     {
       "local": "../shared/v2/request-question.ts",
@@ -1058,6 +1059,27 @@
       "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
       "mode": "adapted",
       "note": "T27: the two diffFileTreeEntries cases and the collectDirectoryPaths case ported; the Pierre-bound reading-order and batch-update cases are not (they test @pierre/trees); Sightr's compression, sort-order, folder-total and treeOrder cases added"
+    },
+    {
+      "local": "../bridge/threads/checkpoint-git.ts",
+      "upstream": "apps/server/src/vcs/GitVcsDriver.ts",
+      "commit": "28c32d20c3e2a93ee3c182b6ef37e1a1307ac397",
+      "mode": "pattern",
+      "note": "T30: checkpoints.captureCheckpoint's temp index seeded from the real one (mtime a second back for the racy check), add, write-tree, commit-tree, update-ref; into a private bare store with the real objects as an alternate instead of the user's repo; the alternate is never given to a call that reads the temp index (so nothing is freshened), and the index blobs a rehash needs (the safer-autocrlf check) are copied in with pack-objects; tracked files rehashed by name with update-index. Taken at 28c32d20 (d37bce55f): splitIndex.sharedIndexExpire=never beside core.splitIndex=false. Not taken: HEAD as the parent (a gc would walk the user's history, and fails in a shallow clone), hidden refs in the user's repo, restore/rollback, T3's sparse-checkout re-read and sparse.expectFilesOutsideOfPatterns=false (here the sparse settings are mirrored, index.sparse follows the index file, a sparse folder on disk makes the side absent and refused names are cut with mktree), the embedded-repo retry, prepareCommitContext's includePatch (e2cc34f1e: commit messages, not checkpoints)"
+    },
+    {
+      "local": "../bridge/threads/checkpoint-diff.ts",
+      "upstream": "apps/server/src/checkpointing/CheckpointDiffQuery.ts",
+      "commit": "9c161462c94f7d9d6d9169da5c841457cbadf213",
+      "mode": "pattern",
+      "note": "T30: one run's diff between two checkpoint commits (numstat list, per-file patches, literal top pathspecs). T3's authored-paths git-import filter is not taken: authored here is the run's file_change items, and nothing is hidden by default"
+    },
+    {
+      "local": "../bridge/threads/checkpoints.ts",
+      "upstream": "apps/server/src/orchestration-v2/CheckpointCaptureService.ts",
+      "commit": "9c161462c94f7d9d6d9169da5c841457cbadf213",
+      "mode": "pattern",
+      "note": "T30: a checkpoint at each run's start and end, recorded as checkpoint.captured; Sightr listens to T03's run.started/run.ended. Retention sweep and the run-scope review answers are Sightr's"
     },
     {
       "local": "src/components/diffs/commentSubmitShortcut.ts",

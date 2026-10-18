@@ -110,6 +110,15 @@ const rows: Row[] = [
   },
   { name: "project.rename refuses an empty label", state: { project: project(), paneAlive: false }, command: { commandId: "c1", type: "project.rename", projectId: "w1", label: " " }, expected: reject("invalid", "empty-label") },
   { name: "project.rename of an unknown project", state: { project: null, paneAlive: false }, command: { commandId: "c1", type: "project.rename", projectId: "w1", label: "a" }, expected: reject("not_found", "no-such-project") },
+  // project.checkpoints.set (T30)
+  {
+    name: "project.checkpoints.set stores the switch on the project",
+    state: { project: project(), paneAlive: false },
+    command: { commandId: "c1", type: "project.checkpoints.set", projectId: "w1", enabled: false },
+    expected: { ok: true, events: [{ type: "project.upserted", payload: { project: { ...project(), checkpoints: false } } }] },
+  },
+  { name: "project.checkpoints.set to the stored value is a no-op", state: { project: { ...project(), checkpoints: true }, paneAlive: false }, command: { commandId: "c1", type: "project.checkpoints.set", projectId: "w1", enabled: true }, expected: { ok: true, events: [] } },
+  { name: "project.checkpoints.set of an unknown project", state: { project: null, paneAlive: false }, command: { commandId: "c1", type: "project.checkpoints.set", projectId: "w1", enabled: true }, expected: reject("not_found", "no-such-project") },
   // effectful commands are routed elsewhere
   ...(
     [

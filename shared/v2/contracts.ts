@@ -102,6 +102,12 @@ export interface Project {
   status: ThreadStatus;
   /** Set when the workspace closed while archived threads still point at it. */
   closedAt?: number;
+  /**
+   * T30: run snapshots for this project, as set by `project.checkpoints.set`. Absent = never set, which
+   * means on (the default). The bridge-wide `SIGHTR_CHECKPOINTS=0` is not reflected here; it makes every
+   * run's checkpoint `absent: disabled`.
+   */
+  checkpoints?: boolean;
 }
 
 /** A session ref as clients see it. A path ref stays on the bridge. */
@@ -181,6 +187,74 @@ export interface Run {
   status: RunStatus;
   startedAt: number;
   completedAt?: number;
+  /** T30: the run's git checkpoint, when one was attempted. Filled by the thread snapshot and history pages, not stored on the run. */
+  checkpoint?: RunCheckpoint;
+}
+
+// ── Checkpoints (T30; mirror of T3's OrchestrationV2Checkpoint) ─────────────────────────────────
+
+/** Why a run has no exact diff. Expiry is not one: an expired run stays `ready` with `live: false`. */
+export type CheckpointAbsentReason =
+  | "disabled"
+  | "no-repo"
+  | "start-missed"
+  | "end-missed"
+  | "too-large"
+  | "timeout"
+  | "git-failed"
+  /**
+   * A sparse index whose folder outside the cone is on disk (git would have to expand the index to read it),
+   * or a sparse checkout whose index could not be read as it is (HEAD's tree would read the files outside
+   * the cone as deleted).
+   */
+  | "sparse-checkout";
+
+/**
+ * T3's `OrchestrationV2CheckpointFileSummary` (`path`, `kind`, `additions`, `deletions`). A rename is a
+ * delete plus an add. `authored`: the run's `file_change` items name this path (false = a shell-made change).
+ */
+export interface CheckpointFile {
+  path: string;
+  kind: "added" | "modified" | "deleted";
+  additions: number;
+  deletions: number;
+  binary?: boolean;
+  authored?: boolean;
+}
+
+/**
+ * One run's snapshot pair, compared tree to tree. T3's `OrchestrationV2Checkpoint` names are kept where
+ * they map: `threadId`, `runId`, `appRunOrdinal`, `status`, `files` and `capturedAt` (epoch ms here); T3's
+ * per-checkpoint `id`, `scopeId`, `ordinalWithinScope`, `ref`, `nodeId` and parent links have no counterpart (one start/end pair per run, and no ref or sha is ever
+ * sent to a client). T3's statuses are `ready | missing | error | stale`; Sightr's are below.
+ */
+export interface RunCheckpoint {
+  runId: string;
+  threadId: string;
+  /** The run's ordinal in its thread (T3's `appRunOrdinal`). */
+  appRunOrdinal: number;
+  /** `pending`: the start snapshot exists and the run has not ended. */
+  status: "pending" | "ready" | "absent";
+  reason?: CheckpointAbsentReason;
+  /** The snapshot objects are still in the bridge's private store (false once retention or a failed liveness check removed them). */
+  live?: boolean;
+  files: CheckpointFile[];
+  additions: number;
+  deletions: number;
+  /** When the side this record reports was captured (the end, once there is one). */
+  capturedAt?: number;
+  /** More than `MAX_CHECKPOINT_FILES` files (the counts still sum all), or a cap made the side absent. */
+  truncated?: boolean;
+  /** Changed paths on the Files refusal list: never snapshotted, listed or served. */
+  hidden?: number;
+  /** Untracked files left out of a snapshot (a refused name, a link, over 5 MiB, unreadable). */
+  skipped?: number;
+  /** The start snapshot was taken more than 5 s after the run started. */
+  approximate?: boolean;
+  /** Another thread's run in the same repository overlapped this one; its edits may be in the diff. */
+  shared?: boolean;
+  /** Files were still changing when the end snapshot was taken. */
+  unsettled?: boolean;
 }
 
 // ── Turn items (mirror of T3's OrchestrationV2TurnItem) ─────────────────────────────────────────
@@ -418,6 +492,12 @@ export type TurnItem =
       beforeTokenCount?: number;
       afterTokenCount?: number;
     })
+  /**
+   * T3's `checkpoint` item: the run's git checkpoint, id `checkpoint:<runId>`, written when the end
+   * snapshot is recorded (T30). `checkpointId` and `files` are T3's fields (the checkpoint id is the run
+   * id: one start/end pair per run); T3's `scopeId` has no counterpart. `checkpoint` is the whole record.
+   */
+  | (TurnItemBase & { type: "checkpoint"; checkpointId: string; files: CheckpointFile[]; checkpoint: RunCheckpoint })
   // ── Sightr extensions (no T3 counterpart) ──
   /** Sightr: the harness session inside the pane changed (relaunch, `/clear`, `/new`). */
   | (TurnItemBase & { type: "session"; from: string | null; to: string })
@@ -590,7 +670,9 @@ export type Command =
   | (CommandBase & { type: "thread.permissionMode.set"; threadId: string; mode: string; confirmBypass?: boolean })
   | (CommandBase & { type: "thread.model.set"; threadId: string; model: string })
   | (CommandBase & { type: "project.create"; cwd: string; label?: string })
-  | (CommandBase & { type: "project.rename"; projectId: string; label: string });
+  | (CommandBase & { type: "project.rename"; projectId: string; label: string })
+  /** T30: run snapshots on or off for one project (later runs only; existing checkpoints stay until retention). */
+  | (CommandBase & { type: "project.checkpoints.set"; projectId: string; enabled: boolean });
 
 export type CommandType = Command["type"];
 export type CommandOf<T extends CommandType> = Extract<Command, { type: T }>;
@@ -621,6 +703,7 @@ export const COMMAND_TYPES = [
   "thread.model.set",
   "project.create",
   "project.rename",
+  "project.checkpoints.set",
 ] as const satisfies readonly CommandType[];
 
 // ── Events ───────────────────────────────────────────────────────────────────────────────────────
@@ -677,6 +760,14 @@ export interface EventPayloads {
    */
   "dispatch.failed": { reason: string; message?: string; textDelivered?: boolean; queuedId?: string };
   "thread.create.failed": { threadId: string; stage: "pane" | "prompt" | "agent"; message: string };
+  /**
+   * T30 (T3's `checkpoint.captured`): a run's start or end snapshot was taken, or could not be. The start
+   * phase records `pending` (or `absent`); the end phase records `ready` or `absent` and upserts the
+   * run's `checkpoint` item.
+   */
+  "checkpoint.captured": { checkpoint: RunCheckpoint; phase: "start" | "end" };
+  /** T30: the run's snapshot objects are gone (retention, or a failed liveness check). Its file list and stored patches stay. */
+  "checkpoint.expired": { runId: string };
 }
 
 export type ThreadEventType = keyof EventPayloads;
@@ -699,6 +790,8 @@ export const THREAD_EVENT_TYPES = [
   "command.rejected",
   "dispatch.failed",
   "thread.create.failed",
+  "checkpoint.captured",
+  "checkpoint.expired",
 ] as const satisfies readonly ThreadEventType[];
 
 export type ThreadEventOf<T extends ThreadEventType> = {

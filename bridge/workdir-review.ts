@@ -96,7 +96,7 @@ const hasNulText = (text: string): boolean => hasNul(new TextEncoder().encode(te
 const foldCrlf = (text: string): string => text.replace(/\r\n/g, "\n");
 const unavailable = (reason: ReviewUnavailable): { available: false; reason: ReviewUnavailable } => ({ available: false, reason });
 /** A repo-root-relative path the client may name: the Files refusal list per segment, no traversal, not empty. */
-const validFile = (p: string | undefined): p is string => p !== undefined && (parseRelPath(p)?.length ?? 0) > 0;
+const validFile = (p: string | undefined): p is string => p !== undefined && (parseRelPath(p)?.length ?? 0) > 0 && !isHiddenPath(p);
 /** A folder link: a symlink (a Windows junction counts too) whose target is a directory. Git lists one as a file entry on Linux and not at all on Windows; either way it is not a repo file, so it is never listed, diffed or read. */
 async function isFolderLink(abs: string, info: { isSymbolicLink(): boolean }): Promise<boolean> {
   return info.isSymbolicLink() && (await stat(abs).catch(() => null))?.isDirectory() === true;
