@@ -109,6 +109,24 @@ describe("analyseConn", () => {
     expect(r.findings.map((f) => f.id)).toContain("restart-outages");
   });
 
+  test("a slow Herdr poll is counted, named low, and is not a link drop", () => {
+    const lines = [
+      ...usage(),
+      ...[30, 31, 90].map((m) => bridge(T0 + m * MIN, { kind: "herdr.slow", ms: 5000 })),
+      phone(T0 + 30 * MIN + 10_000, { kind: "gap", ms: 6_000, lost: false, ended: "live" }),
+    ];
+    const r = run(lines);
+    expect(r.bridge.herdrSlow).toBe(3);
+    expect(r.bridge.herdrDowns).toBe(0);
+    expect(r.gaps.byCause.herdr.n).toBe(0); // absorbed, so not an outage a gap can be blamed on
+    const f = r.findings.find((x) => x.id === "herdr-slow");
+    expect(f).toEqual(expect.objectContaining({ severity: "low", title: "Herdr answered late 3× (absorbed)" }));
+    expect(f!.suggest).toContain("tests or a build");
+    expect(r.findings.map((x) => x.id)).not.toContain("herdr-down");
+    expect(formatConnReport(r)).toContain("Herdr link down 0× (max —); Herdr slow 3×");
+    expect(formatConnReport(run(usage()))).not.toContain("Herdr slow");
+  });
+
   test("a gap that ends after a long bridge outage is the restart, not the network", () => {
     const lines = [
       ...usage(),
