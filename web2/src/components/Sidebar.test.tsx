@@ -533,7 +533,7 @@ describe("archived route", () => {
       undefined,
       "/v2/archived",
     );
-    const items = within(await screen.findByRole("list", { name: "Archived threads" })).getAllByRole("listitem");
+    const items = within(await screen.findByRole("list", { name: /^Archived threads in / })).getAllByRole("listitem");
     expect(items.map((li) => li.textContent)).toEqual([expect.stringContaining("New"), expect.stringContaining("Old")]);
     expect(within(items[0]!).getByRole("button", { name: "Unarchive" })).toBeInTheDocument();
     expect(within(items[1]!).queryByRole("button", { name: "Unarchive" })).not.toBeInTheDocument();

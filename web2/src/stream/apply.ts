@@ -133,6 +133,7 @@ const VALID: Record<string, (p: Record<string, unknown>, e: Record<string, unkno
   "thread.updated": (p, e) => isStr(e.threadId) && isObj(p.patch) && isNum(p.at),
   "thread.shelf-changed": (p, e) => isStr(e.threadId) && isStr(p.shelf) && isNum(p.at),
   "thread.archived": (p, e) => isStr(e.threadId) && isStr(p.reason) && isNum(p.at),
+  "thread.deleted": (p, e) => isStr(e.threadId) && isNum(p.at),
   "run.started": (p) => hasId(p.run) && isStr((p.run as Record<string, unknown>).threadId),
   "run.ended": (p) => isStr(p.runId) && isStr(p.status) && isNum(p.completedAt),
   "turn-item.updated": (p) => hasId(p.item) && isStr((p.item as Record<string, unknown>).type),
@@ -237,6 +238,13 @@ export function applyShellEvent(state: ShellState, raw: unknown, onDrop?: OnDrop
       if (!thread) return state;
       const next = patchThread(thread, event);
       return next ? at({ threads: { ...state.threads, [thread.id]: next } }) : state;
+    }
+    case "thread.deleted": {
+      // `thread.delete`: the thread and its request summaries leave the shell.
+      const id = event.threadId!;
+      const { [id]: _gone, ...threads } = state.threads;
+      const requests = Object.fromEntries(Object.entries(state.requests).filter(([, r]) => r.threadId !== id));
+      return at({ threads, requests });
     }
     case "runtime-request.updated": {
       const summary = summarize(event.payload.request);

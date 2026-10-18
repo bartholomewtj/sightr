@@ -29,6 +29,22 @@ beforeEach(() => {
 });
 
 describe("BridgeSettings", () => {
+  it("auto-settle: a days row (0 = off) when the bridge has it, none from an older bridge", async () => {
+    const { unmount } = render(<BridgeSettings />);
+    await screen.findByLabelText("Notify delay (seconds)");
+    expect(screen.queryByLabelText("Auto-settle (days)")).toBeNull();
+    unmount();
+    view = { ...view, autoSettleDays: 0, defaults: { ...ENV, autoSettleDays: 0 } };
+    render(<BridgeSettings />);
+    const days = (await screen.findByLabelText("Auto-settle (days)")) as HTMLInputElement;
+    await waitFor(() => expect(days.value).toBe("0"));
+    expect(days.className).toMatch(/pointer-coarse:h-11/);
+    fireEvent.change(days, { target: { value: "14" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(posts).toEqual([{ autoSettleDays: 14 }]));
+    expect(await screen.findByTestId("source-autoSettleDays")).toHaveTextContent("Set here · .env is off");
+  });
+
   it("loads the bridge's values, saves a change (delay in seconds, wire in ms) and can go back to .env", async () => {
     render(<BridgeSettings />);
     const delay = (await screen.findByLabelText("Notify delay (seconds)")) as HTMLInputElement;
