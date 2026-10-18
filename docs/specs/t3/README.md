@@ -371,12 +371,52 @@ residue after unmount (0.7 MB) is a third of T25's 2.1 MB. The real-phone trial 
 scroll rows on Bart's phone. Unmounting windows far from the screen (keeping their measured height) was not done in
 T27, because it would make browser find and scroll restore less predictable. **Owner: T29.** It has to build
 mount-on-demand for scroll-to-line anyway (the target's window mounts first, then the line scrolls into view), and
-unmounts far windows there; T27's panel needs no change for it.
+unmounts far windows there; T27's panel needs no change for it. Done in T29; the sweep is measured in the next section.
+
+**Sweep through the worst-case file, with windows that unmount (T29, 2026-10-18).** The adapter now unmounts a window
+once it is more than 1,600 px from the scroller (it mounts at 800 px) and keeps the height it had; a window holding a
+selection or an annotation never unmounts, and `revealLine` mounts the target's window before it scrolls to the line.
+The first T29 build kept the 12,000-character windows and passed on the dev machine at 4x but not at a harsher CPU
+setting (10 tasks over 250 ms at 7x), because mounting one 1,900-node window of 400-character lines is one task. So
+**a window now closes at 4,000 characters** (about 10 rows of 400 characters, about 630 nodes; the 60-row cap is
+unchanged and ordinary files never reach 4,000 characters in 60 rows of normal width). Method as above (headless Chrome 155
+over `ca`, 390x844, DPR 2, mobile + touch, `--enable-precise-memory-info --js-flags=--expose-gc`, no network throttling,
+a static server on localhost), `SIGHTR_DIFFS=hand` builds, the same fixtures (`bun scripts/diff-spike.ts fixtures`; the
+mix comes from this repo's `git log` as it stands, so the worst file is not byte-identical to T27's). The harness has two
+new options: `&sweep=1` scrolls the scroller from the top to the bottom, 600 px every 120 ms (1,005 steps for this file,
+about 4.5 minutes), counting nodes and mounted windows after every step and long tasks over the whole sweep; and the
+diffs now get the scroller as their observation root, as the Diff panel gives them (`&root=0` leaves it out, as T25 and
+T27 measured: without it a window counts as near only once it is on screen, so the margins do nothing).
+
+| Sweep, `large-worst` (3,000 lines x 400 characters), 4x CPU unless noted | Limit | Windows never unmount (T27's adapter) | T29, 12,000-char windows | T29, 4,000-char windows (shipped) |
+|---|---|---|---|---|
+| Windows mounted at most / in the file | | 104 / 104 | 2 / 104 | 6 / 334 |
+| Mounted DOM nodes, most at any step | <= 5,000 | 177,195 (FAIL) | 3,638 | 2,634 (2,043 at 7x) |
+| Long tasks during the sweep (over 100 ms / over 250 ms) | none over 250 | 901 (342 / 2); longest 292 ms (FAIL) | 3 runs: longest 73, 240, 178 ms, none over 250; at 7x: 10 over 250, longest 428 ms (FAIL) | 22 (1 / 0); longest 110 ms; at 7x: 109 (83 / 0), longest 193 ms |
+| Same, without the observation root (`&root=0`) | | not run | longest 446 ms, 3 over 250 (FAIL) | not run |
+| Heap after the sweep and unmount | | 51.1 MB over a 4.5 MB base | 1.5 to 1.7 MB | 1.7 MB |
+
+At rest (reading (b), the file open and not scrolled; 5 runs of the shipped build): 954 mounted nodes (was 1,897), no long
+task, 2 commits, lines in the DOM at 53 to 69 ms, painted at 78 to 110 ms, first highlight at 144 to 208 ms, heap after unmount
+0.3 to 0.4 MB over a 4.5 to 4.6 MB base (7 to 9%). The ordinary first file (`large-first`) mounts 943 nodes with no long task. A 5-second touch-fling on the open worst
+file: p95 frame 18.2 ms, none over 20 ms (was 18.3 ms and 0.7% dropped on the 12,000-character build). Calibration on this
+machine is not T25's: the 3e7-iteration loop took 19 to 24 ms at rate 1 and 84 to 96 ms at rate 4 (T25: 28 ms and 157 to 173
+ms); rate 7 gave 98 to 180 ms across runs, so the "7x" column is the nearest this run got to T25's absolute speed, and the
+calibration itself moved between page loads. A real phone is still pending, and a long task is still one window's
+mount, so a slower device mounts a window in more than 110 ms. Browser find and scroll restore: unchanged caveats, and
+Ctrl+F also loses lines that were drawn and have since unmounted (the panel's note says only that it finds lines already drawn).
+
+The gutter hit area: T25's `::after` reached 12 px above and below a 20 px row, and a later row paints over an earlier
+one, so a tap on the lower part of a number landed on the line below. T29 dropped the vertical extension: the gutter is 44 px
+wide under a coarse pointer and as tall as its row (20 px; a wrapped line is taller). The spike's touch row used to
+read 44 x 44 from the `::after`; it now reads 44 x 20. A test asserts no gutter carries an `inset-y` or `after:` class and
+a live check at 390 px asked the browser which element sits at the bottom of a number.
+
 
 Re-measure: `bun add -d --no-save @pierre/diffs@1.5.2` in `web2` (only for A; highlight.js 11.12.0 is a dependency since T27); `bun scripts/diff-spike.ts
 fixtures`; `SIGHTR_DIFFS=hand|pierre|status bunx vite build --outDir <temp>` (add `SIGHTR_DIFFS_PAGE=0` to leave
 `spike-diffs.html` out for the size rows); copy the three fixtures into `<temp>/fixtures/<name>.json` as `{"patch": ...}`;
-open `spike-diffs.html?auto=small|medium|large-first|large-worst` with the throttling above. `bun scripts/diff-spike.ts
+open `spike-diffs.html?auto=small|medium|large-first|large-worst` with the throttling above (`&sweep=1` adds the top-to-bottom sweep, `&root=0` drops the scroller as observation root). `bun scripts/diff-spike.ts
 jsdom <adapter>` runs the jsdom harness and `report --results <file> --write` rebuilds the table above.
 Fixture language mix: `threads.sqlite` was not present on the build machine, so the top-12 extensions come from `git log
 --name-only` of this repository (ts, tsx, md, txt, json, png, css, toml, ps1, html, example, jpg); `fixtures --source

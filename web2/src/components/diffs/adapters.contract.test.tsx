@@ -119,12 +119,13 @@ describe.each(loaded)("diff adapter: $name", ({ name, mod, skip }) => {
     try {
       const { container } = render(<Adapter {...base({ onLineAction: () => undefined })} />);
       await waitFor(() => expect(gutterNodes(container).length).toBeGreaterThan(0));
-      // hand: every gutter carries Tailwind's pointer-coarse variants (min-w-11 is 44 px; the ::after reaches 12 px above
-      // and below a 20 px row, a 44 px hit area). pierre: a coarse-pointer rule in its injected CSS. jsdom has no
-      // layout, so this is the declared size, checked on every gutter rather than the first.
+      // hand: every gutter carries Tailwind's pointer-coarse variant min-w-11 (44 px wide) and no vertical extension
+      // (T29: the ::after that reached 12 px above and below a 20 px row sat under the next row's paint, so a tap on
+      // the lower part of a number landed on the line below). pierre: a coarse-pointer rule in its injected CSS. jsdom
+      // has no layout, so this is the declared size, checked on every gutter rather than the first.
       const nodes = gutterNodes(container);
       const styles = queryDeep(container, "style").map((s) => s.textContent ?? "").join("\n");
-      const declared = (n: Element) => /pointer-coarse:min-w-11/.test(n.className) && /pointer-coarse:after:-inset-y-3/.test(n.className);
+      const declared = (n: Element) => /pointer-coarse:min-w-11/.test(n.className) && !/inset-y|after:/.test(n.className);
       const css = /pointer:\s*coarse\)\s*\{[^}]*\{[^}]*min-width:\s*44px/.test(styles) && /::after\s*\{[^}]*inset:\s*-12px/.test(styles);
       expect(nodes.length).toBeGreaterThan(3);
       expect(nodes.every(declared) || css).toBe(true);
@@ -143,9 +144,11 @@ describe.each(loaded)("diff adapter: $name", ({ name, mod, skip }) => {
     const { container } = render(<Adapter {...base({ onLineAction })} />);
     await waitFor(() => expect(gutterOf(container, "old", 3)).toBeDefined());
     fireEvent.click(gutterOf(container, "old", 3) as HTMLElement);
-    expect(onLineAction).toHaveBeenLastCalledWith({ filePath: FILE, side: "old", line: 3 });
+    expect(onLineAction).toHaveBeenLastCalledWith({ filePath: FILE, side: "old", line: 3 }, { shiftKey: false });
     fireEvent.click(gutterOf(container, "new", 3) as HTMLElement);
-    expect(onLineAction).toHaveBeenLastCalledWith({ filePath: FILE, side: "new", line: 3 });
+    expect(onLineAction).toHaveBeenLastCalledWith({ filePath: FILE, side: "new", line: 3 }, { shiftKey: false });
+    fireEvent.click(gutterOf(container, "new", 3) as HTMLElement, { shiftKey: true });
+    expect(onLineAction).toHaveBeenLastCalledWith({ filePath: FILE, side: "new", line: 3 }, { shiftKey: true });
   });
 
   it.runIf(caps.annotations)("draws an annotation under its line", async () => {
