@@ -29,7 +29,7 @@ One spec = one run. Do not implement a sibling spec in the same run. Numbers mat
 | 22 | [22-safe-area-top.md](22-safe-area-top.md) | Med | Done — banner owns the notch while open; headers use `--chrome-top-inset` | Banner + header both pad the notch |
 | 23 | [23-local-servers-tab.md](23-local-servers-tab.md) | — | Done — #73. Not a council slice | Local tab lists the PC's loopback servers |
 | 24 | [24-bridge-side-send.md](24-bridge-side-send.md) | — | Done — #81; live-tested on Claude, Pi, Grok, Cursor, Agy, shell. Not a council slice | The guarded reply runs on the bridge in one request |
-| 25 | [25-slow-herdr-poll.md](25-slow-herdr-poll.md) | — | Open. Not a council slice. Bridge only; safe beside the v2 work in `web2/` | One slow Herdr poll flips the link to disconnected |
+| 25 | [25-slow-herdr-poll.md](25-slow-herdr-poll.md) | — | Done — branch `fix/slow-herdr-poll`: one late poll absorbed (`herdr.slow`), two in a row or a socket error flip. Not a council slice | One slow Herdr poll flips the link to disconnected |
 
 ## Rules for every slice
 
