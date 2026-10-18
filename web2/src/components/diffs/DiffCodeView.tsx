@@ -1,7 +1,7 @@
 // Sightr code (T25). The one seam the diff panel (T27), split and expand (T28) and line comments (T29)
 // import. `diffs-adapter` is an alias, set in vite.config.ts / vitest.config.ts / tsconfig.json to
-// `adapters/status.tsx` unless SIGHTR_DIFFS=status|hand|pierre picks a candidate; the adapter loads in its own
-// chunk, so a slow chunk shows the status-quo lines instead of a blank.
+// `adapters/hand.tsx` (T25's decision, flipped by T27) unless SIGHTR_DIFFS=status|hand|pierre picks a candidate;
+// the adapter loads in its own chunk, so a slow chunk shows the plain lines instead of a blank.
 import { lazy, Suspense, type ReactNode } from "react";
 
 import { DiffLines } from "../right-panel/DiffView.tsx";
@@ -22,10 +22,30 @@ export type DiffCodeViewProps = {
   renderAnnotation?: (a: DiffAnnotation) => ReactNode;
   onLineAction?: (at: DiffLineRef) => void; // tap/click on a line gutter, T29
   onExpandContext?: (filePath: string) => Promise<{ oldText: string; newText: string } | null>; // T28
+  /** Draw the first window of rows at once (default). False: it mounts when it nears the screen, like the rest (T27: only the first or revealed open file is eager). */
+  eager?: boolean;
 };
 export type DiffAdapterCapabilities = { split: boolean; expand: boolean; annotations: boolean; highlight: boolean };
 
-const Adapter = lazy(() => import("diffs-adapter"));
+const loadAdapter = () => lazy(() => import("diffs-adapter"));
+let Adapter = loadAdapter();
+
+/** React.lazy keeps a rejected import for good; a caller's Retry swaps in a fresh one before it remounts the view. */
+export function resetDiffRenderer(): void {
+  Adapter = loadAdapter();
+}
+
+/**
+ * Start loading the renderer's chunk. The first diff of a session otherwise waits about 300 ms in the
+ * `Suspense` fallback (React's reveal throttle) on top of the fetch; the diff panel calls this on mount.
+ * A failed load is swallowed here (the diff itself reports it, through the caller's error boundary).
+ */
+export function preloadDiffRenderer(): Promise<void> {
+  return import("diffs-adapter").then(
+    () => undefined,
+    () => undefined,
+  );
+}
 
 /** The patch from its first hunk on, as `DiffLines` draws it. No parser: the seam keeps `parsePatch` out of the main chunk. */
 function hunkLines(patch: string): string[] {

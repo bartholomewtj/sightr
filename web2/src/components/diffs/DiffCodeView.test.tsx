@@ -1,5 +1,5 @@
 // The seam through its real `lazy(() => import("diffs-adapter"))` path: the Suspense fallback shows first,
-// then the adapter the alias points at (`status` unless SIGHTR_DIFFS says otherwise) replaces it.
+// then the adapter the alias points at (`hand` unless SIGHTR_DIFFS says otherwise) replaces it.
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { Component, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -31,7 +31,7 @@ describe("DiffCodeView", () => {
     expect(container.querySelector("[data-diff-adapter]")).toBeNull();
 
     await waitFor(() => expect(container.querySelector("[data-diff-adapter]")).not.toBeNull());
-    expect(container.querySelector("[data-diff-adapter]")?.getAttribute("data-diff-adapter")).toBe("status");
+    expect(container.querySelector("[data-diff-adapter]")?.getAttribute("data-diff-adapter")).toBe("hand");
     expect(container.querySelector("[data-diff-fallback]")).toBeNull();
     expect(screen.getAllByText(FILE).length).toBeGreaterThan(0); // the adapter's own header
   });

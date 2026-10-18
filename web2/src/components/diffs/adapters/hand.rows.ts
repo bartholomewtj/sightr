@@ -88,3 +88,56 @@ export function splitRows(rows: Row[]): SplitRow[] {
 export function lineMatches(line: ParsedLine | undefined, side: "old" | "new", n: number): boolean {
   return !!line && (side === "old" ? line.kind !== "add" && line.oldLine === n : line.kind !== "del" && line.newLine === n);
 }
+
+/** A window closes at this many rows or {@link WINDOW_MAX_CHARS} characters of line text, whichever comes first (T27). */
+export const WINDOW_MAX_ROWS = 60;
+export const WINDOW_MAX_CHARS = 12_000;
+
+function textLength(row: Row | SplitRow): number {
+  if (row.type === "line") return row.line.text.length;
+  if (row.type === "pair") return (row.left?.text.length ?? 0) + (row.right && row.right !== row.left ? row.right.text.length : 0);
+  return 0;
+}
+
+/**
+ * Cut rows into windows that mount one at a time: 60 rows or 12,000 characters of line text, whichever
+ * comes first (a file of 400-character lines gets about 30 rows a window). A row longer than the cap
+ * still gets a window of its own.
+ */
+export function windowRows<T extends Row | SplitRow>(rows: readonly T[], maxRows = WINDOW_MAX_ROWS, maxChars = WINDOW_MAX_CHARS): T[][] {
+  const windows: T[][] = [];
+  let current: T[] = [];
+  let chars = 0;
+  for (const row of rows) {
+    const n = textLength(row);
+    if (current.length > 0 && (current.length >= maxRows || chars + n > maxChars)) {
+      windows.push(current);
+      current = [];
+      chars = 0;
+    }
+    current.push(row);
+    chars += n;
+  }
+  if (current.length > 0) windows.push(current);
+  return windows;
+}
+
+/** The distinct diff lines a window draws, in order (a split pair's context line is one line, not two). */
+export function windowLines(rows: readonly (Row | SplitRow)[]): ParsedLine[] {
+  const seen = new Set<ParsedLine>();
+  const out: ParsedLine[] = [];
+  const add = (l: ParsedLine | undefined) => {
+    if (l && !seen.has(l)) {
+      seen.add(l);
+      out.push(l);
+    }
+  };
+  for (const r of rows) {
+    if (r.type === "line") add(r.line);
+    else if (r.type === "pair") {
+      add(r.left);
+      add(r.right);
+    }
+  }
+  return out;
+}
