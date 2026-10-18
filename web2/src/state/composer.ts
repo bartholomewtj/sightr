@@ -195,6 +195,7 @@ export function refusalText(err: unknown): string {
       "text-too-long": "The message is too long.",
       "empty-text": "Nothing to send.",
       "prompt-changed": "The dialog changed on screen. Check it and try again.",
+      "no-free-text": "This question has no empty answer box on screen now.",
     };
     if (known[why]) return known[why];
     if (err.code === "busy") return "The pane is busy. Try again.";
@@ -297,6 +298,28 @@ export async function setPermissionMode(
 /** Answer a request with one of its options. The option stays busy until the request leaves `pending`. */
 /** `responding.optionIndex` while a checkbox step's wanted set is in flight (its advance button). */
 export const RESPONDING_ADVANCE = -1;
+
+/** `responding.optionIndex` while a typed answer to a `freeText` question is in flight. */
+export const RESPONDING_TEXT = -2;
+
+/**
+ * Answer a `freeText` question with the operator's own words: the bridge types them into the dialog's
+ * free-text row and presses Enter. Resolves true when the bridge took it; false on a refusal (the
+ * card keeps the draft, and the verdict says why).
+ */
+export async function respondWithText(threadId: string, requestId: string, text: string): Promise<boolean> {
+  const current = getThreadComposer(threadId).responding;
+  if (current && current.requestId === requestId) return false;
+  patchComposer(threadId, { responding: { requestId, optionIndex: RESPONDING_TEXT }, verdict: null });
+  try {
+    await post("runtime-request.respond", { requestId, text });
+    patchComposer(threadId, { verdict: "Sent to the agent." });
+    return true;
+  } catch (err) {
+    patchComposer(threadId, { responding: null, verdict: refusalText(err) });
+    return false;
+  }
+}
 
 /** Answer a request: one option by index, or a checkbox step's wanted set of boxes (T17). */
 export async function respondToRequest(threadId: string, requestId: string, answer: number | readonly number[]): Promise<void> {

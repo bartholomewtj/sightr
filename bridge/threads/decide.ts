@@ -53,6 +53,7 @@ export function decide(state: DecideState, command: Command, ctx: DecideContext)
     case "thread.unsettle":
     case "thread.archive":
     case "thread.unarchive":
+    case "thread.delete":
     case "thread.markRead":
     case "thread.markUnread":
       break;
@@ -109,6 +110,12 @@ export function decide(state: DecideState, command: Command, ctx: DecideContext)
       if (!archived) return accept();
       if (!state.paneAlive) return reject("conflict", "pane-closed");
       return accept({ type: "thread.shelf-changed", threadId, payload: { shelf: "active", at } });
+    case "thread.delete":
+      // Only an archived thread is forgotten. One whose pane is still open would come straight back
+      // as a new, empty thread on the next herd poll, so that pane has to close (or be unarchived) first.
+      if (!archived) return reject("conflict", "not-archived");
+      if (state.paneAlive) return reject("conflict", "pane-open");
+      return accept({ type: "thread.deleted", threadId, payload: { at } });
     case "thread.markRead":
       if (!thread.unreadDone) return accept();
       return accept({ type: "thread.updated", threadId, payload: { patch: { unreadDone: false }, at } });

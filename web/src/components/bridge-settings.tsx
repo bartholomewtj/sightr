@@ -25,6 +25,8 @@ const SHOWN: Record<BridgeSettingKey, (s: BridgeSettings) => string> = {
   notifyDelayMs: (s) => `${seconds(s.notifyDelayMs)} s`,
   submitKeys: (s) => s.submitKeys.join(", "),
   readLines: (s) => String(s.readLines),
+  // v2-only (web2 Settings edits it); v1 shows no row for it.
+  autoSettleDays: (s) => (s.autoSettleDays ? `${s.autoSettleDays} days` : "off"),
 };
 
 export function BridgeSettings({ readOnly = false, device }: { readOnly?: boolean; device?: DeviceAuth }) {

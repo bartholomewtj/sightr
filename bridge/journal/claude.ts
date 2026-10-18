@@ -71,6 +71,116 @@ function interruptPart(text: string): TranscriptPart {
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 
+/**
+ * A path under the session's `cwd` (every Claude row carries one) as a workspace-relative path with
+ * forward slashes, so a phone row reads `src/notes.md` rather than a clipped `C:/Users/…`. A path
+ * elsewhere, a relative path, or no cwd: unchanged. Windows paths compare case-insensitively.
+ */
+export function relativeToCwd(path: string, cwd: string | undefined): string {
+  if (!cwd || path === "") return path;
+  const root = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
+  if (root === "") return path;
+  const p = path.replace(/\\/g, "/");
+  const prefix = `${root}/`;
+  const windows = /^[A-Za-z]:\//.test(prefix) || prefix.startsWith("//");
+  const under = windows ? p.toLowerCase().startsWith(prefix.toLowerCase()) : p.startsWith(prefix);
+  if (!under) return path;
+  const rel = p.slice(prefix.length);
+  return rel === "" ? path : rel;
+}
+
+/** A Grep/Glob output line (`path` or `path:line:text`) with its path made relative; the text is left alone. */
+function relativeHitLine(line: string, cwd: string | undefined): string {
+  const m = /^(.*?)(:\d+(?::.*)?)?$/s.exec(line);
+  if (!m || !m[1]) return line;
+  const rel = relativeToCwd(m[1], cwd);
+  return rel === m[1] ? line : rel + (m[2] ?? "");
+}
+
+/** The argument keys that hold a path, relativised for the one-line summary only (the capped input stays verbatim). */
+const SUMMARY_PATH_KEYS = ["file_path", "notebook_path", "path"] as const;
+
+function summaryInput(input: unknown, cwd: string | undefined): unknown {
+  if (!cwd || input === null || typeof input !== "object" || Array.isArray(input)) return input;
+  const o = { ...(input as Record<string, unknown>) };
+  for (const key of SUMMARY_PATH_KEYS) {
+    const v = o[key];
+    if (typeof v === "string") o[key] = relativeToCwd(v, cwd);
+  }
+  return o;
+}
+
+// ── Subagents: Claude's hand-back and task-notification rows ────────────────────────────────────
+
+/** The `Agent` launch boilerplate (`isAsync`): internal metadata the model is told never to quote. */
+function isAsyncLaunch(r: Record<string, unknown>): boolean {
+  return r.isAsync === true || r.status === "async_launched";
+}
+
+/**
+ * A finished subagent's report, which Claude hands back to the parent as an `isMeta` user row:
+ * `Another Claude session sent a message:\n<agent-message from="<agentId>">\n[Subagent hand-back] …
+ * The report follows:\n  <report, every line indented two spaces>`. Null for any other row.
+ */
+export function parseSubagentHandback(text: string): { agentId: string; report: string } | null {
+  const m = /<agent-message from="([^"]+)">\s*\[Subagent hand-back\]/.exec(text);
+  if (!m) return null;
+  const body = /The report follows:\n([\s\S]*)$/.exec(text)?.[1] ?? "";
+  const report = body
+    .replace(/<\/agent-message>\s*$/, "")
+    .split("\n")
+    .map((l) => (l.startsWith("  ") ? l.slice(2) : l))
+    .join("\n")
+    .trim();
+  return { agentId: m[1]!, report };
+}
+
+export interface TaskNotification {
+  taskId: string | null;
+  toolUseId: string | null;
+  status: string | null;
+  summary: string | null;
+  result: string | null;
+  tokens: number | null;
+  toolUses: number | null;
+  durationMs: number | null;
+}
+
+/** A `<task-notification>` envelope's fields (a background agent or command stopping). */
+export function parseTaskNotification(text: string): TaskNotification {
+  const num = (tag: string) => {
+    const v = inner(tag, text);
+    return v !== null && /^\d+$/.test(v) ? Number(v) : null;
+  };
+  return {
+    taskId: inner("task-id", text) || null,
+    toolUseId: inner("tool-use-id", text) || null,
+    status: inner("status", text) || null,
+    summary: inner("summary", text) || null,
+    result: inner("result", text) || null,
+    tokens: num("subagent_tokens") ?? num("total_tokens"),
+    toolUses: num("tool_uses"),
+    durationMs: num("duration_ms"),
+  };
+}
+
+/** The notification's `<result>` when it only points at the hand-back ("…delivered to you as a message…"). */
+const HANDBACK_POINTER_RE = /^This agent's report was delivered to you as a message/i;
+
+/** Fold a task-notification onto the subagent call it reports: its final status, usage and (if still empty) result. */
+function applyTaskNotification(part: ToolPart, n: TaskNotification): void {
+  part.detail = mergeSubagent(
+    part.detail,
+    subagentDetail({ status: n.status, tokens: n.tokens ?? undefined, toolUses: n.toolUses ?? undefined, durationMs: n.durationMs ?? undefined }),
+  );
+  const report = n.result?.trim() ?? "";
+  if ((part.result?.text.trim() ?? "") === "" && report !== "" && !HANDBACK_POINTER_RE.test(report)) {
+    part.result = { ...clamp(report, MAX_RESULT_CHARS), ...(n.status === "failed" ? { isError: true } : {}) };
+  } else if (part.result === undefined) {
+    part.result = { text: "" };
+  }
+}
+
 /** Claude's `[{old_string,new_string}]` (MultiEdit) as replacements. */
 function replacements(edits: unknown): { oldText: string; newText: string }[] {
   if (!Array.isArray(edits)) return [];
@@ -97,10 +207,10 @@ function todoSteps(todos: unknown): TranscriptToolDetail | undefined {
 }
 
 /** What a call's own arguments already say (a diff before the result lands, a task list, a plan). */
-export function claudeCallDetail(name: string, input: unknown): TranscriptToolDetail | undefined {
+export function claudeCallDetail(name: string, input: unknown, cwd?: string): TranscriptToolDetail | undefined {
   if (input === null || typeof input !== "object") return undefined;
   const o = input as Record<string, unknown>;
-  const file = str(o.file_path) ?? str(o.notebook_path) ?? "";
+  const file = relativeToCwd(str(o.file_path) ?? str(o.notebook_path) ?? "", cwd);
   switch (name) {
     case "Edit": {
       const oldText = str(o.old_string);
@@ -127,14 +237,14 @@ export function claudeCallDetail(name: string, input: unknown): TranscriptToolDe
 }
 
 /** Refine a call's detail from the row-level `toolUseResult` Claude writes beside its tool_result. */
-export function applyClaudeToolUseResult(part: ToolPart, toolUseResult: unknown): void {
+export function applyClaudeToolUseResult(part: ToolPart, toolUseResult: unknown, cwd?: string): void {
   if (toolUseResult === null || typeof toolUseResult !== "object" || Array.isArray(toolUseResult)) return;
   const r = toolUseResult as Record<string, unknown>;
   switch (part.name) {
     case "Edit":
     case "MultiEdit":
     case "Write": {
-      const file = str(r.filePath) ?? (part.detail?.kind === "diff" ? part.detail.fileName : "");
+      const file = relativeToCwd(str(r.filePath) ?? "", cwd) || (part.detail?.kind === "diff" ? part.detail.fileName : "");
       if (file === "") return;
       const diff =
         r.type === "create" && typeof r.content === "string"
@@ -162,6 +272,10 @@ export function applyClaudeToolUseResult(part: ToolPart, toolUseResult: unknown)
           toolUses: r.totalToolUseCount,
         }),
       );
+      // A background launch's result is boilerplate addressed to the model ("Async agent launched
+      // successfully… never quote it"); the row shows the agent's description and prompt instead, and
+      // the hand-back or task-notification fills the result in later.
+      if (isAsyncLaunch(r)) part.result = { text: "" };
       return;
     default:
       return;
@@ -266,6 +380,10 @@ interface RawRow {
   timestamp?: unknown;
   isSidechain?: unknown;
   isCompactSummary?: unknown;
+  /** The session's working directory when the row was written. */
+  cwd?: unknown;
+  /** An `attachment` row's payload (`queued_command`: a prompt queued while the session was busy). */
+  attachment?: unknown;
   message?: { role?: unknown; content?: unknown } | unknown;
   /** Row-level structured result of the row's tool_result (Edit's structuredPatch, Agent's ids). */
   toolUseResult?: unknown;
@@ -304,6 +422,33 @@ export function parseClaudeTranscript(
   const entries: TranscriptEntry[] = [];
   // tool_use id → the part awaiting its result, so a `tool_result` row lands on the call that made it.
   const pendingTools = new Map<string, Extract<TranscriptPart, { kind: "tool" }>>();
+  // Subagent calls by tool_use id and by agent id, so a later hand-back or task-notification row
+  // (minutes later, for a background agent) lands on the call that launched it.
+  const subagentsByCall = new Map<string, ToolPart>();
+  const subagentsByAgent = new Map<string, ToolPart>();
+  // Hand-backs that arrived before their call's result named the agent (a foreground agent's report
+  // can be logged just ahead of its tool_result).
+  const earlyHandbacks = new Map<string, string>();
+
+  /** Fold a hand-back or task-notification onto its subagent call; true when the row is consumed. */
+  const foldSubagentRow = (raw: string): boolean => {
+    const handback = parseSubagentHandback(raw);
+    if (handback) {
+      const target = subagentsByAgent.get(handback.agentId);
+      if (!target) {
+        if (handback.report !== "") earlyHandbacks.set(handback.agentId, handback.report);
+        return false;
+      }
+      if (handback.report !== "") target.result = clamp(handback.report, MAX_RESULT_CHARS);
+      return true;
+    }
+    if (!isEnvelope("task-notification", stripAnsi(raw))) return false;
+    const n = parseTaskNotification(raw);
+    const call = (n.toolUseId ? subagentsByCall.get(n.toolUseId) : undefined) ?? (n.taskId ? subagentsByAgent.get(n.taskId) : undefined);
+    if (!call) return false;
+    applyTaskNotification(call, n);
+    return true;
+  };
 
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
@@ -327,7 +472,20 @@ export function parseClaudeTranscript(
       if (c !== null) entries.push({ uuid, ts, role: c.role, parts: [{ kind: "text", ...clamp(c.text, MAX_TEXT_CHARS) }] });
       continue;
     }
+    // A hand-back or task-notification that arrived while the session was busy is written as an
+    // `attachment` row (`queued_command`), not a user row. It only ever updates a subagent call.
+    const attachment = row.attachment as { type?: unknown; prompt?: unknown } | null | undefined;
+    if (type === "attachment" && attachment?.type === "queued_command" && typeof attachment.prompt === "string") {
+      foldSubagentRow(attachment.prompt);
+      continue;
+    }
     if (type !== "user" && type !== "assistant") continue;
+    const cwd = str(row.cwd);
+    const rowContent = (row.message as { content?: unknown } | null | undefined)?.content;
+
+    // A subagent's report handed back to this session (an `isMeta` row), or a background agent
+    // stopping: either lands on the call that launched it instead of rendering on its own.
+    if (type === "user" && typeof rowContent === "string" && foldSubagentRow(rowContent)) continue;
     // `isMeta` user rows are addressed to the model, never typed by you: /context's markdown copy
     // (which rendered as a "You" bubble holding the skills table, #23), image metadata, caveats,
     // subagent hand-backs, permission grants.
@@ -387,15 +545,21 @@ export function parseClaudeTranscript(
             parts.push({ kind: "thinking", ...clamp(stripAnsi(b.thinking), MAX_TEXT_CHARS) });
         } else if (b.type === "tool_use") {
           const name = typeof b.name === "string" ? b.name : "tool";
-          const detail = claudeCallDetail(name, b.input);
+          const detail = claudeCallDetail(name, b.input, cwd);
           const part: ToolPart = {
             kind: "tool",
             name,
-            summary: name === "TodoWrite" && detail?.kind === "todo" ? `${detail.steps.length} tasks` : summarizeToolInput(b.input),
+            summary:
+              name === "TodoWrite" && detail?.kind === "todo"
+                ? `${detail.steps.length} tasks`
+                : summarizeToolInput(summaryInput(b.input, cwd)),
             ...capInput(b.input),
             ...(detail ? { detail } : {}),
           };
-          if (typeof b.id === "string") pendingTools.set(b.id, part);
+          if (typeof b.id === "string") {
+            pendingTools.set(b.id, part);
+            if (detail?.kind === "subagent") subagentsByCall.set(b.id, part);
+          }
           parts.push(part);
         } else if (b.type === "tool_result") {
           // Fold onto the call that produced it. The awaited part is MUTATED in place — it already
@@ -404,7 +568,13 @@ export function parseClaudeTranscript(
           const target = pendingTools.get(id);
           // Tool output routinely carries colour codes (any command run through a shell) — strip
           // them, since this view renders text nodes rather than interpreting escapes.
-          const resultText = stripAnsi(toolResultText(b.content));
+          let resultText = stripAnsi(toolResultText(b.content));
+          if (target && cwd && (target.name === "Grep" || target.name === "Glob")) {
+            resultText = resultText
+              .split("\n")
+              .map((l) => relativeHitLine(l, cwd))
+              .join("\n");
+          }
           if (target) {
             pendingTools.delete(id);
             const isError = b.is_error === true;
@@ -417,7 +587,16 @@ export function parseClaudeTranscript(
               ...(isError ? { isError: true } : {}),
               ...(exit ? { exitCode: Number(exit[1]) } : {}),
             };
-            if (toolResultCount === 1 && !isError) applyClaudeToolUseResult(target, row.toolUseResult);
+            if (toolResultCount === 1 && !isError) applyClaudeToolUseResult(target, row.toolUseResult, cwd);
+            if (target.detail?.kind === "subagent" && target.detail.agentId) {
+              const agentId = target.detail.agentId;
+              subagentsByAgent.set(agentId, target);
+              // A foreground agent's result only points at its hand-back ("…delivered to you as a message…").
+              if (target.result && HANDBACK_POINTER_RE.test(target.result.text.trim())) target.result = { text: "" };
+              const early = earlyHandbacks.get(agentId);
+              if (early !== undefined && (target.result?.text.trim() ?? "") === "") target.result = clamp(early, MAX_RESULT_CHARS);
+              earlyHandbacks.delete(agentId);
+            }
           } else if (resultText.trim() !== "") {
             // Orphan result (its call fell outside a tail-read window) — keep it, unattached, so the
             // window never silently drops output.

@@ -11,6 +11,7 @@ import {
   MAX_WHEN_EXPRESSION_DEPTH,
   type ResolvedKeybindingRule,
   type ResolvedKeybindingsConfig,
+  THREAD_JUMP_KEYBINDING_COMMANDS,
 } from "@t3tools/contracts";
 
 export interface ShortcutEventLike {
@@ -139,6 +140,12 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "ctrl+alt+arrowdown", command: "thread.next" },
   { key: "mod+z", command: "thread.undo", when: "!terminalFocus && !editableFocus" },
   { key: "?", command: "shortcuts.open", when: "!editableFocus && !terminalFocus" },
+  // T3's thread jumps: mod+1 .. mod+9 open the Nth thread in the sidebar's order (desktop only).
+  ...THREAD_JUMP_KEYBINDING_COMMANDS.map((command, index) => ({
+    key: `mod+${index + 1}`,
+    command,
+    when: "!terminalFocus",
+  })),
 ];
 
 function normalizeKeyToken(token: string): string {

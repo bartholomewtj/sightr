@@ -20,10 +20,13 @@ import { buildId } from "./static-assets.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
 import { openThreadStore, STORE_FILE, StoreTooNewError, type ThreadStore } from "./threads/store.ts";
 import { createHerdIngestor } from "./threads/herd-ingest.ts";
+import { createWorktreeIndex } from "./worktrees.ts";
 import { buildJournalRegistry } from "./journal/registry.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import { createJournalIngestor, createThreadWatchers } from "./threads/journal-ingest.ts";
 import { createRequestIngestor } from "./threads/request-ingest.ts";
+import { createCompactionWatcher } from "./threads/compaction-watch.ts";
+import { createAutoSettler } from "./threads/auto-settle.ts";
 import { createPaneQueue } from "./pane-queue.ts";
 import { createV2Gate } from "./threads/herdr-floor.ts";
 import { respondEffect } from "./threads/v2-routes.ts";
@@ -153,7 +156,8 @@ const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots, cfg.sta
 
 // v2 herd ingest: workspaces → projects, panes → threads. Subscribed after the activity bookkeeping
 // above, so the ledger already holds this poll's transitions and first sightings when it reads them.
-const herdIngestor = threadStore ? createHerdIngestor({ store: threadStore, engine, activity, journals }) : null;
+// Its own worktree index: Project.branch comes from `worktree.list`, read through the same cache rules as the snapshot's.
+const herdIngestor = threadStore ? createHerdIngestor({ store: threadStore, engine, activity, journals, worktrees: createWorktreeIndex(herdr) }) : null;
 
 // v2 journal ingest: harness logs → turn items, herdr status → runs. It reads a thread's log only
 // while the thread is working or a client watches it (T05 adds and removes watchers).
@@ -173,6 +177,13 @@ const paneWrites = createPaneQueue();
 const requestIngestor = threadStore
   ? createRequestIngestor({ store: threadStore, engine, herdr, queue: paneWrites, cfg, audit })
   : null;
+
+// v2 compaction awareness: a working thread's screen is read for the harness's compaction row, so a
+// steer queues instead of cancelling an auto-compaction (Thread.compacting).
+const compactionWatcher = threadStore ? createCompactionWatcher({ store: threadStore, engine, herdr }) : null;
+
+// v2 auto-settle: active threads idle for `autoSettleDays` (a runtime setting, 0 = off) are settled.
+const autoSettler = threadStore ? createAutoSettler({ store: threadStore, days: () => settings.current().autoSettleDays }) : null;
 
 // v2 dispatch (T06): message.dispatch start/queue/steer, the server-held queue and run.interrupt. The
 // start path is the same guarded send as v1's /api/pane/:id/send, on the same pane write queue. The
@@ -212,6 +223,8 @@ if (threadStore) {
     herdIngestor?.start();
     journalIngestor?.start();
     requestIngestor?.start();
+    compactionWatcher?.start();
+    autoSettler?.start();
     dispatcher?.start();
   });
   engine.onLink((status) => {
@@ -292,6 +305,8 @@ const shutdown = async () => {
   herdIngestor?.stop();
   journalIngestor?.stop();
   requestIngestor?.stop();
+  compactionWatcher?.stop();
+  autoSettler?.stop();
   dispatcher?.stop();
   poker.stop();
   // Retract anything still on the lock screen — nothing live stands behind it once we exit.

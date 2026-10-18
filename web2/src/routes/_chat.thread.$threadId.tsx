@@ -3,6 +3,7 @@ import { CommandIcon, SearchIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { ChatComposer } from "~/components/chat/ChatComposer";
+import { ChatHeader } from "~/components/chat/ChatHeader";
 import { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { TimelineFind } from "~/components/chat/ThreadFindBar";
 import { openThreadFind } from "~/components/chat/useThreadFind";
@@ -22,7 +23,7 @@ import { canUnarchive } from "@/lib/archived";
 import { noteOpenThread } from "@/state/draft-thread";
 import { performThreadCommand, useSidebarThread } from "@/state/sidebar";
 import { RIGHT_PANEL_KINDS, RIGHT_PANEL_LABEL, useRightPanelStore } from "@/rightPanelStore";
-import { useThread, useThreadStore } from "@/stream/stores";
+import { useBridgeInfo, useThread, useThreadStore } from "@/stream/stores";
 import { useThreadView, useThreadViewStore, type ThreadView } from "@/threadViewStore";
 
 export const Route = createFileRoute("/_chat/thread/$threadId")({
@@ -66,6 +67,7 @@ function ThreadRouteView() {
   useMarkReadOnOpen(threadId, synchronized, shellThread?.unreadDone ?? state?.thread?.unreadDone);
   const archived = (shellThread ?? state?.thread)?.shelf === "archived";
   const archiveReason = (shellThread ?? state?.thread)?.archiveReason;
+  const readOnly = useBridgeInfo((s) => s.readOnly);
   // A thread with no transcript opens on its terminal (the CLI); the toggle flips it to the timeline.
   const { view, cliFirst } = useThreadView(threadId);
   const cli = view === "cli";
@@ -80,7 +82,8 @@ function ThreadRouteView() {
     <section aria-label={title} className="flex min-h-0 flex-1 flex-col">
       <header className="flex items-center gap-2 border-b px-3 py-2">
         {!desktop && <BackToThreads />}
-        <h1 className="min-w-0 flex-1 truncate font-semibold">{title}</h1>
+        {/* The title opens this thread's menu (rename, pin, snooze, settle, archive, mark unread). */}
+        <ChatHeader title={title} thread={shellThread ?? state?.thread ?? null} canOperate={!missing && !readOnly} />
         {state?.syncing && !cli && <span className="text-xs text-muted-foreground">Syncing…</span>}
         {cliFirst && !missing ? <ThreadViewToggle threadId={threadId} view={view} /> : null}
         {!missing && !cli ? (
@@ -88,7 +91,7 @@ function ThreadRouteView() {
             <SearchIcon />
           </Button>
         ) : null}
-        {/* Phone: the palette is the way to New thread, Settings and this thread's actions (rename, snooze, pin ...). */}
+        {/* Phone: the palette is the way to New thread and Settings. */}
         {!desktop ? (
           <Button size="icon-sm" variant="ghost-muted" aria-label="Command palette" onClick={() => openCommandPalette()}>
             <CommandIcon />

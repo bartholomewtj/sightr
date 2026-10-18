@@ -14,6 +14,8 @@
 //   (T3 starts from its word-wrap setting), so a phone reads a long line without sideways scrolling;
 //   Settings → Display → Code wrapping (state/text-prefs.ts) can force wrap or scroll for every block.
 //   The header is `data-thread-find-ignore`, as upstream's.
+// - Workspace file links, Sightr's way: inside a thread (OpenFileThreadContext), inline code that reads
+//   as a file path is a button that opens it in the Files tab (right-panel/OpenFileLink.tsx).
 import { memo, useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { WrapTextIcon } from "lucide-react";
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
@@ -24,6 +26,7 @@ import { cn } from "~/lib/utils";
 import { codeStartsWrapped, getTextPrefs } from "@/state/text-prefs";
 
 import { MessageCopyButton } from "./chat/MessageCopyButton";
+import { looksLikeFilePath, OpenFileLink, useOpenFileThread } from "./right-panel/OpenFileLink";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
@@ -197,6 +200,25 @@ function MarkdownImage({ node: _node, src, alt }: ComponentProps<"img"> & ExtraP
   return <span>{label}</span>;
 }
 
+/**
+ * Inline code (a block's `<code>` is drawn by MarkdownCodeBlock). Inside a thread, a path an agent
+ * printed (`web2/src/x.ts:12`, `notes.md`) opens in the Files tab; the bridge refuses what it can't open.
+ */
+function MarkdownInlineCode({ node: _node, children, ...props }: ComponentProps<"code"> & ExtraProps) {
+  const threadId = useOpenFileThread();
+  const text = typeof children === "string" ? children : null;
+  if (threadId && text !== null && looksLikeFilePath(text)) {
+    return (
+      <code {...props}>
+        <OpenFileLink threadId={threadId} path={text} className="no-underline hover:underline">
+          {text}
+        </OpenFileLink>
+      </code>
+    );
+  }
+  return <code {...props}>{children}</code>;
+}
+
 function MarkdownTable({ node: _node, ...props }: ComponentProps<"table"> & ExtraProps) {
   return (
     <div className="chat-markdown-table-container max-w-full overflow-x-auto">
@@ -220,6 +242,7 @@ function chatMarkdownComponents(offset: number): Components {
       a: MarkdownLink,
       img: MarkdownImage,
       pre: MarkdownCodeBlock,
+      code: MarkdownInlineCode,
       table: MarkdownTable,
     };
     componentsByOffset.set(offset, components);

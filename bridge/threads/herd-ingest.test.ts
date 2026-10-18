@@ -157,6 +157,20 @@ describe("diffHerd", () => {
     expect(upsert?.project.worktreeOf).toBeUndefined();
   });
 
+  test("the branch the worktree index knows lands on the project, and a change updates it", () => {
+    const withBranch = (b: string | undefined) => ctx({ branchOf: (id) => (id === "w1" ? b : undefined) });
+    const first = diffHerd(snap([agent("w1:p1")]), EMPTY, withBranch("feat/x"));
+    const upsert = first.events.find((e) => e.type === "project.upserted")?.payload as { project: Project };
+    expect(upsert.project.branch).toBe("feat/x");
+    const same = diffHerd(snap([agent("w1:p1")], [], [workspace()]), { ...EMPTY, projects: [upsert.project], threads: [liveThread("t1", "w1:p1")] }, withBranch("feat/x"));
+    expect(same.events).toEqual([]);
+    const moved = diffHerd(snap([agent("w1:p1")]), { ...EMPTY, projects: [upsert.project], threads: [liveThread("t1", "w1:p1")] }, withBranch("main"));
+    expect((moved.events[0]?.payload as { project: Project }).project.branch).toBe("main");
+    // Detached or not a checkout: no branch, and the field leaves the project.
+    const gone = diffHerd(snap([agent("w1:p1")]), { ...EMPTY, projects: [upsert.project], threads: [liveThread("t1", "w1:p1")] }, withBranch(undefined));
+    expect("branch" in (gone.events[0]?.payload as { project: Project }).project).toBe(false);
+  });
+
   test("a user label survives a herd rename", () => {
     const projection = { ...EMPTY, projects: [project("w1", { label: "mine", labelSource: "user" })] };
     const { events } = diffHerd(snap([], [], [workspace("w1", 1, { label: "herd name" })]), projection, ctx());
@@ -631,6 +645,48 @@ describe("ingestor", () => {
     engine.poll(snap([agent("w1:p1")]));
     expect(store.lastSequence()).toBe(0);
   });
+});
+
+describe("project branch from the worktree index", () => {
+  const wsOf = (branch: string | null | undefined): WorkspaceView[] => [
+    workspace("w1", 1, { worktree: { repoKey: "repo", repoName: "r", repoRoot: "/r", checkoutPath: "/r", isLinkedWorktree: false, ...(branch === undefined ? {} : { branch }) } }),
+  ];
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  test("fills Project.branch after the lookup, follows a checkout, and leaves it off when detached", async () => {
+    let branch: string | null | undefined = "feat/palette";
+    const worktrees = { decorate: async (ws: WorkspaceView[]) => ws.map((w) => ({ ...w, worktree: wsOf(branch)[0]!.worktree })) };
+    const store = tempStore();
+    const engine = new FakeEngine();
+    const ingestor = createHerdIngestor({ store, engine, activity: new FakeActivity(() => 1), journals, worktrees, now: () => 1, newId: () => crypto.randomUUID(), log: () => {} });
+    ingestor.start();
+    engine.poll(snap([agent("w1:p1")], [], wsOf(undefined)));
+    await settle();
+    expect(store.getProject("w1")?.branch).toBe("feat/palette");
+    branch = "main";
+    engine.poll(snap([agent("w1:p1")], [], wsOf(undefined)));
+    await settle();
+    await settle();
+    expect(store.getProject("w1")?.branch).toBe("main");
+    branch = null;
+    engine.poll(snap([agent("w1:p1")], [], wsOf(undefined)));
+    await settle();
+    await settle();
+    expect(store.getProject("w1")?.branch).toBeUndefined();
+  }, 30_000);
+
+  test("a lookup that throws leaves the projects alone", async () => {
+    const logs: string[] = [];
+    const store = tempStore();
+    const engine = new FakeEngine();
+    const ingestor = createHerdIngestor({ store, engine, activity: new FakeActivity(() => 1), journals, worktrees: { decorate: async () => { throw new Error("boom"); } }, now: () => 1, log: (m) => logs.push(m) });
+    ingestor.start();
+    engine.poll(snap([agent("w1:p1")]));
+    await settle();
+    expect(store.getProject("w1")).toBeDefined();
+    expect(store.getProject("w1")?.branch).toBeUndefined();
+    expect(logs.join()).toContain("branch lookup failed");
+  }, 30_000);
 });
 
 describe("capabilitiesFor", () => {

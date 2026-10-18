@@ -21,6 +21,10 @@
 // - Event rows also draw T3's lifecycle rows (`V2LifecycleRow`: interrupt divider, compaction,
 //   subagent) and the proposed-plan card (`ProposedPlanCard`); a file-change row carries T3's
 //   `DiffStatLabel` in its trailing slot, and a task-list row a list icon.
+// - Phone pass 2: a file-change or read row leads with the file name, its folder dim and cut from the
+//   start (`FilePathLabel`); a page-fetch group reads "Fetched <host>"; paths in tool details and in
+//   messages open the Files tab (`OpenFileThreadContext`); the thread details sheet
+//   (`ThreadDetailsPanel`) is mounted beside the list.
 // - Left out: minimap, citations, forks, revert, checkpoint diffs, attachment previews, worktree
 //   setup, MCP apps, HTML renders.
 import { LegendList, type LegendListRef, type MaintainScrollAtEndOptions } from "@legendapp/list/react";
@@ -103,7 +107,9 @@ import {
 import { DiffStatLabel } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { ProposedPlanCard } from "./ProposedPlanCard";
+import { OpenFileThreadContext } from "../right-panel/OpenFileLink";
 import { ScreenTimelineRow } from "./ScreenTimelineRow";
+import { ThreadDetailsSheet } from "./ThreadDetailsPanel";
 import { isV2LifecycleItem, V2LifecycleRow } from "./V2LifecycleRow";
 import { TimelineSystemDivider } from "./TimelineSystemDivider";
 import { ToolItemDetail, toolItemHasDetail } from "./ToolItemDetail";
@@ -148,6 +154,16 @@ export interface MessagesTimelineProps {
 }
 
 export function MessagesTimeline({ threadId }: MessagesTimelineProps) {
+  // Paths in tool rows and in messages open in this thread's Files tab; the details sheet rides along.
+  return (
+    <OpenFileThreadContext value={threadId}>
+      <MessagesTimelineBody threadId={threadId} />
+      <ThreadDetailsSheet threadId={threadId} />
+    </OpenFileThreadContext>
+  );
+}
+
+function MessagesTimelineBody({ threadId }: MessagesTimelineProps) {
   const state = useThread(threadId);
   const ui = useThreadTimelineUi(threadId);
   const history = useHistoryState(threadId);
@@ -894,6 +910,7 @@ function toolGroupSummaryIconName(kind: Extract<TimelineRow, { kind: "work-toggl
     case "command":
       return "terminal";
     case "search":
+    case "fetch":
       return "globe";
     case "code-search":
       return "search";
@@ -1073,6 +1090,49 @@ function workEntryIconName(workEntry: WorkLogEntry): WorkEntryIconName {
 
 const failedToolIconClassName = "text-warning";
 
+/** `docs/sub/notes.md` → `{ name: "notes.md", dir: "docs/sub" }` (either slash). */
+export function splitFilePath(path: string): { name: string; dir: string } {
+  const trimmed = path.trim().replace(/[\\/]+$/, "");
+  const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return cut < 0 ? { name: trimmed, dir: "" } : { name: trimmed.slice(cut + 1), dir: trimmed.slice(0, cut) };
+}
+
+/**
+ * A file-change or read row whose label is a single path: its verb ("Read", or none) and the path, so
+ * the row can lead with the file name. Null for every other row.
+ */
+export function workEntryRowPath(entry: WorkLogEntry, label: string): { verb: string | null; path: string } | null {
+  const item = entry.projectedItem;
+  if (item?.type === "file_change" && entry.changedFiles?.length === 1) {
+    const path = item.fileName.trim();
+    return path && label.replaceAll("\\", "/").endsWith(splitFilePath(path).name) ? { verb: null, path } : null;
+  }
+  if (item?.type === "dynamic_tool" && toolGroupAction(entry) === "read" && label.startsWith("Read ") && !/ \+\d+ more$/.test(label)) {
+    const path = label.slice("Read ".length).trim();
+    return path ? { verb: "Read", path } : null;
+  }
+  return null;
+}
+
+/**
+ * Sightr phone pass: a path in a narrow row leads with the file name; the folder follows, dim and cut
+ * from its start (T3's StartTruncatedPath), so the name is never the part that gets clipped.
+ */
+function FilePathLabel({ verb, path, className }: { verb: string | null; path: string; className?: string }) {
+  const { name, dir } = splitFilePath(path);
+  return (
+    <span className={cn("flex min-w-0 items-baseline gap-1.5", className)} title={path} data-file-path-label="">
+      {verb ? <span className="shrink-0">{verb}</span> : null}
+      <span className="min-w-0 max-w-full shrink-0 truncate">{name || path}</span>
+      {dir ? (
+        <span className="min-w-0 flex-1 truncate text-left text-xs text-muted-foreground/70" dir="rtl">
+          <bdi>{dir}</bdi>
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 /** "Usage limit reached." with T3's "Retry after <time>." when the failure carries `resetAt`. */
 function usageLimitLabel(resetAt: number | null | undefined, now = Date.now()): string {
   if (!resetAt || !Number.isFinite(resetAt) || resetAt <= now) return "Usage limit reached.";
@@ -1135,6 +1195,7 @@ function WorkEntryLogRow({ workEntry, displayLabel }: { workEntry: WorkLogEntry;
         : "text-secondary-label"
       : "text-foreground/80";
   const thoughtPreview = isReasoning && !expanded ? liveThoughtLine(workEntry.detail ?? "") : "";
+  const rowPath = isReasoning ? null : workEntryRowPath(workEntry, previewText);
   const accessibleText = showFailedIndicator ? `${previewText}, tool call failed` : previewText;
   const toggle = () => {
     entryDisclosure.set(workEntry.id, !expanded);
@@ -1170,9 +1231,13 @@ function WorkEntryLogRow({ workEntry, displayLabel }: { workEntry: WorkLogEntry;
       label={
         <div className="min-w-0 flex-1 overflow-hidden">
           <p className="flex min-w-0 w-full items-baseline gap-1.5 text-sm leading-relaxed">
-            <span className={cn("min-w-0 truncate", !thoughtPreview && "flex-1", headingClass, workEntry.command && !isReasoning && "font-mono text-xs")}>
-              {previewText}
-            </span>
+            {rowPath ? (
+              <FilePathLabel verb={rowPath.verb} path={rowPath.path} className={cn("flex-1", headingClass)} />
+            ) : (
+              <span className={cn("min-w-0 truncate", !thoughtPreview && "flex-1", headingClass, workEntry.command && !isReasoning && "font-mono text-xs")}>
+                {previewText}
+              </span>
+            )}
             {thoughtPreview ? <span className="min-w-0 flex-1 truncate text-muted-foreground">{thoughtPreview}</span> : null}
           </p>
         </div>

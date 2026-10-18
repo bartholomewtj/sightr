@@ -95,6 +95,8 @@ export interface Project {
   repoKey?: string;
   /** On a linked worktree: its repo's `repoKey`. The sidebar nests it under the primary with the same `repoKey`. */
   worktreeOf?: string;
+  /** The branch the workspace's checkout is on (read-only; absent when detached or not a git checkout). */
+  branch?: string;
   order: number;
   /** Roll-up of its active and pinned threads (`worstStatus`). */
   status: ThreadStatus;
@@ -144,6 +146,12 @@ export interface Thread {
    * from the newest assistant usage in the journal. Absent when the harness records none.
    */
   contextUsage?: ThreadTokenUsageSnapshot;
+  /**
+   * Sightr: the harness is compacting its context right now, read off the screen while the thread
+   * works (Claude's auto-compact has no `/compact` message). T3 derives `isCompacting` from the run;
+   * a steer would cancel the compaction, so follow-ups queue while this is true. Absent = false.
+   */
+  compacting?: boolean;
 }
 
 /**
@@ -459,6 +467,13 @@ export interface RuntimeRequest {
   preview?: { optionIndex: number; lines: string[] };
   /** T17: the echoed answers on a wizard or multi-select review step. */
   answers?: { question: string; answer: string }[];
+  /**
+   * The question has an empty free-text row ("Type something.") the bridge can type into: answer it
+   * with `runtime-request.respond` `text`. T3's `allowCustomAnswer` on the request's question.
+   */
+  freeText?: boolean;
+  /** The typed answer, once resolved with `text` (T3's `customAnswer`). */
+  customAnswer?: string;
 }
 
 /** One chip of a multi-question ask's stepper (v1's `WizardStepChip`). */
@@ -524,6 +539,8 @@ export type Command =
   | (CommandBase & { type: "thread.unsettle"; threadId: string })
   | (CommandBase & { type: "thread.archive"; threadId: string })
   | (CommandBase & { type: "thread.unarchive"; threadId: string })
+  /** Forget an archived thread: the thread and its runs, items, requests and queue (T3's name). */
+  | (CommandBase & { type: "thread.delete"; threadId: string })
   | (CommandBase & { type: "thread.markRead"; threadId: string })
   | (CommandBase & { type: "thread.markUnread"; threadId: string })
   | (CommandBase & {
@@ -543,6 +560,8 @@ export type Command =
       requestId: string;
       optionIndex?: number;
       optionIndices?: number[];
+      /** The operator's own answer, typed into a `freeText` request's row (instead of an option). */
+      text?: string;
     })
   | (CommandBase & { type: "thread.permissionMode.set"; threadId: string; mode: string; confirmBypass?: boolean })
   | (CommandBase & { type: "thread.model.set"; threadId: string; model: string })
@@ -564,6 +583,7 @@ export const COMMAND_TYPES = [
   "thread.unsettle",
   "thread.archive",
   "thread.unarchive",
+  "thread.delete",
   "thread.markRead",
   "thread.markUnread",
   "message.dispatch",
@@ -596,6 +616,7 @@ export type ThreadPatch = Partial<
     | "permissionMode"
     | "model"
     | "contextUsage"
+    | "compacting"
   >
 > & {
   /** `null` clears it. */
@@ -612,6 +633,8 @@ export interface EventPayloads {
   "thread.updated": { patch: ThreadPatch; at: number };
   "thread.shelf-changed": { shelf: Exclude<Shelf, "archived">; snoozedUntil?: number; pinOrder?: number; at: number };
   "thread.archived": { reason: ArchiveReason; at: number };
+  /** The thread is gone from the store (`thread.delete`); clients drop it and its requests. */
+  "thread.deleted": { at: number };
   "run.started": { run: Run };
   "run.ended": { runId: string; status: Exclude<RunStatus, "running">; completedAt: number };
   /** The whole run after a change that is not its end (T03 sets `userItemId` once the message is read). T3's name. */
@@ -642,6 +665,7 @@ export const THREAD_EVENT_TYPES = [
   "thread.updated",
   "thread.shelf-changed",
   "thread.archived",
+  "thread.deleted",
   "run.started",
   "run.ended",
   "run.updated",
@@ -689,6 +713,7 @@ export const SHELL_EVENT_TYPES = [
   "thread.updated",
   "thread.shelf-changed",
   "thread.archived",
+  "thread.deleted",
   "runtime-request.updated",
   "command.rejected",
   "dispatch.failed",

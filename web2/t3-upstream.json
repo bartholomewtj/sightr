@@ -272,14 +272,14 @@
       "upstream": "apps/web/src/components/chat/MessagesTimeline.logic.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "T11: T3 row model (message, work, work-toggle, work-live, working, thinking, turn-fold, assistant-meta, event) on Sightr items; epoch ms; + day dividers; no attempts/subagents/plans/MCP/compaction/minimap"
+      "note": "T11: T3 row model (message, work, work-toggle, work-live, working, thinking, turn-fold, assistant-meta, event) on Sightr items; epoch ms; + day dividers; no attempts/subagents/plans/MCP/compaction/minimap; timeline polish: dynamic tools lead with dynamicToolDisplayName (MCP '<tool> · <server>')"
     },
     {
       "local": "src/components/chat/MessagesTimeline.tsx",
       "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
-      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list; db5919d87: event rows draw V2LifecycleRow and ProposedPlanCard, DiffStatLabel on file-change rows"
+      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list; db5919d87: event rows draw V2LifecycleRow and ProposedPlanCard, DiffStatLabel on file-change rows; timeline polish: file-change/read rows lead with the file name (folder dim, start-truncated as StartTruncatedPath), fetch group icon, OpenFileThreadContext for path links, ThreadDetailsSheet mounted beside the list"
     },
     {
       "local": "src/components/chat/WorkLog.tsx",
@@ -313,21 +313,21 @@
       "upstream": "apps/web/src/components/chat/V2ItemInspector.tsx",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "pattern",
-      "note": "an open tool row's call and output; inline output, 200-line cap; db5919d87: diff stat + copy, failed-edit error text, todo checklist, dynamic-tool args list"
+      "note": "an open tool row's call and output; inline output, 200-line cap; db5919d87: diff stat + copy, failed-edit error text, todo checklist, dynamic-tool args list; timeline polish: Copy on command and output (CommandBlock pattern), paths open the Files tab, MCP tool names"
     },
     {
       "local": "src/components/ChatMarkdown.tsx",
       "upstream": "apps/web/src/components/ChatMarkdown.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "react-markdown + remark-gfm (+ remark-breaks); no Shiki, Mermaid, raw HTML, file links, images, citations; code-block Wrap lines toggle kept (starts on below sm unless Settings → Display → Code wrapping forces wrap or scroll)"
+      "note": "react-markdown + remark-gfm (+ remark-breaks); no Shiki, Mermaid, raw HTML, images, citations; code-block Wrap lines toggle kept (starts on below sm unless Settings → Display → Code wrapping forces wrap or scroll); file links Sightr's way: path-like inline code opens the Files tab inside a thread (OpenFileLink)"
     },
     {
       "local": "src/session-logic.ts",
       "upstream": "apps/web/src/session-logic.ts",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
-      "note": "turn items -> timeline entries / work-log entries; Sightr run-end notices and reasoning durations; db5919d87: todo_list work rows, proposed_plan/subagent/run_interrupt_result/compaction as event rows, 'Fetched <url>' for page fetches"
+      "note": "turn items -> timeline entries / work-log entries; Sightr run-end notices and reasoning durations; db5919d87: todo_list work rows, proposed_plan/subagent/run_interrupt_result/compaction as event rows, 'Fetched <url>' for page fetches; MCP tools labelled '<tool> · <server>' (dynamicToolDisplayName)"
     },
     {
       "local": "src/pendingUserInput.ts",
@@ -348,7 +348,7 @@
       "upstream": "packages/client-runtime/src/work-log/presentation.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "group actions, summaries, failure rules; no T3 MCP tools or tool sources"
+      "note": "group actions, summaries, failure rules; no T3 MCP tools or tool sources; Sightr 'fetch' group action for page fetches ('Fetched <host>' / 'Fetched N pages')"
     },
     {
       "local": "src/t3/shared/toolActivity.ts",
@@ -390,7 +390,7 @@
       "upstream": "apps/web/src/components/chat/ChatComposer.tsx",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "pattern",
-      "note": "T12: banner stack + queued list above a plain <textarea> (no Tiptap), slash menu, primary actions; the pending request replaces the box"
+      "note": "T12: banner stack + queued list above a plain <textarea> (no Tiptap), slash menu, primary actions; the pending request replaces the box; error/usage-limit banners, tasks badge and context meter from structured items"
     },
     {
       "local": "src/components/chat/ChatComposer.logic.ts",
@@ -514,6 +514,48 @@
       "mode": "verbatim"
     },
     {
+      "local": "src/components/chat/ThreadErrorBanner.tsx",
+      "upstream": "apps/web/src/components/chat/ThreadErrorBanner.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "error from the latest run's error item; key = thread + item id, dismissal per device (localStorage); ComposerBannerStack row, tap-to-expand text instead of tooltip; no ChatGPT branch"
+    },
+    {
+      "local": "src/components/chat/UsageLimitRecoveryBanner.tsx",
+      "upstream": "apps/web/src/components/chat/UsageLimitRecoveryBanner.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "usage_limit error item (resetAt epoch ms); Snooze until reset = thread.snooze; no Resume at reset (no bridge feature); Dismiss added"
+    },
+    {
+      "local": "src/components/chat/ContextWindowMeter.tsx",
+      "upstream": "apps/web/src/components/chat/ContextWindowMeter.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "tap-to-open popover (no hover), no composerFloatingLayerProps; Compact closes the popover"
+    },
+    {
+      "local": "src/components/chat/ContextWindowMeter.logic.ts",
+      "upstream": "apps/web/src/components/chat/ContextWindowMeter.logic.ts",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "cost/compaction formatters verbatim; provider-instance and Claude resume-compaction helpers dropped; snapshot from Thread.contextUsage and formatContextWindowTokens from apps/web/src/lib/contextWindow.ts"
+    },
+    {
+      "local": "src/components/chat/ComposerTasksBadge.tsx",
+      "upstream": "apps/web/src/components/chat/ComposerTasksBadge.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "adapted",
+      "note": "fed by the newest todo_list item (ComposerStatus.logic); tap opens a bottom sheet instead of the inline drawer; no ComposerTasksDrawer"
+    },
+    {
+      "local": "src/components/chat/ChatHeader.tsx",
+      "upstream": "apps/web/src/components/chat/ChatHeader.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "resolveRenameCommit verbatim; title opens the sidebar ThreadRowMenu; Rename is a menu item (no double-click); no breadcrumb or parent link"
+    },
+    {
       "local": "src/t3/client-runtime/state/composerDispatch.ts",
       "upstream": "packages/client-runtime/src/state/composerDispatch.ts",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
@@ -544,21 +586,21 @@
       "upstream": "packages/contracts/src/keybindings.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "plain TS types instead of Effect Schema; Sightr's command list"
+      "note": "plain TS types instead of Effect Schema; Sightr's command list; db5919d87: THREAD_JUMP_KEYBINDING_COMMANDS (thread.jump.1..9)"
     },
     {
       "local": "src/t3/shared/keybindings.ts",
       "upstream": "packages/shared/src/keybindings.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "DEFAULT_KEYBINDINGS is Sightr's table; parser, matcher and when grammar unchanged"
+      "note": "DEFAULT_KEYBINDINGS is Sightr's table; parser, matcher and when grammar unchanged; db5919d87: mod+1..9 thread.jump bindings"
     },
     {
       "local": "src/keybindings.ts",
       "upstream": "apps/web/src/keybindings.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "Sightr's when context, injectable platform, no unmodified binding in a text field, symbol keys ignore Shift"
+      "note": "Sightr's when context, injectable platform, no unmodified binding in a text field, symbol keys ignore Shift; db5919d87: threadJumpCommandForIndex, threadJumpIndexFromCommand, shouldShowThreadJumpHintsForModifiers"
     },
     {
       "local": "src/rightPanelStore.ts",
@@ -613,7 +655,7 @@
       "upstream": "apps/web/src/components/CommandPalette.logic.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "Sightr threads/projects/actions; T3 filtering and ranking, plus a subsequence fallback"
+      "note": "Sightr threads/projects/actions; T3 filtering and ranking, plus a subsequence fallback; Open file… mode, Find in thread and copy actions (Sightr's)"
     },
     {
       "local": "src/components/CommandPaletteContent.tsx",
@@ -808,7 +850,20 @@
       "upstream": "apps/web/src/components/chat/V2LifecycleRow.tsx",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
-      "note": "run_interrupt_result divider, compaction divider with the summary behind a tap, subagent row (status dot, model/tokens/duration) opening in place instead of a child thread or hover card"
+      "note": "run_interrupt_result divider, compaction divider with the summary behind a tap, subagent row (status dot, model/tokens/duration) opening in place instead of a child thread or hover card; a subagent with no result yet shows its prompt"
+    },
+    {
+      "local": "src/components/chat/ThreadDetailsSection.tsx",
+      "upstream": "apps/web/src/components/chat/ThreadDetailsSection.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "verbatim"
+    },
+    {
+      "local": "src/components/chat/ThreadDetailsPanel.tsx",
+      "upstream": "apps/web/src/components/chat/ThreadDetailsPanel.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "thread details as a sheet (bottom on a phone, right on desktop): harness, model, permission mode, Files folder, session id with Copy, runs, created/last active; opened by openThreadDetails(threadId); no workspace/env/scripts/git/automations/relationships"
     },
     {
       "local": "src/proposedPlan.ts",
@@ -822,6 +877,34 @@
       "upstream": "packages/shared/src/proposedPlanText.ts",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "verbatim"
+    },
+    {
+      "local": "src/components/Sidebar.jump.ts",
+      "upstream": "apps/web/src/components/Sidebar.logic.ts",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "createThreadJumpHintVisibilityController (200 ms) is T3's; the jump order is Sightr's (what the sidebar shows: search, Needs you, or pinned and active rows)"
+    },
+    {
+      "local": "src/components/Sidebar.jump.ts",
+      "upstream": "apps/web/src/shortcutModifierState.ts",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "held-modifier tracking with the paste and blur resets; no editable-focus option"
+    },
+    {
+      "local": "src/components/sidebar/BranchChip.tsx",
+      "upstream": "apps/web/src/components/BranchToolbarBranchSelector.tsx",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "read-only chip from Project.branch; switching, creating and PR checkout are never taken"
+    },
+    {
+      "local": "src/components/CommandPaletteFiles.ts",
+      "upstream": "apps/web/src/components/files/ProjectFilePicker.logic.ts",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "Open file… mode: the Files search API, re-ranked by name (rankFileResults in CommandPalette.logic.ts); no fuzzy index or match highlighting"
     }
   ],
   "decisions": [
@@ -980,6 +1063,18 @@
       "commit": "db5919d87daf",
       "verdict": "skip",
       "reason": "ConnectionBanner already shows reconnecting and lost; a dot adds only an always-green state and T3's version is built on multi-environment phases and a hover tooltip"
+    },
+    {
+      "upstream": "apps/web/src/components/files/ProjectFilePicker.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "defer",
+      "reason": "Open file… is a mode of the command palette, not a dialog of its own, and has no mod+p binding yet (the browser keeps Ctrl+P for print); a fuzzy server-side index and match highlighting can come later"
+    },
+    {
+      "upstream": "apps/web/src/components/search/ProjectContentSearchDialog.tsx",
+      "commit": "db5919d87daf",
+      "verdict": "defer",
+      "reason": "Needs GET /api/files/grep on the bridge (rg --json inside the contained folder); name search only for now"
     }
   ]
 }

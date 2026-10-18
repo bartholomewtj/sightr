@@ -86,6 +86,11 @@ describe("migrations", () => {
     expect(store.getProject("w1")).toEqual({ id: "w1", label: "a", labelSource: "herd", number: 1, order: 1, status: "idle" });
     store.append([createProject(project("w1", { repoKey: "/r/.git" }))]);
     expect(store.getProject("w1")?.repoKey).toBe("/r/.git");
+    // Project.branch rides the same upsert and goes away when the next upsert has none.
+    store.append([createProject(project("w1", { repoKey: "/r/.git", branch: "feat/x" }))]);
+    expect(store.getProject("w1")?.branch).toBe("feat/x");
+    store.append([createProject(project("w1", { repoKey: "/r/.git" }))]);
+    expect(store.getProject("w1")?.branch).toBeUndefined();
     store.close();
   });
 
@@ -501,5 +506,40 @@ describe("run and item reads (T03)", () => {
     expect(store.getTurnItem("zz")).toBeNull();
     expect(store.recentItems("t1", 2).map((i) => i.id)).toEqual(["b", "c"]);
     expect(store.itemsForRun("r1").map((i) => i.id)).toEqual(["a", "c"]);
+  });
+});
+
+describe("thread.deleted", () => {
+  test("removes the thread with its runs, items, requests and queue, and its older events; the shell drops it", () => {
+    const store = open();
+    store.append([createProject(), createThread(thread("t1")), createThread(thread("t2"))]);
+    store.append([
+      { type: "run.started", threadId: "t1", payload: { run: { id: "r1", threadId: "t1", ordinal: 1, status: "running", startedAt: 1 } } },
+      { type: "turn-item.updated", threadId: "t1", payload: { item: textItem("i1", "t1", "r1", "secret words") } },
+      { type: "turn-item.updated", threadId: "t2", payload: { item: textItem("i2", "t2") } },
+      {
+        type: "queue.updated",
+        threadId: "t1",
+        payload: { messages: [{ id: "q1", threadId: "t1", text: "later", attachments: [], position: 0, mode: "queue", state: "held", createdAt: 1 }] },
+      },
+      { type: "thread.archived", threadId: "t1", payload: { reason: "pane-closed", at: 5 } },
+    ]);
+    const { last } = store.append([{ type: "thread.deleted", threadId: "t1", payload: { at: 6 } }]);
+
+    expect(store.getThread("t1")).toBeNull();
+    expect(store.getTurnItem("i1")).toBeNull();
+    expect(store.getRun("r1")).toBeNull();
+    expect(store.listQueued("t1")).toEqual([]);
+    expect(store.snapshotShell().threads.map((t) => t.id)).toEqual(["t2"]);
+    // Only the deletion itself is left of t1's events; t2 is untouched.
+    expect(store.eventsAfter(0, { threadId: "t1" }).map((e) => [e.type, e.sequence])).toEqual([["thread.deleted", last]]);
+    expect(JSON.stringify(store.eventsAfter(0))).not.toContain("secret words");
+    expect(store.getTurnItem("i2")).not.toBeNull();
+  });
+
+  test("a delete of a thread that is not there fails the batch (decide checks first)", () => {
+    const store = open();
+    store.append([createProject()]);
+    expect(() => store.append([{ type: "thread.deleted", threadId: "nope", payload: { at: 1 } }])).toThrow();
   });
 });

@@ -15,14 +15,22 @@
  * a Copy for the diff and, when it failed, the tool's own error above the diff it meant to make; a
  * `todo_list` opens to its checklist; a dynamic tool lists its capped arguments (`rawInput`, T3's
  * args list). Older stored items without these fields render as before.
+ *
+ * Phone pass 2 (T3's CommandBlock pattern): Copy for a command, its output and a tool's output (a
+ * 44 px target on touch); file paths (a change's file, search hits, a read's path) open in the Files
+ * tab inside a thread (`OpenFileThreadContext`); an MCP tool is named "<tool> · <server>".
  */
 import type { TurnItem } from "@shared/v2/contracts";
 import { CheckIcon, CircleDotIcon, CircleIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { dynamicToolDisplayName } from "~/session-logic";
 import { commandDisplayText } from "@t3tools/client-runtime/work-log/command-label";
+import { classifyToolActivity } from "@t3tools/shared/toolActivity";
 
 import { isSafeMarkdownHref } from "../ChatMarkdown";
+import { OpenFileLink, useOpenFileThread } from "../right-panel/OpenFileLink";
 import { DiffStatLabel } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 
@@ -123,18 +131,26 @@ function OutputBlock({
   truncated,
   label = "Output",
   diff = false,
+  copy = false,
 }: {
   text: string;
   truncated?: boolean | undefined;
   label?: string;
   diff?: boolean;
+  /** A Copy button for the whole text (long-press selection inside a scrolling block is fiddly on a phone). */
+  copy?: boolean;
 }) {
   const capped = capLines(text);
   return (
-    <div className="space-y-1">
+    <div className="relative space-y-1">
+      {copy ? (
+        <div className="absolute end-0 top-0 z-10">
+          <MessageCopyButton text={text} label={`Copy ${label.toLowerCase()}`} size="icon-xs" variant="ghost" />
+        </div>
+      ) : null}
       <pre
         aria-label={label}
-        className={cn("max-h-80 overflow-auto whitespace-pre-wrap wrap-anywhere text-muted-foreground select-text", monoClassName)}
+        className={cn("max-h-80 overflow-auto whitespace-pre-wrap wrap-anywhere text-muted-foreground select-text", copy && "pe-8", monoClassName)}
       >
         {diff
           ? capped.text.split("\n").map((line, index, lines) => (
@@ -158,14 +174,35 @@ function OutputBlock({
   );
 }
 
+/** A dynamic tool whose input summary is the path it read (Claude `Read`, Pi `read`). */
+function readsFile(toolName: string | null | undefined): boolean {
+  return classifyToolActivity({ itemType: "dynamic_tool_call", data: { toolName: toolName ?? undefined } }) === "read";
+}
+
+/** A path a tool printed: a link into the Files tab inside a thread, plain text elsewhere. */
+function ToolPath({ path, children, className }: { path: string; children?: ReactNode; className?: string }) {
+  const threadId = useOpenFileThread();
+  if (!threadId || path.trim() === "") return <span className={className}>{children ?? path}</span>;
+  return (
+    <OpenFileLink threadId={threadId} path={path} className={cn("no-underline decoration-dotted hover:underline", className)}>
+      {children ?? path}
+    </OpenFileLink>
+  );
+}
+
 export function ToolItemDetail({ item }: { item: TurnItem }) {
   return (
     <div className="space-y-2 text-xs" data-tool-detail={item.type}>
       {item.type === "command_execution" ? (
         <div className={cn("space-y-1.5", monoClassName)}>
-          <div className="whitespace-pre-wrap wrap-anywhere text-foreground/85">{commandDisplayText(item.input)}</div>
+          <div className="flex min-w-0 items-start gap-1">
+            <div className="min-w-0 flex-1 whitespace-pre-wrap wrap-anywhere text-foreground/85">{commandDisplayText(item.input)}</div>
+            {item.input.trim() ? (
+              <MessageCopyButton text={item.input} label="Copy command" size="icon-xs" variant="ghost" className="shrink-0" />
+            ) : null}
+          </div>
           {item.output !== undefined && item.output.trim() ? (
-            <OutputBlock text={item.output} truncated={item.truncated} />
+            <OutputBlock text={item.output} truncated={item.truncated} copy />
           ) : null}
           {item.exitCode !== undefined && item.exitCode !== 0 ? <div className="text-warning">exit {item.exitCode}</div> : null}
         </div>
@@ -176,8 +213,8 @@ export function ToolItemDetail({ item }: { item: TurnItem }) {
           {typeof item.input === "string" ? (
             item.input.trim() ? (
               <div className="whitespace-pre-wrap wrap-anywhere text-foreground/85">
-                <span className="text-muted-foreground">{item.toolName ?? "tool"} </span>
-                {item.input}
+                <span className="text-muted-foreground">{dynamicToolDisplayName(item.toolName) ?? "tool"} </span>
+                {readsFile(item.toolName) ? <ToolPath path={item.input} /> : item.input}
               </div>
             ) : null
           ) : asText(item.input) ? (
@@ -193,14 +230,14 @@ export function ToolItemDetail({ item }: { item: TurnItem }) {
               ))}
             </dl>
           ) : null}
-          {asText(item.output)?.trim() ? <OutputBlock text={asText(item.output)!} truncated={item.truncated} /> : null}
+          {asText(item.output)?.trim() ? <OutputBlock text={asText(item.output)!} truncated={item.truncated} copy /> : null}
         </div>
       ) : null}
 
       {item.type === "file_change" ? (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="min-w-0 wrap-anywhere font-mono text-muted-foreground">{item.fileName}</span>
+            <ToolPath path={item.fileName} className="min-w-0 wrap-anywhere font-mono text-muted-foreground" />
             {item.additions !== undefined || item.deletions !== undefined ? (
               <DiffStatLabel additions={item.additions ?? 0} deletions={item.deletions ?? 0} layout="inline" />
             ) : null}
@@ -247,10 +284,7 @@ export function ToolItemDetail({ item }: { item: TurnItem }) {
         <ul className={cn("max-h-80 space-y-1 overflow-auto wrap-anywhere", monoClassName)}>
           {item.results.slice(0, MAX_OUTPUT_LINES).map((result, index) => (
             <li key={`${result.fileName}:${result.line ?? ""}:${index}`}>
-              <span className="text-foreground/80">
-                {result.fileName}
-                {result.line === undefined ? "" : `:${result.line}`}
-              </span>
+              <ToolPath path={result.line === undefined ? result.fileName : `${result.fileName}:${result.line}`} className="text-foreground/80" />
               {result.preview ? <span className="text-muted-foreground"> {result.preview}</span> : null}
             </li>
           ))}

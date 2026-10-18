@@ -653,6 +653,35 @@ describe("steer", () => {
     expect(r.pane.keys).toEqual(["Escape"]);
   });
 
+  test("an auto-compaction (Thread.compacting, no /compact message) queues a steer like /compact", async () => {
+    const r = rig({ status: "working" });
+    r.store.append([
+      compactItem("u1", "run1", "fix the tests"),
+      { type: "run.started", threadId: "t1", payload: { run: { id: "run1", threadId: "t1", ordinal: 1, userItemId: "u1", status: "running", startedAt: T0 } } },
+      { type: "thread.updated", threadId: "t1", payload: { patch: { compacting: true }, at: T0 } },
+    ]);
+    const out = await r.run({ type: "message.dispatch", threadId: "t1", text: "after it, this", mode: "steer" });
+    expect(out).toEqual(expect.objectContaining({ ok: true }));
+    expect(r.pane.keys).toEqual([]);
+    expect(r.queue().map((q) => [q.text, q.mode, q.state])).toEqual([["after it, this", "queue", "queued"]]);
+    await r.setStatus("idle");
+    expect(r.pane.submitted).toEqual(["after it, this"]);
+  });
+
+  test("the compaction row on screen at the steer's key (flag not yet set) requeues it; no Escape", async () => {
+    const r = rig({ status: "working" });
+    r.store.append([
+      compactItem("u1", "run1", "fix the tests"),
+      { type: "run.started", threadId: "t1", payload: { run: { id: "run1", threadId: "t1", ordinal: 1, userItemId: "u1", status: "running", startedAt: T0 } } },
+    ]);
+    const compacting = readFileSync(join(FIXTURES, "..", "live-free-text", "claude--compacting.txt"), "utf8");
+    r.pane.screen = () => compacting;
+    await r.run({ type: "message.dispatch", threadId: "t1", text: "steer now", mode: "steer" });
+    expect(r.pane.keys).toEqual([]);
+    expect(r.marked).toEqual([]);
+    expect(r.queue().map((q) => [q.text, q.mode, q.state])).toEqual([["steer now", "queue", "queued"]]);
+  });
+
   test("steer with an open runtime request is refused", async () => {
     const r = rig({ status: "working" });
     r.store.append(requestEvents(pendingRequest()));

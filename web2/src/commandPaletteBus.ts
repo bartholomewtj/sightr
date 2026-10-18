@@ -5,22 +5,25 @@ import { create } from "zustand";
 
 export interface CommandPaletteOpenDetail {
   readonly query?: string;
+  /** Open straight into a mode ("files": the Open file… picker). */
+  readonly mode?: "files";
 }
 
 interface CommandPaletteState {
   open: boolean;
   /** The query the palette opens with (T3's `OpenSearch` intent). */
   initialQuery: string;
+  initialMode: "files" | null;
 }
 
-export const useCommandPaletteStore = create<CommandPaletteState>(() => ({ open: false, initialQuery: "" }));
+export const useCommandPaletteStore = create<CommandPaletteState>(() => ({ open: false, initialQuery: "", initialMode: null }));
 
 export function openCommandPalette(detail?: CommandPaletteOpenDetail): void {
-  useCommandPaletteStore.setState({ open: true, initialQuery: detail?.query ?? "" });
+  useCommandPaletteStore.setState({ open: true, initialQuery: detail?.query ?? "", initialMode: detail?.mode ?? null });
 }
 
 export function closeCommandPalette(): void {
-  if (useCommandPaletteStore.getState().open) useCommandPaletteStore.setState({ open: false, initialQuery: "" });
+  if (useCommandPaletteStore.getState().open) useCommandPaletteStore.setState({ open: false, initialQuery: "", initialMode: null });
 }
 
 export function toggleCommandPalette(): void {
@@ -34,5 +37,5 @@ export function isCommandPaletteOpen(): boolean {
 
 /** Test helper. */
 export function __resetCommandPalette(): void {
-  useCommandPaletteStore.setState({ open: false, initialQuery: "" });
+  useCommandPaletteStore.setState({ open: false, initialQuery: "", initialMode: null });
 }

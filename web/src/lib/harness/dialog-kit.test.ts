@@ -4,7 +4,16 @@ import { describe, expect, it } from "vitest";
 
 import { verifyExpectedPrompt } from "@shared/prompt-binding";
 import { parseLines, type Block } from "../blocks";
-import { BOUND_TEXT_LINES, boundTextOf, DIALOG_KIT_AGENTS, dialogModel, dialogPipeline, dialogRegion, parseDialog } from "./dialog-kit";
+import {
+  BOUND_TEXT_LINES,
+  boundTextOf,
+  DIALOG_KIT_AGENTS,
+  dialogModel,
+  dialogPipeline,
+  dialogRegion,
+  freeTextModel,
+  parseDialog,
+} from "./dialog-kit";
 import { DIALOG_CONTRACT } from "./dialog-contract";
 import { WIZARD_CANCEL_KEYS, WIZARD_SUBMIT_KEYS } from "./wizard-model";
 import { ADAPTER_AGENTS, adapterFor } from "./registry";
@@ -336,6 +345,71 @@ describe("dialog kit — leaf import closure", () => {
     // It really walked the adapters (a broken walker would pass vacuously).
     for (const leaf of ["claude/prompt-select.ts", "grok/ask.ts", "pi/ask.ts", "cursor/chrome.ts", "no-echo.ts"]) {
       expect(files.some((f) => f.replace(/\\/g, "/").endsWith(leaf))).toBe(true);
+    }
+  });
+});
+
+// ── Free text (live captures, 2026-10-18: fixtures/live-free-text) ──────────────────────────────
+
+const LIVE_DIR = join(import.meta.dirname, "..", "..", "fixtures", "live-free-text");
+const live = (file: string) => readFileSync(join(LIVE_DIR, file), "utf8");
+
+describe("dialog kit — free-text rows", () => {
+  it("an empty AskUserQuestion row makes the question freeText; the row is never an option", () => {
+    const parsed = parseDialog("claude", live("claude--ask-free-text-live.txt"))!;
+    expect(parsed.kind).toBe("question");
+    expect(parsed.freeText).toBe(true);
+    expect(parsed.options.map((o) => o.label)).toEqual(["A", "B", "Chat about this"]);
+    expect(freeTextModel("claude", live("claude--ask-free-text-live.txt"))).toMatchObject({
+      openKeys: ["3"],
+      ready: false,
+      text: "",
+      typeable: true,
+      submitKeys: ["Enter"],
+    });
+  });
+
+  it("a row typed into: no options (digits would be typed), not freeText (the caret hazard)", () => {
+    const parsed = parseDialog("claude", live("claude--ask-free-text-typed.txt"))!;
+    expect(parsed.options).toEqual([]);
+    expect(parsed.freeText).toBeUndefined();
+    const row = freeTextModel("claude", live("claude--ask-free-text-typed.txt"))!;
+    expect(row).toMatchObject({ ready: true, text: "my own answer C", typeable: false, openKeys: [] });
+    // Same dialog: the pointer and the typed text do not move its identity.
+    expect(row.identity).toBe(freeTextModel("claude", live("claude--ask-free-text-live.txt"))!.identity);
+  });
+
+  it("a Claude wizard step with its row typed into (wrapped footer) parses, options locked", () => {
+    const parsed = parseDialog("claude", live("claude--wizard-free-text-typed.txt"))!;
+    expect(parsed.kind).toBe("question");
+    expect(parsed.steps?.map((s) => s.label)).toEqual(["First", "Second"]);
+    expect(parsed.options).toEqual([]);
+    expect(freeTextModel("claude", live("claude--wizard-free-text-typed.txt"))).toMatchObject({
+      ready: true,
+      text: "free one",
+      typeable: false,
+    });
+  });
+
+  it("Pi: arrows then Enter open the editor; the open editor is the same dialog, ready", () => {
+    const closed = freeTextModel("pi", live("pi--ask-radio-live.txt"))!;
+    expect(closed).toMatchObject({ openKeys: ["Down", "Down", "Enter"], ready: false, typeable: true });
+    expect(parseDialog("pi", live("pi--ask-radio-live.txt"))!.freeText).toBe(true);
+    const open = freeTextModel("pi", live("pi--ask-radio-editing.txt"))!;
+    expect(open).toMatchObject({ openKeys: [], ready: true, text: "", typeable: true });
+    expect(open.identity).toBe(closed.identity);
+    const typed = freeTextModel("pi", live("pi--ask-radio-editing-typed.txt"))!;
+    expect(typed).toMatchObject({ ready: true, text: "my pi answer Z", typeable: false });
+    expect(typed.identity).toBe(closed.identity);
+    const wizard = freeTextModel("pi", live("pi--ask-wizard-editing.txt"))!;
+    expect(wizard).toMatchObject({ ready: true, text: "", typeable: true });
+  });
+
+  it("only measured rows: Grok's `z` row and a plan dialog are never typed by the bridge", () => {
+    for (const file of fixtures("grok")) expect(freeTextModel("grok", raw(file))).toBeNull();
+    for (const file of fixtures("claude").filter((f) => f.includes("plan"))) {
+      expect(freeTextModel("claude", raw(file))).toBeNull();
+      expect(parseDialog("claude", raw(file))?.freeText).toBeUndefined();
     }
   });
 });

@@ -10,13 +10,22 @@
 // this", a review's Cancel): warn colours, never first, a second tap to confirm. The Next/Submit
 // control lives in the card rather than in the composer's primary actions, because the card replaces
 // the composer. No collapse toggle and no dismiss: the card is the page's one "you" step. A question
-// with no options (a free-text row) shows the prompt and Open terminal.
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type Ref } from "react";
-import { CheckIcon, Loader2Icon, MessageCircleQuestionIcon, TriangleAlertIcon } from "lucide-react";
+// with no options (a free-text row) shows the prompt and Open terminal. A `freeText` question (the
+// dialog's "Type something." row, T3's `allowCustomAnswer`) adds "Type your own answer": the bridge
+// types the words into that row and presses Enter. 16px text and 44px targets; on a touch screen
+// Enter is a newline (dictation, the soft return key), so only Send sends.
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type Ref } from "react";
+import { CheckIcon, Loader2Icon, MessageCircleQuestionIcon, SendHorizontalIcon, TriangleAlertIcon } from "lucide-react";
 
 import type { RuntimeRequest } from "@shared/v2/contracts";
-import { requestBoxCount, requestOptionIndex, requestOptionValue, requestQuestion } from "@shared/v2/request-question";
-import { RESPONDING_ADVANCE, respondToRequest } from "@/state/composer";
+import {
+  FREE_TEXT_MAX_CHARS,
+  requestBoxCount,
+  requestOptionIndex,
+  requestOptionValue,
+  requestQuestion,
+} from "@shared/v2/request-question";
+import { RESPONDING_ADVANCE, RESPONDING_TEXT, respondToRequest, respondWithText } from "@/state/composer";
 import { cn } from "~/lib/utils";
 import {
   derivePendingUserInputProgress,
@@ -78,6 +87,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   const responding = respondingIndex !== null;
   const locked = disabled || responding;
   const review = request.answers !== undefined;
+  const freeText = request.freeText === true && !review;
 
   const [draft, setDraft] = useState<PendingUserInputDraftAnswer | undefined>(() => initialDraft(request));
   const [optimistic, setOptimistic] = useState<number | null>(null);
@@ -286,7 +296,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               </button>
             ) : null}
           </div>
-        ) : (
+        ) : freeText ? null : (
           <>
             <p className="text-sm text-muted-foreground">Answer in the Terminal tab.</p>
             <div>
@@ -294,6 +304,9 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
             </div>
           </>
         )}
+        {freeText ? (
+          <FreeTextAnswer request={request} locked={locked} sending={respondingIndex === RESPONDING_TEXT} />
+        ) : null}
         {verdict ? (
           <p role="status" className="text-xs text-muted-foreground">
             {verdict}
@@ -303,3 +316,66 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     </ComposerBanner.Root>
   );
 });
+
+/** A draft per thread, so a dialog that redraws (a new request, same question) keeps what was typed. */
+const freeTextDrafts = new Map<string, string>();
+
+/** A touch screen: Enter there is a newline (dictation, the soft return key), never a send. */
+function coarsePointer(): boolean {
+  return typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches === true;
+}
+
+function FreeTextAnswer({ request, locked, sending }: { request: RuntimeRequest; locked: boolean; sending: boolean }) {
+  const id = useId();
+  const [draft, setDraftState] = useState(() => freeTextDrafts.get(request.threadId) ?? "");
+  const setDraft = (next: string) => {
+    freeTextDrafts.set(request.threadId, next);
+    setDraftState(next);
+  };
+  const empty = draft.trim() === "";
+  const send = async () => {
+    if (locked || empty) return;
+    if (await respondWithText(request.threadId, request.id, draft.trim())) freeTextDrafts.delete(request.threadId);
+  };
+  return (
+    <div className="flex flex-col gap-1.5" data-free-text="true">
+      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+        Type your own answer
+      </label>
+      <div className="flex items-end gap-2">
+        <textarea
+          id={id}
+          value={draft}
+          rows={1}
+          maxLength={FREE_TEXT_MAX_CHARS}
+          disabled={locked}
+          enterKeyHint="send"
+          autoCapitalize="sentences"
+          placeholder="Your answer"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing || coarsePointer()) return;
+            e.preventDefault();
+            void send();
+          }}
+          className="field-sizing-content max-h-32 min-h-11 min-w-0 flex-1 resize-none rounded-lg border-2 border-border bg-card px-3 py-2 text-base text-foreground outline-none focus:border-you disabled:opacity-60"
+        />
+        <button
+          type="button"
+          data-free-text-send="true"
+          aria-busy={sending || undefined}
+          disabled={locked || empty}
+          onClick={() => void send()}
+          className="flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-lg border-2 border-you bg-you px-3 text-sm font-semibold text-you-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {sending ? (
+            <Loader2Icon className="size-4 animate-spin" aria-label="Sending" />
+          ) : (
+            <SendHorizontalIcon className="size-4" aria-hidden="true" />
+          )}
+          Send
+        </button>
+      </div>
+    </div>
+  );
+}

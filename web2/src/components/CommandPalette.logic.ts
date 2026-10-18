@@ -3,11 +3,13 @@
 // Needs you / Recent threads / Actions with an empty query and Threads / Projects / Actions with one;
 // a subsequence match ranks below T3's token match; actions carry an `applies` test so only the ones
 // that fit the current thread are offered. Filtering, ranking, rows and the highlighted-item lookup
-// are T3's (Effect's Array/Result replaced by plain arrays). No browse, submenu or add-project modes.
+// are T3's (Effect's Array/Result replaced by plain arrays). One extra mode, "Open file…" (T3's
+// ProjectFilePicker idea on the Files search API). No browse, submenu or add-project modes.
 import { type ReactNode } from "react";
 
 import type { KeybindingCommand } from "@t3tools/contracts";
 import type { Project, Thread } from "@shared/v2/contracts";
+import type { FileSearchResult } from "@shared/wire";
 
 import { compareActive, isNeedsYou } from "./Sidebar.logic";
 
@@ -158,6 +160,8 @@ export interface CommandPaletteContext {
   readonly thread: Thread | null;
   readonly desktop: boolean;
   readonly readOnly: boolean;
+  /** The open thread shows its timeline, where the find bar works (not the CLI view). */
+  readonly timeline?: boolean;
 }
 
 export interface CommandPaletteActionSpec {
@@ -167,6 +171,8 @@ export interface CommandPaletteActionSpec {
   readonly icon: ReactNode;
   readonly shortcutCommand?: KeybindingCommand;
   readonly applies?: (ctx: CommandPaletteContext) => boolean;
+  /** Run without closing the palette (a mode switch). */
+  readonly keepOpen?: boolean;
   readonly run: () => Promise<void> | void;
 }
 
@@ -181,6 +187,7 @@ export function buildActionItems(specs: ReadonlyArray<CommandPaletteActionSpec>,
       title: spec.title,
       icon: spec.icon,
       ...(spec.shortcutCommand ? { shortcutCommand: spec.shortcutCommand } : {}),
+      ...(spec.keepOpen ? { keepOpen: true } : {}),
       run: spec.run,
     }));
 }
@@ -188,6 +195,10 @@ export function buildActionItems(specs: ReadonlyArray<CommandPaletteActionSpec>,
 /** Context tests the action table uses. */
 export const applies = {
   thread: (ctx: CommandPaletteContext) => ctx.thread !== null,
+  /** Find in thread: the open thread's timeline is the view, and the thread is not still being spawned. */
+  findable: (ctx: CommandPaletteContext) => ctx.thread !== null && ctx.timeline !== false,
+  /** A thread with a pane to ask the folder of. */
+  hasPane: (ctx: CommandPaletteContext) => ctx.thread !== null && ctx.thread.paneId !== "",
   writableThread: (ctx: CommandPaletteContext) => ctx.thread !== null && !ctx.readOnly && ctx.thread.shelf !== "archived",
   running: (ctx: CommandPaletteContext) =>
     ctx.thread !== null && !ctx.readOnly && ctx.thread.status === "working" && ctx.thread.capabilities.canInterrupt,
@@ -306,4 +317,72 @@ export function buildRootGroups(input: {
 
 export function getCommandPaletteInputPlaceholder(): string {
   return "Search threads, projects and actions...";
+}
+
+// ── Open file… (the files mode) ─────────────────────────────────────────────────────────────────
+
+export const FILE_SEARCH_MIN_CHARS = 2;
+
+export function getFilePickerPlaceholder(): string {
+  return "Search files by name...";
+}
+
+/**
+ * A Files rel path the picker may hand to `openFile`: relative, no `..`, no drive or backslash. The bridge
+ * has already contained and filtered the results (ADR 0026); this refuses anything odd before it is used.
+ */
+export function isSafeFilesRelPath(path: string): boolean {
+  if (path === "" || path.startsWith("/") || path.includes("\\") || path.includes("\u0000") || /^[a-z]:/i.test(path)) return false;
+  return path.split("/").every((seg) => seg !== ".." && seg !== "");
+}
+
+function dirOf(path: string): string {
+  const at = path.lastIndexOf("/");
+  return at === -1 ? "" : path.slice(0, at);
+}
+
+/**
+ * Re-rank the bridge's name matches: a name that is the query, starts with it, or contains it comes before a
+ * match on the folder part; files before folders; then shorter paths. Unsafe paths are dropped.
+ */
+export function rankFileResults(results: ReadonlyArray<FileSearchResult>, query: string): FileSearchResult[] {
+  const q = normalizeSearchText(query);
+  const score = (r: FileSearchResult) => {
+    const name = normalizeSearchText(r.name);
+    if (name === q) return 4;
+    if (name.startsWith(q)) return 3;
+    if (name.includes(q)) return 2;
+    return 1;
+  };
+  return results
+    .filter((r) => isSafeFilesRelPath(r.path))
+    .map((r, index) => ({ r, index, rank: score(r) }))
+    .sort(
+      (a, b) =>
+        b.rank - a.rank ||
+        Number(a.r.kind === "dir") - Number(b.r.kind === "dir") ||
+        a.r.path.length - b.r.path.length ||
+        a.index - b.index,
+    )
+    .map((e) => e.r);
+}
+
+export function buildFileItems(input: {
+  results: ReadonlyArray<FileSearchResult>;
+  query: string;
+  icon: (result: FileSearchResult) => ReactNode;
+  openFile: (result: FileSearchResult) => Promise<void> | void;
+  limit?: number;
+}): CommandPaletteActionItem[] {
+  return rankFileResults(input.results, input.query)
+    .slice(0, input.limit ?? 50)
+    .map((r) => ({
+      kind: "action" as const,
+      value: `file:${r.path}`,
+      searchTerms: [r.name, r.path],
+      title: r.name,
+      description: dirOf(r.path) || "Files root",
+      icon: input.icon(r),
+      run: () => input.openFile(r),
+    }));
 }

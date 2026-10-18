@@ -220,3 +220,78 @@ describe("ComposerPendingUserInputPanel — preview selects", () => {
     expect(list.nextElementSibling).toBe(pre);
   });
 });
+
+describe("ComposerPendingUserInputPanel — Type your own answer (freeText)", () => {
+  const single = (over: Partial<RuntimeRequest> = {}) =>
+    question({
+      prompt: "Which option do you choose?",
+      options: [
+        { label: "A", keys: ["1", "Enter"] },
+        { label: "B", keys: ["2", "Enter"] },
+      ],
+      freeText: true,
+      ...over,
+    });
+
+  it("shows a 16px, 44px answer field and posts the typed text as `text`", async () => {
+    show(single());
+    const box = within(panel()).getByLabelText("Type your own answer");
+    expect(box.className).toMatch(/\btext-base\b/);
+    expect(box.className).toMatch(/\bmin-h-11\b/);
+    const send = within(panel()).getByRole("button", { name: /Send/ });
+    expect(send).toBeDisabled();
+    fireEvent.change(box, { target: { value: "  my own answer " } });
+    fireEvent.click(send);
+    await waitFor(() => expect(responds()).toEqual([expect.objectContaining({ requestId: "r1", text: "my own answer" })]));
+    expect(responds()[0]).not.toHaveProperty("optionIndex");
+    // Typing digits in the field never picks an option.
+    expect(responds()).toHaveLength(1);
+  });
+
+  it("digits typed in the field are text, not option picks", () => {
+    show(single());
+    const box = within(panel()).getByLabelText("Type your own answer");
+    box.focus();
+    fireEvent.keyDown(box, { key: "1" });
+    expect(posts).toEqual([]);
+  });
+
+  it("Enter sends on a desktop; on a touch screen it does not (dictation, the soft return)", async () => {
+    show(single());
+    const box = within(panel()).getByLabelText("Type your own answer");
+    const original = window.matchMedia;
+    try {
+      window.matchMedia = ((media: string) => ({ ...original(media), matches: /pointer:\s*coarse/.test(media) })) as typeof window.matchMedia;
+      fireEvent.change(box, { target: { value: "on the phone" } });
+      fireEvent.keyDown(box, { key: "Enter" });
+      expect(responds()).toEqual([]);
+    } finally {
+      window.matchMedia = original;
+    }
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(responds()).toEqual([expect.objectContaining({ text: "on the phone" })]));
+  });
+
+  it("a focused row (no options) shows only the field, not Open terminal", () => {
+    show(single({ options: [] }));
+    expect(within(panel()).getByLabelText("Type your own answer")).toBeInTheDocument();
+    expect(within(panel()).queryByText("Answer in the Terminal tab.")).toBeNull();
+  });
+
+  it("no freeText: no field; a review step never shows one", () => {
+    show(question());
+    expect(within(panel()).queryByLabelText("Type your own answer")).toBeNull();
+  });
+
+  it("a refusal keeps the draft and shows why", async () => {
+    server.use(
+      http.post("/api/v2/command", () => HttpResponse.json({ ok: false, code: "invalid", error: "no-free-text" }, { status: 400 })),
+    );
+    show(single());
+    const box = within(panel()).getByLabelText("Type your own answer");
+    fireEvent.change(box, { target: { value: "keep me" } });
+    fireEvent.click(within(panel()).getByRole("button", { name: /Send/ }));
+    await waitFor(() => expect(within(panel()).getByText("This question has no empty answer box on screen now.")).toBeInTheDocument());
+    expect(within(panel()).getByLabelText("Type your own answer")).toHaveValue("keep me");
+  });
+});

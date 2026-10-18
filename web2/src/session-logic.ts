@@ -9,6 +9,7 @@
 //   interrupted gets no synthetic "Stopped" notice.
 // - An entry's id is the turn item's id, also for messages: a journal entry with two text parts gives
 //   two items that share a `messageId`.
+// - An MCP tool (`mcp__server__tool`) is labelled "<tool> · <server>" (`dynamicToolDisplayName`).
 // - Sightr items: `session` and `screen` become `event` entries; a run that ended `interrupted` or
 //   `failed` gets a synthetic notice entry after its last item (there is no run_interrupt item here).
 // - Reasoning gets a duration (Sightr, `reasoningTime`), because journals record thinking as one
@@ -153,6 +154,19 @@ export function webSearchLabel(item: Extract<TurnItem, { type: "web_search" }>):
     }
   }
   return "Searched the web";
+}
+
+/** `mcp__<server>__<tool>` (Claude's MCP tool names) as its parts; null for any other name. */
+export function mcpToolParts(toolName: string | null | undefined): { server: string; tool: string } | null {
+  const m = /^mcp__(.+?)__(.+)$/.exec(toolName ?? "");
+  return m ? { server: m[1]!, tool: m[2]! } : null;
+}
+
+/** A tool's name as a row shows it: an MCP tool as "<tool> · <server>", anything else as named. */
+export function dynamicToolDisplayName(toolName: string | null | undefined): string | null {
+  const mcp = mcpToolParts(toolName);
+  if (mcp) return `${mcp.tool} · ${mcp.server}`;
+  return toolName?.trim() || null;
 }
 
 function itemCreatedAt(item: TurnItem): number {
@@ -321,6 +335,8 @@ function projectedWorkEntry(item: TurnItem, reasoningTime: ReasoningTime | undef
       // Sightr: journals record a tool's input as one summary string (the path, for a read).
       const [readPath] =
         typeof item.input === "string" ? [item.input] : collectToolFilePaths({ input: item.input });
+      // Sightr: an MCP tool reads "<tool> · <server>", not its raw `mcp__server__tool` name.
+      const displayName = dynamicToolDisplayName(item.toolName);
       return {
         ...common,
         label:
@@ -329,10 +345,10 @@ function projectedWorkEntry(item: TurnItem, reasoningTime: ReasoningTime | undef
             : classified === "search"
               ? (formatSearchToolLabel({ input: item.input }) ??
                 (typeof item.input === "string" && item.input ? `Searched ${item.input}` : null) ??
-                item.toolName ??
+                displayName ??
                 "Tool call")
-              : (item.toolName ?? "Tool call"),
-        toolTitle: item.toolName ?? title ?? "Tool",
+              : (displayName ?? "Tool call"),
+        toolTitle: displayName ?? title ?? "Tool",
         toolData: { input: item.input, output: item.output },
         ...(typeof item.input === "string" && item.input && classified !== "read"
           ? { detail: item.input }

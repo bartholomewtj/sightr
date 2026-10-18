@@ -249,7 +249,11 @@ export interface BridgeConfig { push: boolean; vapidPublicKey: string; build?: s
 export interface LockCredential { id: string; name: string; addedAt: number; }
 export interface LockStatus { enabled: boolean; corrupt?: boolean; unlocked: boolean; webauthn?: boolean; credentials?: LockCredential[]; allowCredentials?: string[]; }
 export interface NotifyPrefs { blocked: boolean; done: boolean; }
-export interface BridgeSettings { deviceAllowlist: string[]; notifyDelayMs: number; submitKeys: string[]; readLines: number; }
+export interface BridgeSettings {
+  deviceAllowlist: string[]; notifyDelayMs: number; submitKeys: string[]; readLines: number;
+  /** v2: settle an active thread idle this many days (0 = off). Absent from an older bridge. */
+  autoSettleDays?: number;
+}
 export type BridgeSettingKey = keyof BridgeSettings;
 /** GET/POST /api/settings: effective values, which ones Settings overrides, and the `.env` values
  *  beneath. `overridden`/`defaults` are optional so an older bridge still parses. */

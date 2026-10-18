@@ -28,6 +28,11 @@ function fixtureLines(name: string): StyledLine[] {
   return splitLines(parseAnsi(fixtureText(name)));
 }
 
+/** Live herdr reads kept outside the corpus (fixtures/live-free-text): the free-text walk, 2026-10-18. */
+function liveLines(name: string): StyledLine[] {
+  return splitLines(parseAnsi(readFileSync(join(PANES_DIR, "..", "live-free-text", name), "utf8")));
+}
+
 describe("detectPromptSelect — the five blocked-state fixtures", () => {
   it("folder-trust prompt → trust family, digit-alone keys", () => {
     const model = detectPromptSelect(fixtureLines("claude--trust-prompt.txt"));
@@ -222,16 +227,44 @@ describe("detectPromptSelect — the plan-approval feedback row is an INPUT, in 
     expect(model!.feedback).toBeUndefined();
   });
 
-  it("AskUserQuestion's free-text row is DROPPED but never modelled", () => {
-    // "Type something." is a free-text row too, and it has always been dropped — but nothing about
-    // its focus or typed-in behaviour has been measured, and it carries no static description
-    // sub-line to identify it once typed into. Modelling it would hand the plan flow's copy ("Sends
-    // the plan back…") and its keystroke plan to a dialog where Enter means something else. Only the
-    // plan row's verified marker earns a model.
+  it("AskUserQuestion's free-text row is modelled as free-text feedback, never as a button", () => {
+    // Measured 2026-10-18 (Claude Code 2.1.302): the row's digit focuses it, typed text replaces the
+    // label, Enter answers with it. It is `purpose: "free-text"`, so the plan flow's copy never applies.
     const model = detectPromptSelect(fixtureLines("claude--select-menu.txt"))!;
     expect(model.family).toBe("select");
     expect(model.options.map((o) => o.label)).not.toContain("Type something.");
-    expect(model.feedback).toBeUndefined();
+    expect(model.options.map((o) => o.label)).toEqual(["Red", "Green", "Blue", "Chat about this"]);
+    expect(model.feedback).toEqual({ key: "4", focused: false, text: "", purpose: "free-text", openKeys: ["4"] });
+  });
+
+  it("finds the free-text row by place once typed into, and reads its value (live capture)", () => {
+    const typed = detectPromptSelect(liveLines("claude--ask-free-text-typed.txt"))!;
+    expect(typed.family).toBe("select");
+    // The typed text is never an option ("❯ 3. my own answer C" used to be one, keyed `3, Enter`).
+    expect(typed.options.map((o) => o.label)).toEqual(["A", "B", "Chat about this"]);
+    expect(typed.feedback).toEqual({ key: "3", focused: true, text: "my own answer C", purpose: "free-text", openKeys: ["3"] });
+    const fresh = detectPromptSelect(liveLines("claude--ask-free-text-live.txt"))!;
+    expect(fresh.feedback).toEqual({ key: "3", focused: false, text: "", purpose: "free-text", openKeys: ["3"] });
+  });
+
+  it("a typed row that wraps is read back as one value", () => {
+    const lines = [
+      " ☐ Choice",
+      "",
+      "Which option do you choose?",
+      "",
+      "  1. A",
+      "  2. B",
+      "❯ 3. a long answer that the pane has to",
+      "     wrap onto a second row",
+      "─".repeat(40),
+      "  4. Chat about this",
+      "",
+      "Enter to select · ↑/↓ to navigate · ctrl+g to edit in Notepad · Esc to cancel",
+    ].map((text): StyledLine => ({ segments: [{ text, style: {}, muted: false }] }));
+    const model = detectPromptSelect(lines)!;
+    expect(model.feedback?.text).toBe("a long answer that the pane has to wrap onto a second row");
+    expect(model.options.map((o) => o.label)).toEqual(["A", "B", "Chat about this"]);
   });
 
   it("coreSignature survives the flow's OWN first keystroke, where signature must not", () => {
