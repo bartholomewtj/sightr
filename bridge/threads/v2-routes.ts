@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { join } from "node:path";
 
 import {
   COMMAND_TYPES,
@@ -28,6 +29,7 @@ import { paneKey, PaneBusyError, type PaneQueue } from "../pane-queue.ts";
 import { decodePathSegment, failureText, json, requireJsonBody, text } from "../responses.ts";
 import type { StateEngine } from "../state-engine.ts";
 import { buildId as defaultBuildId } from "../static-assets.ts";
+import { attachmentResponse, ATTACHMENT_ROUTE, createAttachmentReader, type AttachmentReader } from "./attachments.ts";
 import { decide, type DecideState } from "./decide.ts";
 import type { ServerThread } from "./events.ts";
 import type { HerdIngestor } from "./herd-ingest.ts";
@@ -724,6 +726,18 @@ export function createV2Routes(deps: V2RoutesDeps): V2Routes {
     return json(s.historyPage(threadId, before, limit), req.headers.get("accept-encoding"));
   }
 
+  const attachments: AttachmentReader | null = store
+    ? createAttachmentReader({ store, uploadsDir: cfg.stateDir ? join(cfg.stateDir, "uploads") : null })
+    : null;
+
+  async function attachmentRoute(req: Request, threadId: string, itemId: string, index: number): Promise<Response> {
+    const denied = guard(req, cfg, "read");
+    if (denied) return denied;
+    const off = refusal();
+    if (off) return respondJson(off, req);
+    return attachmentResponse(await attachments!.load(threadId, itemId, index));
+  }
+
   const methodNotAllowed = () => Promise.resolve(text("method not allowed", 405));
 
   return {
@@ -731,6 +745,14 @@ export function createV2Routes(deps: V2RoutesDeps): V2Routes {
       const { pathname } = url;
       if (pathname === V2_COMMAND_PATH) return req.method === "POST" ? commandRoute(req) : methodNotAllowed();
       if (pathname === V2_SHELL_PATH) return req.method === "GET" ? Promise.resolve(shellRoute(req, url)) : methodNotAllowed();
+      const a = ATTACHMENT_ROUTE.exec(pathname);
+      if (a) {
+        if (req.method !== "GET") return methodNotAllowed();
+        const threadId = decodePathSegment(a[1]!);
+        const itemId = decodePathSegment(a[2]!);
+        if (threadId === null || itemId === null) return Promise.resolve(text("bad id", 400));
+        return attachmentRoute(req, threadId, itemId, Number(a[3]));
+      }
       const m = THREAD_ROUTE.exec(pathname);
       if (m) {
         if (req.method !== "GET") return methodNotAllowed();
