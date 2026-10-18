@@ -48,7 +48,12 @@ export function command(id: string, input: string, over: Partial<Base> & { outpu
   } as TurnItem;
 }
 
-export function edit(id: string, fileName: string, over: Partial<Base> = {}): TurnItem {
+/** A `file_change` item; `over` may carry its own fields (`additions`, `diffStr`, `errorText`, …) beside the base ones. */
+export function edit(
+  id: string,
+  fileName: string,
+  over: Partial<Base> & { additions?: number; deletions?: number; diffStr?: string; oldStr?: string; newStr?: string; errorText?: string } = {},
+): TurnItem {
   return { ...base(id, { title: "Edit", ...over }), type: "file_change", fileName } as TurnItem;
 }
 

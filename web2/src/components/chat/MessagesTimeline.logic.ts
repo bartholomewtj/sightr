@@ -11,6 +11,8 @@
 //   (`insertDayDividers`).
 // - Follow re-arms within 80 px of the end (T11), not 40.
 // - A dynamic tool's row leads with `dynamicToolDisplayName` (an MCP tool as "<tool> · <server>").
+// - Sightr row: `changed-files` (the "Changed files" card under a run's reply, T24), derived from the
+//   run's `file_change` items (`ChangedFiles.logic.ts`); it is not part of a work-log group.
 // - The live row names a command by its first 40 characters (`commandPreview`), not its first word:
 //   a Pi loop read "Running for" (live 2026-10-18). The row adds the elapsed time (MessagesTimeline).
 import type { Run, TurnItem } from "@shared/v2/contracts";
@@ -30,6 +32,7 @@ import {
   commandDisplayText,
   commandProgramName,
 } from "@t3tools/client-runtime/work-log/command-label";
+import { changedFilesSignature, deriveRunChangedFiles, type RunChangedFiles } from "./ChangedFiles.logic";
 import {
   liveActivityToolStatus,
   normalizeCompactToolLabel,
@@ -354,6 +357,14 @@ type MessagesTimelineRowContent =
       id: string;
       createdAt: number;
       projectedItem: TurnItem;
+    }
+  | {
+      /** Sightr (T24): the files a run changed, from its `file_change` items. Not a work-log row. */
+      kind: "changed-files";
+      id: string;
+      createdAt: number;
+      runId: RunId;
+      summary: RunChangedFiles;
     }
   | {
       /** Sightr: the calendar day changed between two rows. */
@@ -1177,13 +1188,85 @@ export function deriveMessagesTimelineRows(input: MessagesTimelineRowsInput): Me
     }
   }
 
-  const result = attachTrailingToolGroupsToAssistant(nextRows);
+  const result = insertChangedFilesRows(
+    attachTrailingToolGroupsToAssistant(nextRows),
+    deriveRunChangedFiles(timelineEntries),
+  );
   const linked = result.map((row, index) =>
     timelineRowIsWorkLog(row) && timelineRowIsWorkLog(result[index + 1])
       ? { ...row, continuesWorkLog: true }
       : row,
   );
   return input.now === undefined ? linked : insertDayDividers(linked, input.now);
+}
+
+/** The run a row belongs to, for placing its changed-files card; null for rows with no run of their own. */
+function rowRunId(row: MessagesTimelineRow): RunId | null {
+  switch (row.kind) {
+    case "work-toggle":
+    case "turn-fold":
+      return row.runId ?? null;
+    case "work":
+      return row.groupedEntries.find((entry) => entry.runId != null)?.runId ?? null;
+    case "work-live":
+      return row.entry.runId ?? null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * T24: a `changed-files` row for each run that has a summary. It follows the run's last assistant
+ * message row (and its `assistant-meta` when trailing tool groups moved the meta); a run with no
+ * assistant message gets it after its last work row, or its `turn-fold` row when everything is folded.
+ * The id is the run's, so the list keeps the row's identity as counts change and as a newer message
+ * moves it down.
+ */
+function insertChangedFilesRows(
+  rows: MessagesTimelineRow[],
+  summaries: ReadonlyMap<RunId, RunChangedFiles>,
+): MessagesTimelineRow[] {
+  if (summaries.size === 0) return rows;
+  const lastMessageIndex = new Map<RunId, number>();
+  const lastWorkIndex = new Map<RunId, number>();
+  const indexById = new Map<string, number>();
+  rows.forEach((row, index) => {
+    indexById.set(row.id, index);
+    if (row.kind === "message" && row.message.role === "assistant" && row.message.runId != null) {
+      lastMessageIndex.set(row.message.runId, index);
+      return;
+    }
+    const runId = rowRunId(row);
+    if (runId !== null) lastWorkIndex.set(runId, index);
+  });
+
+  const after = new Map<number, MessagesTimelineRow[]>();
+  for (const [runId, summary] of summaries) {
+    let anchor = lastMessageIndex.get(runId);
+    if (anchor !== undefined) {
+      const messageRow = rows[anchor] as Extract<MessagesTimelineRow, { kind: "message" }>;
+      const metaIndex = indexById.get(`assistant-meta:${messageRow.message.id}`);
+      if (metaIndex !== undefined && metaIndex > anchor) anchor = metaIndex;
+    } else {
+      anchor = lastWorkIndex.get(runId);
+    }
+    if (anchor === undefined) continue;
+    const row: MessagesTimelineRow = {
+      kind: "changed-files",
+      id: `changed-files:${runId}`,
+      createdAt: rows[anchor]!.createdAt ?? 0,
+      runId,
+      summary,
+    };
+    const list = after.get(anchor);
+    if (list) list.push(row);
+    else after.set(anchor, [row]);
+  }
+  if (after.size === 0) return rows;
+  return rows.flatMap((row, index) => {
+    const added = after.get(index);
+    return added ? [row, ...added] : [row];
+  });
 }
 
 function timelineRowIsWorkLog(row: MessagesTimelineRow | undefined): boolean {
@@ -1232,7 +1315,7 @@ export function insertDayDividers(rows: MessagesTimelineRow[], now: number): Mes
   let currentDay: string | null = null;
   for (const row of rows) {
     const at = row.createdAt;
-    if (typeof at === "number" && Number.isFinite(at) && at > 0 && row.kind !== "assistant-meta") {
+    if (typeof at === "number" && Number.isFinite(at) && at > 0 && row.kind !== "assistant-meta" && row.kind !== "changed-files") {
       const day = localDayKey(at);
       // `YYYY-MM-DD` keys order as strings.
       if (currentDay === null || day > currentDay) {
@@ -1315,6 +1398,10 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
     }
     case "event":
       return a.projectedItem === (b as typeof a).projectedItem;
+    case "changed-files": {
+      const bc = b as typeof a;
+      return a.runId === bc.runId && changedFilesSignature(a.summary) === changedFilesSignature(bc.summary);
+    }
     case "work": {
       const bw = b as typeof a;
       return (

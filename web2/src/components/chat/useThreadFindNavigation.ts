@@ -21,7 +21,7 @@ export function openForFind(threadId: string, runIds: readonly string[], groupId
     const expandedWorkGroupIds = new Set(ui.expandedWorkGroupIds);
     runIds.forEach((id) => expandedRunIds.add(id));
     groupIds.forEach((id) => expandedWorkGroupIds.add(id));
-    return { byThread: { ...s.byThread, [threadId]: { expandedRunIds, expandedWorkGroupIds } } };
+    return { byThread: { ...s.byThread, [threadId]: { ...ui, expandedRunIds, expandedWorkGroupIds } } };
   });
 }
 

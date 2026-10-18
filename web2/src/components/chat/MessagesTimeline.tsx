@@ -28,6 +28,8 @@
 // - Images: a user bubble shows its pasted/uploaded images as T3's two-column grid, and a tool row
 //   with output images (a Read of a PNG, a screenshot) carries an image mark and shows them when
 //   opened (`TimelineAttachments`; bytes from the bridge's attachment route; T3's ExpandedImageDialog).
+// - T24: a `changed-files` row (the run's changed-files card, `AssistantChangedFilesSection`) follows
+//   the run's reply, and `ChangedFileSheet` (a tap on a file) is mounted beside the list.
 // - Left out: minimap, citations, forks, revert, checkpoint diffs, video/file previews, worktree
 //   setup, MCP apps, HTML renders.
 import { LegendList, type LegendListRef, type MaintainScrollAtEndOptions } from "@legendapp/list/react";
@@ -108,6 +110,8 @@ import {
   type MessagesTimelineRow,
   type StableMessagesTimelineRowsState,
 } from "./MessagesTimeline.logic";
+import { AssistantChangedFilesSection } from "./AssistantChangedFilesSection";
+import { ChangedFileSheet } from "./ChangedFileSheet";
 import { DiffStatLabel } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { ProposedPlanCard } from "./ProposedPlanCard";
@@ -165,6 +169,7 @@ export function MessagesTimeline({ threadId }: MessagesTimelineProps) {
     <OpenFileThreadContext value={threadId}>
       <MessagesTimelineBody threadId={threadId} />
       <ThreadDetailsSheet threadId={threadId} />
+      <ChangedFileSheet threadId={threadId} />
     </OpenFileThreadContext>
   );
 }
@@ -513,9 +518,16 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
       {row.kind === "event" ? <EventTimelineRow row={row} /> : null}
       {row.kind === "day" ? <TimelineSystemDivider label={row.label} /> : null}
+      {row.kind === "changed-files" ? <ChangedFilesTimelineRow row={row} /> : null}
     </div>
   );
 });
+
+/** T24: the files this run changed, under its reply. */
+function ChangedFilesTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "changed-files" }> }) {
+  const ctx = use(TimelineRowCtx);
+  return <AssistantChangedFilesSection threadId={ctx.threadId} runId={row.runId} summary={row.summary} />;
+}
 
 // ── Time ──────────────────────────────────────────────────────────────────────────────────────────
 

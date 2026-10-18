@@ -195,6 +195,106 @@ describe("deriveMessagesTimelineRows (T3 row model on Sightr items)", () => {
   });
 });
 
+describe("the changed-files row (T24)", () => {
+  const change = (id: string, file: string, over: Record<string, unknown> = {}) =>
+    edit(id, file, { ...inRun, additions: 2, deletions: 1, ...over });
+  const cardOf = (rows: MessagesTimelineRow[]) => rows.find((r) => r.kind === "changed-files");
+
+  it("follows the run's last assistant message", () => {
+    const rows = rowsFor(
+      [user("u:0", "go", inRun), change("e:0", "a.ts"), assistant("m:0", "first", inRun), assistant("n:0", "done", inRun)],
+      [run(R)],
+      open,
+    );
+    const index = rows.findIndex((r) => r.kind === "changed-files");
+    expect(rows[index - 1]).toMatchObject({ kind: "message", id: "n:0" });
+    expect(cardOf(rows)).toMatchObject({ id: "changed-files:r1", runId: R, summary: { files: 1, additions: 2, deletions: 1 } });
+  });
+
+  it("follows assistant-meta when trailing tool groups moved it", () => {
+    const rows = rowsFor(
+      [user("u:0", "go", inRun), change("e:0", "a.ts"), assistant("m:0", "done", inRun), command("c:0", "ls", inRun), command("d:0", "pwd", inRun)],
+      [run(R)],
+      open,
+    );
+    const ids = rows.map((r) => r.id);
+    const meta = ids.indexOf("assistant-meta:m:0");
+    expect(meta).toBeGreaterThan(-1);
+    expect(ids.indexOf("changed-files:r1")).toBe(meta + 1);
+  });
+
+  it("stays when the run is folded and its work rows hide", () => {
+    const rows = rowsFor([user("u:0", "go", inRun), change("e:0", "a.ts"), command("c:0", "ls", inRun), assistant("m:0", "done", inRun)], [run(R)]);
+    expect(kinds(rows)).toEqual(["message", "turn-fold", "message", "changed-files"]);
+    expect(rows.some((r) => r.kind === "work" || r.kind === "work-toggle")).toBe(false);
+  });
+
+  it("is absent for a run without edits", () => {
+    const rows = rowsFor([user("u:0", "go", inRun), command("c:0", "ls", inRun), assistant("m:0", "done", inRun)], [run(R)], open);
+    expect(cardOf(rows)).toBeUndefined();
+  });
+
+  it("is present, with 'No files changed' data, for a run whose edits all failed", () => {
+    const rows = rowsFor(
+      [user("u:0", "go", inRun), change("e:0", "a.ts", { status: "failed", errorText: "nope" }), assistant("m:0", "could not", inRun)],
+      [run(R)],
+      open,
+    );
+    expect(cardOf(rows)).toMatchObject({ summary: { files: 0, failedEdits: 1 } });
+  });
+
+  it("anchors after the last work row for a run with no reply", () => {
+    const rows = rowsFor([user("u:0", "go", inRun), change("e:0", "a.ts"), command("c:0", "ls", inRun)], [run(R, { status: "interrupted" })], open);
+    const last = rows.findLastIndex((r) => r.kind === "work" || r.kind === "work-toggle");
+    expect(last).toBeGreaterThan(-1);
+    expect(rows.findIndex((r) => r.kind === "changed-files")).toBe(last + 1);
+  });
+
+  it("anchors after the fold row when everything is folded and there is no reply", () => {
+    const rows = rowsFor([user("u:0", "go", inRun), change("e:0", "a.ts"), command("c:0", "ls", inRun)], [run(R)]);
+    expect(kinds(rows)).toEqual(["message", "turn-fold", "changed-files"]);
+  });
+
+  it("is not part of a work-log group, so it does not break a continuing work log", () => {
+    const rows = rowsFor(
+      [user("u:0", "go", inRun), command("a:0", "ls", inRun), command("b:0", "pwd", inRun), assistant("m:0", "mid", inRun), change("e:0", "a.ts"), command("c:0", "x", inRun), command("d:0", "y", inRun)],
+      [run(R, { status: "interrupted" })],
+      open,
+    );
+    expect(cardOf(rows)).toBeDefined();
+    const card = cardOf(rows)!;
+    expect("continuesWorkLog" in card && card.continuesWorkLog).toBeFalsy();
+    const toggles = rows.filter((r) => r.kind === "work-toggle");
+    expect(toggles).toHaveLength(2);
+  });
+
+  it("keeps its id while a running run's counts change, and a newer message moves it down", () => {
+    const live = run(R, { status: "running", completedAt: undefined });
+    const base = [user("u:0", "go", inRun), change("e:0", "a.ts"), assistant("m:0", "working on it", inRun)];
+    const first = rowsFor(base, [live]);
+    const second = rowsFor([...base, change("f:0", "b.ts"), assistant("n:0", "more", inRun)], [live]);
+    expect(cardOf(first)!.id).toBe("changed-files:r1");
+    expect(cardOf(second)!.id).toBe("changed-files:r1");
+    expect(cardOf(second)).toMatchObject({ summary: { files: 2 } });
+    expect(second[second.findIndex((r) => r.kind === "changed-files") - 1]).toMatchObject({ id: "n:0" });
+  });
+
+  it("uses the anchor's time, so it never starts a day", () => {
+    const rows = rowsFor([user("u:0", "go", { ...inRun, createdAt: 1_000_000 }), change("e:0", "a.ts"), assistant("m:0", "done", { ...inRun, createdAt: 1_000_500 })], [run(R)], { ...open, now: 1_001_000 });
+    expect(rows.filter((r) => r.kind === "day")).toHaveLength(0);
+    expect(cardOf(rows)!.createdAt).toBe(1_000_500);
+  });
+
+  it("is replaced when its counts change and kept when an unrelated item changes", () => {
+    const base = [user("u:0", "go", inRun), change("e:0", "a.ts"), assistant("m:0", "done", inRun)];
+    const first = computeStableMessagesTimelineRows(rowsFor(base, [run(R)], open), { byId: new Map(), result: [] });
+    const unrelated = computeStableMessagesTimelineRows(rowsFor([...base, read("r:0", "x.ts", inRun)], [run(R)], open), first);
+    expect(unrelated.byId.get("changed-files:r1")).toBe(first.byId.get("changed-files:r1"));
+    const counted = computeStableMessagesTimelineRows(rowsFor([base[0]!, change("e:0", "a.ts", { additions: 9 }), base[2]!], [run(R)], open), unrelated);
+    expect(counted.byId.get("changed-files:r1")).not.toBe(first.byId.get("changed-files:r1"));
+  });
+});
+
 describe("computeStableMessagesTimelineRows", () => {
   it("keeps row objects whose item did not change, and replaces the one that did", () => {
     const a = command("a:0", "ls", inRun);

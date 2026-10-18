@@ -272,14 +272,14 @@
       "upstream": "apps/web/src/components/chat/MessagesTimeline.logic.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "adapted",
-      "note": "T11: T3 row model (message, work, work-toggle, work-live, working, thinking, turn-fold, assistant-meta, event) on Sightr items; epoch ms; + day dividers; no attempts/subagents/plans/MCP/compaction/minimap; timeline polish: dynamic tools lead with dynamicToolDisplayName (MCP '<tool> · <server>')"
+      "note": "T11: T3 row model (message, work, work-toggle, work-live, working, thinking, turn-fold, assistant-meta, event) on Sightr items; epoch ms; + day dividers; no attempts/subagents/plans/MCP/compaction/minimap; timeline polish: dynamic tools lead with dynamicToolDisplayName (MCP '<tool> · <server>'); T24: a changed-files row per run (ChangedFiles.logic), placed after the run's reply"
     },
     {
       "local": "src/components/chat/MessagesTimeline.tsx",
       "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "adapted",
-      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list; db5919d87: event rows draw V2LifecycleRow and ProposedPlanCard, DiffStatLabel on file-change rows; timeline polish: file-change/read rows lead with the file name (folder dim, start-truncated as StartTruncatedPath), fetch group icon, OpenFileThreadContext for path links, ThreadDetailsSheet mounted beside the list; images: the user bubble draws T3's two-column image grid (TimelineAttachments), a tool row with output images carries an image mark"
+      "note": "T11: LegendList timeline and row components on the thread store; Sightr follow mode and history paging; expanded groups are a plain bounded list; db5919d87: event rows draw V2LifecycleRow and ProposedPlanCard, DiffStatLabel on file-change rows; timeline polish: file-change/read rows lead with the file name (folder dim, start-truncated as StartTruncatedPath), fetch group icon, OpenFileThreadContext for path links, ThreadDetailsSheet mounted beside the list; images: the user bubble draws T3's two-column image grid (TimelineAttachments), a tool row with output images carries an image mark; T24: the changed-files card row and ChangedFileSheet mounted beside the list"
     },
     {
       "local": "src/components/chat/TimelineAttachments.tsx",
@@ -320,7 +320,7 @@
       "upstream": "apps/web/src/components/chat/V2ItemInspector.tsx",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
       "mode": "pattern",
-      "note": "an open tool row's call and output; inline output, 200-line cap; db5919d87: diff stat + copy, failed-edit error text, todo checklist, dynamic-tool args list; timeline polish: Copy on command and output (CommandBlock pattern), paths open the Files tab, MCP tool names; images: a dynamic tool's output images as lazy thumbnails (TimelineAttachments)"
+      "note": "an open tool row's call and output; inline output, 200-line cap; db5919d87: diff stat + copy, failed-edit error text, todo checklist, dynamic-tool args list; timeline polish: Copy on command and output (CommandBlock pattern), paths open the Files tab, MCP tool names; images: a dynamic tool's output images as lazy thumbnails (TimelineAttachments); T24: FileChangeDetail extracted from the file_change branch for the changed-file sheet"
     },
     {
       "local": "src/components/ChatMarkdown.tsx",
@@ -939,6 +939,41 @@
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "shape",
       "note": "OrchestrationV2UserInputQuestion"
+    },
+    {
+      "local": "src/lib/turnDiffTree.ts",
+      "upstream": "apps/web/src/lib/turnDiffTree.ts",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "adapted",
+      "note": "T24: body upstream's; the input type TurnDiffFileChange comes from t3/shims/turnDiffFileChange (T3's ../types is the whole web app's model), so the import line changed"
+    },
+    {
+      "local": "src/lib/turnDiffTree.test.ts",
+      "upstream": "apps/web/src/lib/turnDiffTree.test.ts",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "adapted",
+      "note": "T24: imports vitest instead of vite-plus/test; Sightr's empty-input, sort-order and no-count cases added at the end"
+    },
+    {
+      "local": "src/components/chat/ChangedFilesTree.tsx",
+      "upstream": "apps/web/src/components/chat/ChangedFilesTree.tsx",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "adapted",
+      "note": "T24: rows are the journal's ChangedFileRow with new/failed/running marks and onSelect(path); wrapped paths and a 44 px touch row; a flat view; folding held by the timeline store (collapsedChangedDirs); no Pierre icons, MorphIcon, tooltips, context menu, Open diff button or card frame"
+    },
+    {
+      "local": "src/components/chat/AssistantChangedFilesSection.tsx",
+      "upstream": "apps/web/src/components/chat/MessagesTimeline.tsx",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "pattern",
+      "note": "T24: the changed-files section under a run's reply; tree/flat toggle (per-device), Collapse all, 50-row cap, caveat line; a tap calls openChangedFile (T27 repoints it at the diff panel)"
+    },
+    {
+      "local": "src/components/chat/ChangedFiles.logic.ts",
+      "upstream": "packages/client-runtime/src/state/threadCheckpoints.ts",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "pattern",
+      "note": "T24: the job of deriveThreadCheckpointSummaries, from the journal's file_change items per run instead of git checkpoints (T30/T31 replace the source)"
     }
   ],
   "decisions": [

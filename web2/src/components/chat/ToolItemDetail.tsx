@@ -20,6 +20,8 @@
  * 44 px target on touch); file paths (a change's file, search hits, a read's path) open in the Files
  * tab inside a thread (`OpenFileThreadContext`); an MCP tool is named "<tool> · <server>".
  *
+ * T24: a file change's detail is `FileChangeDetail`, exported so the changed-files sheet draws the same thing.
+ *
  * Images: a dynamic tool's output images (a Read of a PNG, a screenshot; `attachments`) show as
  * lazy thumbnails under its output, opening T3's ExpandedImageDialog (`TimelineAttachments`).
  */
@@ -199,6 +201,30 @@ function ToolPath({ path, children, className }: { path: string; children?: Reac
   );
 }
 
+/**
+ * A file change's detail (the `file_change` branch of {@link ToolItemDetail}, extracted in T24 so the
+ * changed-files sheet draws the same thing): the path (a link into Files inside a thread), the diff stat,
+ * Copy for the diff, the tool's error, the diff capped at {@link MAX_OUTPUT_LINES} lines, and Before/After
+ * when the journal built no diff.
+ */
+export function FileChangeDetail({ item }: { item: Extract<TurnItem, { type: "file_change" }> }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <ToolPath path={item.fileName} className="min-w-0 wrap-anywhere font-mono text-muted-foreground" />
+        {item.additions !== undefined || item.deletions !== undefined ? (
+          <DiffStatLabel additions={item.additions ?? 0} deletions={item.deletions ?? 0} layout="inline" />
+        ) : null}
+        {item.diffStr?.trim() ? <MessageCopyButton text={item.diffStr} variant="ghost" /> : null}
+      </div>
+      {item.errorText?.trim() ? <OutputBlock text={item.errorText} label="Error" /> : null}
+      {item.diffStr?.trim() ? <OutputBlock text={item.diffStr} truncated={item.truncated} label="Diff" diff /> : null}
+      {!item.diffStr?.trim() && item.oldStr?.trim() ? <OutputBlock text={item.oldStr} label="Before" /> : null}
+      {!item.diffStr?.trim() && item.newStr?.trim() ? <OutputBlock text={item.newStr} label="After" /> : null}
+    </div>
+  );
+}
+
 export function ToolItemDetail({ item }: { item: TurnItem }) {
   return (
     <div className="space-y-2 text-xs" data-tool-detail={item.type}>
@@ -246,21 +272,7 @@ export function ToolItemDetail({ item }: { item: TurnItem }) {
         </div>
       ) : null}
 
-      {item.type === "file_change" ? (
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <ToolPath path={item.fileName} className="min-w-0 wrap-anywhere font-mono text-muted-foreground" />
-            {item.additions !== undefined || item.deletions !== undefined ? (
-              <DiffStatLabel additions={item.additions ?? 0} deletions={item.deletions ?? 0} layout="inline" />
-            ) : null}
-            {item.diffStr?.trim() ? <MessageCopyButton text={item.diffStr} variant="ghost" /> : null}
-          </div>
-          {item.errorText?.trim() ? <OutputBlock text={item.errorText} label="Error" /> : null}
-          {item.diffStr?.trim() ? <OutputBlock text={item.diffStr} truncated={item.truncated} label="Diff" diff /> : null}
-          {!item.diffStr?.trim() && item.oldStr?.trim() ? <OutputBlock text={item.oldStr} label="Before" /> : null}
-          {!item.diffStr?.trim() && item.newStr?.trim() ? <OutputBlock text={item.newStr} label="After" /> : null}
-        </div>
-      ) : null}
+      {item.type === "file_change" ? <FileChangeDetail item={item} /> : null}
 
       {item.type === "todo_list" ? (
         <ul aria-label="Tasks" className="space-y-1">
