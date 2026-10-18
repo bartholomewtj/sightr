@@ -26,6 +26,7 @@ import { TranscriptStore } from "./journal/store.ts";
 import { createJournalIngestor, createThreadWatchers } from "./threads/journal-ingest.ts";
 import { createRequestIngestor } from "./threads/request-ingest.ts";
 import { createCompactionWatcher } from "./threads/compaction-watch.ts";
+import { createModeWatcher } from "./threads/mode-watch.ts";
 import { createAutoSettler } from "./threads/auto-settle.ts";
 import { createPaneQueue } from "./pane-queue.ts";
 import { createV2Gate } from "./threads/herdr-floor.ts";
@@ -184,6 +185,10 @@ const requestIngestor = threadStore
 // steer queues instead of cancelling an auto-compaction (Thread.compacting).
 const compactionWatcher = threadStore ? createCompactionWatcher({ store: threadStore, engine, herdr }) : null;
 
+// v2 permission mode: a resting thread's footer is read so Thread.permissionMode follows the pane
+// (a thread started in the default mode, or switched in the terminal).
+const modeWatcher = threadStore ? createModeWatcher({ store: threadStore, engine, herdr, queue: paneWrites }) : null;
+
 // v2 auto-settle: active threads idle for `autoSettleDays` (a runtime setting, 0 = off) are settled.
 const autoSettler = threadStore ? createAutoSettler({ store: threadStore, days: () => settings.current().autoSettleDays }) : null;
 
@@ -226,6 +231,7 @@ if (threadStore) {
     journalIngestor?.start();
     requestIngestor?.start();
     compactionWatcher?.start();
+    modeWatcher?.start();
     autoSettler?.start();
     dispatcher?.start();
   });
@@ -308,6 +314,7 @@ const shutdown = async () => {
   journalIngestor?.stop();
   requestIngestor?.stop();
   compactionWatcher?.stop();
+  modeWatcher?.stop();
   autoSettler?.stop();
   dispatcher?.stop();
   poker.stop();
