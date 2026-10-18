@@ -333,7 +333,7 @@ function isEnvelope(tag: string, text: string): boolean {
  */
 export function classifyUserText(
   raw: string,
-): { role: "user" | "note"; text: string } | null {
+): { role: "user" | "note"; text: string; command?: true } | null {
   const text = stripAnsi(raw);
 
   if (isEnvelope("system-reminder", text)) return null;
@@ -343,7 +343,7 @@ export function classifyUserText(
     const name = inner("command-name", text) ?? "";
     const args = inner("command-args", text) ?? "";
     const line = `${name} ${args}`.trim();
-    return line === "" ? null : { role: "user", text: line };
+    return line === "" ? null : { role: "user", text: line, command: true };
   }
 
   if (isEnvelope("local-command-stdout", text)) {
@@ -450,6 +450,16 @@ export function parseClaudeTranscript(
     return true;
   };
 
+  /**
+   * A `<command-name>` row written straight after a compaction summary only echoes the `/compact` the
+   * operator already sent. Claude logs `/compact` twice (live 18 Oct 2026, 2.1.302): the typed row
+   * before the compaction, then the compact boundary, the summary, a caveat and the command's
+   * `<command-name>` envelope with its stdout, all in one write. The typed row may sit in an earlier
+   * incremental read (the v2 ingest reads only new bytes), so the echo is told by what precedes it
+   * here, the summary, not by matching the typed row.
+   */
+  const echoesCompaction = (): boolean => entries.at(-1)?.role === "summary";
+
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
     let row: RawRow;
@@ -469,6 +479,7 @@ export function parseClaudeTranscript(
     // the phone's pending send and stops the thinking pulse, #23), its output as a note.
     if (type === "system" && row.subtype === "local_command" && typeof row.content === "string") {
       const c = classifyUserText(row.content);
+      if (c !== null && c.command === true && echoesCompaction()) continue;
       if (c !== null) entries.push({ uuid, ts, role: c.role, parts: [{ kind: "text", ...clamp(c.text, MAX_TEXT_CHARS) }] });
       continue;
     }
@@ -525,6 +536,7 @@ export function parseClaudeTranscript(
         // through it, so classify before believing it (see classifyUserText).
         const classified = classifyUserText(content);
         if (classified === null) continue;
+        if (classified.command === true && echoesCompaction()) continue;
         if (classified.role === "note") roleOverride = "note";
         parts.push({ kind: "text", ...clamp(classified.text, MAX_TEXT_CHARS) });
       }
