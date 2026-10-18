@@ -75,6 +75,17 @@ const rows: Row[] = [
   { name: "unarchive with the pane alive", state: live({ thread: thread("t1", { shelf: "archived" }) }), command: c({ type: "thread.unarchive" }), expected: shelf({ shelf: "active" }) },
   { name: "unarchive refuses a closed pane", state: live({ thread: thread("t1", { shelf: "archived" }), paneAlive: false }), command: c({ type: "thread.unarchive" }), expected: reject("conflict", "pane-closed") },
   { name: "unarchive of a live thread is a no-op", state: live(), command: c({ type: "thread.unarchive" }), expected: none },
+  // delete
+  {
+    name: "delete forgets an archived thread whose pane is gone",
+    state: live({ thread: thread("t1", { shelf: "archived" }), paneAlive: false }),
+    command: c({ type: "thread.delete" }),
+    expected: { ok: true, events: [{ type: "thread.deleted", threadId: "t1", payload: { at: NOW } }] },
+  },
+  { name: "delete refuses a thread that is not archived", state: live({ paneAlive: false }), command: c({ type: "thread.delete" }), expected: reject("conflict", "not-archived") },
+  { name: "delete refuses a pinned thread", state: live({ thread: thread("t1", { shelf: "pinned" }) }), command: c({ type: "thread.delete" }), expected: reject("conflict", "not-archived") },
+  { name: "delete refuses an archived thread whose pane is still open", state: live({ thread: thread("t1", { shelf: "archived" }) }), command: c({ type: "thread.delete" }), expected: reject("conflict", "pane-open") },
+  { name: "delete of an unknown thread", state: live({ thread: null }), command: c({ type: "thread.delete" }), expected: reject("not_found", "no-such-thread") },
   // read / unread
   {
     name: "markRead clears unreadDone",

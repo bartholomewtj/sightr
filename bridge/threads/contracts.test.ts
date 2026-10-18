@@ -60,7 +60,7 @@ describe("contracts", () => {
     expect<string[]>([...COMMAND_TYPES].sort()).toEqual(
       [
         "thread.create", "thread.rename", "thread.pin", "thread.unpin", "thread.snooze", "thread.unsnooze", "thread.settle",
-        "thread.unsettle", "thread.archive", "thread.unarchive", "thread.markRead", "thread.markUnread",
+        "thread.unsettle", "thread.archive", "thread.unarchive", "thread.delete", "thread.markRead", "thread.markUnread",
         "message.dispatch", "queued.reorder", "queued.edit", "queued.cancel", "queue.resume", "run.interrupt",
         "runtime-request.respond", "thread.permissionMode.set", "thread.model.set", "project.create", "project.rename",
       ].sort(),
@@ -68,7 +68,7 @@ describe("contracts", () => {
     expect<string[]>([...THREAD_EVENT_TYPES].sort()).toEqual(
       [
         "project.upserted", "project.closed", "thread.created", "thread.updated", "thread.shelf-changed",
-        "thread.archived", "run.started", "run.ended", "run.updated", "turn-item.updated", "runtime-request.updated",
+        "thread.archived", "thread.deleted", "run.started", "run.ended", "run.updated", "turn-item.updated", "runtime-request.updated",
         "queue.updated", "command.rejected", "dispatch.failed", "thread.create.failed",
       ].sort(),
     );

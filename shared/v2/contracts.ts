@@ -537,6 +537,8 @@ export type Command =
   | (CommandBase & { type: "thread.unsettle"; threadId: string })
   | (CommandBase & { type: "thread.archive"; threadId: string })
   | (CommandBase & { type: "thread.unarchive"; threadId: string })
+  /** Forget an archived thread: the thread and its runs, items, requests and queue (T3's name). */
+  | (CommandBase & { type: "thread.delete"; threadId: string })
   | (CommandBase & { type: "thread.markRead"; threadId: string })
   | (CommandBase & { type: "thread.markUnread"; threadId: string })
   | (CommandBase & {
@@ -579,6 +581,7 @@ export const COMMAND_TYPES = [
   "thread.unsettle",
   "thread.archive",
   "thread.unarchive",
+  "thread.delete",
   "thread.markRead",
   "thread.markUnread",
   "message.dispatch",
@@ -628,6 +631,8 @@ export interface EventPayloads {
   "thread.updated": { patch: ThreadPatch; at: number };
   "thread.shelf-changed": { shelf: Exclude<Shelf, "archived">; snoozedUntil?: number; pinOrder?: number; at: number };
   "thread.archived": { reason: ArchiveReason; at: number };
+  /** The thread is gone from the store (`thread.delete`); clients drop it and its requests. */
+  "thread.deleted": { at: number };
   "run.started": { run: Run };
   "run.ended": { runId: string; status: Exclude<RunStatus, "running">; completedAt: number };
   /** The whole run after a change that is not its end (T03 sets `userItemId` once the message is read). T3's name. */
@@ -658,6 +663,7 @@ export const THREAD_EVENT_TYPES = [
   "thread.updated",
   "thread.shelf-changed",
   "thread.archived",
+  "thread.deleted",
   "run.started",
   "run.ended",
   "run.updated",
@@ -705,6 +711,7 @@ export const SHELL_EVENT_TYPES = [
   "thread.updated",
   "thread.shelf-changed",
   "thread.archived",
+  "thread.deleted",
   "runtime-request.updated",
   "command.rejected",
   "dispatch.failed",

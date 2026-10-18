@@ -497,6 +497,27 @@ describe("POST /api/v2/command", () => {
     expect((await body(gone)).error).toBe("pane-closed");
   });
 
+  test("thread.delete: archived with its pane gone only; a retry of the same id replays the receipt", async () => {
+    const r = await rig();
+    const live = await call(r, post({ commandId: "d0", type: "thread.delete", threadId: "t1" }));
+    expect(live.status).toBe(409);
+    expect((await body(live)).error).toBe("not-archived");
+    r.store.append([{ type: "thread.archived", threadId: "t1", payload: { reason: "user", at: 1 } }]);
+    const open = await call(r, post({ commandId: "d1", type: "thread.delete", threadId: "t1" }));
+    expect((await body(open)).error).toBe("pane-open");
+
+    r.store.append([createThread(thread("t3", { paneId: "w1:gone" })), { type: "thread.archived", threadId: "t3", payload: { reason: "pane-closed", at: 1 } }]);
+    const ok = await call(r, post({ commandId: "d2", type: "thread.delete", threadId: "t3" }));
+    expect(ok.status).toBe(200);
+    const first = await body(ok);
+    expect(r.store.getThread("t3")).toBeNull();
+    const again = await call(r, post({ commandId: "d2", type: "thread.delete", threadId: "t3" }));
+    expect(again.status).toBe(200);
+    expect(await body(again)).toEqual(first);
+    // A new id for a thread that is gone is not found (the client counts it as done).
+    expect((await call(r, post({ commandId: "d3", type: "thread.delete", threadId: "t3" }))).status).toBe(404);
+  });
+
   describe("runtime-request.respond", () => {
     const pending = (r: Rig): RuntimeRequest => {
       const request: RuntimeRequest = {

@@ -541,6 +541,16 @@ export function applyEvent(tx: Database, event: StoredEvent): void {
       saveThread(tx, next);
       return;
     }
+    case "thread.deleted": {
+      // `thread.delete` (archived threads only): the row goes, and with it (ON DELETE CASCADE) its
+      // runs, items, requests, queue and journal offset. Its older events go too, so the text they
+      // carried is not kept; this event stays, for clients that resume past it.
+      const threadId = requireThreadId(event);
+      const r = tx.query("DELETE FROM threads WHERE id = ?").run(threadId);
+      if (r.changes === 0) throw new Error(`no thread ${threadId}`);
+      tx.query("DELETE FROM events WHERE thread_id = ? AND sequence < ?").run(threadId, event.sequence);
+      return;
+    }
     case "run.started": {
       const run = event.payload.run;
       tx.query(
