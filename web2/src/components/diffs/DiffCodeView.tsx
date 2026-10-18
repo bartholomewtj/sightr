@@ -4,10 +4,13 @@
 // the adapter loads in its own chunk, so a slow chunk shows the plain lines instead of a blank.
 import { createContext, lazy, Suspense, type ReactNode } from "react";
 
+import type { DiffExpandContents } from "@/lib/diffFileContents";
+
 import { DiffLines } from "../right-panel/DiffView.tsx";
 import type { ParsedPatchFile } from "./parsePatch.ts";
 
 export type { ParsedPatchFile } from "./parsePatch.ts";
+export type { DiffExpandContents } from "@/lib/diffFileContents";
 
 export type DiffSide = "old" | "new";
 export type DiffLineRef = { filePath: string; side: DiffSide; line: number }; // 1-based, from the hunk header
@@ -21,7 +24,10 @@ export type DiffCodeViewProps = {
   annotations?: DiffAnnotation[]; // T29 anchors
   renderAnnotation?: (a: DiffAnnotation) => ReactNode;
   onLineAction?: (at: DiffLineRef) => void; // tap/click on a line gutter, T29
-  onExpandContext?: (filePath: string) => Promise<{ oldText: string; newText: string } | null>; // T28
+  /** T28: the whole file, fetched once on the first tap of any expand control. Null: the read failed (the adapter says so and offers a retry). */
+  onExpandContext?: (filePath: string) => Promise<DiffExpandContents | null>;
+  /** The host cut this patch: the tail after the last hunk is unknown, so there is no control for it (T28). */
+  truncated?: boolean;
   /** Draw the first window of rows at once (default). False: it mounts when it nears the screen, like the rest (T27: only the first or revealed open file is eager). */
   eager?: boolean;
   /** Draw the adapter's own file header (path and +/-). Default true; the Diff panel draws its own sticky header and says false. */

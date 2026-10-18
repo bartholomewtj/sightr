@@ -5,6 +5,7 @@
 import {
   REVIEW_PATHS,
   type ReviewBranches,
+  type ReviewDiffFileContents,
   type ReviewDiffFilePatch,
   type ReviewDiffPreview,
   type ReviewFileStat,
@@ -13,7 +14,10 @@ import {
 import { ApiError, noteIfLocked, XHR_HEADER, XHR_HEADER_VALUE } from "./api";
 
 /** The scope a request names. A run is not fetched (it follows the thread stream). */
-export type DiffRequestScope = { kind: "working-tree" } | { kind: "branch"; base?: string };
+export type DiffRequestScope = ({ kind: "working-tree" } | { kind: "branch"; base?: string }) & {
+  /** Ask the host for `git diff -w` (T28). The list and the patches take it; the contents route does not. */
+  ignoreWhitespace?: boolean;
+};
 
 /** The server's own deadline for one review request is 25 s; leave it room to answer. */
 const REVIEW_TIMEOUT_MS = 30_000;
@@ -31,6 +35,7 @@ function query(folderPath: string, scope: DiffRequestScope | null): URLSearchPar
   if (scope) {
     q.set("scope", scope.kind);
     if (scope.kind === "branch" && scope.base) q.set("base", scope.base);
+    if (scope.ignoreWhitespace) q.set("ignoreWhitespace", "1");
   }
   return q;
 }
@@ -86,6 +91,28 @@ export async function fetchDiffFilePatch(
     q.set("to", range.to ?? "");
   }
   return (await (await getJson(`${REVIEW_PATHS.patch}?${q}`, signal)).json()) as ReviewDiffFilePatch;
+}
+
+/**
+ * One file's whole old and new text, for "expand unchanged lines" (T28). The branch scope names the same
+ * commit range as the patch. Never called before the operator taps a control; the cache is `lib/diffFileContents.ts`.
+ */
+export async function fetchDiffFileContents(
+  folderPath: string,
+  scope: DiffRequestScope,
+  file: Pick<ReviewFileStat, "path" | "oldPath">,
+  range: { from?: string; to?: string },
+  signal?: AbortSignal,
+): Promise<ReviewDiffFileContents> {
+  const q = query(folderPath, scope);
+  q.delete("ignoreWhitespace"); // the contents are the files as they are
+  q.set("file", file.path);
+  if (file.oldPath !== undefined) q.set("oldFile", file.oldPath);
+  if (scope.kind === "branch") {
+    q.set("from", range.from ?? "");
+    q.set("to", range.to ?? "");
+  }
+  return (await (await getJson(`${REVIEW_PATHS.contents}?${q}`, signal)).json()) as ReviewDiffFileContents;
 }
 
 /** The branches for the base picker. */

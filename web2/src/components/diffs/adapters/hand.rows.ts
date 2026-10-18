@@ -1,10 +1,14 @@
 // Sightr code (T25). Pure row model for the hand-rolled adapter (hand.tsx): numbered lines from
-// `parsePatch`, a split pairing, and the unchanged lines between hunks once the caller has the file.
+// `parsePatch`, a split pairing, and the unchanged lines between hunks once the caller has the file (T28: in steps of
+// 20, from either end of a gap or all at once, behind a check that the file is still the one the diff was made from).
 import type { ParsedHunk, ParsedLine, ParsedPatchFile } from "../parsePatch.ts";
 
 export type LineRow = { type: "line"; key: string; line: ParsedLine };
-/** `index` names the gap: 0 = before the first hunk, n = after hunk n. `hidden` is null before the file text is known. */
-export type GapRow = { type: "gap"; key: string; index: number; hidden: number | null };
+/**
+ * The controls for what is still hidden in gap `index` (0 = before the first hunk, n = after hunk n). `hidden` is how many lines
+ * remain (null for the tail until the file text is known); `up` reveals lines above the next hunk, `down` below the previous one.
+ */
+export type GapRow = { type: "gap"; key: string; index: number; hidden: number | null; up: boolean; down: boolean };
 export type HunkRow = { type: "hunk"; key: string; header: string };
 export type Row = HunkRow | GapRow | LineRow;
 export type PairRow = { type: "pair"; key: string; left?: ParsedLine; right?: ParsedLine };
@@ -13,46 +17,135 @@ export type SplitRow = HunkRow | GapRow | PairRow;
 const prefixOf = (l: ParsedLine) => (l.kind === "add" ? "+" : l.kind === "del" ? "-" : " ");
 export const linePrefix = prefixOf;
 
-type Span = { from: number; to: number };
+/** One "more" tap reveals this many lines (T28). */
+export const EXPAND_STEP = 20;
 
-/** New-file line numbers hidden before the first hunk, between hunks and after the last (`to` Infinity until the length is known). */
-function gapSpans(file: ParsedPatchFile): Span[] {
+/** Lines of gap `index` already shown: `top` below the hunk before it, `bottom` above the hunk after it. */
+export type GapReveal = { top: number; bottom: number };
+export type Reveals = ReadonlyMap<number, GapReveal>;
+export const NO_REVEALS: Reveals = new Map();
+
+/** A gap in new-file line numbers (inclusive; `to` is Infinity for the tail). An old-side number is the new one minus `delta`. */
+export type Span = { from: number; to: number; delta: number };
+
+/**
+ * The unchanged lines before the first hunk, between hunks and after the last, as new-file spans. A header `+c,0` (or `-a,0`)
+ * names the line *before* an empty side, so that side's first line is `start + 1` (a context-free diff, a whole-file deletion or a
+ * pure insertion). The old-side and new-side gaps must be the same length; when they are not (or a hunk's body disagrees with
+ * its header), the file's numbers cannot be trusted and there are no gaps to open: null.
+ */
+export function gapSpans(file: ParsedPatchFile): Span[] | null {
   const spans: Span[] = [];
-  let next = 1;
+  let newNext = 1;
+  let oldNext = 1;
   for (const h of file.hunks) {
-    spans.push({ from: next, to: h.newStart - 1 });
-    next = h.newStart + h.newCount;
+    if (h.mismatch || !/^@@ -\d/.test(h.header)) return null; // a bare `@@ @@` header has no numbers to place a gap by
+    const newFirst = h.newCount === 0 ? h.newStart + 1 : h.newStart;
+    const oldFirst = h.oldCount === 0 ? h.oldStart + 1 : h.oldStart;
+    const len = newFirst - newNext;
+    if (len < 0 || len !== oldFirst - oldNext) return null;
+    spans.push({ from: newNext, to: newFirst - 1, delta: newNext - oldNext });
+    newNext = newFirst + h.newCount;
+    oldNext = oldFirst + h.oldCount;
   }
-  spans.push({ from: next, to: Infinity });
+  spans.push({ from: newNext, to: Infinity, delta: newNext - oldNext });
   return spans;
 }
 
-/** Old-side line number for a new-side line inside gap `index`. */
-function oldOffset(file: ParsedPatchFile, index: number): number {
-  const h = file.hunks[index - 1];
-  return h ? h.oldStart + h.oldCount - (h.newStart + h.newCount) : 0;
+/** How many lines gap `span` holds in a file of `total` lines (the tail runs to the end of the file); null while the tail's length is unknown. */
+export function gapLength(span: Span, total: number | undefined): number | null {
+  if (span.to !== Infinity) return span.to - span.from + 1;
+  return total === undefined ? null : Math.max(0, total - span.from + 1);
 }
 
 /**
- * Stacked rows. `newLines` (the whole new file, split on newline) fills the gaps in `revealed`; without it a
- * gap is one expandable row saying how many lines it hides. The tail gap's size is unknown until the text is.
+ * The file text as lines: split on `\r?\n`, a final empty piece after a trailing newline is not a line, an unterminated last
+ * line is. (A CRLF file keeps no `\r` in the lines it reveals.)
  */
-export function stackedRows(file: ParsedPatchFile, newLines?: string[], revealed: ReadonlySet<number> = new Set()): Row[] {
-  const rows: Row[] = [];
-  const spans = gapSpans(file);
-  const gap = (index: number) => {
-    if (file.status === "added" || file.status === "deleted") return; // nothing is unchanged in a new or removed file
-    const s = spans[index] as Span;
-    const to = Math.min(s.to, newLines ? newLines.length : s.to);
-    const hidden = to === Infinity ? null : Math.max(0, to - s.from + 1);
-    if (hidden === 0) return;
-    if (newLines && revealed.has(index)) {
-      for (let n = s.from; n <= to; n++) {
-        rows.push({ type: "line", key: `g${index}:${n}`, line: { kind: "context", text: newLines[n - 1] ?? "", newLine: n, oldLine: n + oldOffset(file, index) } });
-      }
-    } else if (file.hunks.length > 0) {
-      rows.push({ type: "gap", key: `gap${index}`, index, hidden });
+export function splitFileText(text: string): string[] {
+  const lines = text.split(/\r?\n/);
+  if (lines[lines.length - 1] === "") lines.pop();
+  return lines;
+}
+
+const strip = (s: string) => s.replace(/\r$/, "");
+const squash = (s: string) => s.replace(/\s+/g, "");
+const sameLine = (a: string, b: string) => strip(a) === strip(b) || squash(a) === squash(b);
+
+/**
+ * Whether the file on disk no longer matches the diff: the first and last line of each hunk's new side (context and additions)
+ * are compared with the text at the numbered position. A line that differs only in whitespace passes (under `-w` the host
+ * prints a context line from the old file), so a whitespace-only drift is not caught; a shift of lines is.
+ */
+export function staleAgainst(file: ParsedPatchFile, newLines: readonly string[]): boolean {
+  for (const h of file.hunks) {
+    const side = h.lines.filter((l) => l.kind !== "del");
+    const ends = side.length > 1 ? [side[0], side[side.length - 1]] : side;
+    for (const l of ends) {
+      const actual = l?.newLine === undefined ? undefined : newLines[l.newLine - 1];
+      if (l === undefined || actual === undefined || !sameLine(l.text, actual)) return true;
     }
+  }
+  return false;
+}
+
+/**
+ * The reveal after a tap on a gap's control (`down`: below the previous hunk, `up`: above the next one, `all`), clamped to the gap.
+ * The gap before the first hunk has no hunk above it, so all of it is revealed from the bottom (`head`).
+ */
+export function revealMore(prev: GapReveal | undefined, how: "down" | "up" | "all", len: number, head = false): GapReveal {
+  const top = prev?.top ?? 0;
+  const bottom = prev?.bottom ?? 0;
+  if (how === "all") return head ? { top: 0, bottom: len } : { top: len, bottom: 0 };
+  if (how === "down") return { top: Math.min(len - bottom, top + EXPAND_STEP), bottom };
+  return { top, bottom: Math.min(len - top, bottom + EXPAND_STEP) };
+}
+
+export type StackedOptions = {
+  /** The host cut the patch: the tail is unknown, so there is no control (and nothing) after the last hunk. */
+  truncated?: boolean;
+  /** False: no controls at all (no way to load the file, or the file cannot be expanded). Default true. */
+  controls?: boolean;
+  /** Revealed lines keep their identity between calls, so a window's highlight stays attached to them. */
+  cache?: Map<string, ParsedLine>;
+};
+
+/**
+ * Stacked rows. `newLines` (the whole new file, split on newline) fills the lines revealed in `reveals`; without it each gap is
+ * one row of controls saying how many lines it hides. The tail gap's size is unknown until the text is.
+ */
+export function stackedRows(file: ParsedPatchFile, newLines?: readonly string[], reveals: Reveals = NO_REVEALS, opts: StackedOptions = {}): Row[] {
+  const rows: Row[] = [];
+  const nothingToOpen = file.status === "added" || file.status === "deleted"; // nothing is unchanged in a new or removed file
+  const spans = opts.controls === false || nothingToOpen || file.hunks.length === 0 ? null : gapSpans(file);
+  const cache = opts.cache;
+  const revealed = (index: number, n: number, delta: number): LineRow => {
+    const key = `g${index}:${n}`;
+    const text = newLines?.[n - 1] ?? "";
+    let l = cache?.get(key);
+    if (!l || l.text !== text || l.oldLine !== n - delta) {
+      l = { kind: "context", text, newLine: n, oldLine: n - delta };
+      cache?.set(key, l);
+    }
+    return { type: "line", key, line: l };
+  };
+  const gap = (index: number) => {
+    const span = spans?.[index];
+    if (!span || (index === file.hunks.length && opts.truncated)) return;
+    const len = gapLength(span, newLines?.length);
+    if (len === 0) return;
+    const up = index < file.hunks.length;
+    const down = index > 0;
+    if (len === null) {
+      rows.push({ type: "gap", key: `gap${index}`, index, hidden: null, up, down });
+      return;
+    }
+    const r = reveals.get(index);
+    const top = down ? Math.min(r?.top ?? 0, len) : 0;
+    const bottom = up ? Math.min(r?.bottom ?? 0, len - top) : 0;
+    for (let n = span.from; n < span.from + top; n++) rows.push(revealed(index, n, span.delta));
+    if (len - top - bottom > 0) rows.push({ type: "gap", key: `gap${index}`, index, hidden: len - top - bottom, up, down });
+    for (let n = span.from + len - bottom; n < span.from + len; n++) rows.push(revealed(index, n, span.delta));
   };
   file.hunks.forEach((h: ParsedHunk, i) => {
     gap(i);
@@ -63,21 +156,29 @@ export function stackedRows(file: ParsedPatchFile, newLines?: string[], revealed
   return rows;
 }
 
-/** Split layout: a run of removals is paired with the additions after it; context sits on both sides. */
+/**
+ * Split layout: within a hunk, a run of removals is paired one to one, in order, with the additions that follow it; the longer
+ * run's surplus pairs with an empty cell. A removal after an addition starts a new run. Context sits on both sides. A line
+ * that the diff marks `\ No newline at end of file` stays on its own side.
+ */
 export function splitRows(rows: Row[]): SplitRow[] {
   const out: SplitRow[] = [];
   let dels: ParsedLine[] = [];
   let adds: ParsedLine[] = [];
+  let run = 0;
   const flush = (key: string) => {
-    for (let i = 0; i < Math.max(dels.length, adds.length); i++) out.push({ type: "pair", key: `${key}:p${i}`, left: dels[i], right: adds[i] });
+    for (let i = 0; i < Math.max(dels.length, adds.length); i++) out.push({ type: "pair", key: `${key}:r${run}:p${i}`, left: dels[i], right: adds[i] });
+    if (dels.length > 0 || adds.length > 0) run++;
     dels = [];
     adds = [];
   };
   for (const row of rows) {
     if (row.type !== "line") { flush(row.key); out.push(row); continue; }
     const l = row.line;
-    if (l.kind === "del") dels.push(l);
-    else if (l.kind === "add") adds.push(l);
+    if (l.kind === "del") {
+      if (adds.length > 0) flush(row.key);
+      dels.push(l);
+    } else if (l.kind === "add") adds.push(l);
     else { flush(row.key); out.push({ type: "pair", key: row.key, left: l, right: l }); }
   }
   flush("end");
@@ -95,7 +196,8 @@ export const WINDOW_MAX_CHARS = 12_000;
 
 function textLength(row: Row | SplitRow): number {
   if (row.type === "line") return row.line.text.length;
-  if (row.type === "pair") return (row.left?.text.length ?? 0) + (row.right && row.right !== row.left ? row.right.text.length : 0);
+  // A context pair draws its line on both sides, so it counts twice: split view must not double a window's nodes past the budget.
+  if (row.type === "pair") return (row.left?.text.length ?? 0) + (row.right?.text.length ?? 0);
   return 0;
 }
 

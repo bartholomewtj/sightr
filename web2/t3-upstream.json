@@ -614,7 +614,7 @@
       "upstream": "apps/web/src/rightPanelStore.ts",
       "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
       "mode": "pattern",
-      "note": "three fixed tabs, per-device open state, tab, width and font; phone sheet; openFile(threadId, rel path) opens the Files tab on a file ; T27: a fourth tab, diff (appended)"
+      "note": "three fixed tabs, per-device open state, tab, width and font; phone sheet; openFile(threadId, rel path) opens the Files tab on a file ; T27: a fourth tab, diff (appended) ; T28: diffLayout (stacked or split) and diffIgnoreWhitespace, per device beside diffWrap"
     },
     {
       "local": "src/components/RightPanelTabs.tsx",
@@ -1002,7 +1002,7 @@
       "upstream": "apps/web/src/components/DiffPanel.tsx",
       "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
       "mode": "pattern",
-      "note": "T27: the Diff right-panel tab: scope (working tree, branch vs a base, a run), a changed-files tree and one section per file, patches fetched only for unfolded or near files (4 at once), phone sheet and 600 px two-column layout; written against the DiffCodeView seam. Not taken: @pierre/diffs CodeView, Effect atoms and RPC, T3's turn and PR views"
+      "note": "T27: the Diff right-panel tab: scope (working tree, branch vs a base, a run), a changed-files tree and one section per file, patches fetched only for unfolded or near files (4 at once), phone sheet and 600 px two-column layout; written against the DiffCodeView seam. Not taken: @pierre/diffs CodeView, Effect atoms and RPC, T3's turn and PR views ; T28: header toggles for split (desktop, 640 px column) and ignore whitespace (the host's -w only, T3's client-side hiding is left out), unchanged-line expansion wired to the contents route; a File list button (per device, in rightPanelStore) hides the wide layout's file list so the diffs can have 640 px"
     },
     {
       "local": "src/components/DiffPanelShell.tsx",
@@ -1037,7 +1037,14 @@
       "upstream": "apps/web/src/components/diffs/useReviewFilePatches.ts",
       "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
       "mode": "pattern",
-      "note": "T27: plain fetch to T26 through lib/diffApi.ts, a queue of 4, unfolded and revealed files first, If-None-Match on the list, stale-while-revalidate; Effect atoms are not taken"
+      "note": "T27: plain fetch to T26 through lib/diffApi.ts, a queue of 4, unfolded and revealed files first, If-None-Match on the list, stale-while-revalidate; Effect atoms are not taken ; T28: the list and patches are kept per ignore-whitespace variant"
+    },
+    {
+      "local": "src/lib/diffFileContents.ts",
+      "upstream": "apps/web/src/lib/diffFileContents.ts",
+      "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
+      "mode": "pattern",
+      "note": "T28: the loader that fetches a changed file's whole old and new text once, kept by a cache key (here scope, path and diffHash); Sightr's is a plain-fetch cache over T26's contents route handing the seam's onExpandContext its text, with no Pierre FileDiffContentsLoader and no Effect atoms or RPC"
     },
     {
       "local": "src/components/diffs/diffFileTree.logic.ts",
