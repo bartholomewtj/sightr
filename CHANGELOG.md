@@ -71,6 +71,10 @@ a build where they disagree.
 - A system notice that finished cleanly (a background command completing, "Stopped") no longer shows as a red warning in the timeline.
 - A timeline row stamped earlier than the one before it produced two day dividers with the same key, which made the list drop rows.
 - Pi: a question Pi asks with its ask tool now shows as a card with its options. Herdr reports a Pi pane as working for the whole tool call, so the bridge never looked at the screen; it now reads a working Pi pane for dialogs, and tapping an option sends its keys.
+- One slow Herdr snapshot no longer flips the phone to "Not connected". The bridge keeps the last herd and retries after 1.5 s; only a second slow poll in a row, or any socket error, shows disconnected (a hung Herdr shows it about 11.5 s after the first failing poll). `conn.log` gets a `herdr.slow` line and `sightr-ctl conn` reports it (spec 25).
+- A Claude thread shows the permission mode it is really in (Default, Auto, Plan ...), read from the pane footer every few seconds, in the composer chip and Thread details.
+- Claude's permission card ("Read file" and the like) could not be answered: the blinking tool bullet above the dialog changed the card's fingerprint every poll, so the card was recreated with a false "Answered elsewhere" and taps missed. The fingerprint now ignores the bullet.
+- `/compact` showed twice in the timeline (Claude logs the command twice); once now. Stopping a Pi bash call no longer shows a red "Provider error: operation aborted". "Syncing…" is a thin line on the header edge instead of squeezing the thread title.
 
 ## [1.2.1] - 2026-10-03
 
