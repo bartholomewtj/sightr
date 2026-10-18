@@ -1,7 +1,7 @@
 // A fake of T26's review API for tests (msw): the file list with an ETag and a 304, one patch at a time with
 // delays, truncated, binary and failing files, and the branch list. It counts what the client asks for, and
 // how many patch requests are in flight at once, so a test can pin the panel's concurrency cap. No network.
-import { REVIEW_PATHS, type ReviewBranch, type ReviewFileKind, type ReviewFileStat } from "@shared/v2/review";
+import { REVIEW_PATHS, type ReviewBranch, type ReviewFileKind, type ReviewFileStat, type ReviewSide } from "@shared/v2/review";
 import { http, HttpResponse, type HttpHandler } from "msw";
 
 export interface FakeFile {
@@ -22,6 +22,14 @@ export interface FakeFile {
   failTimes?: number;
   /** Bump to change the file's `rev` (its patch should be fetched again). */
   version?: number;
+  /** T28: the patch the bridge sends for `ignoreWhitespace=1` (default: `patch`). */
+  wsPatch?: string;
+  /** T28: with `ignoreWhitespace=1` the file has no change left (the list marks it `whitespaceOnly`, 0/0). */
+  whitespaceOnly?: true;
+  /** T28: the whole-file contents route; default: a text file of `new` lines. Either side may be any state. */
+  contents?: { old?: ReviewSide; new: ReviewSide };
+  /** T28: the contents route answers this HTTP status instead (404 is what a hidden name gets). */
+  contentsStatus?: number;
 }
 
 /** A small unified diff of one file: `old` replaced by `new`, with a line of context each side. */
@@ -44,6 +52,8 @@ export interface DiffServer {
   listCalls: URL[];
   listHeaders: Array<{ ifNoneMatch: string | null }>;
   patchCalls: URL[];
+  /** T28: the whole-file contents requests. */
+  contentsCalls: URL[];
   branchCalls: URL[];
   /** Patch requests being answered right now, and the most there ever were. */
   inflight: number;
@@ -62,7 +72,7 @@ export interface DiffServer {
   patchPaths(): string[];
 }
 
-const rev = (f: FakeFile) => `${f.path}:${f.version ?? 0}:${f.kind ?? "modified"}`;
+const rev = (f: FakeFile, ws = false) => `${f.path}:${f.version ?? 0}:${f.kind ?? "modified"}${ws ? ":w" : ""}`;
 
 export function createDiffServer(initial: FakeFile[] = []): DiffServer {
   let hash = 1;
@@ -82,6 +92,7 @@ export function createDiffServer(initial: FakeFile[] = []): DiffServer {
     listCalls: [],
     listHeaders: [],
     patchCalls: [],
+    contentsCalls: [],
     branchCalls: [],
     inflight: 0,
     maxInflight: 0,
@@ -101,16 +112,20 @@ export function createDiffServer(initial: FakeFile[] = []): DiffServer {
     patchPaths: () => server.patchCalls.map((u) => u.searchParams.get("file") ?? ""),
   };
 
-  const stat = (f: FakeFile): ReviewFileStat => ({
-    path: f.path,
-    ...(f.oldPath === undefined ? {} : { oldPath: f.oldPath }),
-    kind: f.kind ?? "modified",
-    added: f.added ?? (f.binary ? 0 : 1),
-    removed: f.removed ?? (f.binary ? 0 : 1),
-    ...(f.binary ? { binary: true as const } : {}),
-    ...(f.tooLarge ? { tooLarge: true as const } : {}),
-    rev: rev(f),
-  });
+  const stat = (f: FakeFile, ws = false): ReviewFileStat => {
+    const wsOnly = ws && f.whitespaceOnly === true;
+    return {
+      path: f.path,
+      ...(f.oldPath === undefined ? {} : { oldPath: f.oldPath }),
+      kind: f.kind ?? "modified",
+      added: wsOnly ? 0 : (f.added ?? (f.binary ? 0 : 1)),
+      removed: wsOnly ? 0 : (f.removed ?? (f.binary ? 0 : 1)),
+      ...(f.binary ? { binary: true as const } : {}),
+      ...(f.tooLarge ? { tooLarge: true as const } : {}),
+      ...(wsOnly ? { whitespaceOnly: true as const } : {}),
+      rev: rev(f, ws),
+    };
+  };
 
   server.handlers = [
     http.get(REVIEW_PATHS.list, ({ request }) => {
@@ -122,12 +137,13 @@ export function createDiffServer(initial: FakeFile[] = []): DiffServer {
       const scope = url.searchParams.get("scope");
       const base = url.searchParams.get("base");
       if (scope === "branch" && base !== null && !server.knownBases.has(base)) return HttpResponse.json({ available: false, reason: "bad-base" });
-      const diffHash = `h${hash}${scope === "branch" ? `-${base ?? "default"}` : ""}`;
+      const ws = url.searchParams.get("ignoreWhitespace") === "1";
+      const diffHash = `h${hash}${scope === "branch" ? `-${base ?? "default"}` : ""}${ws ? "-w" : ""}`;
       if (ifNoneMatch === `"${diffHash}"`) return new HttpResponse(null, { status: 304, headers: { etag: `"${diffHash}"` } });
       const body =
         scope === "branch"
-          ? { available: true, scope: "branch", base: base ?? server.defaultBase ?? "main", ...(base === null ? { baseIsDefault: true } : {}), from: SHA_FROM, to: SHA_TO, files: server.files.map(stat), hidden: 0, truncated: false, diffHash }
-          : { available: true, scope: "working-tree", files: server.files.map(stat), hidden: 0, truncated: false, diffHash };
+          ? { available: true, scope: "branch", base: base ?? server.defaultBase ?? "main", ...(base === null ? { baseIsDefault: true } : {}), from: SHA_FROM, to: SHA_TO, files: server.files.map((f) => stat(f, ws)), hidden: 0, truncated: false, diffHash }
+          : { available: true, scope: "working-tree", files: server.files.map((f) => stat(f, ws)), hidden: 0, truncated: false, diffHash };
       return HttpResponse.json(body, { headers: { etag: `"${diffHash}"` } });
     }),
     http.get(REVIEW_PATHS.patch, async ({ request }) => {
@@ -149,10 +165,21 @@ export function createDiffServer(initial: FakeFile[] = []): DiffServer {
           }
         }
         if (file.unavailable) return HttpResponse.json({ available: false, reason: file.unavailable });
-        return HttpResponse.json({ available: true, patch: file.patch ?? fakePatch(file.path, `old ${file.version ?? 0}`, `new ${file.version ?? 0}`), truncated: file.truncated === true, diffHash: `p-${rev(file)}` });
+        const ws = url.searchParams.get("ignoreWhitespace") === "1";
+        const patch = (ws ? (file.wsPatch ?? (file.whitespaceOnly ? "" : file.patch)) : file.patch) ?? fakePatch(file.path, `old ${file.version ?? 0}`, `new ${file.version ?? 0}`);
+        return HttpResponse.json({ available: true, patch, truncated: file.truncated === true, diffHash: `p-${rev(file, ws)}` });
       } finally {
         server.inflight -= 1;
       }
+    }),
+    http.get(REVIEW_PATHS.contents, ({ request }) => {
+      const url = new URL(request.url);
+      server.contentsCalls.push(url);
+      const file = server.files.find((f) => f.path === url.searchParams.get("file"));
+      if (!file) return new HttpResponse("not found", { status: 404 });
+      if (file.contentsStatus) return new HttpResponse("no", { status: file.contentsStatus });
+      const side: ReviewSide = file.contents?.new ?? { state: "text", text: "line\n", crlf: false };
+      return HttpResponse.json({ available: true, old: file.contents?.old ?? { state: "absent" }, new: side, diffHash: `c-${rev(file)}` });
     }),
     http.get(REVIEW_PATHS.branches, ({ request }) => {
       server.branchCalls.push(new URL(request.url));

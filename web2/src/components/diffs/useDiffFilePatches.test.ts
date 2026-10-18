@@ -32,6 +32,61 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("PatchEngine: ignore whitespace (T28)", () => {
+  const wsOf = (u: URL) => u.searchParams.get("ignoreWhitespace");
+
+  it("starts in the variant it is given, with no plain request first", async () => {
+    fake.files = files(2);
+    const e = engine();
+    e.target("proj", { kind: "workingTree" }, true);
+    await ready(e);
+    expect(fake.listCalls.map(wsOf)).toEqual(["1"]);
+    e.want(wants({ unfolded: set("src/f00.ts") }));
+    await waitFor(() => expect(stateOf(e, "src/f00.ts")?.state).toBe("ready"));
+    expect(fake.patchCalls.map(wsOf)).toEqual(["1"]);
+  });
+
+  it("flips to a variant never read with its own list and the opened files' patches, and back with no request", async () => {
+    fake.files = [{ path: "a.ts", patch: fakePatch("a.ts", "p", "q"), wsPatch: fakePatch("a.ts", "pw", "qw") }, { path: "b.ts" }];
+    const e = engine();
+    e.target("proj", { kind: "workingTree" });
+    await ready(e);
+    e.want(wants({ unfolded: set("a.ts") }));
+    await waitFor(() => expect(stateOf(e, "a.ts")?.state).toBe("ready"));
+
+    e.setIgnoreWhitespace(true);
+    expect(e.getSnapshot().summary.status).toBe("loading");
+    await ready(e);
+    await waitFor(() => expect(stateOf(e, "a.ts")?.state).toBe("ready"));
+    expect(JSON.stringify(stateOf(e, "a.ts"))).toContain("qw");
+    expect(fake.listCalls.map(wsOf)).toEqual([null, "1"]);
+    expect(fake.patchCalls.map((u) => [u.searchParams.get("file"), wsOf(u)])).toEqual([["a.ts", null], ["a.ts", "1"]]);
+
+    e.setIgnoreWhitespace(false);
+    expect(e.getSnapshot().summary.status).toBe("ready");
+    expect(JSON.stringify(stateOf(e, "a.ts"))).not.toContain("qw");
+    await new Promise((r) => setTimeout(r, 30));
+    expect(fake.listCalls).toHaveLength(2);
+    expect(fake.patchCalls).toHaveLength(2);
+  });
+
+  it("lets a request in flight for the variant it left finish into that variant", async () => {
+    fake.files = files(1);
+    fake.hold = true;
+    const e = engine();
+    e.target("proj", { kind: "workingTree" });
+    await ready(e);
+    e.want(wants({ unfolded: set("src/f00.ts") }));
+    await waitFor(() => expect(fake.inflight).toBe(1));
+    e.setIgnoreWhitespace(true);
+    act(() => fake.release());
+    await ready(e);
+    e.setIgnoreWhitespace(false);
+    await waitFor(() => expect(stateOf(e, "src/f00.ts")?.state).toBe("ready"));
+    expect(fake.patchCalls.filter((u) => wsOf(u) === null)).toHaveLength(1);
+  });
+});
+
 describe("PatchEngine", () => {
   it("reads the file list for a scope, and no patch until a file is wanted", async () => {
     fake.files = files(3);
