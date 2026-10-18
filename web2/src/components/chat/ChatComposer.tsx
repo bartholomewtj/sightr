@@ -39,6 +39,8 @@ import { useLayout } from "@/hooks/useLayout";
 import { KEYBINDINGS, resolveShortcutCommand } from "@/keybindings";
 import { sendKeys } from "@/lib/api";
 import { loadDraft, saveDraft } from "@/lib/drafts";
+import { appendReviewBlocks } from "@/lib/reviewCommentContext";
+import { showToast } from "@/components/toast";
 import { useOperatorCommands, useOperatorKeys } from "@/lib/operator-commands";
 import { useShortcutHandler } from "@/shortcutHandlers";
 import { snoozeWakeLabel } from "@/components/Sidebar.snooze";
@@ -46,11 +48,13 @@ import { performThreadCommand, useSidebarThread } from "@/state/sidebar";
 import {
   addAttachments,
   attachmentFile,
+  consumeInsert,
   dispatchMessage,
   endQueuedEdit,
   getThreadComposer,
   interruptRun,
   patchComposer,
+  publishComposerText,
   readyAttachments,
   removeAttachment,
   respondToRequest,
@@ -102,6 +106,7 @@ import { wheelSlicesFor } from "@v1/lib/wheel";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
+import { ReviewCommentsBar } from "./ReviewCommentsBar";
 import { searchSlashCommandItems } from "./composerSlashCommandSearch";
 import { QueuedRunsControl, type QueuedRunsControlHandle } from "./QueuedRunsControl";
 import { activeComposerTasks, latestRunError } from "./ComposerStatus.logic";
@@ -263,8 +268,31 @@ export function ChatComposer({ threadId }: { threadId: string }) {
   const setText = (next: string, persist = true) => {
     textRef.current = next;
     setTextState(next);
+    publishComposerText(threadId, next);
     if (persist && !getThreadComposer(threadId).editing) saveDraft(threadId, next);
   };
+  // T29: tell the review-comment list what the box holds (for its "in message" marks) from the start.
+  useEffect(() => publishComposerText(threadId, textRef.current), [threadId]);
+
+  // ── Review comments to append (T29): the list or the row above the box asked; the text goes through setText ──
+  const insertion = composer.insertion;
+  useEffect(() => {
+    if (!insertion) return;
+    consumeInsert(threadId, insertion.id);
+    const { text: next, added } = appendReviewBlocks(textRef.current, insertion.blocks);
+    const total = insertion.blocks.length;
+    const waiting = request !== null ? " The agent is asking something; your message is waiting." : "";
+    if (added > 0 && next.length <= MAX_COMPOSER_CHARS) {
+      setText(next);
+      if (insertion.focus && request === null) boxRef.current?.focus();
+    }
+    const done = added > 0 && next.length <= MAX_COMPOSER_CHARS ? added : 0;
+    showToast(
+      done === total
+        ? `Added ${total} comment${total === 1 ? "" : "s"} to your message.${waiting}`
+        : `Added ${done} of ${total}. Send, then add the rest.${waiting}`,
+    );
+  }, [insertion?.id]);
 
   const buttonInput = {
     thread,
@@ -882,6 +910,7 @@ export function ChatComposer({ threadId }: { threadId: string }) {
                 </Button>
               </div>
             ) : null}
+            <ReviewCommentsBar threadId={threadId} text={text} />
             {composer.attachments.length > 0 ? (
               <ul aria-label="Attachments" className="flex flex-wrap gap-1.5">
                 {composer.attachments.map((chip) => (

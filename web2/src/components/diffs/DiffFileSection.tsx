@@ -12,7 +12,8 @@ import { DiffStatLabel } from "../chat/DiffStatLabel";
 import { RenderErrorBoundary } from "../RenderErrorBoundary";
 import { Button } from "../ui/button";
 
-import { DiffCodeView, PlainPatch, resetDiffRenderer } from "./DiffCodeView";
+import { AnnotatableCodeView } from "./AnnotatableCodeView";
+import { PlainPatch, resetDiffRenderer } from "./DiffCodeView";
 import { editsLabel, fileLabel } from "./diffFileActions";
 import { DiffFileStatus } from "./DiffFileStatus";
 import { patchOf, type DiffFileEntry, type PatchState } from "./diffTypes";
@@ -43,7 +44,7 @@ export function PatchBody({ patch, path, wrap, eager }: { patch: string; path: s
         </div>
       }
     >
-      <DiffCodeView patch={patch} filePath={path} wrap={wrap} eager={eager} header={false} />
+      <AnnotatableCodeView patch={patch} path={path} wrap={wrap} eager={eager} />
     </RenderErrorBoundary>
   );
 }

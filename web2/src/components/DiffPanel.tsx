@@ -9,13 +9,14 @@
 //   - phone (a sheet, one column): the tree folds open and shut under a "Files · 12 · +230 -41" header;
 //     desktop, when the panel itself is 600 px wide or more: the tree is a left column;
 //   - refresh on the button, when the run ends, and when the page comes back (the Git tab's triggers).
-// Read-only: no staging, commit, revert or rollback. Not here: split view, ignore whitespace, expand
-// unchanged lines (T28) and line comments (T29).
+// Read-only: no staging, commit, revert or rollback. Line comments (T29): tapping a line number starts a comment
+// that is kept in a pending list (a "Comments N" button here opens it in place of the files); "Add to message"
+// puts it in the composer as quoted text. Not here: split view, ignore whitespace, expand unchanged lines (T28).
 //
 // The diffs mount in windows (hand renderer), so two things are said in the panel, not hidden: the
 // browser's find (Ctrl+F) sees only lines already drawn, and the scroll position comes back to a file
 // and an offset into it, not to an exact line.
-import { ChevronRightIcon, ChevronsDownUpIcon, RotateCwIcon, WrapTextIcon } from "lucide-react";
+import { ChevronRightIcon, ChevronsDownUpIcon, MessageSquareIcon, RotateCwIcon, WrapTextIcon } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -26,11 +27,15 @@ import { useLayout } from "@/hooks/useLayout";
 import { useDiffPanelStore, useDiffScope, type DiffScope } from "@/diffPanelStore";
 import { useDiffWrap, useRightPanelStore } from "@/rightPanelStore";
 import { useSidebarThread } from "@/state/sidebar";
-import { useThread } from "@/stream/stores";
+import { useBridgeInfo, useThread } from "@/stream/stores";
+import { revealCommentLine, setCommentsListOpen, setOpenEditor, useCommentsListOpen } from "@/state/commentsUi";
+import { markMissingFiles, useLineComments, type LineComment } from "@/state/lineComments";
 
 import { DiffPanelLoadingState, DiffPanelMessage, DiffPanelShell } from "./DiffPanelShell";
 import { baseExists, useDiffBranches } from "./diffs/DiffBranchPicker";
+import { DiffCommentsContext, type DiffCommentsContextValue } from "./diffs/AnnotatableCodeView";
 import { DiffScrollRootContext, preloadDiffRenderer } from "./diffs/DiffCodeView";
+import { LineCommentsList } from "./diffs/LineCommentsList";
 import { DiffFileSection } from "./diffs/DiffFileSection";
 import { DiffFileTree } from "./diffs/DiffFileTree";
 import { DiffScopePicker } from "./diffs/DiffScopePicker";
@@ -123,6 +128,13 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
   const [highlight, setHighlight] = useState<string | null>(null);
   const [scrollerEl, setScrollerEl] = useState<HTMLElement | null>(null);
 
+  // ── Line comments (T29) ──
+  const readOnly = useBridgeInfo((s) => s.readOnly);
+  const comments = useLineComments(threadId);
+  const listOpen = useCommentsListOpen(threadId);
+  const commentsOff = readOnly ? "Comments are off: this device is read-only." : null;
+  const commentsCtx = useMemo<DiffCommentsContextValue>(() => ({ threadId, off: commentsOff }), [threadId, commentsOff]);
+
   // ── The files and their patches ──
   const patches = useDiffFilePatches({
     folderPath: scope.kind === "run" ? null : folderPath,
@@ -143,6 +155,11 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
   const listOk = scope.kind === "run" ? run.found : summary.status === "ready";
   // Nothing more is coming for a request that has failed for good, so a reveal waiting for the list is dropped then.
   const listFailed = scope.kind !== "run" && (summary.status === "unavailable" || summary.status === "error");
+
+  // A file the current scope does not list: its comments are outdated until it comes back.
+  useEffect(() => {
+    if (listOk) markMissingFiles(threadId, new Set(files.map((f) => f.path)));
+  }, [listOk, files, threadId]);
 
   // A base the host does not know (it was deleted since): ask for the default instead.
   useEffect(() => {
@@ -247,6 +264,21 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
     },
     [unfold, wide],
   );
+  // A list row's path, or Edit: unfold the file, load its patch, scroll to the line (the file's header when the lines are gone).
+  const showComment = useCallback(
+    (c: LineComment, edit: boolean) => {
+      setCommentsListOpen(threadId, false);
+      skipRestore.current = true;
+      anchor.current?.stopRestoring();
+      unfold(c.path);
+      setRevealPath(c.path);
+      if (edit) setOpenEditor(threadId, { path: c.path, gesture: { side: c.side, anchor: c.start, head: c.end, hunk: -1 }, note: c.note, editingId: c.id, notice: null });
+      if (c.state === "outdated") setPendingScroll(c.path);
+      else revealCommentLine(threadId, { path: c.path, side: c.side, line: c.start });
+      if (!wide) setTreeOpen(false);
+    },
+    [threadId, unfold, wide],
+  );
   const onToggleDir = useCallback((path: string) => setCollapsedDirs((prev) => {
     const next = new Set(prev);
     if (next.has(path)) next.delete(path);
@@ -292,6 +324,12 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
         <ChevronsDownUpIcon aria-hidden="true" />
         Collapse all
       </Button>
+      {comments.length > 0 || listOpen ? (
+        <Button size="xs" variant="ghost-muted" aria-pressed={listOpen} onClick={() => setCommentsListOpen(threadId, !listOpen)} className={cn(listOpen && "bg-accent text-foreground")} data-diff-comments-chip="">
+          <MessageSquareIcon aria-hidden="true" />
+          Comments {comments.length}
+        </Button>
+      ) : null}
       {scope.kind !== "run" ? (
         <Button size="xs" variant="ghost-muted" disabled={loading} onClick={refresh}>
           <RotateCwIcon className={cn("size-3.5", loading && "motion-safe:animate-spin")} aria-hidden="true" />
@@ -313,7 +351,7 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
     </>
   );
 
-  const body = (() => {
+  const diffBody = (() => {
     if (scope.kind === "run") {
       if (!run.found) return <DiffPanelMessage>This run's edits aren't loaded, or it changed no files.</DiffPanelMessage>;
     } else if (summary.status === "loading" || summary.status === "idle") {
@@ -368,6 +406,12 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
         )}
         <div ref={setScrollerEl} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain" data-diff-scroller="">
           <DiffScrollRootContext value={scrollerEl}>
+          <DiffCommentsContext value={commentsCtx}>
+            {commentsOff ? (
+              <p className="border-b px-3 py-1.5 text-xs text-muted-foreground" data-diff-note="comments-off">
+                {commentsOff}
+              </p>
+            ) : null}
             {scope.kind === "branch" && baseGone && storedBase ? (
               <p className="border-b px-3 py-1.5 text-xs text-muted-foreground" data-diff-note="base-gone">
                 {storedBase} isn't a branch here any more, so this is against the default base{defaultBase ? ` (${defaultBase})` : ""}.
@@ -407,11 +451,23 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
             <p className="px-3 py-2 text-xs text-muted-foreground" data-diff-caveats="">
               Long diffs draw a screenful at a time: Ctrl+F finds only the lines already drawn, and a returning scroll position is the file and a place inside it, not an exact line.
             </p>
+          </DiffCommentsContext>
           </DiffScrollRootContext>
         </div>
       </div>
     );
   })();
+  const body = listOpen ? (
+    <LineCommentsList
+      threadId={threadId}
+      inScope={new Set(files.map((f) => f.path))}
+      onBack={() => setCommentsListOpen(threadId, false)}
+      onJump={(c) => showComment(c, false)}
+      onEdit={(c) => showComment(c, true)}
+    />
+  ) : (
+    diffBody
+  );
 
   return (
     <DiffPanelShell header={toolbar} panelRef={panelRef}>
