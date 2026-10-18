@@ -13,7 +13,7 @@
     "build:web2": "cd web2 && bun run build",
     "web:dev": "cd web && bun run dev",
     "web2:dev": "cd web2 && bun run dev",
-    "test": "bun run typecheck && bun test ./bridge ./scripts",
+    "test": "bun run typecheck && bun test ./bridge ./scripts ./shared",
     "test:ctl": "bun test scripts/ctl",
     "typecheck": "bunx tsc --noEmit"
   },
