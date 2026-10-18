@@ -218,3 +218,13 @@ describe("resolveTimelineIsAtEnd", () => {
     expect(resolveTimelineIsAtEnd(undefined)).toBeUndefined();
   });
 });
+
+describe("commandPreview (the live row's command)", () => {
+  it("keeps the first 40 characters on one line, with an ellipsis when cut", async () => {
+    const { commandPreview } = await import("./MessagesTimeline.logic");
+    expect(commandPreview("git status")).toBe("git status");
+    expect(commandPreview("for i in $(seq 1 60); do echo tick $i; sleep 1; done")).toBe("for i in $(seq 1 60); do echo tick $i; s…");
+    expect(commandPreview("cat <<EOF\nhello\nEOF")).toBe("cat <<EOF hello EOF");
+    expect(commandPreview("  ")).toBe("");
+  });
+});

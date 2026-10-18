@@ -95,6 +95,7 @@ import {
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
+  liveWorkEntryIsRunningCommand,
   liveWorkEntryLabel,
   resolveAssistantMessageCopyState,
   shouldCollapseUserMessage,
@@ -858,6 +859,7 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
   const ctx = use(TimelineRowCtx);
   const isLiveThought = row.entry.itemType === "reasoning" && row.active;
   const label = liveWorkEntryLabel(row.entry, undefined, row.active);
+  const runningCommand = liveWorkEntryIsRunningCommand(row.entry, row.active);
   const failed = workEntryDisplayIndicatesToolFailure(row.entry);
   const thoughtLine = row.thought && !row.expanded && !isLiveThought ? liveThoughtLine(row.thought.detail ?? "") : "";
   return (
@@ -888,6 +890,14 @@ function LiveWorkEntryTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
             <>
               Thinking… <WorkingTimer since={row.entry.createdAt} format={formatThinkingTimer} />
             </>
+          ) : runningCommand ? (
+            // The command's start, then how long it has run; the time never truncates.
+            <span className="flex min-w-0 items-baseline gap-1.5" data-running-command="">
+              <span className="min-w-0 truncate">{label}</span>
+              <span className="shrink-0 text-muted-foreground">
+                <WorkingTimer since={row.entry.createdAt} />
+              </span>
+            </span>
           ) : (
             label
           )
