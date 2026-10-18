@@ -65,6 +65,10 @@ interface RightPanelStoreState {
   fileRequest: FileOpenRequest | null;
   /** Diff lines wrap (true) or scroll sideways (false); null follows the layout (wrap on a phone). Per device. */
   diffWrap: boolean | null;
+  /** The Diff tab's layout (T28): "split" shows old and new side by side where the column is wide enough; null is stacked. Per device. */
+  diffLayout: "stacked" | "split" | null;
+  /** The Diff tab asks the host for `git diff -w` (T28). Off by default. Per device. */
+  diffIgnoreWhitespace: boolean;
   open: (kind: RightPanelKind) => void;
   toggle: (kind: RightPanelKind) => void;
   show: () => void;
@@ -80,6 +84,8 @@ interface RightPanelStoreState {
   openFile: (threadId: string, path: string, kind?: "file" | "dir") => void;
   consumeFileRequest: (id: number) => void;
   setDiffWrap: (wrap: boolean) => void;
+  setDiffLayout: (layout: "stacked" | "split") => void;
+  setDiffIgnoreWhitespace: (on: boolean) => void;
 }
 
 /** localStorage behind try/catch: a private window keeps the state for the page only. */
@@ -118,6 +124,8 @@ const initial = () => ({
   directTyping: null,
   fileRequest: null,
   diffWrap: null,
+  diffLayout: null,
+  diffIgnoreWhitespace: false,
 });
 
 export const useRightPanelStore = create<RightPanelStoreState>()(
@@ -150,12 +158,14 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         if (get().fileRequest?.id === id) set({ fileRequest: null });
       },
       setDiffWrap: (wrap) => set({ diffWrap: wrap }),
+      setDiffLayout: (layout) => set({ diffLayout: layout }),
+      setDiffIgnoreWhitespace: (on) => set({ diffIgnoreWhitespace: on }),
     }),
     {
       name: RIGHT_PANEL_STORAGE_KEY,
       version: 1,
       storage: createJSONStorage(() => safeStorage),
-      partialize: (s) => ({ isOpen: s.isOpen, activeSurfaceId: s.activeSurfaceId, width: s.width, terminalFontSize: s.terminalFontSize, ...(s.diffWrap === null ? {} : { diffWrap: s.diffWrap }) }),
+      partialize: (s) => ({ isOpen: s.isOpen, activeSurfaceId: s.activeSurfaceId, width: s.width, terminalFontSize: s.terminalFontSize, ...(s.diffWrap === null ? {} : { diffWrap: s.diffWrap }), ...(s.diffLayout === null ? {} : { diffLayout: s.diffLayout }), ...(s.diffIgnoreWhitespace ? { diffIgnoreWhitespace: true } : {}) }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<RightPanelStoreState>;
         return {
@@ -165,6 +175,8 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           ...(typeof p.width === "number" ? { width: clampRightPanelWidth(p.width) } : {}),
           ...(typeof p.terminalFontSize === "number" ? { terminalFontSize: clampTerminalFont(p.terminalFontSize) } : {}),
           ...(typeof p.diffWrap === "boolean" ? { diffWrap: p.diffWrap } : {}),
+          ...(p.diffLayout === "stacked" || p.diffLayout === "split" ? { diffLayout: p.diffLayout } : {}),
+          ...(typeof p.diffIgnoreWhitespace === "boolean" ? { diffIgnoreWhitespace: p.diffIgnoreWhitespace } : {}),
         };
       },
     },
@@ -195,6 +207,20 @@ export function useDiffWrap(): [boolean, (wrap: boolean) => void] {
   const pref = useRightPanelStore((s) => s.diffWrap);
   const setDiffWrap = useRightPanelStore((s) => s.setDiffWrap);
   return [pref ?? !isDesktopLayout(), setDiffWrap];
+}
+
+/** The Diff tab's stored layout choice (T28); stacked until one is made. The panel still shows stacked wherever split does not fit. */
+export function useDiffLayout(): ["stacked" | "split", (layout: "stacked" | "split") => void] {
+  const pref = useRightPanelStore((s) => s.diffLayout);
+  const setDiffLayout = useRightPanelStore((s) => s.setDiffLayout);
+  return [pref ?? "stacked", setDiffLayout];
+}
+
+/** Whether the Diff tab asks the host for `git diff -w` (T28). */
+export function useDiffIgnoreWhitespace(): [boolean, (on: boolean) => void] {
+  const on = useRightPanelStore((s) => s.diffIgnoreWhitespace);
+  const set = useRightPanelStore((s) => s.setDiffIgnoreWhitespace);
+  return [on, set];
 }
 
 /** The panel or a sheet is showing. */
