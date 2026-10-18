@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDiffServer, fakePatch, SHA_FROM, SHA_TO, type FakeFile } from "@/test/diffServer";
 import { server } from "@/test/setup";
 
-import { PATCH_CONCURRENCY, PatchEngine, useDiffFilePatches, type Wants } from "./useDiffFilePatches";
+import type { DiffFileEntry } from "./diffTypes";
+import { PATCH_CONCURRENCY, PatchEngine, useDiffFilePatches, withWhitespaceOnly, type Wants } from "./useDiffFilePatches";
 
 const files = (n: number): FakeFile[] => Array.from({ length: n }, (_, i) => ({ path: `src/f${String(i).padStart(2, "0")}.ts` }));
 const set = (...paths: string[]): ReadonlySet<string> => new Set(paths);
@@ -32,15 +33,31 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("withWhitespaceOnly (T28)", () => {
+  const f = (path: string, over: Partial<DiffFileEntry> = {}): DiffFileEntry => ({ path, kind: "modified", added: 2, removed: 1, countsKnown: true, rev: `${path}:1`, ...over });
+
+  it("keeps a modified file the -w list dropped, marked and without counts, in the plain list's order", () => {
+    const out = withWhitespaceOnly([f("a"), f("b"), f("c")], [f("a", { added: 1 }), f("c")]);
+    expect(out.map((x) => x.path)).toEqual(["a", "b", "c"]);
+    expect(out[0]).toMatchObject({ added: 1 });
+    expect(out[1]).toMatchObject({ path: "b", added: 0, removed: 0, whitespaceOnly: true, rev: "b:1:w" });
+  });
+
+  it("does not invent a file for a binary, added, deleted or too-large one, and keeps what only -w lists", () => {
+    const out = withWhitespaceOnly([f("bin", { binary: true }), f("new", { kind: "added" }), f("gone", { kind: "deleted" }), f("big", { tooLarge: true })], [f("extra")]);
+    expect(out.map((x) => x.path)).toEqual(["extra"]);
+  });
+});
+
 describe("PatchEngine: ignore whitespace (T28)", () => {
   const wsOf = (u: URL) => u.searchParams.get("ignoreWhitespace");
 
-  it("starts in the variant it is given, with no plain request first", async () => {
+  it("starts in the variant it is given, and reads the plain list too (it supplies the whitespace-only files)", async () => {
     fake.files = files(2);
     const e = engine();
     e.target("proj", { kind: "workingTree" }, true);
     await ready(e);
-    expect(fake.listCalls.map(wsOf)).toEqual(["1"]);
+    await waitFor(() => expect(fake.listCalls.map(wsOf).sort()).toEqual(["1", null]));
     e.want(wants({ unfolded: set("src/f00.ts") }));
     await waitFor(() => expect(stateOf(e, "src/f00.ts")?.state).toBe("ready"));
     expect(fake.patchCalls.map(wsOf)).toEqual(["1"]);

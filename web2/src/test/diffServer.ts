@@ -24,8 +24,9 @@ export interface FakeFile {
   version?: number;
   /** T28: the patch the bridge sends for `ignoreWhitespace=1` (default: `patch`). */
   wsPatch?: string;
-  /** T28: with `ignoreWhitespace=1` the file has no change left (the list marks it `whitespaceOnly`, 0/0). */
+  /** T28: with `ignoreWhitespace=1` the file has no change left. Like git, the list then leaves it out (`wsListed` keeps it, flagged `whitespaceOnly` with 0/0). */
   whitespaceOnly?: true;
+  wsListed?: true;
   /** T28: the whole-file contents route; default: a text file of `new` lines. Either side may be any state. */
   contents?: { old?: ReviewSide; new: ReviewSide };
   /** T28: the contents route answers this HTTP status instead (404 is what a hidden name gets). */
@@ -127,6 +128,8 @@ export function createDiffServer(initial: FakeFile[] = []): DiffServer {
     };
   };
 
+  const listed = (ws: boolean) => server.files.filter((f) => !(ws && f.whitespaceOnly && !f.wsListed)).map((f) => stat(f, ws));
+
   server.handlers = [
     http.get(REVIEW_PATHS.list, ({ request }) => {
       const url = new URL(request.url);
@@ -142,8 +145,8 @@ export function createDiffServer(initial: FakeFile[] = []): DiffServer {
       if (ifNoneMatch === `"${diffHash}"`) return new HttpResponse(null, { status: 304, headers: { etag: `"${diffHash}"` } });
       const body =
         scope === "branch"
-          ? { available: true, scope: "branch", base: base ?? server.defaultBase ?? "main", ...(base === null ? { baseIsDefault: true } : {}), from: SHA_FROM, to: SHA_TO, files: server.files.map((f) => stat(f, ws)), hidden: 0, truncated: false, diffHash }
-          : { available: true, scope: "working-tree", files: server.files.map((f) => stat(f, ws)), hidden: 0, truncated: false, diffHash };
+          ? { available: true, scope: "branch", base: base ?? server.defaultBase ?? "main", ...(base === null ? { baseIsDefault: true } : {}), from: SHA_FROM, to: SHA_TO, files: listed(ws), hidden: 0, truncated: false, diffHash }
+          : { available: true, scope: "working-tree", files: listed(ws), hidden: 0, truncated: false, diffHash };
       return HttpResponse.json(body, { headers: { etag: `"${diffHash}"` } });
     }),
     http.get(REVIEW_PATHS.patch, async ({ request }) => {

@@ -60,12 +60,34 @@ export function requestScope(scope: Exclude<DiffScope, { kind: "run" }>, ignoreW
 /** One whitespace variant of the engine's state. */
 interface Variant {
   snap: PatchSnapshot;
+  /** The files exactly as this variant's list sent them (`snap.summary.files` may add whitespace-only files under -w). */
+  raw: DiffFileEntry[] | null;
   hash: string | null;
   /** The other variant was refreshed since this one was last read: ask again (a 304 if nothing moved) when it is switched to. */
   stale: boolean;
   summaryAbort: AbortController | null;
 }
-const freshVariant = (): Variant => ({ snap: { summary: { status: "idle" }, entries: new Map() }, hash: null, stale: false, summaryAbort: null });
+const freshVariant = (): Variant => ({ snap: { summary: { status: "idle" }, entries: new Map() }, raw: null, hash: null, stale: false, summaryAbort: null });
+
+/**
+ * Under `-w` the host drops a file whose only changes are whitespace from its list (git lists nothing for it), so the tree
+ * would lose a row when the toggle is turned on. The plain list still has it: keep it, marked `whitespaceOnly` with 0/0 and no
+ * patch to ask for, in the plain list's order. This is the list only; no patch is ever edited on the client.
+ */
+export function withWhitespaceOnly(plain: readonly DiffFileEntry[], ws: readonly DiffFileEntry[]): DiffFileEntry[] {
+  const mine = new Map(ws.map((f) => [f.path, f] as const));
+  const out: DiffFileEntry[] = [];
+  const used = new Set<string>();
+  for (const f of plain) {
+    const hit = mine.get(f.path);
+    if (hit) {
+      out.push(hit);
+      used.add(f.path);
+    } else if (f.kind === "modified" && !f.binary && !f.tooLarge) out.push({ ...f, added: 0, removed: 0, whitespaceOnly: true, rev: `${f.rev}:w` });
+  }
+  for (const f of ws) if (!used.has(f.path)) out.push(f);
+  return out;
+}
 type Ws = 0 | 1;
 
 const TRUNCATED_NOTE = "This file's diff is longer than the host will send, so only the first part is shown. Counts include everything.";
@@ -132,7 +154,11 @@ export class PatchEngine {
     this.variants = [freshVariant(), freshVariant()];
     if (key) this.cur.snap = { summary: { status: "loading" }, entries: new Map() };
     this.notify();
-    if (key) void this.refresh();
+    if (key) {
+      void this.load(this.ws, false);
+      // The whitespace variant lists whitespace-only files from the plain list, so a start in that mode reads both.
+      if (this.ws === 1) void this.load(0, false);
+    }
   }
 
   /**
@@ -148,19 +174,39 @@ export class PatchEngine {
     const v = this.cur;
     if (v.snap.summary.status === "idle" || v.stale || v.snap.summary.status === "error") {
       if (v.snap.summary.status === "idle") v.snap = { ...v.snap, summary: { status: "loading" } };
-      void this.load(false);
+      void this.load(ws, false);
+      if (ws === 1 && this.variants[0].snap.summary.status === "idle") void this.load(0, false);
     } else this.pump();
   }
 
   /** Ask for the file list again (the Refresh button, a run ending, the page coming back). */
   refresh(): Promise<void> {
-    return this.load(true);
+    const w = this.ws;
+    // A refresh in the whitespace variant reads the plain list too (it supplies the whitespace-only files).
+    if (w === 1) void this.load(0, false);
+    return this.load(w, w === 0);
   }
 
-  private async load(markOther: boolean): Promise<void> {
+  private mergedWs(raw: DiffFileEntry[]): DiffFileEntry[] {
+    const plain = this.variants[0];
+    return plain.raw && plain.snap.summary.status === "ready" ? withWhitespaceOnly(plain.raw, raw) : raw;
+  }
+
+  /** The plain list changed: the whitespace variant's whitespace-only files follow it. */
+  private remergeWs(): void {
+    const v = this.variants[1];
+    if (!v.raw || v.snap.summary.status !== "ready") return;
+    const files = this.mergedWs(v.raw);
+    const key = (list: readonly DiffFileEntry[]) => list.map((f) => `${f.path}\0${f.rev}`).join("\n");
+    if (key(files) === key(v.snap.summary.files)) return;
+    const present = new Set(files.map((f) => f.path));
+    this.setIn(1, { summary: { ...v.snap.summary, files }, entries: new Map([...v.snap.entries].filter(([path]) => present.has(path))) });
+    if (this.ws === 1) this.pump();
+  }
+
+  private async load(w: Ws, markOther: boolean): Promise<void> {
     if (!this.folder || !this.scope) return;
-    const w = this.ws;
-    const v = this.cur;
+    const v = this.variants[w] as Variant;
     v.summaryAbort?.abort();
     v.stale = false;
     const other = this.variants[w === 0 ? 1 : 0] as Variant;
@@ -183,10 +229,12 @@ export class PatchEngine {
         return;
       }
       v.hash = preview.diffHash;
-      const files = preview.files.map(entryFromStat);
+      v.raw = preview.files.map(entryFromStat);
+      const files = w === 1 ? this.mergedWs(v.raw) : v.raw;
       const present = new Set(files.map((f) => f.path));
       const entries = new Map([...v.snap.entries].filter(([path]) => present.has(path)));
       this.setIn(w, { summary: { status: "ready", preview, files }, entries });
+      if (w === 0) this.remergeWs();
       if (w === this.ws) this.pump();
     } catch (err) {
       if (isAbort(err) || controller.signal.aborted || key !== this.key) return;

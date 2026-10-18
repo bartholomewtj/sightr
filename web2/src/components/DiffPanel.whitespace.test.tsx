@@ -64,30 +64,45 @@ describe("DiffPanel: ignore whitespace", () => {
     expect(fake.patchCalls).toHaveLength(patches);
   });
 
-  it("asks the other variant again (a 304 when nothing moved) after a refresh, but not for its patches", async () => {
+  it("a refresh in the plain view leaves the other variant behind: switching to it asks again (a 304 when nothing moved), not for its patches", async () => {
     await mountPanel();
     fireEvent.click(toggle("src/a.ts"));
     await waitFor(() => expect(text("src/a.ts")).toContain("new"));
     fireEvent.click(wsButton());
     await waitFor(() => expect(text("src/a.ts")).toContain("new-w"));
+    fireEvent.click(wsButton()); // back to plain
+    await waitFor(() => expect(text("src/a.ts")).not.toContain("new-w"));
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     await settle();
     const lists = fake.listCalls.length;
     const patches = fake.patchCalls.length;
-    fireEvent.click(wsButton()); // back to the plain variant, which the refresh left behind
+    fireEvent.click(wsButton()); // to the whitespace variant, which the refresh left behind
     await waitFor(() => expect(fake.listCalls).toHaveLength(lists + 1));
-    expect(wsParam(fake.listCalls.at(-1)!)).toBeNull();
-    expect(fake.listHeaders.at(-1)?.ifNoneMatch).toBe('"h1"');
+    expect(wsParam(fake.listCalls.at(-1)!)).toBe("1");
+    expect(fake.listHeaders.at(-1)?.ifNoneMatch).toBe('"h1-w"');
     await settle();
     expect(fake.patchCalls).toHaveLength(patches);
-    expect(text("src/a.ts")).toContain("new");
+    expect(text("src/a.ts")).toContain("new-w");
+  });
+
+  it("a refresh in the whitespace view reads the plain list too, so switching back costs nothing", async () => {
+    await mountPanel();
+    fireEvent.click(wsButton());
+    await waitFor(() => expect(fake.listCalls.map(wsParam)).toEqual([null, "1"]));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(fake.listCalls).toHaveLength(4));
+    expect(fake.listCalls.slice(2).map(wsParam).sort()).toEqual(["1", null]);
+    fireEvent.click(wsButton());
+    await settle();
+    expect(fake.listCalls).toHaveLength(4);
   });
 
   it("starts on when the stored choice is on, with no plain request first", async () => {
     useRightPanelStore.getState().setDiffIgnoreWhitespace(true);
     await mountPanel();
     expect(wsButton()).toHaveAttribute("aria-pressed", "true");
-    expect(fake.listCalls.map(wsParam)).toEqual(["1"]);
+    // The whitespace list leaves out whitespace-only files, which the plain list supplies, so both are read.
+    expect(fake.listCalls.map(wsParam).sort()).toEqual(["1", null]);
   });
 
   it("is switched off, with the reason, in a run's scope", async () => {
@@ -105,7 +120,7 @@ describe("DiffPanel: ignore whitespace", () => {
 describe("DiffPanel: ignore whitespace, a file with nothing left", () => {
   useDiffPanelHarness([{ path: "src/ws.ts", whitespaceOnly: true }, { path: "src/real.ts" }]);
 
-  it("stays listed, marked 'whitespace only', with no patch asked for and nothing to expand", async () => {
+  it("stays listed (the plain list supplies it), marked 'whitespace only', with no patch asked for and nothing to expand", async () => {
     await mountPanel();
     await waitFor(() => expect(fake.patchPaths().sort()).toEqual(["src/real.ts", "src/ws.ts"]));
     fireEvent.click(wsButton());
