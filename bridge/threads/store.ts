@@ -2,8 +2,11 @@ import { Database } from "bun:sqlite";
 import { chmodSync, existsSync, renameSync, statSync } from "node:fs";
 
 import type {
+  CheckpointAbsentReason,
+  CheckpointFile,
   HistoryPage,
   Project,
+  RunCheckpoint,
   QueuedMessage,
   Run,
   RuntimeRequest,
@@ -24,6 +27,7 @@ import {
   type ServerEventPayloads,
   type ServerThread,
   type StoredEvent,
+  type StoredEventOf,
 } from "./events.ts";
 import { createSearchIndex, searchItems, type SearchOptions } from "./search.ts";
 
@@ -206,6 +210,46 @@ export const MIGRATIONS: readonly Migration[] = [
       createSearchIndex(db);
     },
   },
+  {
+    // T30: one git checkpoint per run (start and end snapshot in a private store), the run's stored
+    // per-file patches, and the per-project switch (NULL = default on, 0 off, 1 on).
+    version: 7,
+    up(db) {
+      db.run(`CREATE TABLE run_checkpoints (
+        run_id TEXT PRIMARY KEY REFERENCES runs (id) ON DELETE CASCADE,
+        thread_id TEXT NOT NULL REFERENCES threads (id) ON DELETE CASCADE,
+        ordinal INTEGER NOT NULL,
+        repo_root TEXT NOT NULL,
+        status TEXT NOT NULL,
+        reason TEXT,
+        start_commit TEXT,
+        start_at INTEGER,
+        end_commit TEXT,
+        end_at INTEGER,
+        files_json TEXT,
+        additions INTEGER,
+        deletions INTEGER,
+        hidden INTEGER,
+        skipped INTEGER,
+        truncated INTEGER,
+        approximate INTEGER,
+        shared INTEGER,
+        unsettled INTEGER,
+        objects_expired_at INTEGER
+      )`);
+      db.run(`CREATE INDEX run_checkpoints_thread ON run_checkpoints (thread_id, ordinal)`);
+      db.run(`CREATE TABLE run_checkpoint_patches (
+        run_id TEXT NOT NULL REFERENCES runs (id) ON DELETE CASCADE,
+        path TEXT NOT NULL,
+        patch TEXT,
+        binary INTEGER NOT NULL,
+        truncated INTEGER NOT NULL,
+        bytes INTEGER NOT NULL,
+        PRIMARY KEY (run_id, path)
+      )`);
+      db.run(`ALTER TABLE projects ADD COLUMN checkpoints INTEGER`);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
@@ -268,6 +312,7 @@ interface ProjectRow {
   ord: number;
   status: string;
   closed_at: number | null;
+  checkpoints: number | null;
 }
 
 interface ThreadRow {
@@ -341,6 +386,7 @@ function projectFromRow(r: ProjectRow): Project {
     order: r.ord,
     status: r.status as Project["status"],
     ...(r.closed_at !== null ? { closedAt: r.closed_at } : {}),
+    ...(r.checkpoints !== null ? { checkpoints: r.checkpoints !== 0 } : {}),
   };
 }
 
@@ -356,6 +402,7 @@ function projectParams(p: Project) {
     ord: p.order,
     status: p.status,
     closed_at: p.closedAt ?? null,
+    checkpoints: p.checkpoints === undefined ? null : p.checkpoints ? 1 : 0,
   };
 }
 
@@ -426,7 +473,8 @@ const UPDATE_THREAD = `UPDATE threads SET ${THREAD_COLUMNS.filter((c) => c !== "
 const PROJECT_COLUMNS = Object.keys(projectParams({} as Project));
 const UPSERT_PROJECT =
   `INSERT INTO projects (${PROJECT_COLUMNS.join(", ")}) VALUES (${PROJECT_COLUMNS.map((c) => "$" + c).join(", ")}) ` +
-  `ON CONFLICT (id) DO UPDATE SET ${PROJECT_COLUMNS.filter((c) => c !== "id").map((c) => `${c} = excluded.${c}`).join(", ")}`;
+  // A project upserted without `checkpoints` (the herd ingest builds its own) keeps the stored switch.
+  `ON CONFLICT (id) DO UPDATE SET ${PROJECT_COLUMNS.filter((c) => c !== "id").map((c) => (c === "checkpoints" ? `${c} = coalesce(excluded.${c}, projects.${c})` : `${c} = excluded.${c}`)).join(", ")}`;
 
 function runFromRow(r: RunRow): Run {
   return {
@@ -438,6 +486,182 @@ function runFromRow(r: RunRow): Run {
     startedAt: r.started_at,
     ...(r.completed_at !== null ? { completedAt: r.completed_at } : {}),
   };
+}
+
+// ── Checkpoints (T30) ─────────────────────────────────────────────────────────────────────────────
+
+interface CheckpointDbRow {
+  run_id: string;
+  thread_id: string;
+  ordinal: number;
+  repo_root: string;
+  status: string;
+  reason: string | null;
+  start_commit: string | null;
+  start_at: number | null;
+  end_commit: string | null;
+  end_at: number | null;
+  files_json: string | null;
+  additions: number | null;
+  deletions: number | null;
+  hidden: number | null;
+  skipped: number | null;
+  truncated: number | null;
+  approximate: number | null;
+  shared: number | null;
+  unsettled: number | null;
+  objects_expired_at: number | null;
+}
+
+/** A `run_checkpoints` row as the bridge reads it: the wire record plus where its snapshot lives. Never send it to a client. */
+export interface ServerCheckpoint {
+  checkpoint: RunCheckpoint;
+  repoRoot: string;
+  startCommit: string | null;
+  endCommit: string | null;
+  startAt: number | null;
+  endAt: number | null;
+  objectsExpiredAt: number | null;
+}
+
+/** One stored per-file patch (`run_checkpoint_patches`). `patch` null: cut by the per-run cap (computed live while the objects exist). */
+export interface CheckpointPatchRow {
+  path: string;
+  patch: string | null;
+  binary: boolean;
+  truncated: boolean;
+  bytes: number;
+}
+
+function checkpointFromRow(r: CheckpointDbRow): RunCheckpoint {
+  const capturedAt = r.end_at ?? r.start_at;
+  const hasObjects = r.status !== "absent" && r.start_commit !== null;
+  return {
+    runId: r.run_id,
+    threadId: r.thread_id,
+    ordinal: r.ordinal,
+    status: r.status as RunCheckpoint["status"],
+    ...(r.reason !== null ? { reason: r.reason as CheckpointAbsentReason } : {}),
+    ...(hasObjects ? { live: r.objects_expired_at === null } : {}),
+    files: r.files_json === null ? [] : (JSON.parse(r.files_json) as CheckpointFile[]),
+    additions: r.additions ?? 0,
+    deletions: r.deletions ?? 0,
+    ...(capturedAt !== null ? { capturedAt } : {}),
+    ...(r.truncated ? { truncated: true } : {}),
+    ...(r.hidden ? { hidden: r.hidden } : {}),
+    ...(r.skipped ? { skipped: r.skipped } : {}),
+    ...(r.approximate ? { approximate: true } : {}),
+    ...(r.shared ? { shared: true } : {}),
+    ...(r.unsettled ? { unsettled: true } : {}),
+  };
+}
+
+function serverCheckpointFromRow(r: CheckpointDbRow): ServerCheckpoint {
+  return {
+    checkpoint: checkpointFromRow(r),
+    repoRoot: r.repo_root,
+    startCommit: r.start_commit,
+    endCommit: r.end_commit,
+    startAt: r.start_at,
+    endAt: r.end_at,
+    objectsExpiredAt: r.objects_expired_at,
+  };
+}
+
+/** The timeline row's title until the UI draws its own (T31): what the snapshot found, in a few words. */
+function checkpointTitle(c: RunCheckpoint): string {
+  if (c.status !== "ready") return "Snapshot unavailable";
+  const n = c.files.length;
+  return n === 0 ? "Snapshot: no net changes" : `Snapshot: ${n}${c.truncated ? "+" : ""} file${n === 1 ? "" : "s"} changed`;
+}
+
+const bit = (v: boolean | undefined): number | null => (v ? 1 : null);
+const count = (v: number | undefined): number | null => (v ? v : null);
+
+/** Write the run's `checkpoint_summary` item from its row (T3's `checkpoint` item; id `checkpoint:<runId>`). */
+function upsertCheckpointItem(tx: Database, row: CheckpointDbRow, sequence: number, ts: number): void {
+  const checkpoint = checkpointFromRow(row);
+  const id = `checkpoint:${row.run_id}`;
+  const existing = tx.query<{ position: number; body_json: string }, [string]>("SELECT position, body_json FROM turn_items WHERE id = ?").get(id);
+  const position =
+    existing?.position ??
+    (tx.query<{ p: number | null }, [string]>("SELECT max(position) AS p FROM turn_items WHERE thread_id = ?").get(row.thread_id)?.p ?? -1) + 1;
+  const createdAt = existing ? (JSON.parse(existing.body_json) as TurnItem).createdAt : ts;
+  const item: TurnItem = {
+    id,
+    threadId: row.thread_id,
+    runId: row.run_id,
+    ordinal: position,
+    status: "completed",
+    title: checkpointTitle(checkpoint),
+    startedAt: row.start_at,
+    completedAt: row.end_at,
+    createdAt,
+    updatedAt: ts,
+    type: "checkpoint_summary",
+    checkpoint,
+  };
+  tx.query(
+    `INSERT INTO turn_items (id, thread_id, run_id, position, type, body_json, updated_sequence)
+     VALUES ($id, $thread_id, $run_id, $position, $type, $body_json, $updated_sequence)
+     ON CONFLICT (id) DO UPDATE SET body_json = excluded.body_json, updated_sequence = excluded.updated_sequence`,
+  ).run({ id, thread_id: row.thread_id, run_id: row.run_id, position, type: item.type, body_json: JSON.stringify(item), updated_sequence: sequence });
+}
+
+function applyCheckpointCaptured(tx: Database, event: StoredEventOf<"checkpoint.captured">): void {
+  const { checkpoint: c, phase } = event.payload;
+  const existing = tx.query<CheckpointDbRow, [string]>("SELECT * FROM run_checkpoints WHERE run_id = ?").get(c.runId);
+  // A checkpoint for a run the store no longer has (pruned, deleted) is a notice only.
+  if (!tx.query<{ id: string }, [string]>("SELECT id FROM runs WHERE id = ?").get(c.runId)) return;
+  if (phase === "start") {
+    // A duplicate start, or a start replayed after its end, changes nothing.
+    if (existing) return;
+    tx.query(
+      `INSERT INTO run_checkpoints (run_id, thread_id, ordinal, repo_root, status, reason, start_commit, start_at, skipped, approximate)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(c.runId, c.threadId, c.ordinal, event.payload.repoRoot ?? "", c.status, c.reason ?? null, event.payload.startCommit ?? null, c.capturedAt ?? event.ts, count(c.skipped), bit(c.approximate));
+    return;
+  }
+  // The end phase finishes the row once; a duplicate end changes nothing.
+  if (existing && existing.end_at !== null) return;
+  const endAt = c.capturedAt ?? event.ts;
+  const params = {
+    run_id: c.runId,
+    thread_id: c.threadId,
+    ordinal: c.ordinal,
+    repo_root: existing?.repo_root || event.payload.repoRoot || "",
+    status: c.status,
+    reason: c.reason ?? null,
+    start_commit: existing?.start_commit ?? event.payload.startCommit ?? null,
+    start_at: existing?.start_at ?? null,
+    end_commit: event.payload.endCommit ?? null,
+    end_at: endAt,
+    files_json: JSON.stringify(c.files),
+    additions: c.additions,
+    deletions: c.deletions,
+    hidden: count(c.hidden),
+    skipped: count(c.skipped),
+    truncated: bit(c.truncated),
+    approximate: bit(c.approximate) ?? existing?.approximate ?? null,
+    shared: bit(c.shared),
+    unsettled: bit(c.unsettled),
+    objects_expired_at: existing?.objects_expired_at ?? null,
+  };
+  const cols = Object.keys(params);
+  tx.query(
+    `INSERT INTO run_checkpoints (${cols.join(", ")}) VALUES (${cols.map((k) => "$" + k).join(", ")})
+     ON CONFLICT (run_id) DO UPDATE SET ${cols.filter((k) => k !== "run_id").map((k) => `${k} = excluded.${k}`).join(", ")}`,
+  ).run(params);
+  const row = tx.query<CheckpointDbRow, [string]>("SELECT * FROM run_checkpoints WHERE run_id = ?").get(c.runId)!;
+  upsertCheckpointItem(tx, row, event.sequence, event.ts);
+}
+
+function applyCheckpointExpired(tx: Database, event: StoredEventOf<"checkpoint.expired">): void {
+  const r = tx.query("UPDATE run_checkpoints SET objects_expired_at = ? WHERE run_id = ? AND objects_expired_at IS NULL").run(event.ts, event.payload.runId);
+  if (r.changes === 0) return;
+  const row = tx.query<CheckpointDbRow, [string]>("SELECT * FROM run_checkpoints WHERE run_id = ?").get(event.payload.runId)!;
+  // The timeline row says `live: false` too, so a snapshot and the run agree.
+  if (row.end_at !== null && tx.query("SELECT 1 FROM turn_items WHERE id = ?").get(`checkpoint:${row.run_id}`)) upsertCheckpointItem(tx, row, event.sequence, event.ts);
 }
 
 function queuedFromRow(r: QueuedRow): QueuedMessage {
@@ -643,6 +867,12 @@ export function applyEvent(tx: Database, event: StoredEvent): void {
       }
       return;
     }
+    case "checkpoint.captured":
+      applyCheckpointCaptured(tx, event);
+      return;
+    case "checkpoint.expired":
+      applyCheckpointExpired(tx, event);
+      return;
     case "command.rejected":
     case "dispatch.failed":
     case "thread.create.failed":
@@ -681,6 +911,18 @@ export interface AppendOptions {
   receipt?: { type: string; result?: unknown };
   /** Journal offsets saved with the events they produced (T03). */
   offsets?: JournalOffset[];
+  /**
+   * T30: a run's per-file patches, written in the same transaction as its end-phase `checkpoint.captured`.
+   * Not event-sourced (a replay drops them). Rows already stored for the run are kept (a retry changes nothing).
+   */
+  checkpointPatches?: { runId: string; rows: CheckpointPatchRow[] };
+}
+
+/** A checkpoint row with what the retention sweep weighs it by (T30). */
+export interface CheckpointSweepRow extends ServerCheckpoint {
+  runStartedAt: number;
+  runCompletedAt: number | null;
+  threadArchivedAt: number | null;
 }
 
 export interface EventsAfterOptions {
@@ -785,6 +1027,16 @@ export interface ThreadStore {
     get(threadId: string): JournalOffset | null;
     set(offset: JournalOffset): void;
   };
+  /** T30: a run's checkpoint row (server form: repo root and commits). Never send it to a client. */
+  getCheckpoint(runId: string): ServerCheckpoint | null;
+  /** T30: every checkpoint row with its run's times and its thread's archive time, oldest run first. */
+  listCheckpoints(): CheckpointSweepRow[];
+  /** T30: one stored per-file patch. */
+  checkpointPatch(runId: string, path: string): CheckpointPatchRow | null;
+  /** T30: the sum of `bytes` over every stored patch. */
+  checkpointPatchBytes(): number;
+  /** T30: delete stored patches oldest run first until their `bytes` sum to at most `maxBytes`; the checkpoint rows and file lists stay. Returns the runs whose patches went. */
+  pruneCheckpointPatches(maxBytes: number): number;
   prune(now: number): PruneResult;
   close(): void;
 }
@@ -871,8 +1123,24 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
       );
     }
     for (const o of options.offsets ?? []) setOffset(o);
+    const patches = options.checkpointPatches;
+    if (patches && db.query("SELECT 1 FROM runs WHERE id = ?").get(patches.runId)) {
+      const insert = db.query("INSERT OR IGNORE INTO run_checkpoint_patches (run_id, path, patch, binary, truncated, bytes) VALUES (?, ?, ?, ?, ?, ?)");
+      for (const p of patches.rows) insert.run(patches.runId, p.path, p.patch, p.binary ? 1 : 0, p.truncated ? 1 : 0, p.bytes);
+    }
     return written;
   });
+
+  /** `Run.checkpoint` for each run that has a row (T30). */
+  const withCheckpoints = (runs: Run[]): Run[] => {
+    if (runs.length === 0) return runs;
+    const rows = db
+      .query<CheckpointDbRow, string[]>(`SELECT * FROM run_checkpoints WHERE run_id IN (${runs.map(() => "?").join(", ")})`)
+      .all(...runs.map((r) => r.id));
+    if (rows.length === 0) return runs;
+    const byRun = new Map(rows.map((r) => [r.run_id, checkpointFromRow(r)]));
+    return runs.map((r) => (byRun.has(r.id) ? { ...r, checkpoint: byRun.get(r.id)! } : r));
+  };
 
   const selectEvents = (sequence: number, o: EventsAfterOptions = {}): StoredEvent[] => {
     const where = ["sequence > ?"];
@@ -975,7 +1243,7 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
         return {
           sequence: lastSequence(),
           thread: toWireThread(thread),
-          runs,
+          runs: withCheckpoints(runs),
           items,
           requests: requestsFor(id, true),
           queue: db
@@ -1157,9 +1425,9 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
           if (list) list.push(item);
           else byRun.set(run.id, [item]);
         }
-        const runs = [...byRun.entries()]
-          .map(([id, list]) => ({ run: store.getRun(id)!, items: list }))
-          .sort((a, b) => a.run.ordinal - b.run.ordinal);
+        const paged = [...byRun.entries()].map(([id, list]) => ({ run: store.getRun(id)!, items: list }));
+        const filled = withCheckpoints(paged.map((p) => p.run));
+        const runs = paged.map((p, i) => ({ run: filled[i]!, items: p.items })).sort((a, b) => a.run.ordinal - b.run.ordinal);
         const older = db
           .query<{ n: number }, [string, number]>("SELECT count(*) AS n FROM turn_items WHERE thread_id = ? AND position < ?")
           .get(threadId, from);
@@ -1208,6 +1476,56 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
 
     search(opts) {
       return searchItems(db, opts);
+    },
+
+    getCheckpoint(runId) {
+      const row = db.query<CheckpointDbRow, [string]>("SELECT * FROM run_checkpoints WHERE run_id = ?").get(runId);
+      return row ? serverCheckpointFromRow(row) : null;
+    },
+
+    listCheckpoints() {
+      return db
+        .query<CheckpointDbRow & { run_started_at: number; run_completed_at: number | null; thread_archived_at: number | null }, []>(
+          `SELECT c.*, r.started_at AS run_started_at, r.completed_at AS run_completed_at, t.archived_at AS thread_archived_at
+           FROM run_checkpoints c JOIN runs r ON r.id = c.run_id JOIN threads t ON t.id = c.thread_id
+           ORDER BY r.started_at, c.run_id`,
+        )
+        .all()
+        .map((r) => ({ ...serverCheckpointFromRow(r), runStartedAt: r.run_started_at, runCompletedAt: r.run_completed_at, threadArchivedAt: r.thread_archived_at }));
+    },
+
+    checkpointPatch(runId, path) {
+      const row = db
+        .query<{ path: string; patch: string | null; binary: number; truncated: number; bytes: number }, [string, string]>(
+          "SELECT path, patch, binary, truncated, bytes FROM run_checkpoint_patches WHERE run_id = ? AND path = ?",
+        )
+        .get(runId, path);
+      return row ? { path: row.path, patch: row.patch, binary: row.binary !== 0, truncated: row.truncated !== 0, bytes: row.bytes } : null;
+    },
+
+    checkpointPatchBytes() {
+      return db.query<{ n: number | null }, []>("SELECT sum(bytes) AS n FROM run_checkpoint_patches").get()?.n ?? 0;
+    },
+
+    pruneCheckpointPatches(maxBytes) {
+      return db.transaction((): number => {
+        let total = store.checkpointPatchBytes();
+        if (total <= maxBytes) return 0;
+        const perRun = db
+          .query<{ run_id: string; n: number }, []>(
+            `SELECT p.run_id, sum(p.bytes) AS n FROM run_checkpoint_patches p JOIN runs r ON r.id = p.run_id
+             GROUP BY p.run_id ORDER BY min(r.started_at), p.run_id`,
+          )
+          .all();
+        let runs = 0;
+        for (const { run_id, n } of perRun) {
+          if (total <= maxBytes) break;
+          db.query("DELETE FROM run_checkpoint_patches WHERE run_id = ?").run(run_id);
+          total -= n;
+          runs++;
+        }
+        return runs;
+      }).immediate();
     },
 
     prune(at) {

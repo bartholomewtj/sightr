@@ -12,6 +12,9 @@ export const REVIEW_UNAVAILABLE: Record<ReviewUnavailable, string> = {
   "bad-commit": "That commit isn't in this repository any more.",
   "bad-file": "The host would not read that file.",
   busy: "The host is busy with other diffs. Try again in a moment.",
+  // T30's run scope (shared/v2/review.ts); T31 words them for the panel.
+  expired: "This run's snapshot is no longer available.",
+  "no-checkpoint": "This run has no snapshot to compare.",
 };
 
 /** A reason as words; an unknown one (a newer bridge) still says something. */

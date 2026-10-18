@@ -44,6 +44,14 @@ export function decide(state: DecideState, command: Command, ctx: DecideContext)
       if (label.length > MAX_TITLE_LENGTH) return reject("invalid", "label-too-long");
       return accept({ type: "project.upserted", payload: { project: { ...project, label, labelSource: "user" } } });
     }
+    case "project.checkpoints.set": {
+      // T30: later runs only; checkpoints already taken stay until the retention sweep removes them.
+      const project = state.project;
+      if (!project || project.id !== command.projectId) return reject("not_found", "no-such-project");
+      if (typeof command.enabled !== "boolean") return reject("invalid", "bad-enabled");
+      if (project.checkpoints === command.enabled) return accept();
+      return accept({ type: "project.upserted", payload: { project: { ...project, checkpoints: command.enabled } } });
+    }
     case "thread.rename":
     case "thread.pin":
     case "thread.unpin":

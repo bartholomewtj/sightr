@@ -6,9 +6,14 @@
 import type { FolderGitUnavailable } from "../wire.ts";
 
 export const REVIEW_PATHS = { list: "/api/files/git/review", patch: "/api/files/git/review/patch", contents: "/api/files/git/review/contents", branches: "/api/files/git/branches" } as const;
-/** "run" is reserved for T30 (a thread run's checkpoint range); the routes answer 501 for it until then. */
+/**
+ * "run" (T30) is a thread run's checkpoint range: `threadId`, `runId` and `file` (a repo path), no `path`.
+ * The run's file list is `Run.checkpoint.files` on the thread stream, so only the patch and contents
+ * routes take it (`w=1` for ignore-whitespace there). A bridge with v2 off answers 501.
+ */
 export type ReviewScope = "working-tree" | "branch" | "run";
-export type ReviewUnavailable = FolderGitUnavailable | "no-commits" | "no-base" | "bad-base" | "bad-commit" | "bad-file" | "busy";
+/** `no-checkpoint`: the run has no `ready` checkpoint. `expired`: its snapshot objects are gone (stored patches still serve with `w=0`). */
+export type ReviewUnavailable = FolderGitUnavailable | "no-commits" | "no-base" | "bad-base" | "bad-commit" | "bad-file" | "busy" | "expired" | "no-checkpoint";
 export type ReviewFileKind = "added" | "modified" | "deleted" | "renamed" | "untracked";
 export interface ReviewFileStat {
   path: string; oldPath?: string; kind: ReviewFileKind; added: number; removed: number;

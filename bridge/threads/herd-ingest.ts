@@ -349,6 +349,8 @@ export function diffHerd(snap: EngineSnapshot, projection: HerdProjection, ctx: 
       ...(w.worktreeOf !== undefined ? { worktreeOf: w.worktreeOf } : {}),
       ...(w.branch !== undefined ? { branch: w.branch } : {}),
       status: rollUp(id),
+      // T30: the operator's snapshot switch is not the herd's; carry it so clients keep it too.
+      ...(existing?.checkpoints !== undefined ? { checkpoints: existing.checkpoints } : {}),
     };
     if (!existing || !sameProject(existing, desired)) {
       projectEvents.push({ type: "project.upserted", payload: { project: desired } });

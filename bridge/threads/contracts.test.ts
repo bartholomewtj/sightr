@@ -37,6 +37,7 @@ const TURN_ITEM_TYPES = [
   "system_notice",
   "error",
   "compaction",
+  "checkpoint_summary",
   "session",
   "screen",
 ] as const satisfies readonly TurnItemType[];
@@ -63,6 +64,7 @@ describe("contracts", () => {
         "thread.unsettle", "thread.archive", "thread.unarchive", "thread.delete", "thread.markRead", "thread.markUnread",
         "message.dispatch", "queued.reorder", "queued.edit", "queued.cancel", "queue.resume", "run.interrupt",
         "runtime-request.respond", "thread.permissionMode.set", "thread.model.set", "project.create", "project.rename",
+        "project.checkpoints.set",
       ].sort(),
     );
     expect<string[]>([...THREAD_EVENT_TYPES].sort()).toEqual(
@@ -70,6 +72,7 @@ describe("contracts", () => {
         "project.upserted", "project.closed", "thread.created", "thread.updated", "thread.shelf-changed",
         "thread.archived", "thread.deleted", "run.started", "run.ended", "run.updated", "turn-item.updated", "runtime-request.updated",
         "queue.updated", "command.rejected", "dispatch.failed", "thread.create.failed",
+        "checkpoint.captured", "checkpoint.expired",
       ].sort(),
     );
   });

@@ -70,6 +70,7 @@ const PURE_COMMANDS: ReadonlySet<CommandType> = new Set<CommandType>([
   "thread.markRead",
   "thread.markUnread",
   "project.rename",
+  "project.checkpoints.set",
 ]);
 
 // ── Effects (T06–T08 register more) ──────────────────────────────────────────────────────────────
@@ -218,7 +219,7 @@ export function commandHash(body: Record<string, unknown>): string {
   return createHash("sha256").update(stable(rest)).digest("hex");
 }
 
-type FieldKind = "string" | "string?" | "number" | "number?" | "numbers?";
+type FieldKind = "string" | "string?" | "number" | "number?" | "numbers?" | "boolean";
 
 /** Field shapes for the commands this slice runs; effect handlers check their own. */
 const COMMAND_FIELDS: Partial<Record<CommandType, Record<string, FieldKind>>> = {
@@ -234,6 +235,7 @@ const COMMAND_FIELDS: Partial<Record<CommandType, Record<string, FieldKind>>> = 
   "thread.markRead": { threadId: "string" },
   "thread.markUnread": { threadId: "string" },
   "project.rename": { projectId: "string", label: "string" },
+  "project.checkpoints.set": { projectId: "string", enabled: "boolean" },
   "runtime-request.respond": { requestId: "string", optionIndex: "number?", optionIndices: "numbers?", text: "string?" },
 };
 
@@ -244,7 +246,9 @@ export function invalidFields(type: CommandType, body: Record<string, unknown>):
   for (const [name, kind] of Object.entries(fields)) {
     const v = body[name];
     const ok =
-      kind === "string"
+      kind === "boolean"
+        ? typeof v === "boolean"
+        : kind === "string"
         ? typeof v === "string" && v.length > 0
         : kind === "string?"
           ? v === undefined || typeof v === "string"
@@ -364,7 +368,7 @@ export function createV2Routes(deps: V2RoutesDeps): V2Routes {
 
   async function runPure(s: ThreadStore, req: Request, command: Command, hash: string): Promise<Reply> {
     const threadId = "threadId" in command ? command.threadId : undefined;
-    const projectId = command.type === "project.rename" ? command.projectId : undefined;
+    const projectId = command.type === "project.rename" || command.type === "project.checkpoints.set" ? command.projectId : undefined;
     let key: string;
     if (threadId !== undefined) {
       const thread = s.getThread(threadId);
