@@ -8,7 +8,7 @@ import type { AgentView, StateEngine } from "../state-engine.ts";
 import { SHELL_HARNESS } from "./capabilities.ts";
 import type { EventDraft, ServerThread, TurnItemDraft } from "./events.ts";
 import type { JournalOffset, ThreadStore } from "./store.ts";
-import { entryItemIds, entryItems, isUserSpeech, parseEntryTime, sameItemBody } from "./turn-items.ts";
+import { entryItemIds, entryItems, isUserSpeech, logTag, parseEntryTime, sameItemBody } from "./turn-items.ts";
 
 // Journal ingest (T03): each thread's harness log becomes turn items, and its herdr status becomes
 // runs.
@@ -237,7 +237,7 @@ export function createJournalIngestor(deps: JournalIngestorDeps): JournalIngesto
   const itemDrafts = (
     thread: ServerThread,
     entries: readonly TranscriptEntry[],
-    opts: { fresh: boolean; backfill: boolean },
+    opts: { fresh: boolean; backfill: boolean; logTag?: string },
   ): EventDraft[] => {
     const at = now();
     const exists = (id: string) => store.getTurnItem(id) !== null;
@@ -271,7 +271,8 @@ export function createJournalIngestor(deps: JournalIngestorDeps): JournalIngesto
 
     /** Upsert one entry's items. `runId` is used for items not yet stored. */
     const upsert = (entry: TranscriptEntry, runId: string | null, runOpen: boolean, createNew: boolean) => {
-      const fresh = entryItems(entry, { threadId: thread.id, runId, runOpen, createdAt: at, updatedAt: at, harness: thread.harness });
+      const tag = opts.logTag !== undefined ? { logTag: opts.logTag } : {};
+      const fresh = entryItems(entry, { threadId: thread.id, runId, runOpen, createdAt: at, updatedAt: at, harness: thread.harness, ...tag });
       for (const item of fresh) {
         const existing = store.getTurnItem(item.id);
         if (existing === null) {
@@ -297,6 +298,7 @@ export function createJournalIngestor(deps: JournalIngestorDeps): JournalIngesto
           createdAt: existing.createdAt,
           updatedAt: existing.updatedAt,
           harness: thread.harness,
+          ...tag,
         }).find((i) => i.id === item.id)!;
         // A call the run's interrupt cut short stays interrupted rather than reading as done.
         if (existing.status === "interrupted" && again.status === "completed") again.status = "interrupted";
@@ -393,7 +395,7 @@ export function createJournalIngestor(deps: JournalIngestorDeps): JournalIngesto
     if (read.kind === "unchanged") return;
     const fresh = saved === null || sessionChanged || read.reset;
     const backfill = saved === null && store.listRuns(thread.id, 1).length === 0;
-    drafts.push(...itemDrafts(thread, read.entries, { fresh, backfill }));
+    drafts.push(...itemDrafts(thread, read.entries, { fresh, backfill, logTag: logTag(read.path) }));
     const contextUsage = latestContextUsage(read.entries);
     if (contextUsage !== null && !sameUsage(thread.contextUsage, contextUsage)) {
       drafts.push({ type: "thread.updated", threadId: thread.id, payload: { patch: { contextUsage }, at: now() } });
