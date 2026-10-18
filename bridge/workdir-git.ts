@@ -21,10 +21,16 @@ export interface GitLimits {
   maxStdoutBytes?: number;
   /** Read by the review wrapper, not by the runner: this caller copes with cut output (`overflow`); every other review call treats it as a failure. */
   allowPartial?: boolean;
+  /** This call's timeout (default {@link GIT_TIMEOUT_MS}). T30's snapshots pass what is left of their budget. */
+  timeoutMs?: number;
+  /** Added to the scrubbed {@link env} (T30: `GIT_DIR`, `GIT_INDEX_FILE` and friends for the private store). */
+  extraEnv?: Record<string, string>;
+  /** Written to the process's stdin, which is then closed (T30: `--pathspec-from-file=-`, `update-ref --stdin`). */
+  stdin?: string;
 }
 export type GitRunner = (args: string[], cwd: string, limits?: GitLimits) => Promise<GitRun>;
 const STDERR_CAP_BYTES = 64 * 1024;
-const prefix = [
+export const prefix = [
   "--no-pager", // never let a read block on or emit pager output
   "-c", `core.hooksPath=${devNull}`, // repo hooks must never execute during a read
   "-c", "core.fsmonitor=false", // do not start a watcher daemon in the repo
@@ -32,7 +38,7 @@ const prefix = [
   "-c", "color.ui=false", // JSON must not contain ANSI colour escapes
   "-c", "diff.external=", // do not invoke an external diff program
 ];
-function env(): Record<string, string> {
+export function env(): Record<string, string> {
   const out: Record<string, string> = {};
   for (const key of ["PATH", "Path", "SystemRoot", "windir", "ComSpec", "HOME", "USERPROFILE", "TMPDIR", "TEMP", "TZ"]) if (process.env[key]) out[key] = process.env[key]!;
   const gitNull = process.platform === "win32" ? "NUL" : devNull;
@@ -90,12 +96,14 @@ export async function collectBounded(proc: BoundedProc, maxStdoutBytes: number, 
 }
 export const spawnGit: GitRunner = async (args, cwd, limits) => {
   let proc: any;
-  try { proc = Bun.spawn(["git", ...prefix, ...(await readEffectiveAutocrlf()), ...args], { cwd, env: env(), stdout: "pipe", stderr: "pipe" }); } catch { return { code: -1, stdout: "", stderr: "", timedOut: false, failed: true }; }
+  const timeoutMs = limits?.timeoutMs ?? GIT_TIMEOUT_MS;
+  try { proc = Bun.spawn(["git", ...prefix, ...(await readEffectiveAutocrlf()), ...args], { cwd, env: { ...env(), ...limits?.extraEnv }, stdin: limits?.stdin === undefined ? "ignore" : "pipe", stdout: "pipe", stderr: "pipe" }); } catch { return { code: -1, stdout: "", stderr: "", timedOut: false, failed: true }; }
+  if (limits?.stdin !== undefined) { try { proc.stdin.write(limits.stdin); await proc.stdin.end(); } catch { /* the process died early; its exit code says why */ } }
   // Bounded read (the review routes): drain both pipes from the start, stop the process once stdout passes the cap.
-  if (limits?.maxStdoutBytes !== undefined) return collectBounded(proc, limits.maxStdoutBytes);
+  if (limits?.maxStdoutBytes !== undefined) return collectBounded(proc, limits.maxStdoutBytes, timeoutMs);
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<number>((r) => { timer = setTimeout(() => { timedOut = true; proc.kill(); r(-1); }, GIT_TIMEOUT_MS); });
+  const timeout = new Promise<number>((r) => { timer = setTimeout(() => { timedOut = true; proc.kill(); r(-1); }, timeoutMs); });
   const code = await Promise.race([proc.exited, timeout]); clearTimeout(timer!);
   const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
   return { code, stdout, stderr, timedOut, failed: false };
@@ -147,7 +155,7 @@ export const MAX_COMMITS = 20;
 export const SHA_RE = /^[0-9a-f]{7,40}$/;
 export const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 /** Flags every patch or count call carries: no external diff, no textconv driver, no signature check, plain text. */
-const DIFF_FLAGS = ["--no-ext-diff", "--no-textconv", "--no-renames", "--no-color"];
+export const DIFF_FLAGS = ["--no-ext-diff", "--no-textconv", "--no-renames", "--no-color"];
 const LOG_FORMAT = "--format=%x1e%H%x1f%h%x1f%ct%x1f%P%x1f%an%x1f%s";
 /** Where a branch range is measured from when the branch has no upstream. Fixed refs, never client input. */
 const BASE_FALLBACKS = ["refs/remotes/origin/HEAD", "refs/heads/main", "refs/heads/master"];
