@@ -447,6 +447,34 @@ describe("workdir", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 60_000);
 
+  test("routes the run scope (T30) with no path: thread and run ids, a refused file is a 404, the list is on the stream, ETag answers 304", async () => {
+    const root = await mkdtemp(join(tmpdir(), "sightr-workdir-run-"));
+    const seen: unknown[] = [];
+    const runReview = {
+      patch: async (q: unknown) => { seen.push(["patch", q]); return { available: true as const, patch: "diff --git a/a.txt b/a.txt\n", truncated: false, diffHash: "h1" }; },
+      contents: async (q: unknown) => { seen.push(["contents", q]); return { available: false as const, reason: "expired" as const }; },
+    };
+    try {
+      const w = createWorkdir(cfg(root), { ...helpers, runReview });
+      const ask = (route: string, q: string, headers: Record<string, string> = {}) => w.handle(new Request(`http://x${route}?${q}`, { headers }), new URL(`http://x${route}?${q}`));
+      const patch = await ask("/api/files/git/review/patch", "scope=run&threadId=t1&runId=r1&file=src/a.ts&w=1");
+      expect(patch.status).toBe(200); expect(patch.headers.get("etag")).toBe('"h1"'); expect(patch.headers.get("cache-control")).toBe("no-store");
+      expect(seen).toEqual([["patch", { threadId: "t1", runId: "r1", file: "src/a.ts", w: true }]]);
+      expect((await ask("/api/files/git/review/patch", "scope=run&threadId=t1&runId=r1&file=a.txt", { "if-none-match": '"h1"' })).status).toBe(304);
+      expect(seen.at(-1)).toEqual(["patch", { threadId: "t1", runId: "r1", file: "a.txt", w: false }]);
+      expect(await (await ask("/api/files/git/review/contents", "scope=run&threadId=t1&runId=r1&file=a.txt")).json()).toEqual({ available: false, reason: "expired" });
+      const n = seen.length;
+      for (const file of [".env", "config/x.json", "../x", "/abs", "", "a\\b", "id_rsa"]) expect((await ask("/api/files/git/review/patch", `scope=run&threadId=t1&runId=r1&file=${encodeURIComponent(file)}`)).status).toBe(404);
+      expect((await ask("/api/files/git/review/patch", "scope=run&runId=r1&file=a.txt")).status).toBe(400);
+      expect((await ask("/api/files/git/review/patch", "scope=run&threadId=t1&runId=a%20b&file=a.txt")).status).toBe(400);
+      expect((await ask("/api/files/git/review/patch", "scope=run&threadId=t1&runId=r1&file=a.txt&w=2")).status).toBe(400);
+      expect((await ask("/api/files/git/review", "scope=run&threadId=t1&runId=r1")).status).toBe(400);
+      expect(seen.length).toBe(n);
+      const gated = createWorkdir(cfg(root), { ...helpers, runReview, guard: () => new Response("forbidden", { status: 403 }) });
+      expect((await gated.handle(new Request("http://x/api/files/git/review/patch?scope=run&threadId=t1&runId=r1&file=a.txt"), new URL("http://x/api/files/git/review/patch?scope=run&threadId=t1&runId=r1&file=a.txt"))).status).toBe(403);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   test("resolves a printed path to a Files rel path, refusing outside, hidden and traversal", async () => {
     const root = await mkdtemp(join(tmpdir(), "sightr-workdir-resolve-"));
     const outside = await mkdtemp(join(tmpdir(), "sightr-workdir-resolve-out-"));

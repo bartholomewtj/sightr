@@ -94,6 +94,32 @@ describe("migrations", () => {
     store.close();
   });
 
+  test("migration 7 adds the checkpoint tables and the project switch to a version-6 database", () => {
+    const path = join(tempDir(), "threads.sqlite");
+    const v6 = new Database(path);
+    v6.run(`CREATE TABLE migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)`);
+    for (const m of MIGRATIONS.filter((x) => x.version <= 6)) { m.up(v6); v6.query("INSERT INTO migrations (version, applied_at) VALUES (?, 0)").run(m.version); }
+    v6.run(`PRAGMA user_version = 6`);
+    v6.query("INSERT INTO projects (id, label, label_source, number, ord, status) VALUES ('w1', 'a', 'herd', 1, 1, 'idle')").run();
+    v6.close();
+    const store = open(path);
+    expect(store.getProject("w1")).toEqual({ id: "w1", label: "a", labelSource: "herd", number: 1, order: 1, status: "idle" });
+    expect(store.listCheckpoints()).toEqual([]);
+    expect(store.checkpointPatchBytes()).toBe(0);
+    store.append([createProject(project("w1", { checkpoints: false }))]);
+    expect(store.getProject("w1")?.checkpoints).toBe(false);
+    // An upsert without the field (the herd's) keeps the operator's switch; an explicit one changes it.
+    store.append([createProject(project("w1"))]);
+    expect(store.getProject("w1")?.checkpoints).toBe(false);
+    store.append([createProject(project("w1", { checkpoints: true }))]);
+    expect(store.getProject("w1")?.checkpoints).toBe(true);
+    store.close();
+    const db = new Database(path, { readonly: true });
+    expect(db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'run_checkpoint%' ORDER BY name").all()).toEqual([{ name: "run_checkpoint_patches" }, { name: "run_checkpoints" }]);
+    expect(db.query("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'run_checkpoints_thread'").all()).toEqual([{ name: "run_checkpoints_thread" }]);
+    db.close();
+  });
+
   test("a database stamped with a newer version refuses to open", () => {
     const path = join(tempDir(), "threads.sqlite");
     open(path).close();

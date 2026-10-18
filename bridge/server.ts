@@ -48,6 +48,7 @@ import { createV2Gate, type V2Gate } from "./threads/herdr-floor.ts";
 import type { ThreadStore } from "./threads/store.ts";
 import type { ThreadWatchers } from "./threads/journal-ingest.ts";
 import type { HerdIngestor } from "./threads/herd-ingest.ts";
+import type { RunReview } from "./threads/checkpoints.ts";
 
 const MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024;
 const localServersRoute = createLocalServersRoute();
@@ -83,6 +84,8 @@ export function startServer(opts: {
     effects?: EffectRegistry;
     watchers?: ThreadWatchers;
     herdIngestor?: HerdIngestor | null;
+    /** T30: run-scope review answers (`/api/files/git/review/patch|contents?scope=run`). */
+    runReview?: RunReview | null;
   };
 }) {
   const { cfg, herdr, engine, notifications, push, notifyPrefs, settings, activity, lock, audit } = opts;
@@ -131,7 +134,7 @@ export function startServer(opts: {
   });
 
   const worktrees = createWorktreeIndex(herdr);
-  const workdir = createWorkdir(cfg, { guard, json, text, failureText, secure, contentTypes: CONTENT_TYPES, requireJsonBody, auditFor, paneCwd: (paneId) => {
+  const workdir = createWorkdir(cfg, { guard, json, text, failureText, secure, contentTypes: CONTENT_TYPES, requireJsonBody, auditFor, runReview: opts.v2?.runReview ?? null, paneCwd: (paneId) => {
     const { agents, shellPanes } = engine.current();
     return [...agents, ...shellPanes].find((p) => p.paneId === paneId)?.cwd ?? null;
   } });
