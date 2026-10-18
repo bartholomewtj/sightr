@@ -231,16 +231,19 @@ function MessagesTimelineBody({ threadId }: MessagesTimelineProps) {
   const listRef = useRef<LegendListRef | null>(null);
   const readEndState = useCallback(() => listRef.current?.getState?.(), []);
   const scrollToEnd = useCallback(() => void listRef.current?.scrollToEnd({ animated: false }), []);
+  const find = useThreadFind(threadId);
+  const [timelineEl, setTimelineEl] = useState<HTMLDivElement | null>(null);
   const { following, unseenCount, onScroll: handleScroll, jumpToLatest } = useTimelineFollow({
     rows,
     readEndState,
     scrollToEnd,
     followRequest,
+    container: timelineEl,
+    // Find scrolls the list to its hit itself; that scroll leaves follow mode.
+    anyScrollLeaves: find.isOpen,
   });
 
   // ── Find (T19): reveal and highlight the focused hit; the bar itself is the thread route's ──
-  const find = useThreadFind(threadId);
-  const [timelineEl, setTimelineEl] = useState<HTMLDivElement | null>(null);
   useThreadFindNavigation({
     threadId,
     container: timelineEl,

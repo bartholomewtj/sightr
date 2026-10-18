@@ -286,6 +286,7 @@ describe("MessagesTimeline: virtualization", () => {
     expect(mounted().length).toBeLessThan(80);
     const scroller = document.querySelector("[data-timeline] div[style*='overflow']") as HTMLElement;
     await act(async () => {
+      scroller.dispatchEvent(new Event("wheel", { bubbles: true }));
       scroller.scrollTop = 0;
       scroller.dispatchEvent(new Event("scroll"));
       await new Promise((r) => setTimeout(r, 200));
@@ -294,6 +295,7 @@ describe("MessagesTimeline: virtualization", () => {
     await waitFor(
       () => {
         // The list can re-anchor to the end while it is still measuring; scroll again until it holds.
+        scroller.dispatchEvent(new Event("wheel", { bubbles: true }));
         scroller.scrollTop = 0;
         scroller.dispatchEvent(new Event("scroll"));
         expect(mounted()).toContain("u0:0");
@@ -326,6 +328,8 @@ describe("MessagesTimeline: follow mode", () => {
     await show(items);
     const scroller = document.querySelector("[data-timeline] div[style*='overflow']") as HTMLElement;
     await act(async () => {
+      // The reader's own scroll (a wheel), not content moving under them.
+      scroller.dispatchEvent(new Event("wheel", { bubbles: true }));
       scroller.scrollTop = 0;
       scroller.dispatchEvent(new Event("scroll"));
       await new Promise((r) => setTimeout(r, 200));
@@ -334,6 +338,18 @@ describe("MessagesTimeline: follow mode", () => {
     act(() => followTimeline());
     // Wait on the result, not a fixed delay: under load the scroll back to the end takes longer.
     await waitFor(() => expect(document.querySelector("[data-jump-to-latest]")).toBeNull(), { timeout: 10_000 });
+  }, 30_000);
+
+  it("a scroll nobody made (content moving under the viewport) does not leave follow mode", async () => {
+    const items = Array.from({ length: 60 }, (_, i) => user(`u${i}:0`, `m ${i}`));
+    await show(items);
+    const scroller = document.querySelector("[data-timeline] div[style*='overflow']") as HTMLElement;
+    await act(async () => {
+      scroller.scrollTop = 0;
+      scroller.dispatchEvent(new Event("scroll"));
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    expect(document.querySelector("[data-jump-to-latest]")).toBeNull();
   }, 30_000);
 });
 
