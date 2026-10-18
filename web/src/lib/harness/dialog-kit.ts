@@ -138,6 +138,35 @@ export function dialogPipeline(agent: string): Pipeline | undefined {
   return Object.hasOwn(PIPELINES, agent) ? PIPELINES[agent] : undefined;
 }
 
+/** How many wrapped lines a prompt may continue onto. */
+const MAX_PROMPT_WRAP = 4;
+
+/**
+ * A prompt the terminal wrapped mid-sentence, rejoined: Claude's trust dialog wraps "Quick safety
+ * check: Is this a project you created or one you trust? (Like your own code, …, or work" and the
+ * card cut the sentence there (live 2026-10-18, 135 columns). The adapter lifts only the line with
+ * the "?"; the lines under it continue the sentence until one ends it or a blank line comes.
+ */
+export function unwrapPrompt(lines: readonly StyledLine[], prompt: string): string {
+  const texts = lines.map((l) => l.segments.map((s) => s.text).join(""));
+  let at = -1;
+  for (let i = texts.length - 1; i >= 0; i--) {
+    if (texts[i]!.trim() === prompt) {
+      at = i;
+      break;
+    }
+  }
+  if (at < 0) return prompt;
+  const out = [prompt];
+  for (let i = at + 1; i < texts.length && out.length <= MAX_PROMPT_WRAP; i++) {
+    if (/[.?!:)]$/.test(out.at(-1)!)) break;
+    const t = texts[i]!.trim();
+    if (t === "") break;
+    out.push(t);
+  }
+  return out.join(" ");
+}
+
 /** The last BOUND_TEXT_LINES non-blank lines of `text`, SGR and trailing spaces removed. */
 export function boundTextOf(text: string): string {
   return normalizePromptRegion(text).slice(-BOUND_TEXT_LINES).join("\n");
@@ -381,6 +410,7 @@ export function parseDialog(agent: string, ansiText: string): DialogParse | null
       lifted.kind === "permission" && Object.hasOwn(SUBJECT, agent) ? SUBJECT[agent]!(lines, lifted.prompt) : null;
     return {
       ...lifted,
+      ...(lifted.kind === "trust" ? { prompt: unwrapPrompt(lines, lifted.prompt) } : {}),
       ...(free?.typeable ? { freeText: true as const } : {}),
       ...(subject ? { subject } : {}),
       boundText: boundTextFor(block, ansiText),
