@@ -177,7 +177,7 @@ describe.each(loaded)("diff adapter: $name", ({ name, mod, skip }) => {
     const { container } = render(<Adapter {...base({ onExpandContext })} />);
     await waitFor(() => expect(expandNodes(container).length).toBeGreaterThan(0));
     await act(async () => { fireEvent.click(expandNodes(container)[0] as HTMLElement); });
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/could not load/i));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/couldn't read this file|could not load/i));
     expect(rowsOf(container, "add").length).toBeGreaterThan(0);
     expect(queryDeep(container, "*").some((e) => /^[+ -]?line 3 changed$/.test(e.textContent ?? ""))).toBe(true);
     vi.restoreAllMocks();
