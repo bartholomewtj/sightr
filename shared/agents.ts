@@ -40,6 +40,8 @@ export interface LaunchChoice {
 export interface LaunchMode {
   readonly id: string;
   readonly label: string;
+  /** A one-word label for the composer's mode chip on a phone ("Edits"); the menu keeps `label`. */
+  readonly short?: string;
   readonly value: string;
   readonly destructive?: boolean;
 }
@@ -99,12 +101,12 @@ const CLAUDE_LAUNCH: LaunchSpec = {
   efforts: EFFORTS,
   modeArg: ["--permission-mode"],
   modes: [
-    { id: "manual", label: "Ask first", value: "manual" },
-    { id: "acceptEdits", label: "Accept edits", value: "acceptEdits" },
+    { id: "manual", label: "Ask first", short: "Ask", value: "manual" },
+    { id: "acceptEdits", label: "Accept edits", short: "Edits", value: "acceptEdits" },
     { id: "auto", label: "Auto", value: "auto" },
     { id: "plan", label: "Plan", value: "plan" },
-    { id: "dontAsk", label: "Don’t ask", value: "dontAsk" },
-    { id: "bypassPermissions", label: "Bypass permissions", value: "bypassPermissions", destructive: true },
+    { id: "dontAsk", label: "Don’t ask", short: "No ask", value: "dontAsk" },
+    { id: "bypassPermissions", label: "Bypass permissions", short: "Bypass", value: "bypassPermissions", destructive: true },
   ],
 };
 
@@ -134,12 +136,12 @@ const GROK_LAUNCH: LaunchSpec = {
   // `--effort` (alias of `--reasoning-effort`) exists, but its help lists no levels; it stays out until checked.
   modeArg: ["--permission-mode"],
   modes: [
-    { id: "default", label: "Ask first", value: "default" },
-    { id: "acceptEdits", label: "Accept edits", value: "acceptEdits" },
+    { id: "default", label: "Ask first", short: "Ask", value: "default" },
+    { id: "acceptEdits", label: "Accept edits", short: "Edits", value: "acceptEdits" },
     { id: "auto", label: "Auto", value: "auto" },
     { id: "plan", label: "Plan", value: "plan" },
-    { id: "dontAsk", label: "Don’t ask", value: "dontAsk" },
-    { id: "bypassPermissions", label: "Bypass permissions", value: "bypassPermissions", destructive: true },
+    { id: "dontAsk", label: "Don’t ask", short: "No ask", value: "dontAsk" },
+    { id: "bypassPermissions", label: "Bypass permissions", short: "Bypass", value: "bypassPermissions", destructive: true },
   ],
 };
 
@@ -156,7 +158,7 @@ const AGY_LAUNCH: LaunchSpec = {
   efforts: EFFORTS,
   modeArg: ["--mode"],
   modes: [
-    { id: "accept-edits", label: "Accept edits", value: "accept-edits" },
+    { id: "accept-edits", label: "Accept edits", short: "Edits", value: "accept-edits" },
     { id: "auto", label: "Auto", value: "auto" },
     { id: "plan", label: "Plan", value: "plan" },
   ],
