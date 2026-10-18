@@ -90,12 +90,14 @@ describe("checkpoint git: pure helpers", () => {
     expect(m.has("user.name")).toBe(false);
   });
   test("parseAddErrors names unreadable paths and refuses what it does not understand", () => {
-    expect(parseAddErrors("error: open(\"locked.txt\"): Permission denied\nerror: unable to index file 'locked.txt'\nfatal: adding files failed\n")).toEqual({ paths: ["locked.txt"], understood: true });
+    expect(parseAddErrors("error: open(\"locked.txt\"): Permission denied\nerror: unable to index file 'locked.txt'\nfatal: adding files failed\n")).toEqual({ paths: ["locked.txt"], removed: [], understood: true });
     // `update-index` stops at the first file it cannot read, and skips a name it refuses.
-    expect(parseAddErrors("error: open(\"locked.txt\"): Permission denied\nfatal: Unable to process path locked.txt\n")).toEqual({ paths: ["locked.txt"], understood: true });
-    expect(parseAddErrors("Ignoring path server.key.\n")).toEqual({ paths: ["server.key."], understood: true });
+    expect(parseAddErrors("error: open(\"locked.txt\"): Permission denied\nfatal: Unable to process path locked.txt\n")).toEqual({ paths: ["locked.txt"], removed: [], understood: true });
+    expect(parseAddErrors("Ignoring path server.key.\n")).toEqual({ paths: ["server.key."], removed: [], understood: true });
+    // A tracked path whose folder became a symbolic link: a deletion, not an unreadable file.
+    expect(parseAddErrors("error: 'd/a.txt' is beyond a symbolic link\nfatal: Unable to process path d/a.txt\n")).toEqual({ paths: [], removed: ["d/a.txt"], understood: true });
     expect(parseAddErrors("fatal: something new\n").understood).toBe(false);
-    expect(parseAddErrors("")).toEqual({ paths: [], understood: true });
+    expect(parseAddErrors("")).toEqual({ paths: [], removed: [], understood: true });
   });
   test("the snapshot config switches off what could write or prompt", () => {
     const flat = SNAPSHOT_CONFIG.join(" ");
@@ -780,6 +782,133 @@ describe("checkpoint git: line endings, attributes and sparse folders (T30 safet
       expect(await blobAt(info, out.commit, "locked.txt")).toBe("l");
       expect(await filesAt(info, out.commit)).toEqual(["a.txt", "locked.txt"]);
     } finally { holder.kill(); await holder.exited; }
+  });
+});
+
+describe("checkpoint git: conflicts, config scope, links, refused folders, own trees (T30 safety review 3)", () => {
+  /** The subcommand of a checkpoint call (the first argument after the `-c` pairs). */
+  const subOf = (args: string[]) => { let i = args.indexOf("--no-optional-locks") + 1; while (args[i] === "-c") i += 2; return args.slice(i); };
+  const counts = async (info: RepoInfo, git: ReturnType<typeof cg>, a: string, b: string) => {
+    const d = await diffRun(git.storeRunner(info), a, b);
+    return "error" in d ? d : d.files.map((f) => `${f.path} ${f.kind} ${f.additions}/${f.deletions}`);
+  };
+  const entryAt = (info: RepoInfo, commit: string, path: string) => storeGit(info)("ls-tree", commit, "--", path);
+
+  test("a conflicted executable under core.filemode=false and a conflicted link under core.symlinks=false keep the mode git add gives them (the conflict's, not the file's)", async () => {
+    const work = await root();
+    const repo = await makeRepo(work, "repo", { "run.sh": "echo 1\n", "a.txt": "a\n" });
+    await repo.git("config", "core.filemode", "false"); await repo.git("config", "core.symlinks", "false");
+    await repo.git("update-index", "--chmod=+x", "run.sh");
+    // A link entry (120000) whose file on disk holds its target, as a checkout with core.symlinks=false leaves it.
+    await writeFile(join(repo.root, "link"), "target-base");
+    await repo.git("update-index", "--add", "--cacheinfo", `120000,${await repo.git("hash-object", "-w", "link")},link`);
+    await repo.git("commit", "-qm", "modes");
+    await repo.git("checkout", "-qb", "side"); await writeFiles(repo.root, { "run.sh": "echo side\n", link: "target-side" }); await repo.git("commit", "-qam", "side");
+    await repo.git("checkout", "-q", "main"); await writeFiles(repo.root, { "run.sh": "echo main\n", link: "target-main" }); await repo.git("commit", "-qam", "main");
+    const git = cg(join(work, "state"));
+    const info = (await git.resolveRepo(repo.root))!;
+    const s = await untouched(repo.root, () => git.snapshot(info, req("start")));
+    await repo.git("merge", "side").catch(() => "conflict");
+    expect(await repo.git("ls-files", "-u", "--", "run.sh", "link")).toContain("120000");
+    const e = await untouched(repo.root, () => git.snapshot(info, req("end")));
+    expect(s.ok && e.ok).toBe(true); if (!s.ok || !e.ok) return;
+    // The operator's own `git add` of the conflicted files (after the proofs: it writes their index).
+    await repo.git("add", "run.sh", "link");
+    for (const f of ["run.sh", "link"]) {
+      const [mode, , oid] = (await entryAt(info, e.commit, f)).split(/\s+/);
+      expect({ f, entry: `${mode} ${oid}` }).toEqual({ f, entry: (await repo.git("ls-files", "-s", f)).split(/\s+/).filter((_, i) => i !== 2).slice(0, 2).join(" ") });
+    }
+    expect((await entryAt(info, e.commit, "run.sh")).startsWith("100755 ")).toBe(true);
+    expect((await entryAt(info, e.commit, "link")).startsWith("120000 ")).toBe(true);
+  });
+
+  test("the repo's own core.autocrlf decides, not the machine's value the runner passes as -c (both ways)", async () => {
+    for (const [machine, repoValue] of [["true", "false"], ["false", "true"]] as const) {
+      const work = await root();
+      const body = Array.from({ length: 10 }, (_, i) => `line ${i}`).join("\n") + "\n";
+      const repo = await makeRepo(work, "repo", { "f.txt": body });
+      await repo.git("config", "core.autocrlf", repoValue);
+      // CRLF on disk when the repo says true, as the operator's own checkout leaves it (and records its stat).
+      await rm(join(repo.root, "f.txt")); await repo.git("-c", `core.autocrlf=${repoValue}`, "checkout", "--", "f.txt");
+      const t = Math.floor(Date.now() / 1000) - 7200; await utimes(join(repo.root, "f.txt"), t, t);
+      await repo.git("-c", `core.autocrlf=${repoValue}`, "update-index", "--really-refresh");
+      expect(await repo.git("-c", `core.autocrlf=${repoValue}`, "status", "--porcelain")).toBe("");
+      // workdir-git's spawnGit passes the machine's core.autocrlf as `-c`; this runner passes the other value.
+      const machineRun: GitRunner = (args, cwd, limits) => spawnGit(["-c", `core.autocrlf=${machine}`, ...args], cwd, limits);
+      const git = cg(join(work, "state"), { run: machineRun, globalConfig: async () => new Map([["core.autocrlf", machine]]) });
+      const info = (await git.resolveRepo(repo.root))!;
+      expect(info.config.join(" ")).toContain(`core.autocrlf=${repoValue}`);
+      const s = await untouched(repo.root, () => git.snapshot(info, req("start")));
+      await writeFile(join(repo.root, "f.txt"), body.replaceAll("\n", "\r\n").replace("line 3", "line THREE"));
+      const e = await untouched(repo.root, () => git.snapshot(info, req("end")));
+      expect(s.ok && e.ok).toBe(true); if (!s.ok || !e.ok) return;
+      const operator = (await repo.git("-c", `core.autocrlf=${repoValue}`, "diff", "--numstat")).split("\t");
+      expect({ machine, repoValue, files: await counts(info, git, s.commit, e.commit) }).toEqual({ machine, repoValue, files: [`f.txt modified ${operator[0]}/${operator[1]}`] });
+      expect(operator.slice(0, 2)).toEqual(repoValue === "false" ? ["10", "10"] : ["1", "1"]);
+    }
+  });
+
+  test("a tracked path behind a symbolic link (its folder replaced by a link) is recorded as deleted, as add -u does; more than 32 files git cannot read still give a ready snapshot", async () => {
+    // update-index's own words, from a runner standing in for a link (real links need privileges on Windows).
+    const { repo, state } = await setup({ "d/a.txt": "a\n", "keep.txt": "k\n", ...Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`locked/${i}.txt`, `${i}\n`])) });
+    const locked = new Set(Array.from({ length: 40 }, (_, i) => `locked/${i}.txt`));
+    const fake: GitRunner = async (args, cwd, limits) => {
+      const sub = subOf(args);
+      if (sub[0] === "update-index" && sub.includes("--remove") && limits?.stdin) {
+        const first = limits.stdin.split("\0").find((p) => p === "d/a.txt" || locked.has(p));
+        if (first === "d/a.txt") return { code: 128, stdout: "", stderr: "error: 'd/a.txt' is beyond a symbolic link\nfatal: Unable to process path d/a.txt\n", timedOut: false, failed: false };
+        if (first) return { code: 128, stdout: "", stderr: `error: open("${first}"): Permission denied\nfatal: Unable to process path ${first}\n`, timedOut: false, failed: false };
+      }
+      return spawnGit(args, cwd, limits);
+    };
+    const git = cg(state, { run: fake });
+    const info = (await git.resolveRepo(repo.root))!;
+    const s = await git.snapshot(info, req("start"));
+    await writeFiles(repo.root, { "d/a.txt": "a2\n", "keep.txt": "k2\n", ...Object.fromEntries([...locked].map((p) => [p, "changed\n"])) });
+    const e = await untouched(repo.root, () => git.snapshot(info, req("end")));
+    expect(s.ok && e.ok).toBe(true); if (!s.ok || !e.ok) return;
+    expect(e.skippedPaths).toEqual([...locked].sort());
+    expect(await counts(info, git, s.commit, e.commit)).toEqual(["d/a.txt deleted 0/1", "keep.txt modified 1/1"]);
+  });
+
+  test.skipIf(!CAN_SYMLINK)("a tracked folder replaced by a symbolic link: its files read as deleted (POSIX: a real link)", async () => {
+    const { repo, git, info, work } = await setup({ "d/a.txt": "a\n", "keep.txt": "k\n" });
+    const s = await git.snapshot(info, req("start"));
+    await mkdir(join(work, "elsewhere"), { recursive: true }); await writeFile(join(work, "elsewhere", "a.txt"), "outside\n");
+    await rm(join(repo.root, "d"), { recursive: true }); await symlink(join(work, "elsewhere"), join(repo.root, "d"), "dir");
+    const e = await untouched(repo.root, () => git.snapshot(info, req("end")));
+    expect(s.ok && e.ok).toBe(true); if (!s.ok || !e.ok) return;
+    expect(await counts(info, git, s.commit, e.commit)).toEqual(["d/a.txt deleted 0/1"]);
+    expect(await storeGit(info)("cat-file", "--batch-all-objects", "--batch-check=%(objectname)").then(async (all) => { for (const oid of all.split("\n").filter(Boolean)) if ((await storeGit(info)("cat-file", "-p", oid)).includes("outside")) return "leaked"; return "clean"; })).toBe("clean");
+  });
+
+  test("a refused folder inside a folder outside the sparse cone is cut whole: no empty tree keeps its name", async () => {
+    const work = await root();
+    const repo = await makeRepo(work, "repo", { "in/a.txt": "a\n", "out/b.txt": "b\n", "out/config/x.txt": "SECRET_CONFIG\n", "out/.hidden/y.txt": "y\n", "top.txt": "t\n" });
+    await repo.git("sparse-checkout", "set", "--cone", "in");
+    await repo.git("config", "index.sparse", "true");
+    await repo.git("sparse-checkout", "reapply");
+    expect((await repo.git("ls-files", "--sparse")).split("\n")).toEqual(["in/a.txt", "out/", "top.txt"]); // `out/` is one entry
+    const git = cg(join(work, "state"));
+    const info = (await git.resolveRepo(repo.root))!;
+    const out = await untouched(repo.root, () => git.snapshot(info, req()));
+    expect(out.ok).toBe(true); if (!out.ok) return;
+    expect((await storeGit(info)("ls-tree", "-r", "-t", "--name-only", out.commit)).split("\n")).toEqual(["in", "in/a.txt", "out", "out/b.txt", "top.txt"]);
+  });
+
+  test("a snapshot's trees are the store's own on every git version (2.52 to 2.54 leave an unchanged snapshot's trees in the user's repo), so a prune there cannot break its tree", async () => {
+    const work = await root();
+    const repo = await makeRepo(work, "repo", { "a/b/c.txt": "c\n", "a/d.txt": "d\n", "e/f.txt": "f\n", "top.txt": "t\n" });
+    await ageTree(repo.root); await repo.git("update-index", "--really-refresh"); // nothing to hash: the cache tree is the user's
+    const git = cg(join(work, "state"));
+    const info = (await git.resolveRepo(repo.root))!;
+    const out = await untouched(repo.root, () => git.snapshot(info, req()));
+    expect(out.ok).toBe(true); if (!out.ok) return;
+    const local = gitIn(info.store, { GIT_DIR: info.store }); // no alternate: what the store itself holds
+    const trees = [await repo.git("rev-parse", "HEAD^{tree}"), ...(await repo.git("ls-tree", "-r", "-d", "--format=%(objectname)", "HEAD")).split("\n")];
+    expect(trees.length).toBe(4); // the root, a, a/b, e
+    for (const t of trees) expect(await local("cat-file", "-t", t).catch(() => "missing")).toBe("tree");
+    expect(await local("cat-file", "-t", await repo.git("rev-parse", "HEAD:top.txt")).catch(() => "missing")).toBe("missing"); // unchanged blobs stay the user's
   });
 });
 

@@ -26,6 +26,8 @@ export const CHECKPOINT_KEEP_RUNS = 50;
 export const CHECKPOINT_KEEP_DAYS = 14;
 export const ARCHIVED_KEEP_MS = 24 * 60 * 60 * 1000;
 export const MAX_STORE_BYTES = 256 * 1024 * 1024;
+/** Past this many packs a store is gc'd at the next sweep even when no ref went. */
+export const MAX_STORE_PACKS = 16;
 /** A start snapshot whose run has not ended after this long is given up (its ref goes at the next sweep). */
 export const PENDING_MAX_MS = 24 * 60 * 60 * 1000;
 export const SWEEP_FIRST_MS = 30_000;
@@ -296,8 +298,8 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
         let left = refs.filter((ref) => !gone.includes(ref));
         /**
          * `gc` in the store; when it fails, find the runs whose objects are gone (the user rewrote history
-         * and pruned what only their repo held: the store reads unchanged trees and blobs through the
-         * alternate), expire them, drop their refs and try once more.
+         * and pruned what only their repo held: the store reads the blobs of files a run did not change, and
+         * folders outside a sparse cone, through the alternate), expire them, drop their refs and try once more.
          */
         const collect = async (): Promise<boolean> => {
           if (await git.gc({ store: s.store, objectsDir: s.objectsDir })) return true;
@@ -317,11 +319,18 @@ export function createCheckpointService(deps: CheckpointServiceDeps) {
           log(`[checkpoints] gc failed in a private store; retrying next sweep`);
           return false;
         };
-        let collected = true;
+        let collected = true, swept = false;
         if (gone.length > 0 && (await git.deleteRefs(s.store, gone))) {
           result.refsDeleted += gone.length;
           result.expired.push(...expire([...expiring]));
-          collected = await collect();
+          collected = await collect(); swept = true;
+        }
+        // With no ref gone, a store past its cap, or holding many packs (a snapshot that copies index blobs
+        // writes one), is collected first: what no run reaches (an earlier settle round's trees, the blobs of
+        // expired runs) must not push live runs out, and a gc is also what finds a user's prune.
+        if (!swept) {
+          const bytes = await git.storeBytes(s.store), packs = await git.packCount(s.store);
+          if ((bytes !== null && bytes > maxStoreBytes) || (packs !== null && packs > MAX_STORE_PACKS)) { collected = await collect(); swept = true; }
         }
         // Past the per-store cap (measured on the store's objects, not summed from rows): oldest runs first.
         // Only while gc frees what is dropped: a store that cannot collect would otherwise lose every run.

@@ -10,7 +10,7 @@
 //                                 never given to a call that reads the temp index (see below)
 //   GIT_INDEX_FILE=<stateDir>/checkpoint-tmp/<uuid>.index  (and its `.lock`) deleted in `finally`
 //   GIT_WORK_TREE=<repo root>     read only: `update-index` and `add` hash the files, never write them
-// The only calls that run against the real repo are `rev-parse` (paths, HEAD) and `config --get-regexp`
+// The only calls that run against the real repo are `rev-parse` (paths, HEAD) and `config --show-scope --get-regexp`
 // (the line-ending, link, case, ignore, attribute and sparse settings the scrubbed env hides), both reads.
 // Every call goes through workdir-git's hardened runner (hooks to /dev/null, no fsmonitor, no pager, no
 // external diff, system and global config nulled, `GIT_OPTIONAL_LOCKS=0`) plus `-c diff.autoRefreshIndex=false
@@ -61,7 +61,7 @@ const ZERO_OID = "0".repeat(40);
 
 /**
  * The only subcommands a checkpoint call may run, by side. `real` runs in the user's repo with the plain
- * hardened env and only reads (`config` is limited to `--get-regexp` below). `private` runs with the
+ * hardened env and only reads (`config` is limited to `--show-scope --get-regexp` below). `private` runs with the
  * private-store env above (or in the store alone), so whatever it writes lands under the state dir.
  */
 export const CHECKPOINT_SUBCOMMANDS = {
@@ -119,6 +119,11 @@ export function configPairs(text: string, home = process.env.HOME ?? process.env
     out.set(key, value);
   }
   return out;
+}
+
+/** `config --show-scope` lines (`<scope>\t<key> <value>`) of the repo's own files (`local`, `worktree`), as `<key> <value>` lines. */
+export function repoScoped(text: string): string {
+  return text.split("\n").flatMap((line) => { const m = /^(local|worktree)\t(.*)$/.exec(line.replace(/\r$/, "")); return m ? [m[2]!] : []; }).join("\n");
 }
 
 let globalConfig: Promise<Map<string, string>> | null = null;
@@ -212,10 +217,10 @@ class Stop extends Error {
 
 /** One index entry as `ls-files -s` prints it. */
 interface IndexEntry { mode: string; oid: string; stage: string }
+/** A root-level refused name (so never in a snapshot) whose removal from the temp index invalidates the root of its cache tree. */
+const TREE_RESET_PATH = ".sightr-tree-reset";
 /** The empty blob (SHA-1, SHA-256): an intent-to-add entry's, never worth copying (it holds no CR). */
 const EMPTY_BLOBS = new Set(["e69de29bb2d1d6434b8b29ae775ad8c2e48c5391", "473a0f4c3be8a93681a267e3b1e9a7dcda1185436fe141f7749120a303721813"]);
-/** `update-index` runs per settle round: each run that stops at a file git cannot read drops that file and goes again. */
-const MAX_UPDATE_ATTEMPTS = 32;
 
 /** The entry count in an index file's header (`DIRC`, version, count): null when there is no file, NaN when it is not an index. */
 export async function indexEntryCount(path: string): Promise<number | null> {
@@ -243,13 +248,18 @@ async function mirrorFile(src: string | undefined, dest: string): Promise<void> 
   else await writeFile(dest, body);
 }
 
-/** Paths git named on stderr as unreadable during `add` or `update-index`, and whether every non-empty line was understood. */
-export function parseAddErrors(stderr: string): { paths: string[]; understood: boolean } {
-  const paths: string[] = []; let understood = true;
+/**
+ * Paths git named on stderr as unreadable during `add` or `update-index`, and whether every non-empty line
+ * was understood. `removed`: tracked paths now behind a symbolic link (a tracked folder replaced by a link),
+ * which `update-index` refuses to look through: as `add -u` does, they are recorded as deleted.
+ */
+export function parseAddErrors(stderr: string): { paths: string[]; removed: string[]; understood: boolean } {
+  const paths: string[] = []; const removed = new Set<string>(); let understood = true;
   for (const line of stderr.split("\n").map((l) => l.replace(/\r$/, ""))) {
     if (!line.trim()) continue;
     let m: RegExpExecArray | null;
-    if ((m = /^error: open\("(.+)"\): /.exec(line))) paths.push(m[1]!);
+    if ((m = /^error: '(.+)' is beyond a symbolic link$/.exec(line))) removed.add(m[1]!);
+    else if ((m = /^error: open\("(.+)"\): /.exec(line))) paths.push(m[1]!);
     else if ((m = /^error: unable to index file '(.+)'$/.exec(line))) paths.push(m[1]!);
     else if ((m = /^error: (.+): (?:failed to insert into database|short read .*)$/.exec(line))) paths.push(m[1]!);
     else if ((m = /^error: readlink\("(.+)"\): /.exec(line))) paths.push(m[1]!);
@@ -263,7 +273,8 @@ export function parseAddErrors(stderr: string): { paths: string[]; understood: b
     else if (/^(?:hint|warning): /.test(line) && !/^warning: could not/.test(line)) continue;
     else understood = false;
   }
-  return { paths: [...new Set(paths)], understood };
+  // `update-index` names a refused path again in its "Unable to process path" line: it is not unreadable.
+  return { paths: [...new Set(paths)].filter((p) => !removed.has(p)), removed: [...removed], understood };
 }
 
 /**
@@ -378,7 +389,7 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
   async function call(side: "real" | "private", args: string[], cwd: string, limits: GitLimits & { config?: string[] } = {}): Promise<GitRun> {
     const sub = args[0];
     if (sub === undefined || !(CHECKPOINT_SUBCOMMANDS[side] as readonly string[]).includes(sub)) throw new Error(`checkpoint: git ${sub} is not allowed (${side})`);
-    if (side === "real" && sub === "config" && (args[1] !== "--get-regexp" || args.length !== 3)) throw new Error("checkpoint: only `config --get-regexp <re>` reads the real repo's config");
+    if (side === "real" && sub === "config" && (args[1] !== "--show-scope" || args[2] !== "--get-regexp" || args.length !== 4)) throw new Error("checkpoint: only `config --show-scope --get-regexp <re>` reads the real repo's config");
     if (side === "real" && limits.extraEnv) throw new Error("checkpoint: a real-repo call takes no extra env");
     if (side === "private") { const why = privateEnvError(limits.extraEnv); if (why) throw new Error(`checkpoint: ${why}`); }
     // `pack-objects` writes its pack where its last argument says: only into the store's own `objects/pack`.
@@ -423,9 +434,11 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
     // The index and exclude file may not exist yet; their folders do.
     const real = async (p: string) => join(await realpath(dirname(p)).catch(() => dirname(p)), basename(p));
     const repoKey = repoKeyOf(gitDir);
-    const local = await call("real", ["config", "--get-regexp", CONFIG_RE], root);
+    // The repo's own values only: the runner passes the machine's `core.autocrlf` as `-c` (workdir-git's
+    // spawnGit), and `config --get-regexp` lists such `command` values last, so they would beat the repo's.
+    const local = await call("real", ["config", "--show-scope", "--get-regexp", CONFIG_RE], root);
     const merged = new Map(await readGlobal());
-    if (!local.failed && !local.timedOut && local.code === 0) for (const [k, v] of configPairs(local.stdout, undefined, root)) merged.set(k, v);
+    if (!local.failed && !local.timedOut && local.code === 0) for (const [k, v] of configPairs(repoScoped(local.stdout), undefined, root)) merged.set(k, v);
     const config: string[] = [];
     for (const [k, v] of merged) config.push("-c", `${k}=${v}`);
     const indexPath = await real(indexRaw), excludePath = await real(excludeRaw), sparsePath = await real(sparseRaw), attributesPath = await real(attributesRaw);
@@ -692,8 +705,13 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
        * real index entry as the operator's `git add` would be: an entry an earlier settle round rewrote is
        * put back first (`--index-info`), and the real blobs are copied in (`copyBlobs`). `update-index` rehashes
        * only the paths it is given; `add -u` would also rehash every racy entry, whose blob may not be here.
-       * It stops at the first file it cannot read, writing nothing: that file keeps its entry, the rest go again.
+       * It stops at the first file it cannot read, writing nothing: that file keeps its entry, the rest go
+       * again (each pass drops at least one path; the snapshot's budget bounds the time). A path behind a
+       * symbolic link (its folder replaced by a link) is recorded as deleted, as `add -u` records it. A
+       * conflicted file goes through `git add` instead: with core.filemode or core.symlinks off, `git add`
+       * takes the mode from the conflict's entries (stage 2, else 1 or 3), `update-index` from the file.
        */
+      const unmerged = (p: string): boolean => (originals.get(p) ?? []).some((e) => e.stage !== "0");
       const syncTracked = async (paths: string[]): Promise<void> => {
         let list = paths.filter((p) => !isHiddenPath(p) && !unreadable.has(p));
         if (list.length === 0) return;
@@ -709,33 +727,56 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
           if (r.code !== 0) throw new Stop("git-failed", false, `update-index --index-info: ${r.stderr.trim()}`);
         }
         await copyBlobs(list);
-        for (let attempt = 0; list.length > 0; attempt++) {
-          if (attempt >= MAX_UPDATE_ATTEMPTS) throw new Stop("git-failed", false, "update-index: too many files git cannot read");
+        const conflicted = list.filter(unmerged);
+        if (conflicted.length > 0) await addLiteral(conflicted);
+        list = list.filter((p) => !unmerged(p));
+        const behindLink: string[] = [];
+        for (let attempt = 0, passes = list.length; list.length > 0; attempt++) {
+          if (attempt > passes) throw new Stop("git-failed", false, "update-index: did not settle");
           const u = await local(["update-index", "--add", "--remove", "-z", "--stdin"], { stdin: list.join("\0") + "\0" });
           const e = parseAddErrors(u.stderr);
           for (const p of e.paths) unreadable.add(p);
           if (u.code === 0) break;
-          if (!e.understood || e.paths.length === 0) throw new Stop("git-failed", false, `update-index: ${u.stderr.trim()}`);
-          list = list.filter((p) => !unreadable.has(p));
+          if (!e.understood || (e.paths.length === 0 && e.removed.length === 0)) throw new Stop("git-failed", false, `update-index: ${u.stderr.trim()}`);
+          if (e.removed.length > 0) {
+            const rm = await local(["update-index", "--force-remove", "-z", "--stdin"], { stdin: e.removed.join("\0") + "\0" });
+            if (rm.code !== 0) throw new Stop("git-failed", false, `update-index --force-remove: ${rm.stderr.trim()}`);
+            behindLink.push(...e.removed);
+          }
+          list = list.filter((p) => !unreadable.has(p) && !behindLink.includes(p));
         }
-        for (const p of list) if (!unreadable.has(p)) rewritten.add(p);
+        for (const p of [...conflicted, ...list, ...behindLink]) if (!unreadable.has(p)) rewritten.add(p);
       };
-      await syncTracked(dirtyPaths);
-      // `--sparse`: a new file outside a sparse checkout's patterns is still a file `git status` lists.
-      let pending = allowed;
-      for (let attempt = 0; pending.length > 0 && attempt < 5; attempt++) {
-        const a = await local(["add", "--sparse", "--ignore-errors", "--pathspec-from-file=-", "--pathspec-file-nul"], { stdin: pending.join("\0") + "\0", extraEnv: { GIT_LITERAL_PATHSPECS: "1" } });
-        const gone = /^fatal: pathspec '(.+)' did not match any files$/m.exec(a.stderr);
-        if (a.code !== 0 && gone) { pending = pending.filter((p) => p !== gone[1]); continue; } // deleted since the listing
-        const e = parseAddErrors(a.stderr);
-        if (a.code !== 0 && (!e.understood || e.paths.length === 0)) throw new Stop("git-failed", false, `add: ${a.stderr.trim()}`);
-        for (const p of e.paths) unreadable.add(p);
-        pending = [];
+      /** `git add` of literal paths (`--sparse`: a new file outside a sparse checkout's patterns is still a file `git status` lists). */
+      async function addLiteral(paths: string[]): Promise<void> {
+        let pending = paths;
+        for (let attempt = 0; pending.length > 0 && attempt < 5; attempt++) {
+          const a = await local(["add", "--sparse", "--ignore-errors", "--pathspec-from-file=-", "--pathspec-file-nul"], { stdin: pending.join("\0") + "\0", extraEnv: { GIT_LITERAL_PATHSPECS: "1" } });
+          const gone = /^fatal: pathspec '(.+)' did not match any files$/m.exec(a.stderr);
+          if (a.code !== 0 && gone) { pending = pending.filter((p) => p !== gone[1]); continue; } // deleted since the listing
+          const e = parseAddErrors(a.stderr);
+          if (a.code !== 0 && (!e.understood || e.paths.length === 0)) throw new Stop("git-failed", false, `add: ${a.stderr.trim()}`);
+          for (const p of e.paths) unreadable.add(p);
+          pending = [];
+        }
+        if (pending.length > 0) throw new Stop("git-failed", false, "add: files kept vanishing");
       }
-      if (pending.length > 0) throw new Stop("git-failed", false, "add: files kept vanishing");
+      await syncTracked(dirtyPaths);
+      await addLiteral(allowed);
 
       // 4. Settle: the agent may still be writing. Equal trees twice in a row, or keep the last and say so.
+      /**
+       * The tree, with every folder's tree object in the store, whatever git's version. With the store alone
+       * the user's cached trees are missing, and git decides by version what that means: 2.55 rebuilds and
+       * writes each missing tree, 2.52 to 2.54 take a cache tree whose objects are missing as valid
+       * (`cache_tree_fully_valid` tests `odb_has_object` the wrong way round) and write nothing. Removing a
+       * refused name (never in a snapshot) invalidates the root, and `update_one`, right in every version,
+       * then writes each folder whose tree is not in the store yet. A folder outside a sparse cone stays one
+       * entry naming the user's tree. So a snapshot's trees and the blobs of what its run changed are its own.
+       */
       const writeTree = async (): Promise<string> => {
+        const reset = await local(["update-index", "--force-remove", "-z", "--stdin"], { stdin: `${TREE_RESET_PATH}\0` });
+        if (reset.code !== 0) throw new Stop("git-failed", false, `update-index --force-remove: ${reset.stderr.trim()}`);
         // `--missing-ok`: the trees may name blobs only the real repo holds (they are not visible here).
         const w = await local(["write-tree", "--missing-ok"]);
         const oid = w.stdout.trim();
@@ -759,11 +800,14 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
         const all = await viaAlt(["ls-tree", "-r", "-t", "-z", "--full-tree", tree], { maxStdoutBytes: LIST_CAP_BYTES });
         if (all.overflow) throw new Stop("too-large", true);
         if (all.code !== 0) throw new Stop("git-failed", false, `ls-tree: ${all.stderr.trim()}`);
+        // A refused entry is cut whole at its top (a refused folder goes with everything in it, not left as an
+        // empty tree whose name would sit in the store).
         const trees = new Map<string, string>(); const refused: string[] = [];
         for (const rec of all.stdout.split("\0")) {
           const m = /^\d+ (\w+) ([0-9a-f]{40,64})\t([\s\S]+)$/.exec(rec); if (!m) continue;
-          if (m[1] === "tree") trees.set(m[3]!, m[2]!);
-          else if (isHiddenPath(m[3]!)) refused.push(m[3]!);
+          const path = m[3]!, cut = path.lastIndexOf("/");
+          if (m[1] === "tree") trees.set(path, m[2]!);
+          if (isHiddenPath(path) && (cut < 0 || !isHiddenPath(path.slice(0, cut)))) refused.push(path);
         }
         for (const [dir, oid] of sparseDirs) if (trees.get(dir.replace(/\/$/, "")) !== oid) throw new Stop("git-failed", false, `ls-tree: ${dir} is not in the tree as the index named it`);
         if (refused.length > 0) tree = await pruneTree(tree, refused.map((p) => p.split("/")));
@@ -854,6 +898,10 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
     return r.stdout.split("\n").some((l) => l.startsWith("?"));
   }
 
+  /** The number of packs in a store (each snapshot that copies index blobs adds one until a gc). Null when the folder cannot be read. */
+  async function packCount(store: string): Promise<number | null> {
+    try { return (await readdir(join(store, "objects", "pack"))).filter((n) => n.endsWith(".pack")).length; } catch { return null; }
+  }
   /**
    * The store's object bytes on disk: every file under its `objects/` (loose, packs, garbage). Measured on
    * the store, not summed from rows. Not `count-objects -v`: git for Windows reports loose objects as 0 KiB
@@ -895,6 +943,6 @@ export function createCheckpointGit(opts: CheckpointGitOptions) {
     resolveRepo, snapshot,
     /** {@link snapshot} for a caller already holding the store's queue slot (`queue.run(info.repoKey, …)`), so it can record the result before the slot is let go. */
     snapshotLocked: snapshotNow,
-    storeRunner, listRefs, deleteRefs, gc, objectsMissing, storeBytes, listStores, removeStore, cleanTmp, queue, storesDir, tmpDir, storeEnv,
+    storeRunner, listRefs, deleteRefs, gc, objectsMissing, storeBytes, packCount, listStores, removeStore, cleanTmp, queue, storesDir, tmpDir, storeEnv,
   };
 }

@@ -1,14 +1,15 @@
 import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { Run, ThreadEvent, TurnItem } from "../../shared/v2/contracts.ts";
-import { ageTree, fingerprint, gitDirChanges, gitIn, makeRepo, rmrf, tempRoot, writeFiles } from "../test/git-fixtures.ts";
+import { ageTree, fingerprint, fixtureEnv, gitDirChanges, gitIn, makeRepo, rmrf, tempRoot, writeFiles } from "../test/git-fixtures.ts";
 import { createProject, createThread, project, thread } from "../test/thread-fixtures.ts";
 import { spawnGit, type GitRunner } from "../workdir-git.ts";
 import { checkpointRef, createCheckpointGit, type CheckpointGit, type CheckpointGitOptions } from "./checkpoint-git.ts";
-import { APPROX_LAG_MS, CHECKPOINT_KEEP_RUNS, createCheckpointService, END_WINDOW_MS, START_WINDOW_MS, type CheckpointServiceDeps } from "./checkpoints.ts";
+import { APPROX_LAG_MS, CHECKPOINT_KEEP_RUNS, createCheckpointService, END_WINDOW_MS, MAX_STORE_PACKS, START_WINDOW_MS, type CheckpointServiceDeps } from "./checkpoints.ts";
 import type { EventDraft } from "./events.ts";
 import { openThreadStore, type ThreadStore } from "./store.ts";
 
@@ -231,31 +232,59 @@ describe("checkpoints: run-scope review", () => {
     expect(await r.svc.patch({ threadId: "t1", runId: "nope", file: "a.txt", w: false })).toEqual({ available: false, reason: "no-checkpoint" });
   });
 
-  test("history rewritten and pruned in the real repo: the live diff fails its liveness check, the run expires (event, live false), stored patches still serve", async () => {
-    const r = await rig({ files: { "a.txt": "base\n" } });
-    await ageTree(r.repo.root); await r.repo.git("update-index", "--really-refresh"); // stat-clean: the start tree is read from the real repo
-    // The run's end state is committed by the agent, then the operator rewrites history and prunes.
+  test("history rewritten and pruned in the real repo: the run's own trees and blobs keep its files serving; the next sweep's gc trips on a blob only the user's repo held, expires the run (event, live false), and stored patches still serve", async () => {
+    const r = await rig({ files: { "a.txt": "base\n", "keep.txt": "keep\n" } });
+    await ageTree(r.repo.root); await r.repo.git("update-index", "--really-refresh"); // stat-clean: no file is hashed at the start
     const run = await r.start();
     await writeFile(join(r.repo.root, "a.txt"), "base\nagent\n");
     await r.end(run);
     expect(r.store.getCheckpoint(run.id)?.checkpoint.live).toBe(true);
+    // The operator rewrites history and prunes: every object of the old history leaves the real repo.
     const g = r.repo.git;
     const root = await g("rev-list", "--max-parents=0", "HEAD");
+    const keepBlob = await g("rev-parse", "HEAD:keep.txt");
     await g("checkout", "-q", "--orphan", "fresh");
     await g("rm", "-rqf", "--cached", ".");
-    await rm(join(r.repo.root, "a.txt"));
+    await rm(join(r.repo.root, "a.txt")); await rm(join(r.repo.root, "keep.txt"));
     await writeFile(join(r.repo.root, "z.txt"), "z\n"); await g("add", "z.txt"); await g("commit", "-qm", "fresh");
     await g("branch", "-D", "main"); await g("reflog", "expire", "--expire=now", "--all"); await g("gc", "-q", "--prune=now");
-    expect(await g("cat-file", "-t", root).catch(() => "gone")).toBe("gone");    const live = await r.svc.contents({ threadId: "t1", runId: run.id, file: "a.txt" });
-    expect(live).toEqual({ available: false, reason: "expired" });
+    expect(await g("cat-file", "-t", root).catch(() => "gone")).toBe("gone");
+    // The snapshots hold their trees and both sides of a.txt (its index blob was copied before the rehash),
+    // so the run's file still serves, on every git version.
+    expect(await r.svc.contents({ threadId: "t1", runId: run.id, file: "a.txt" })).toMatchObject({ available: true, old: { state: "text", text: "base\n" }, new: { state: "text", text: "base\nagent\n" } });
+    expect(await r.svc.patch({ threadId: "t1", runId: run.id, file: "a.txt", w: true })).toMatchObject({ available: true });
+    expect(r.store.getCheckpoint(run.id)?.checkpoint.live).toBe(true);
+    // keep.txt (unchanged by the run) was never copied: only gc reaches it. An orphan ref gives the sweep a gc.
+    const { info, git: sg } = await storeGit(r);
+    expect(await sg("cat-file", "-t", keepBlob).catch(() => "not in the store")).toBe("not in the store");
+    await sg("update-ref", "refs/checkpoints/ghost/1/start", r.store.getCheckpoint(run.id)!.startCommit!);
+    expect((await r.svc.sweep(r.clock.t)).expired).toEqual([run.id]);
+    expect(await r.git.gc({ store: info.store, objectsDir: info.objectsDir })).toBe(true);
+    expect(await r.svc.contents({ threadId: "t1", runId: run.id, file: "a.txt" })).toEqual({ available: false, reason: "expired" });
+    expect(await r.svc.patch({ threadId: "t1", runId: run.id, file: "a.txt", w: true })).toEqual({ available: false, reason: "expired" });
     expect(r.store.getCheckpoint(run.id)?.checkpoint.live).toBe(false);
     expect(r.store.eventsAfter(0, { types: ["checkpoint.expired"] }).length).toBe(1);
-    expect(await r.svc.patch({ threadId: "t1", runId: run.id, file: "a.txt", w: true })).toEqual({ available: false, reason: "expired" });
     const stored = await r.svc.patch({ threadId: "t1", runId: run.id, file: "a.txt", w: false });
     expect(stored.available && stored.patch).toContain("+agent");
     expect(r.store.getCheckpoint(run.id)?.checkpoint.status).toBe("ready");
     const item = r.store.getTurnItem(`checkpoint:${run.id}`) as Extract<TurnItem, { type: "checkpoint" }>;
     expect(item.checkpoint.live).toBe(false);
+  });
+
+  test("a store that lost its own objects fails the liveness check: the live read answers expired, the run expires (event, live false), stored patches still serve", async () => {
+    const r = await rig({ files: { "a.txt": "base\n" } });
+    const run = await r.start();
+    await writeFile(join(r.repo.root, "a.txt"), "base\nagent\n");
+    await r.end(run);
+    const { info } = await storeGit(r);
+    await rm(join(info.store, "objects"), { recursive: true, force: true });
+    await mkdir(join(info.store, "objects", "pack"), { recursive: true }); await mkdir(join(info.store, "objects", "info"), { recursive: true });
+    expect(await r.svc.contents({ threadId: "t1", runId: run.id, file: "a.txt" })).toEqual({ available: false, reason: "expired" });
+    expect(r.store.getCheckpoint(run.id)?.checkpoint.live).toBe(false);
+    expect(r.store.eventsAfter(0, { types: ["checkpoint.expired"] }).length).toBe(1);
+    expect(await r.svc.patch({ threadId: "t1", runId: run.id, file: "a.txt", w: true })).toEqual({ available: false, reason: "expired" });
+    const stored = await r.svc.patch({ threadId: "t1", runId: run.id, file: "a.txt", w: false });
+    expect(stored.available && stored.patch).toContain("+agent");
   });
 });
 
@@ -316,6 +345,39 @@ describe("checkpoints: retention", () => {
     expect(res.patchRunsPruned).toBe(2);
     expect(r.store.checkpointPatch(a.id, "a.txt")).toBeNull();
     expect(r.store.getCheckpoint(a.id)?.checkpoint.files.map((f) => f.path)).toEqual(["a.txt"]);
+  });
+
+  test("a store past its cap only through objects no run reaches is collected first: no live run goes", async () => {
+    const r = await rig({ svc: { maxStoreBytes: 1024 * 1024 } });
+    const a = await r.start("t1", 1); await writeFile(join(r.repo.root, "a.txt"), "first\n"); await r.end(a);
+    r.clock.t += 1000;
+    const b = await r.start("t1", 2); await writeFile(join(r.repo.root, "a.txt"), "second\n"); await r.end(b);
+    // 2 MiB of incompressible bytes no ref reaches (what a settle round's trees or an expired run's blobs leave).
+    const { info, git: sg } = await storeGit(r);
+    await writeFile(join(r.work, "garbage.bin"), randomBytes(2 * 1024 * 1024));
+    await sg("hash-object", "-w", join(r.work, "garbage.bin"));
+    expect(await r.git.storeBytes(info.store)).toBeGreaterThan(1024 * 1024);
+    const res = await r.svc.sweep(r.clock.t);
+    expect(res.expired).toEqual([]);
+    expect(await r.git.storeBytes(info.store)).toBeLessThan(1024 * 1024);
+    expect(await refs(r)).toEqual([checkpointRef("t1", 1, "end"), checkpointRef("t1", 1, "start"), checkpointRef("t1", 2, "end"), checkpointRef("t1", 2, "start")].sort());
+  });
+
+  test(`a store holding more than ${MAX_STORE_PACKS} packs is gc'd at the sweep with no ref gone, into one pack, and every run stays live`, async () => {
+    const r = await rig();
+    const run = await r.start(); await writeFile(join(r.repo.root, "a.txt"), "x\n"); await r.end(run);
+    const { info, git: sg } = await storeGit(r);
+    for (let i = 0; i <= MAX_STORE_PACKS; i++) {
+      await writeFile(join(r.work, "p.txt"), `pack ${i}\n`);
+      const oid = await sg("hash-object", "-w", join(r.work, "p.txt"));
+      const p = Bun.spawn(["git", "pack-objects", "-q", join(info.store, "objects", "pack", "pack")], { cwd: info.store, env: fixtureEnv({ GIT_DIR: info.store }), stdin: "pipe", stdout: "ignore", stderr: "ignore" });
+      p.stdin.write(`${oid}\n`); await p.stdin.end(); await p.exited;
+    }
+    expect(await r.git.packCount(info.store)).toBeGreaterThan(MAX_STORE_PACKS);
+    expect((await r.svc.sweep(r.clock.t)).expired).toEqual([]);
+    expect(await r.git.packCount(info.store)).toBe(1);
+    expect(r.store.getCheckpoint(run.id)?.checkpoint.live).toBe(true);
+    expect(await r.svc.patch({ threadId: "t1", runId: run.id, file: "a.txt", w: true })).toMatchObject({ available: true });
   });
 
   test("an orphan store (its repo is gone) is removed and its runs expire", async () => {
@@ -419,11 +481,11 @@ describe("checkpoints: failures are recorded, never lost (T30 review)", () => {
 
   test("history rewritten and pruned under live snapshots: the sweep's gc fails, the broken runs expire, and gc then succeeds", async () => {
     const r = await rig({ files: { "a.txt": "base\n", "keep.txt": "keep\n" } });
-    // Files and index an hour old and stat-clean (not "racy"): the snapshot then reuses keep.txt's blob and
-    // the unchanged tree from the real repo instead of hashing them again.
+    // Files and index an hour old and stat-clean (not "racy"): the snapshot then names keep.txt's blob in
+    // the real repo instead of hashing it again (its trees are the store's own).
     await ageTree(r.repo.root); await r.repo.git("update-index", "--really-refresh");
     const one = await r.start("t1", 1); await writeFile(join(r.repo.root, "a.txt"), "base\nmore\n"); await r.end(one);
-    // The operator rewrites history and prunes: the trees and blobs run 1 read through the alternate are gone.
+    // The operator rewrites history and prunes: keep.txt's blob, which run 1 reads through the alternate (the run did not change it), is gone.
     const g = r.repo.git;
     await g("add", "-A"); await g("commit", "-qm", "wip");
     await g("checkout", "-q", "--orphan", "fresh"); await g("rm", "-rqf", "--cached", ".");
@@ -436,7 +498,7 @@ describe("checkpoints: failures are recorded, never lost (T30 review)", () => {
     // An orphan ref gives the sweep something to collect.
     const { info, git } = await storeGit(r);
     await git("update-ref", "refs/checkpoints/ghost/1/start", r.store.getCheckpoint(two.id)!.startCommit!);
-    expect(await r.git.gc({ store: info.store, objectsDir: info.objectsDir })).toBe(false); // run 1's trees are gone
+    expect(await r.git.gc({ store: info.store, objectsDir: info.objectsDir })).toBe(false); // keep.txt's blob is gone
     const res = await r.svc.sweep(r.clock.t);
     expect(res.expired).toEqual([one.id]);
     expect(await refs(r)).toEqual([checkpointRef("t1", 2, "end"), checkpointRef("t1", 2, "start")]);
