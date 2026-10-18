@@ -54,6 +54,8 @@ export type Extended = {
   limited: boolean;
   /** The tapped row has no number on the gesture's side, or is not in the patch: nothing changed. */
   skipped: boolean;
+  /** `skipped` because the row is not in any hunk (a line of opened unchanged context). */
+  outside?: boolean;
 };
 
 /**
@@ -63,7 +65,7 @@ export type Extended = {
  */
 export function extendGesture(file: ParsedPatchFile, g: Gesture, at: Pick<DiffLineRef, "side" | "line">): Extended {
   const row = findRowFor(file, g, at);
-  if (!row) return { gesture: g, limited: false, skipped: true };
+  if (!row) return { gesture: g, limited: false, skipped: true, outside: true };
   const n = numberOn(row.line, g.side);
   if (n === undefined) return { gesture: g, limited: false, skipped: true };
   if (row.hunk !== g.hunk) return { gesture: { side: g.side, anchor: n, head: n, hunk: row.hunk }, limited: false, skipped: false };

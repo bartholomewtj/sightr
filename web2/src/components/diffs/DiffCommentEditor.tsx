@@ -66,12 +66,13 @@ export function DiffCommentEditor({ rangeLabel, side, initialNote, canClear, not
         }}
         onFocus={() => rowRef.current?.scrollIntoView?.({ block: "nearest" })}
         onKeyDown={(e) => {
+          // An IME uses Escape to drop its candidate; it must not also cancel the editor and lose the note.
+          if (e.nativeEvent.isComposing) return;
           if (e.key === "Escape") {
             e.preventDefault();
             onCancel();
             return;
           }
-          if (e.nativeEvent.isComposing) return;
           if (isCommentSubmitShortcut(e, trimmed, tooLong)) {
             e.preventDefault();
             onSave(trimmed);

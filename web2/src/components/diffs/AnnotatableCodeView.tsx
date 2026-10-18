@@ -21,10 +21,14 @@ import { useParsedFile } from "./parsedFile";
 export interface DiffCommentsContextValue {
   threadId: string;
   off: string | null;
+  /** The Run scope: its hunks are the journal's edit fragments, numbered from 1, not the file's own lines. */
+  run?: boolean;
 }
 export const DiffCommentsContext = createContext<DiffCommentsContextValue | null>(null);
 
 const EDITOR_KEY = "editor";
+const RUN_FRAGMENT_REASON = "Comments need real line numbers; open Working tree.";
+const OUTSIDE_NOTICE = "Lines opened from unchanged context can't be commented on.";
 const LIMIT_NOTICE = "12 lines is the limit.";
 
 const isCoarse = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
@@ -47,7 +51,10 @@ function Commentable(props: BodyProps & { ctx: DiffCommentsContextValue }) {
   const { threadId } = ctx;
   const file = useParsedFile(patch);
   const problem = commentPathProblem(path);
-  const off = ctx.off ?? (problem ? COMMENT_PATH_REASON[problem] : null);
+  // A run's `edit` hunks (runScope.ts `editHunks`) count from the edit's first line, so a comment on one would quote a
+  // line number the agent reads as real; a new file's own header (no label) is real and stays on.
+  const fragments = ctx.run === true && file.hunks.some((h) => /^edit( \d+ of \d+)?$/.test(h.section.trim()));
+  const off = ctx.off ?? (problem ? COMMENT_PATH_REASON[problem] : fragments ? RUN_FRAGMENT_REASON : null);
   const all = useLineComments(threadId);
   const editor = useOpenEditor(threadId);
   const reveal = useLineReveal(threadId);
@@ -135,7 +142,7 @@ function Commentable(props: BodyProps & { ctx: DiffCommentsContextValue }) {
       if (cur && cur.path === path && (shiftKey || isCoarse())) {
         // The shift-click rule; on a phone, which has no shift key, any tap while the editor is open.
         const next = extendGesture(file, cur.gesture, at);
-        const notice = next.skipped ? "That row has no line number on this side." : next.limited ? LIMIT_NOTICE : null;
+        const notice = next.skipped ? (next.outside ? OUTSIDE_NOTICE : "That row has no line number on this side.") : next.limited ? LIMIT_NOTICE : null;
         patchOpenEditor(threadId, { gesture: next.gesture, notice });
         return;
       }
@@ -158,7 +165,7 @@ function Commentable(props: BodyProps & { ctx: DiffCommentsContextValue }) {
 
   return (
     <div data-diff-commentable="" data-diff-comments={off ? "off" : "on"}>
-      {problem ? (
+      {problem || fragments ? (
         <p className="px-2 py-1 text-xs text-muted-foreground" data-diff-comments-off="">
           {off}
         </p>

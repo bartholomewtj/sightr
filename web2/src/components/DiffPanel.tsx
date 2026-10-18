@@ -142,7 +142,7 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
   const comments = useLineComments(threadId);
   const listOpen = useCommentsListOpen(threadId);
   const commentsOff = readOnly ? "Comments are off: this device is read-only." : null;
-  const commentsCtx = useMemo<DiffCommentsContextValue>(() => ({ threadId, off: commentsOff }), [threadId, commentsOff]);
+  const commentsCtx = useMemo<DiffCommentsContextValue>(() => ({ threadId, off: commentsOff, run: scope.kind === "run" }), [threadId, commentsOff, scope.kind]);
 
   // ── The files and their patches ──
   // A run reads the journal, which `-w` cannot change: the preference stays stored but does not apply there.

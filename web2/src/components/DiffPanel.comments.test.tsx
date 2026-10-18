@@ -6,6 +6,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { NO_CAPABILITIES } from "@shared/v2/contracts";
+import { useDiffPanelStore } from "@/diffPanelStore";
 import { useRightPanelStore } from "@/rightPanelStore";
 import { getThreadComposer } from "@/state/composer";
 import { addLineComment, getLineComments } from "@/state/lineComments";
@@ -13,6 +14,7 @@ import { threadFromSnapshot } from "@/stream/apply";
 import { useBridgeInfo, useThreadStore } from "@/stream/stores";
 import { createDiffServer } from "@/test/diffServer";
 import { thread } from "@/test/fixtures";
+import { edit, run as runItem, user } from "@/test/turn-items";
 import { setViewportWidth } from "@/test/media";
 import { server } from "@/test/setup";
 
@@ -204,6 +206,16 @@ describe("the Comments button and the list", () => {
     await waitFor(() => expect(scrolledRows).toContain("new 2"));
   });
 
+  it("Edit is off on a read-only device, like Add", async () => {
+    comment("look here", "src/a.ts");
+    act(() => useBridgeInfo.setState({ readOnly: true }));
+    await mount();
+    fireEvent.click(chip()!);
+    expect(within(list()!).getByRole("button", { name: /Edit/ })).toBeDisabled();
+    expect(within(list()!).getByRole("button", { name: /Edit/ })).toHaveAttribute("title", expect.stringContaining("read-only"));
+    expect(within(list()!).getByRole("button", { name: "Add" })).toBeDisabled();
+  });
+
   it("Edit on a row opens the editor under its range with the note", async () => {
     comment("look here", "src/a.ts");
     await mount();
@@ -221,6 +233,39 @@ describe("when comments are off", () => {
     await mount();
     expect(document.querySelector("[data-diff-gutter]")).toBeNull();
     expect(document.querySelector("[data-diff-note=comments-off]")).toHaveTextContent("this device is read-only");
+  });
+
+  it("run scope: comments are off on a journal fragment (its lines count from 1) and stay on for a new file's real header", async () => {
+    const inRun = { runId: "r1" };
+    act(() =>
+      useThreadStore.setState({
+        current: threadFromSnapshot(
+          {
+            sequence: 1,
+            thread: thread("t1", { paneId: "p-t1", capabilities: { ...NO_CAPABILITIES, canQueueDrain: true } }),
+            runs: [runItem("r1")],
+            items: [
+              user("u:0", "go", inRun),
+              edit("e:0", "src/a.ts", { ...inRun, additions: 1, deletions: 1, diffStr: "--- a/src/a.ts\n+++ b/src/a.ts\n@@ @@\n ctx\n-x\n+y\n ctx2" }),
+              edit("e:1", "docs/n.md", { ...inRun, additions: 2, deletions: 0, diffStr: "--- /dev/null\n+++ b/docs/n.md\n@@ -0,0 +1,2 @@\n+a\n+b" }),
+            ],
+            requests: [],
+            queue: [],
+            historyCursor: null,
+          },
+          false,
+        ),
+        missing: null,
+      }),
+    );
+    act(() => useDiffPanelStore.getState().setScope("t1", { kind: "run", runId: "r1" }));
+    render(<DiffPanel threadId="t1" />);
+    await waitFor(() => expect(document.querySelector('[data-diff-file="docs/n.md"] [data-diff-gutter]')).not.toBeNull());
+    expect(document.querySelector('[data-diff-file="docs/n.md"] [data-diff-commentable]')).toHaveAttribute("data-diff-comments", "on");
+    const frag = document.querySelector('[data-diff-file="src/a.ts"] [data-diff-commentable]')!;
+    expect(frag).toHaveAttribute("data-diff-comments", "off");
+    expect(frag).toHaveTextContent("Comments need real line numbers; open Working tree.");
+    expect(frag.querySelector("[data-diff-gutter]")).toBeNull();
   });
 
   it("a refused file in the list has no gutter and says why, and its neighbour keeps its gutter", async () => {

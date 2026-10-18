@@ -123,6 +123,18 @@ describe("on a desktop", () => {
     expect(selected(container)).toEqual([]);
   });
 
+  it("Escape during IME composition does not cancel the editor or lose the note", async () => {
+    const { container } = show();
+    await ready(container);
+    fireEvent.click(gutter(container, "new", 3));
+    fireEvent.change(editorBox(), { target: { value: "ime note" } });
+    fireEvent.keyDown(editorBox(), { key: "Escape", isComposing: true });
+    expect(editorBox()).toHaveValue("ime note");
+    expect(selected(container)).toHaveLength(1);
+    fireEvent.keyDown(editorBox(), { key: "Escape" });
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
   it("Save and Cancel buttons work the same", async () => {
     const { container } = show();
     await ready(container);
@@ -252,6 +264,30 @@ describe("on a phone (touch)", () => {
     vi.advanceTimersByTime(700);
     touchTap(gutter(container, "new", 3), { ms: 50 }); // an added row: no old number
     expect(screen.getByText("That row has no line number on this side.")).toBeInTheDocument();
+    expect(selected(container)).toHaveLength(1);
+  });
+});
+
+describe("opened unchanged context", () => {
+  const OLD = "abcdefghijkl".split("");
+  const NEW = [...OLD];
+  NEW[1] = "B";
+  NEW[10] = "K";
+  const GAPPED = ["diff --git a/src/f.ts b/src/f.ts", "--- a/src/f.ts", "+++ b/src/f.ts", "@@ -1,3 +1,3 @@", " a", "-b", "+B", " c", "@@ -10,3 +10,3 @@", " j", "-k", "+K", " l", ""].join("\n");
+
+  it("a tap on a line opened from context says why instead of 'no line number on this side'", async () => {
+    const { container } = render(
+      <DiffCommentsContext value={{ threadId: THREAD, off: null }}>
+        <AnnotatableCodeView patch={GAPPED} path="src/f.ts" wrap eager onExpandContext={async () => ({ oldText: OLD.join("\n") + "\n", newText: NEW.join("\n") + "\n" })} />
+      </DiffCommentsContext>,
+    );
+    await ready(container);
+    fireEvent.click(gutter(container, "new", 2));
+    fireEvent.click(container.querySelector<HTMLElement>("[data-diff-expand]")!);
+    await waitFor(() => expect(container.querySelector('[data-new-line="5"]')).not.toBeNull());
+    fireEvent.click(gutter(container, "new", 5), { shiftKey: true });
+    expect(screen.getByText("Lines opened from unchanged context can't be commented on.")).toBeInTheDocument();
+    expect(screen.queryByText("That row has no line number on this side.")).toBeNull();
     expect(selected(container)).toHaveLength(1);
   });
 });

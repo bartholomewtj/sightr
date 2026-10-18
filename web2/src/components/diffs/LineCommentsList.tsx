@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { useLayout } from "@/hooks/useLayout";
+import { useBridgeInfo } from "@/stream/stores";
 import { addToMessage, deleteWithUndo, discardAll, useAddGate } from "@/state/commentActions";
 import { useDraftText } from "@/state/composer";
 import { commentView, useLineComments, type CommentView, type LineComment } from "@/state/lineComments";
@@ -34,6 +35,7 @@ export function LineCommentsList({
   const comments = useLineComments(threadId);
   const draft = useDraftText(threadId);
   const gate = useAddGate(threadId);
+  const readOnly = useBridgeInfo((s) => s.readOnly);
   const phone = useLayout() === "phone";
   const [armed, setArmed] = useState<string | null>(null); // "discard", or the id of an outdated comment waiting for its confirm tap
   useEffect(() => {
@@ -121,7 +123,7 @@ export function LineCommentsList({
                       <MessageSquarePlusIcon aria-hidden="true" />
                       {confirm ? "Add anyway" : "Add"}
                     </Button>
-                    <Button size="xs" variant="ghost-muted" disabled={!inScope.has(c.path) || c.state === "outdated"} title={c.state === "outdated" ? "Its lines changed; delete it and comment again" : undefined} onClick={() => onEdit(c)}>
+                    <Button size="xs" variant="ghost-muted" disabled={readOnly || !inScope.has(c.path) || c.state === "outdated"} title={readOnly ? "Comments are off: this device is read-only." : c.state === "outdated" ? "Its lines changed; delete it and comment again" : undefined} onClick={() => onEdit(c)}>
                       <PencilIcon aria-hidden="true" />
                       Edit
                     </Button>
