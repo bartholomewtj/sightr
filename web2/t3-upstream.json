@@ -1013,9 +1013,24 @@
   "decisions": [
     {
       "upstream": "apps/web/src/components/DiffPanel.tsx",
-      "commit": "db5919d87daf",
+      "commit": "ea97e8ba3146",
       "verdict": "skip",
-      "reason": "not ported: right-panel/GitPanel.tsx took its branch-range scope, wrap and collapse-all as Sightr code; the per-turn checkpoint scope, split view and @pierre/diffs are never taken"
+      "reason": "not ported yet: T27 replaces this row with a pattern port. Its renderer is not taken: T25 measured @pierre/diffs 1.5.2 over four limits (471.6 KB lazy gzip against 150, +2,284 KB dist against 400, 3.3 s cold open against 1.0, 58/1,194 ms first render against 50/300) and picked the hand-rolled highlight.js renderer behind DiffCodeView (docs/specs/t3/README.md, T25)",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/components/diffs/StyledDiffCodeView.tsx",
+      "commit": "ea97e8ba3146",
+      "verdict": "skip",
+      "reason": "Styled wrapper around @pierre/diffs CodeView and its worker pool; T25 measured @pierre/diffs over four limits (471.6 KB lazy gzip against 150, +2,284 KB dist against 400, 3.3 s cold open, 1,194 ms first render of 1,500 lines against 300) and took the hand-rolled renderer behind DiffCodeView",
+      "date": "2026-10-18"
+    },
+    {
+      "upstream": "apps/web/src/lib/diffRendering.ts",
+      "commit": "ea97e8ba3146",
+      "verdict": "skip",
+      "reason": "Pierre FileDiffMetadata helpers, theme CSS and client-side whitespace hiding; @pierre/diffs is not taken (T25, four limits failed) and T28 ignores whitespace in the bridge only. fnv1a32 is Pierre-free; T29 may take it as a pattern for its comment hash",
+      "date": "2026-10-18"
     },
     {
       "upstream": "apps/web/src/components/diffs/DiffFileStatus.tsx",

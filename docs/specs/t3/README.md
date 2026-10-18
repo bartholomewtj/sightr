@@ -154,12 +154,35 @@ so web2 stays uncompiled. Compiler-only rewrites upstream are `skip` rows in `we
 unsaved; the command is in the config). Revisit if adapted ports start costing more than the bail-outs
 would take to fix.
 
-## Diff renderer spike (T25, 18 Oct 2026): DECISION PENDING
+## Diff renderer spike (T25, 2026-10-18): B, hand-rolled renderer with highlight.js
+
+**Decision: B**, the hand-rolled renderer on `parsePatch` with highlight.js 11.12.0 (`adapters/hand.tsx`). The spec's rule
+asks first whether A passes every row. `@pierre/diffs` 1.5.2 fails four on its own numbers: a 471.6 KB lazy chunk (limit
+150), +2,284 KB of `dist` (limit 400; still +481 KB with its grammars out of the precache), a 3.3 s cold open (limit 1.0)
+and first render at 58 / 1,194 ms (limits 50 / 300). Its worker alone is 296.3 KB gzip, about twice the lazy-chunk
+limit. B passes every decidable row on the reading the spec defines, so
+the rule adopts B; the rank step is not reached. C fails split/expand/annotations, highlighting and the touch target.
+`@pierre/diffs` stays untaken (so `docs/T3_ADAPTATION.md` is unchanged), and T3's Pierre-bound `StyledDiffCodeView.tsx`
+and `lib/diffRendering.ts` are `skip` rows in `web2/t3-upstream.json`. The `diffs-adapter` default stays `status` until
+T27, which flips it under the constraints below.
+
+**How reading (b) counts.** The spec's rows say "first paint of the first file, large patch" and allow "files rendered
+on open" for the node count, so the state they measure is the 40-file patch with its first file open: reading (a). The
+fixture keeps the 3,000-line, 400-character file closed in that state (8th of 40), so (a) also checks that a closed
+heavy file costs nothing (A's 616,965 nodes once it opens show why). Reading (b), that file open, is a stress case the
+builder added, not a spec row, so it does not decide. It is still a state T27 reaches (a tap, or a reveal), so its two B
+misses become gates on T27 rather than being waived: mounted nodes 6,872 (limit 5,000) and heap after unmount 20.6%
+(limit 20%). Checked the other way: if (b) did decide, A and B both fail, and the rule gives C with split, expand and
+annotations built into `hand.tsx` without a highlighter. Both B misses come from the highlighter (about 57 nodes per
+400-character row over the 120 rows the first two windows mount at once, and the whole file's highlight map held while
+open), so that outcome is B without highlighting: it would drop highlighting for 93% of changed files to fix two misses
+that bounded windows fix. The heap miss is 0.06 MB over the line (2.1 MB over a 10.2 MB base) and this section does not
+record whether Chrome ran with `--enable-precise-memory-info`, without which `performance.memory` is coarse, so that miss
+is weak evidence either way; T27 re-measures it. The thresholds stand as written.
 
 Three ways to draw a file's diff behind the `DiffCodeView` seam (`web2/src/components/diffs/`) were built and measured
 against the thresholds in [`T25-diff-renderer-spike.md`](T25-diff-renderer-spike.md). The thresholds were fixed before
-any measurement. Nothing here is decided: the decision, the `decisions` rows in `web2/t3-upstream.json` and the
-`docs/T3_ADAPTATION.md` edit follow from this table. The `diffs-adapter` default stays `status`.
+any measurement.
 
 - **A** `@pierre/diffs` 1.5.2 (the version T3 pins; T3 also patches it, a 44 KB patch not applied here) with its worker
   pool, shiki 4.5.0, JS regex engine (`preferredHighlighter: "shiki-js"`; the WASM engine is never requested).
@@ -270,6 +293,51 @@ What bears on T27 to T29:
   3,000-line file).
 - Not measured: a real phone (any row), `tailscale serve` in front, A with T3's patch, A inside `CodeView`, a shiki
   adapter for B (size only), the Tailscale route's cold fetch.
+
+**What T27 to T29 inherit from this decision.**
+
+- **T27 flips the default, and only once reading (b) passes.** `diffs-adapter` becomes `adapters/hand.tsx`;
+  `highlight.js` is added to `web2/package.json` pinned at exactly `11.12.0` (BSD-3-Clause, no runtime
+  dependencies), and `hand.tsx` and `hand.highlight.ts` leave the `tsconfig.json` exclude. That is the one new
+  dependency T27's "any new dependency" exclusion yields to. Before the flip, T27 re-runs `spike-diffs.html?auto=large-worst` with the method above
+  (Chrome started with `--enable-precise-memory-info --js-flags=--expose-gc`, flags recorded) and appends the result
+  here; it must show at most 5,000 mounted nodes, heap within 20% of base after unmount and no long task over 250 ms.
+  The changes that get it there, all in the adapter:
+  - a window closes at 60 rows or 12,000 characters of line text, whichever comes first (a 400-character file gets about
+    30 rows), and only the first window mounts at once; the rest mount by `IntersectionObserver` as today;
+  - highlighting runs per window as it mounts, not for the whole file up front, and in slices of at most 200 lines per
+    `highlight` call, so an added or deleted 3,000-line file (one hunk; not in the fixture) is never one long task. A
+    multi-line token cut at a slice edge shows plain; highlight.js 11 has no continuation state;
+  - nothing highlight-related outlives the component (the per-file map is component state; only the registered grammars
+    stay, module-level);
+  - in the panel, an open file other than the first or the revealed one mounts even its first window on intersection,
+    since T27 opens all files when there are 3 or fewer and their eager windows add up.
+- **T27 preloads the renderer.** The first diff of a session spends about 300 ms in the `Suspense` fallback before the
+  adapter shows (React's reveal throttle; the same for every candidate). The seam exports a `preloadDiffRenderer()` that
+  calls `import("diffs-adapter")`, and the Diff panel calls it on mount (T24's card may call it too).
+- **Windowing caveats, accepted and stated in T27.** Browser find (Ctrl+F) sees only mounted rows. Unmounted windows
+  hold an estimated 20 px per row, which is low for wrapped long lines, so the scrollbar shifts as windows mount; scroll
+  memory restores to a file header plus an offset, not a raw `scrollTop`. The service worker precaches B's 16 new files
+  (+34.2 KB gzip); no `globIgnores` line is needed.
+- **T28 uses the seam's existing names and builds into `hand.rows.ts`.** The seam already has `layout`, `onExpandContext`
+  and `capabilities.split` / `.expand`; T28 uses them instead of its draft's `expand` object and `supports`. Split and
+  expand are native to B in T28's sense, so `diffSplit.logic.ts` and `diffGaps.logic.ts` are not separate panel files:
+  T28's gap rules (20-line steps, show all, old/new gap-length check, `\r?\n` splitting, the staleness guard, no tail
+  control on a truncated patch) go into `hand.rows.ts` (today it reveals a whole gap at once and keeps a trailing `\r`),
+  and T28's fixtures run at the seam. Revealed lines are highlighted through the same per-window path (today they are
+  plain).
+- **T29 extends the seam for its three needs.** Gutter action: `onLineAction(at)` gains a second argument
+  `{ shiftKey: boolean }`. Selection: a new optional prop `selection?: { side: DiffSide; start: number; end: number }`
+  that `hand.tsx` marks on its rows. Annotation under a range: the existing `annotations` / `renderAnnotation`, with `at`
+  the range's last line. Scroll-to-line needs mount-on-demand: the target's window mounts first, then the line scrolls
+  into view after layout. The 44 px gutter is wide enough, but its `pointer-coarse:after:-inset-y-3` hit area overlaps
+  the next row on 20 px lines, and later rows paint on top, so by CSS paint order a tap on the lower part of a number
+  lands on the line below (found by reading the CSS, not measured). T29 drops the vertical extension (44 px wide is
+  T29's own rule) or resolves the line from the pointer's position.
+- **Follow-ups outside T27 to T29.** The bridge serves static JS uncompressed even with `Accept-Encoding: gzip`, so
+  every cold fetch is the raw bytes and the gzip rows understate it (B's cold open moved 227.0 KB). Compressing `/assets/*.js` is
+  a bridge slice, with the cold rows re-measured after. The real-phone trial (cold fetch over `tailscale serve`, large
+  paint, scroll) runs after T27 and is appended here; a row that fails on the phone is fixed in `hand.tsx`.
 
 Re-measure: `bun add -d --no-save @pierre/diffs@1.5.2 highlight.js@11.12.0` in `web2`; `bun scripts/diff-spike.ts
 fixtures`; `SIGHTR_DIFFS=hand|pierre|status bunx vite build --outDir <temp>` (add `SIGHTR_DIFFS_PAGE=0` to leave
