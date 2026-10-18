@@ -179,6 +179,18 @@ describe("request ingest — open and update", () => {
     });
   });
 
+  test("a permission carries its tool and target; the shell snapshot does not", async () => {
+    const r = rig();
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+    expect(req.subject).toEqual({ title: "Run command", target: "mkfifo fixture-fifo", detail: "Create a named pipe (FIFO)" });
+    const shell = r.store.snapshotShell();
+    expect(shell.requests).toHaveLength(1);
+    expect(JSON.stringify(shell.requests)).not.toContain("Run command");
+    // The thread snapshot (the card's source) keeps it.
+    expect(r.store.snapshotThread("t1")!.requests[0]!.subject?.target).toBe("mkfifo fixture-fifo");
+  });
+
   test("the same screen next poll writes nothing", async () => {
     const r = rig();
     await r.ingestor.poll();

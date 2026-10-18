@@ -27,6 +27,7 @@ import { DIALOG_CONTRACT, dialogModelOf, type DialogKind, type DialogModels } fr
 import { detectNoEchoPrompt } from "../no-echo";
 import { agyBuildBlocks } from "./agy/index";
 import { claudeBuildBlocks } from "./claude/index";
+import { claudePermissionSubject, type PermissionSubject } from "./claude/permission-subject";
 import { cursorBuildBlocks } from "./cursor/index";
 import { isSkipLabel } from "./cursor/permission";
 import { grokBuildBlocks } from "./grok/index";
@@ -73,7 +74,11 @@ export interface DialogParse {
   decision?: { thread: string; run: string };
   /** The question has an empty free-text row the bridge can type an answer into ({@link freeTextModel}). */
   freeText?: true;
+  /** A permission dialog's tool and target ("Run command" · `git status`), when the adapter reads one. */
+  subject?: PermissionSubject;
 }
+
+export type { PermissionSubject };
 
 /**
  * A dialog's free-text row as the bridge types into it (v2 `runtime-request.respond` with `text`).
@@ -118,6 +123,11 @@ const PIPELINES: Record<string, Pipeline> = {
 const DENY_LABEL: Record<string, (label: string) => boolean> = {
   cursor: isSkipLabel,
   grok: isRejectLabel,
+};
+
+/** An adapter's reader for what a permission dialog is about. Agents without one publish no subject. */
+const SUBJECT: Record<string, (lines: StyledLine[], question: string) => PermissionSubject | null> = {
+  claude: claudePermissionSubject,
 };
 
 /** The agents this file parses, for the parity test. */
@@ -367,7 +377,14 @@ export function parseDialog(agent: string, ansiText: string): DialogParse | null
   if (block) {
     const lifted = fromBlock(agent, block);
     const free = lifted.kind === "question" && !lifted.via ? freeTextOfBlock(block) : null;
-    return { ...lifted, ...(free?.typeable ? { freeText: true as const } : {}), boundText: boundTextFor(block, ansiText) };
+    const subject =
+      lifted.kind === "permission" && Object.hasOwn(SUBJECT, agent) ? SUBJECT[agent]!(lines, lifted.prompt) : null;
+    return {
+      ...lifted,
+      ...(free?.typeable ? { freeText: true as const } : {}),
+      ...(subject ? { subject } : {}),
+      boundText: boundTextFor(block, ansiText),
+    };
   }
   const password = detectNoEchoPrompt(lines);
   if (password !== null) return { kind: "password", prompt: password, options: [], boundText };
