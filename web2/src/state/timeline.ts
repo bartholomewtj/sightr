@@ -16,6 +16,12 @@ import { useThreadStore } from "@/stream/stores";
 export interface ThreadTimelineUi {
   expandedRunIds: ReadonlySet<string>;
   expandedWorkGroupIds: ReadonlySet<string>;
+  /**
+   * T24: the directories the operator folded in a run's changed-files tree, by run id. Empty by
+   * default, so the tree opens fully; in memory like the sets above, so a card the list unmounts comes
+   * back as it was left.
+   */
+  collapsedChangedDirs: Readonly<Record<string, ReadonlySet<string>>>;
 }
 
 export type HistoryStatus = "idle" | "loading" | "error";
@@ -27,7 +33,12 @@ interface TimelineStore {
 }
 
 const EMPTY_SET: ReadonlySet<string> = new Set();
-export const EMPTY_TIMELINE_UI: ThreadTimelineUi = { expandedRunIds: EMPTY_SET, expandedWorkGroupIds: EMPTY_SET };
+const EMPTY_DIRS: Readonly<Record<string, ReadonlySet<string>>> = {};
+export const EMPTY_TIMELINE_UI: ThreadTimelineUi = {
+  expandedRunIds: EMPTY_SET,
+  expandedWorkGroupIds: EMPTY_SET,
+  collapsedChangedDirs: EMPTY_DIRS,
+};
 
 export const useTimelineStore = create<TimelineStore>(() => ({ byThread: {}, history: {}, followRequest: 0 }));
 
@@ -54,6 +65,30 @@ export function toggleWorkGroup(threadId: string, groupId: string): void {
     const ui = s.byThread[threadId] ?? EMPTY_TIMELINE_UI;
     return {
       byThread: { ...s.byThread, [threadId]: { ...ui, expandedWorkGroupIds: toggleIn(ui.expandedWorkGroupIds, groupId) } },
+    };
+  });
+}
+
+/** The folded directories of a run's changed-files tree (empty set: all open). */
+export function collapsedChangedDirsOf(ui: ThreadTimelineUi, runId: string): ReadonlySet<string> {
+  return ui.collapsedChangedDirs[runId] ?? EMPTY_SET;
+}
+
+/** Fold or open one directory of a run's changed-files tree. */
+export function toggleChangedDir(threadId: string, runId: string, dir: string): void {
+  useTimelineStore.setState((s) => {
+    const ui = s.byThread[threadId] ?? EMPTY_TIMELINE_UI;
+    const next = toggleIn(collapsedChangedDirsOf(ui, runId), dir);
+    return { byThread: { ...s.byThread, [threadId]: { ...ui, collapsedChangedDirs: { ...ui.collapsedChangedDirs, [runId]: next } } } };
+  });
+}
+
+/** "Collapse all" passes every directory path; "Expand all" passes none. */
+export function setChangedDirsCollapsed(threadId: string, runId: string, dirs: Iterable<string>): void {
+  useTimelineStore.setState((s) => {
+    const ui = s.byThread[threadId] ?? EMPTY_TIMELINE_UI;
+    return {
+      byThread: { ...s.byThread, [threadId]: { ...ui, collapsedChangedDirs: { ...ui.collapsedChangedDirs, [runId]: new Set(dirs) } } },
     };
   });
 }
