@@ -148,6 +148,16 @@ describe("HandAdapter windows", () => {
     spy.mockRestore();
   });
 
+  it("draws the unchanged-lines button only when the caller can load the file", () => {
+    const gappy = ["diff --git a/f.ts b/f.ts", "--- a/f.ts", "+++ b/f.ts", "@@ -3,1 +3,1 @@", "-a", "+b", "@@ -30,1 +30,1 @@", "-c", "+d", ""].join("\n");
+    const without = render(<HandAdapter patch={gappy} filePath="f.ts" wrap />);
+    expect(without.container.querySelector("[data-diff-expand]")).toBeNull();
+    expect(without.container.querySelectorAll("[data-diff-line]").length).toBe(4);
+    without.unmount();
+    const withIt = render(<HandAdapter patch={gappy} filePath="f.ts" wrap onExpandContext={async () => null} />);
+    expect(withIt.container.querySelector("[data-diff-expand]")).not.toBeNull();
+  });
+
   it("cancels the highlight when the component unmounts mid-way", async () => {
     const core = (await import("highlight.js/lib/core")).default;
     const spy = vi.spyOn(core, "highlight");

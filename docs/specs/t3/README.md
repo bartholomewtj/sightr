@@ -347,14 +347,16 @@ in its own state (only the registered grammars stay, module-level). Method as ab
 Chrome 155.0.8059.40 started with `--enable-precise-memory-info --js-flags=--expose-gc` (headless, its own `ca` instance),
 390x844, DPR 2, mobile + touch emulation, `Emulation.setCPUThrottlingRate` 4, no network throttling (the page came from
 `vite preview` on localhost of a `SIGHTR_DIFFS=hand` build, not the bridge: no CSP, which `hand` does not touch), fixtures
-from `bun scripts/diff-spike.ts fixtures` (mix from this repo's `git log`), `spike-diffs.html?auto=large-worst`, six fresh
-page loads. `performance.memory` was precise (values move in 0.1 MB steps).
+from `bun scripts/diff-spike.ts fixtures` (mix from this repo's `git log`), `spike-diffs.html?auto=large-worst`, eleven fresh
+page loads: six on the first windowed build and five more on the adapter as it shipped (it no longer draws the
+unchanged-lines button when the caller gives no way to load the file, which is two nodes fewer). `performance.memory`
+was precise (values move in 0.1 MB steps).
 
-| Measure (reading (b): the 3,000-line, 400-character file open) | Limit | T25, before windowing | T27, windowed (6 runs) |
+| Measure (reading (b): the 3,000-line, 400-character file open) | Limit | T25, before windowing | T27, windowed (11 runs) |
 |---|---|---|---|
-| Mounted DOM nodes | <= 5,000 | 6,872 (FAIL) | 1,899 in every run (pass) |
+| Mounted DOM nodes | <= 5,000 | 6,872 (FAIL) | 1,899 in each of the first six runs, 1,897 in each of the last five (pass) |
 | Heap after unmount | within 20% of base | 2.1 MB over a 10.2 MB base, 20.6% (FAIL) | 0.7 MB over a 4.4 MB base, 15.9%; +1.4 to +1.5 MB while open (pass) |
-| Longest task | <= 250 ms | 103 ms | none recorded (0 long tasks) in all six (pass) |
+| Longest task | <= 250 ms | 103 ms | none recorded (0 long tasks) in all eleven (pass) |
 | First lines in the DOM / painted / first highlight | (first paint <= 800 ms) | 185 ms paint | 15 to 52 ms / 91 to 130 ms / 192 to 289 ms |
 | React commits to settle | <= 3 | 2 | 2, stable |
 

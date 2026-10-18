@@ -102,7 +102,8 @@ export default function HandAdapter(props: DiffCodeViewProps) {
   );
   const renderRow = (r: Item, hl: Highlighted | null): ReactNode => {
     if (r.type === "hunk") return <div key={r.key} className="px-2 text-[var(--muted)]">{r.header}</div>;
-    if (r.type === "gap") return <button key={r.key} type="button" data-diff-expand className="w-full px-2 py-0.5 text-start text-muted-foreground pointer-coarse:min-h-11" onClick={() => void expand(r)}>{r.hidden === null ? "Show unchanged lines" : `Show ${r.hidden} unchanged lines`}</button>;
+    // No handler, no control: a button that does nothing is worse than none (the Diff panel passes none until T28).
+    if (r.type === "gap") return !onExpandContext ? null : <button key={r.key} type="button" data-diff-expand className="w-full px-2 py-0.5 text-start text-muted-foreground pointer-coarse:min-h-11" onClick={() => void expand(r)}>{r.hidden === null ? "Show unchanged lines" : `Show ${r.hidden} unchanged lines`}</button>;
     if (r.type === "pair") {
       return <Fragment key={r.key}><div role="row" data-diff-line={(r.right ?? r.left)?.kind} className="flex">{half(r.left, "old", hl)}{half(r.right, "new", hl)}</div>{notes(r.left, "old")}{notes(r.right, "new")}</Fragment>;
     }

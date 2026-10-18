@@ -81,6 +81,20 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
   const reveal = useDiffPanelStore((s) => s.reveal);
   const consumeReveal = useDiffPanelStore((s) => s.consumeReveal);
 
+  // ── Layout: the tree is a left column when the panel itself is wide (not the viewport) ──
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelWidth, setPanelWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    setPanelWidth(el.clientWidth);
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => setPanelWidth(Math.round(entries[0]?.contentRect.width ?? el.clientWidth)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const wide = layout === "desktop" && panelWidth >= DIFF_PANEL_WIDE_PX;
+
   // ── Scope: a stored base the repo no longer has falls back to the default base ──
   const [droppedBase, setDroppedBase] = useState<string | null>(null);
   const [branchesWanted, setBranchesWanted] = useState(false);
@@ -153,7 +167,9 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
     setRevealPath(hit.path);
     setPendingScroll(hit.path);
     setHighlight(hit.path);
-  }, [reveal, threadId, filesReady, files, unfold, consumeReveal]);
+    // Asked for a file, so the file is the point: the phone's tree folds out of the way, as when one is picked in it.
+    if (!wide) setTreeOpen(false);
+  }, [reveal, threadId, filesReady, files, unfold, consumeReveal, wide]);
   useEffect(() => {
     if (!highlight) return;
     const t = setTimeout(() => setHighlight(null), 1600);
@@ -198,20 +214,6 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
     scrollerEl.querySelectorAll("[data-diff-file]").forEach((el) => io.observe(el));
     return () => io.disconnect();
   }, [scrollerEl, fileKey]);
-
-  // ── Layout: the tree is a left column when the panel itself is wide (not the viewport) ──
-  const panelRef = useRef<HTMLDivElement>(null);
-  const [panelWidth, setPanelWidth] = useState(0);
-  useLayoutEffect(() => {
-    const el = panelRef.current;
-    if (!el) return;
-    setPanelWidth(el.clientWidth);
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver((entries) => setPanelWidth(Math.round(entries[0]?.contentRect.width ?? el.clientWidth)));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  const wide = layout === "desktop" && panelWidth >= DIFF_PANEL_WIDE_PX;
 
   // ── Actions ──
   const onToggle = useCallback((path: string) => setUnfolded((prev) => {
@@ -356,7 +358,7 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
             ) : null}
             {scope.kind === "run" ? (
               <p className="border-b px-3 py-1.5 text-xs text-muted-foreground" data-diff-note="run">
-                From the agent's edits in this run, one after another; it may not match what is on disk now. Line numbers count from each edit's first line.
+                From the agent's edits in this run, one after another; it may not match what is on disk now. Each edit's line numbers are its own.
                 {run.shellRan ? " A shell command ran too, and files it changed are not listed." : ""}
               </p>
             ) : null}

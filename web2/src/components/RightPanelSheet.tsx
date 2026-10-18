@@ -7,7 +7,7 @@
 // stops under the status bar (safe-area-top), pads for the home indicator, and shrinks above an iOS
 // soft keyboard (lib/keyboard-inset.ts) so the Terminal's key bar is never behind it.
 import { XIcon } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { watchKeyboardInset } from "@/lib/keyboard-inset";
@@ -22,6 +22,10 @@ import { Sheet, SheetPopup, SheetTitle } from "./ui/sheet";
 // The other sheets (changed file, thread details, tasks) import it from here, where it always lived.
 export { useSheetHistory } from "./sheetHistory";
 
+function showSelectedTab(strip: HTMLElement | null): void {
+  strip?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
 export function RightPanelSheet(props: {
   animationDurationMs?: number;
   children: ReactNode;
@@ -33,6 +37,13 @@ export function RightPanelSheet(props: {
   useEffect(() => (props.open ? watchKeyboardInset() : undefined), [props.open]);
   const active = useRightPanelStore((s) => s.sheet);
   const openSheet = useRightPanelStore((s) => s.openSheet);
+  // Four tabs do not fit a 320 px strip: it scrolls sideways, and the open tab is kept in view.
+  const strip = useRef<HTMLDivElement | null>(null);
+  const stripRef = useCallback((el: HTMLDivElement | null) => {
+    strip.current = el;
+    showSelectedTab(el); // the sheet opened on this tab
+  }, []);
+  useEffect(() => showSelectedTab(strip.current), [active]); // a tab was picked
   return (
     <Sheet
       open={props.open}
@@ -50,6 +61,7 @@ export function RightPanelSheet(props: {
         <div className="flex items-center gap-1 border-b px-2 py-0.5">
           <SheetTitle className="sr-only">{props.title}</SheetTitle>
           <div
+            ref={stripRef}
             role="tablist"
             aria-label="Thread tools"
             className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none]"

@@ -359,6 +359,8 @@ describe("DiffPanel: reveal", () => {
     expect(toggle("src/f4.ts")).toHaveAttribute("aria-expanded", "true");
     expect(toggle("src/f0.ts")).toHaveAttribute("aria-expanded", "false"); // not all of them: just the asked-for one
     expect(useDiffPanelStore.getState().reveal).toBeNull();
+    // On a phone the tree folds out of the way, as when a file is picked in it.
+    expect(document.querySelector("[data-diff-tree-toggle]")).toHaveAttribute("aria-expanded", "false");
     await waitFor(() => expect(lines("src/f4.ts").length).toBeGreaterThan(0));
     expect(fake.patchPaths()).toEqual(["src/f4.ts"]);
     expect(section("src/f4.ts").className).toContain("bg-accent");

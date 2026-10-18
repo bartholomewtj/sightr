@@ -177,6 +177,15 @@ describe("PatchEngine", () => {
     expect(fake.patchPaths().sort()).toEqual(["busy.ts", "cut.ts"]);
   });
 
+  it("says nothing is shown when the diff was cut inside its first hunk (the host keeps whole hunks)", async () => {
+    fake.files = [{ path: "all-cut.ts", truncated: true, patch: "diff --git a/all-cut.ts b/all-cut.ts\n--- a/all-cut.ts\n+++ b/all-cut.ts\n" }];
+    const e = engine();
+    e.target("proj", { kind: "workingTree" });
+    await ready(e);
+    e.want(wants({ unfolded: set("all-cut.ts") }));
+    await waitFor(() => expect(stateOf(e, "all-cut.ts")).toMatchObject({ state: "truncated", patch: null, message: expect.stringContaining("none of it is shown") }));
+  });
+
   it("treats an HTTP failure as an error with a Retry", async () => {
     fake.files = [{ path: "a.ts", failTimes: 5 }];
     const e = engine();

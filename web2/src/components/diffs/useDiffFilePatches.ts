@@ -54,6 +54,7 @@ export function requestScope(scope: Exclude<DiffScope, { kind: "run" }>): DiffRe
 }
 
 const TRUNCATED_NOTE = "This file's diff is longer than the host will send, so only the first part is shown. Counts include everything.";
+const NONE_SHOWN_NOTE = "This file's diff is longer than the host will send, so none of it is shown here. Counts include everything.";
 const TOO_LARGE_NOTE = "This file is too large to show here.";
 
 /** The engine behind {@link useDiffFilePatches}: plain TypeScript, so it is tested without React. */
@@ -238,7 +239,9 @@ export class PatchEngine {
       (res) => {
         if (controller.signal.aborted) return;
         if (!res.available) return done({ state: "error", message: reviewReason(res.reason), retryable: true, ...keep });
-        done(res.truncated ? { state: "truncated", patch: res.patch, message: TRUNCATED_NOTE } : { state: "ready", patch: res.patch });
+        // A diff cut inside its first hunk has nothing whole to show (the host keeps whole hunks).
+        const shown = /^@@ /m.test(res.patch);
+        done(res.truncated ? { state: "truncated", patch: shown ? res.patch : null, message: shown ? TRUNCATED_NOTE : NONE_SHOWN_NOTE } : { state: "ready", patch: res.patch });
       },
       (err: unknown) => {
         if (isAbort(err) || controller.signal.aborted) return;
