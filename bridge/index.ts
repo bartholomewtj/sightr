@@ -25,6 +25,7 @@ import { TranscriptStore } from "./journal/store.ts";
 import { createJournalIngestor, createThreadWatchers } from "./threads/journal-ingest.ts";
 import { createRequestIngestor } from "./threads/request-ingest.ts";
 import { createCompactionWatcher } from "./threads/compaction-watch.ts";
+import { createAutoSettler } from "./threads/auto-settle.ts";
 import { createPaneQueue } from "./pane-queue.ts";
 import { createV2Gate } from "./threads/herdr-floor.ts";
 import { respondEffect } from "./threads/v2-routes.ts";
@@ -179,6 +180,9 @@ const requestIngestor = threadStore
 // steer queues instead of cancelling an auto-compaction (Thread.compacting).
 const compactionWatcher = threadStore ? createCompactionWatcher({ store: threadStore, engine, herdr }) : null;
 
+// v2 auto-settle: active threads idle for `autoSettleDays` (a runtime setting, 0 = off) are settled.
+const autoSettler = threadStore ? createAutoSettler({ store: threadStore, days: () => settings.current().autoSettleDays }) : null;
+
 // v2 dispatch (T06): message.dispatch start/queue/steer, the server-held queue and run.interrupt. The
 // start path is the same guarded send as v1's /api/pane/:id/send, on the same pane write queue. The
 // drainer holds every queued row at start; nothing is sent after a restart until the operator resumes.
@@ -218,6 +222,7 @@ if (threadStore) {
     journalIngestor?.start();
     requestIngestor?.start();
     compactionWatcher?.start();
+    autoSettler?.start();
     dispatcher?.start();
   });
   engine.onLink((status) => {
@@ -299,6 +304,7 @@ const shutdown = async () => {
   journalIngestor?.stop();
   requestIngestor?.stop();
   compactionWatcher?.stop();
+  autoSettler?.stop();
   dispatcher?.stop();
   poker.stop();
   // Retract anything still on the lock screen — nothing live stands behind it once we exit.

@@ -5,14 +5,20 @@ import type { Config } from "./config.ts";
 import { normalizeChord } from "./operator-keys.ts";
 import { json, requireJsonBody, text } from "./responses.ts";
 
-export interface RuntimeSettings { deviceAllowlist: string[]; notifyDelayMs: number; submitKeys: string[]; readLines: number; }
+export interface RuntimeSettings {
+  deviceAllowlist: string[]; notifyDelayMs: number; submitKeys: string[]; readLines: number;
+  /** Settle an active thread after this many days with no activity (0 = off). Never a pinned, working or waiting one. */
+  autoSettleDays: number;
+}
+/** The longest auto-settle the page offers (a year). */
+export const MAX_AUTO_SETTLE_DAYS = 365;
 export type RuntimeSettingKey = keyof RuntimeSettings;
-const SETTING_KEYS: readonly RuntimeSettingKey[] = ["deviceAllowlist", "notifyDelayMs", "submitKeys", "readLines"];
+const SETTING_KEYS: readonly RuntimeSettingKey[] = ["deviceAllowlist", "notifyDelayMs", "submitKeys", "readLines", "autoSettleDays"];
 /** What GET/POST /api/settings return: the effective values, which of them the Settings page has
  *  overridden, and the `.env` values underneath — so the page can say where each value comes from. */
 export interface RuntimeSettingsView extends RuntimeSettings { overridden: RuntimeSettingKey[]; defaults: RuntimeSettings; }
 const sameValue = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-export function defaultsFrom(cfg: Config): RuntimeSettings { return { deviceAllowlist: [...cfg.deviceAllowlist], notifyDelayMs: cfg.notifyDelayMs, submitKeys: [...cfg.submitKeys], readLines: cfg.readLines }; }
+export function defaultsFrom(cfg: Config): RuntimeSettings { return { deviceAllowlist: [...cfg.deviceAllowlist], notifyDelayMs: cfg.notifyDelayMs, submitKeys: [...cfg.submitKeys], readLines: cfg.readLines, autoSettleDays: cfg.autoSettleDays ?? 0 }; }
 export function coerceStored(raw: unknown): Partial<RuntimeSettings> {
   const o = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
   const out: Partial<RuntimeSettings> = {};
@@ -20,6 +26,7 @@ export function coerceStored(raw: unknown): Partial<RuntimeSettings> {
   if (typeof o.notifyDelayMs === "number" && Number.isFinite(o.notifyDelayMs)) out.notifyDelayMs = o.notifyDelayMs;
   if (Array.isArray(o.submitKeys) && o.submitKeys.every((x) => typeof x === "string")) out.submitKeys = [...o.submitKeys] as string[];
   if (typeof o.readLines === "number" && Number.isFinite(o.readLines)) out.readLines = o.readLines;
+  if (typeof o.autoSettleDays === "number" && Number.isInteger(o.autoSettleDays) && o.autoSettleDays >= 0 && o.autoSettleDays <= MAX_AUTO_SETTLE_DAYS) out.autoSettleDays = o.autoSettleDays;
   return out;
 }
 let active: RuntimeSettingsStore | null = null;
@@ -30,7 +37,7 @@ export class RuntimeSettingsStore {
   private readonly file: string;
   constructor(private readonly cfg: Config) { this.file = join(cfg.stateDir, "settings.json"); active = this; }
   async load(): Promise<void> { try { this.overlayObj = coerceStored(await readJsonOr(this.file, null)); } catch { this.overlayObj = {}; } }
-  current(): RuntimeSettings { const x = this.overlayObj; return { deviceAllowlist: [...(x.deviceAllowlist ?? this.cfg.deviceAllowlist)], notifyDelayMs: x.notifyDelayMs ?? this.cfg.notifyDelayMs, submitKeys: [...(x.submitKeys ?? this.cfg.submitKeys)], readLines: x.readLines ?? this.cfg.readLines }; }
+  current(): RuntimeSettings { const x = this.overlayObj; return { deviceAllowlist: [...(x.deviceAllowlist ?? this.cfg.deviceAllowlist)], notifyDelayMs: x.notifyDelayMs ?? this.cfg.notifyDelayMs, submitKeys: [...(x.submitKeys ?? this.cfg.submitKeys)], readLines: x.readLines ?? this.cfg.readLines, autoSettleDays: x.autoSettleDays ?? this.cfg.autoSettleDays ?? 0 }; }
   overlay(): Partial<RuntimeSettings> { return { ...this.overlayObj, ...(this.overlayObj.deviceAllowlist ? { deviceAllowlist: [...this.overlayObj.deviceAllowlist] } : {}), ...(this.overlayObj.submitKeys ? { submitKeys: [...this.overlayObj.submitKeys] } : {}) }; }
   /** Apply a patch. A value equal to the `.env` default drops its override, so the source reads `.env` again. */
   async set(patch: Partial<RuntimeSettings>, reset: readonly RuntimeSettingKey[] = []): Promise<RuntimeSettings> {
@@ -47,13 +54,14 @@ export class RuntimeSettingsStore {
 export type PatchResult = { ok: true; patch: Partial<RuntimeSettings>; reset: RuntimeSettingKey[] } | { ok: false; error: string };
 export function validateSettingsPatch(body: unknown): PatchResult {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return { ok: false, error: "bad request" };
-  const input = body as Record<string, unknown>; const allowed = new Set(["deviceAllowlist", "notifyDelayMs", "submitKeys", "readLines", "reset"]);
+  const input = body as Record<string, unknown>; const allowed = new Set(["deviceAllowlist", "notifyDelayMs", "submitKeys", "readLines", "autoSettleDays", "reset"]);
   for (const k of Object.keys(input)) if (!allowed.has(k)) return { ok: false, error: `unknown setting: ${k}` };
   const patch: Partial<RuntimeSettings> = {};
   const reset: RuntimeSettingKey[] = [];
   if ("reset" in input) { const v = input.reset; if (!Array.isArray(v) || v.some((x) => typeof x !== "string" || !(SETTING_KEYS as readonly string[]).includes(x))) return { ok: false, error: "bad reset" }; reset.push(...(v as RuntimeSettingKey[])); }
   if ("deviceAllowlist" in input) { const v = input.deviceAllowlist; if (!Array.isArray(v) || v.some((x) => typeof x !== "string")) return { ok: false, error: "bad deviceAllowlist" }; const vals = [...new Set((v as string[]).map((x) => x.trim()))]; if (vals.some((x) => !x || x.length > 64) || vals.length > 64) return { ok: false, error: "bad deviceAllowlist" }; patch.deviceAllowlist = vals; }
   if ("notifyDelayMs" in input) { const v = input.notifyDelayMs; if (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > 600000) return { ok: false, error: "bad notifyDelayMs" }; patch.notifyDelayMs = v; }
+  if ("autoSettleDays" in input) { const v = input.autoSettleDays; if (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > MAX_AUTO_SETTLE_DAYS) return { ok: false, error: "bad autoSettleDays" }; patch.autoSettleDays = v; }
   if ("readLines" in input) { const v = input.readLines; if (typeof v !== "number" || !Number.isInteger(v) || v < 50 || v > 10000) return { ok: false, error: "bad readLines" }; patch.readLines = v; }
   if ("submitKeys" in input) { const v = input.submitKeys; if (!Array.isArray(v) || v.length < 1 || v.length > 8 || v.some((x) => typeof x !== "string")) return { ok: false, error: "bad submitKeys" }; const keys = (v as string[]).map(normalizeChord); if (keys.some((x) => x === null)) return { ok: false, error: "bad submitKeys" }; patch.submitKeys = keys as string[]; }
   return { ok: true, patch, reset };
