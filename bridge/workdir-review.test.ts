@@ -111,9 +111,9 @@ describe("review argv", () => {
   const OID = "a".repeat(40), OID2 = "b".repeat(40);
   async function fakeRepo() {
     const work = await rootTemp("sightr-review-argv-"); const repo = join(work, "repo"); await mkdir(join(repo, ".git"), { recursive: true });
-    const calls: string[][] = [];
-    const fake: GitRunner = async (args) => {
-      calls.push(args); const sub = subOf(args);
+    const calls: string[][] = []; const limitsSeen: Array<import("./workdir-git.ts").GitLimits | undefined> = [];
+    const fake: GitRunner = async (args, _cwd, limits) => {
+      calls.push(args); limitsSeen.push(limits); const sub = subOf(args);
       if (sub === "rev-parse" && args.includes("--show-toplevel")) return ok(repo + "\n");
       if (sub === "rev-parse" && args.includes("--symbolic-full-name")) return ok(args.at(-1) + "\n");
       if (sub === "rev-parse") return ok(OID + "\n");
@@ -123,11 +123,11 @@ describe("review argv", () => {
       if (sub === "cat-file") return ok("abc");
       return ok("");
     };
-    return { work, repo, calls, review: createFolderReview(work, fake, { autocrlf: async () => [] }) };
+    return { work, repo, calls, limitsSeen, review: createFolderReview(work, fake, { autocrlf: async () => [] }) };
   }
 
   test("every call carries the hardened prefix and --no-optional-locks, and only an allowlisted subcommand", async () => {
-    const { work, repo, calls, review } = await fakeRepo();
+    const { work, repo, calls, limitsSeen, review } = await fakeRepo();
     try {
       await review.list(repo, { scope: "working-tree", ignoreWhitespace: true });
       await review.list(repo, { scope: "branch", base: "release" });
@@ -138,6 +138,10 @@ describe("review argv", () => {
       await review.contents(repo, { scope: "branch", file: "a.ts", oldFile: "b.ts", from: OID, to: OID2 });
       await review.branches(repo);
       expect(calls.length).toBeGreaterThan(20);
+      // Every call goes through the bounded read (so a killed process frees its slot), status included.
+      expect(limitsSeen).toHaveLength(calls.length);
+      limitsSeen.forEach((l, i) => { expect(l?.maxStdoutBytes, calls[i]!.join(" ")).toBeGreaterThan(0); expect(l?.maxStdoutBytes).toBeLessThanOrEqual(8 * 1024 * 1024); });
+      expect(calls.filter((a) => subOf(a) === "status").length).toBeGreaterThan(0);
       for (const args of calls) {
         expect(args).toContain("--no-pager"); expect(args).toContain("color.ui=false"); expect(args).toContain("diff.external="); expect(args).toContain("core.fsmonitor=false");
         expect(args.some((a) => a.startsWith("core.hooksPath="))).toBe(true);
@@ -668,6 +672,30 @@ describe("review never writes the index", () => {
   }, 60_000);
 });
 
+describe("a stale mtime never makes a file look changed (text or binary)", () => {
+  test("an untouched binary and an untouched text file with older mtimes are not listed; a really changed binary is; list and patch agree", async () => {
+    const work = await rootTemp("sightr-review-stalebin-"); const repo = join(work, "repo"); await mkdir(repo);
+    try {
+      const g = gitIn(repo); await g("init", "-q", "-b", "main");
+      const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]);
+      await writeFile(join(repo, "logo.png"), png); await writeFile(join(repo, "real.bin"), new Uint8Array([9, 9, 0, 9])); await writeFile(join(repo, "t.txt"), "t\n"); await writeFile(join(repo, "edited.txt"), "e\n");
+      await g("add", "-A"); await g("commit", "-qm", "i");
+      await writeFile(join(repo, "real.bin"), new Uint8Array([9, 9, 0, 8, 7])); await writeFile(join(repo, "edited.txt"), "e\nf\n");
+      const old = new Date(Date.now() - 86_400_000); for (const f of ["logo.png", "real.bin", "t.txt", "edited.txt"]) await utimes(join(repo, f), old, old);
+      const review = reviewer(work); const indexBefore = (await stat(join(repo, ".git", "index"))).mtimeMs;
+      const list = asList(await review.list(repo, { scope: "working-tree" }));
+      expect(list.files.map((f) => f.path).sort()).toEqual(["edited.txt", "real.bin"]);
+      expect(byPath(list)["real.bin"]).toMatchObject({ kind: "modified", binary: true });
+      for (const f of ["logo.png", "t.txt"]) expect(asPatch(await review.patch(repo, { scope: "working-tree", file: f })).patch).toBe("");   // the patch agrees: nothing to show
+      expect(asPatch(await review.patch(repo, { scope: "working-tree", file: "real.bin" })).patch).toContain("Binary files");
+      expect(asPatch(await review.patch(repo, { scope: "working-tree", file: "edited.txt" })).patch).toContain("+f");
+      expect((await stat(join(repo, ".git", "index"))).mtimeMs).toBe(indexBefore);
+      // Whitespace mode takes the same path.
+      expect(asList(await review.list(repo, { scope: "working-tree", ignoreWhitespace: true })).files.map((f) => f.path).sort()).toEqual(["edited.txt", "real.bin"]);
+    } finally { await rm(work, { recursive: true, force: true }); }
+  }, 60_000);
+});
+
 describe("review rev follows both sides of a file", () => {
   test("branch: a one-line swap in a new commit with equal counts changes that file's rev, an untouched file keeps its rev", async () => {
     const work = await rootTemp("sightr-review-revbr-"); const repo = join(work, "repo"); await mkdir(repo);
@@ -709,11 +737,11 @@ describe("review rev follows both sides of a file", () => {
 describe("a killed process does not hold its slot", () => {
   /** A process whose pipes a grandchild keeps open: stdout and/or stderr never close, and it dies when killed. */
   function stub(opts: { stdout?: string; hangStdout?: boolean; hangStderr?: boolean; exitsAfterMs?: number }): BoundedProc & { killed: () => boolean } {
-    const open = () => new ReadableStream<Uint8Array>({ start() {} });
+    const open = (text = "") => new ReadableStream<Uint8Array>({ start(c) { if (text) c.enqueue(new TextEncoder().encode(text)); } });
     const closed = (text: string) => new ReadableStream<Uint8Array>({ start(c) { if (text) c.enqueue(new TextEncoder().encode(text)); c.close(); } });
     let killed = false; let die!: (n: number) => void; const exited = new Promise<number>((r) => { die = r; });
     if (opts.exitsAfterMs !== undefined) setTimeout(() => die(0), opts.exitsAfterMs);
-    return { stdout: opts.hangStdout ? open() : closed(opts.stdout ?? ""), stderr: opts.hangStderr ? open() : closed(""), exited, kill: () => { killed = true; die(137); }, killed: () => killed };
+    return { stdout: opts.hangStdout ? open(opts.stdout) : closed(opts.stdout ?? ""), stderr: opts.hangStderr ? open() : closed(""), exited, kill: () => { killed = true; die(137); }, killed: () => killed };
   }
 
   test("after the timeout kill, the pipes get a short grace and are then cut", async () => {
@@ -730,6 +758,13 @@ describe("a killed process does not hold its slot", () => {
     const proc = stub({ stdout: "done\n", hangStderr: true, exitsAfterMs: 5 }); const t0 = Date.now();
     const run = await collectBounded(proc, 1000, 5000, 100);
     expect(run).toMatchObject({ code: 0, stdout: "done\n", timedOut: false }); expect(Date.now() - t0).toBeLessThan(1500);
+    expect(run.overflow).toBeUndefined();   // a cut stderr alone costs nothing: stdout was complete
+  });
+  test("a clean exit whose stdout is still open when the grace runs out is flagged as cut, never complete", async () => {
+    const proc = stub({ stdout: "half a rec", hangStdout: true, exitsAfterMs: 5 }); const t0 = Date.now();
+    const run = await collectBounded(proc, 1000, 5000, 100);
+    expect(run).toMatchObject({ code: 0, stdout: "half a rec", timedOut: false, overflow: true }); expect(Date.now() - t0).toBeLessThan(1500);
+    expect((await collectBounded(stub({ stdout: "whole\n", exitsAfterMs: 5 }), 1000, 5000, 100)).overflow).toBeUndefined();
   });
   test("stdout past the cap kills the process and the slot is still freed when stderr hangs", async () => {
     const proc = stub({ stdout: "x".repeat(500), hangStderr: true }); const t0 = Date.now();
@@ -745,6 +780,52 @@ describe("a killed process does not hold its slot", () => {
       expect(Date.now() - t0).toBeLessThan(1500); expect(review.gate.running).toBe(0);
       expect(await review.patch(repo, { scope: "working-tree", file: "a.txt" })).toEqual({ available: false, reason: "timeout" }); expect(review.gate.running).toBe(0);
     } finally { await rm(work, { recursive: true, force: true }); }
+  });
+
+  /** Every call answers like a quick git, except the ones `hang` picks: those never close their pipes (a clean filter running under them). */
+  async function hangOn(hang: (args: string[]) => boolean, partial?: (args: string[]) => string | undefined) {
+    const work = await rootTemp("sightr-review-hang2-"); const repo = join(work, "repo"); await mkdir(join(repo, ".git"), { recursive: true });
+    const oid = "a".repeat(40);
+    const runner: GitRunner = async (args, _cwd, limits) => {
+      const sub = subOf(args);
+      if (hang(args)) return collectBounded(stub({ hangStdout: true, hangStderr: true }), limits?.maxStdoutBytes ?? 1000, 30, 80);
+      const cut = partial?.(args); if (cut !== undefined) return collectBounded(stub({ stdout: cut, hangStdout: true, exitsAfterMs: 2 }), limits?.maxStdoutBytes ?? 1000, 1000, 60);
+      if (sub === "rev-parse" && args.includes("--show-toplevel")) return ok(repo + "\n");
+      if (sub === "rev-parse" && args.includes("--symbolic-full-name")) return ok(args.at(-1) + "\n");
+      if (sub === "rev-parse" || sub === "merge-base") return ok(oid + "\n");
+      if (sub === "status") return ok("# branch.head work\0# branch.oid " + oid + "\0");
+      if (sub === "cat-file" && args.includes("-s")) return ok("3\n");
+      if (sub === "cat-file") return ok("abc");
+      return ok("");
+    };
+    return { work, repo, review: createFolderReview(work, runner, { autocrlf: async () => [] }) };
+  }
+  const answersTimeoutAndFreesSlot = async (h: Awaited<ReturnType<typeof hangOn>>, call: () => Promise<unknown>) => {
+    const t0 = Date.now();
+    try { expect(await call()).toEqual({ available: false, reason: "timeout" }); expect(Date.now() - t0).toBeLessThan(1500); expect(h.review.gate.running).toBe(0); }
+    finally { await rm(h.work, { recursive: true, force: true }); }
+  };
+  test("status that never closes (branches, and the default-base branch list) answers timeout and frees the slot", async () => {
+    const h1 = await hangOn((a) => subOf(a) === "status"); await answersTimeoutAndFreesSlot(h1, () => h1.review.branches(h1.repo));
+    const h2 = await hangOn((a) => subOf(a) === "status"); await answersTimeoutAndFreesSlot(h2, () => h2.review.list(h2.repo, { scope: "branch" }));
+  });
+  test("merge-base, cat-file -s and rev-parse that never close answer timeout and free the slot", async () => {
+    const h1 = await hangOn((a) => subOf(a) === "merge-base"); await answersTimeoutAndFreesSlot(h1, () => h1.review.list(h1.repo, { scope: "branch", base: "release" }));
+    const h2 = await hangOn((a) => subOf(a) === "cat-file" && a.includes("-s")); await answersTimeoutAndFreesSlot(h2, () => h2.review.contents(h2.repo, { scope: "working-tree", file: "a.txt" }));
+    const h3 = await hangOn((a) => subOf(a) === "rev-parse" && a.includes("--symbolic-full-name")); await answersTimeoutAndFreesSlot(h3, () => h3.review.list(h3.repo, { scope: "branch", base: "release" }));
+  });
+  test("a clean exit with a cut stdout is a failure for a one-answer call but a truncated list for a list call", async () => {
+    // rev-parse HEAD printed half an oid and kept its pipe open: never read as an answer.
+    const h1 = await hangOn(() => false, (a) => subOf(a) === "rev-parse" && !a.includes("--show-toplevel") ? "aaaaaaaa" : undefined);
+    await answersTimeoutAndFreesSlot(h1, () => h1.review.list(h1.repo, { scope: "working-tree" }));
+    // numstat/raw/ls-files cut mid-record: the whole records before the cut are kept and the list says truncated.
+    const o = "1".repeat(40), n = "2".repeat(40);
+    const h2 = await hangOn(() => false, (a) => a.includes("--numstat") ? "1\t1\ta.txt\0" + "2\t2\tb.t" : a.includes("--raw") ? `:100644 100644 ${o} ${n} M\0a.txt\0:100644 100644 ${o} ${n} M\0b.t` : undefined);
+    try {
+      const list = asList(await h2.review.list(h2.repo, { scope: "branch", base: "release" }));
+      expect(list.truncated).toBe(true); expect(list.files.map((f) => f.path)).toEqual(["a.txt"]);
+      expect(h2.review.gate.running).toBe(0);
+    } finally { await rm(h2.work, { recursive: true, force: true }); }
   });
 });
 

@@ -17,7 +17,11 @@ export const MAX_PANE_IDS = 50;
 export const MAX_WALK = 40;
 export interface GitRun { code: number; stdout: string; stderr: string; timedOut: boolean; failed: boolean; /** stdout passed `maxStdoutBytes` and the process was stopped; `stdout` holds the first bytes only. */ overflow?: boolean }
 /** Optional per-call output bound. The review routes pass it; the Git tab does not, so its reads are unchanged. */
-export interface GitLimits { maxStdoutBytes?: number }
+export interface GitLimits {
+  maxStdoutBytes?: number;
+  /** Read by the review wrapper, not by the runner: this caller copes with cut output (`overflow`); every other review call treats it as a failure. */
+  allowPartial?: boolean;
+}
 export type GitRunner = (args: string[], cwd: string, limits?: GitLimits) => Promise<GitRun>;
 const STDERR_CAP_BYTES = 64 * 1024;
 const prefix = [
@@ -74,11 +78,15 @@ export async function collectBounded(proc: BoundedProc, maxStdoutBytes: number, 
   const out = readCapped(proc.stdout, maxStdoutBytes, () => proc.kill()), err = readCapped(proc.stderr, STDERR_CAP_BYTES, () => {});
   const code = await Promise.race([proc.exited, timeout]); clearTimeout(timer!);
   // The process is gone (or killed); its pipes close with it unless a child kept them. Give them a moment, then cut.
-  let grace: ReturnType<typeof setTimeout>;
+  let grace: ReturnType<typeof setTimeout>; let outClosed = false;
+  void out.done.then(() => { outClosed = true; });
   await Promise.race([Promise.all([out.done, err.done]), new Promise<void>((r) => { grace = setTimeout(r, graceMs); })]); clearTimeout(grace!);
+  // stdout still open when the grace ran out: what we hold may stop mid-record even though git exited 0. Say so the
+  // way a cap does (`overflow`), so no caller reads it as complete. A cut stderr alone costs nothing.
+  const stdoutCut = !outClosed;
   out.stop(); err.stop();
   const [o, e] = await Promise.all([out.done, err.done]);
-  return { code, stdout: o.text, stderr: e.text, timedOut, failed: false, ...(o.overflow ? { overflow: true } : {}) };
+  return { code, stdout: o.text, stderr: e.text, timedOut, failed: false, ...(o.overflow || stdoutCut ? { overflow: true } : {}) };
 }
 export const spawnGit: GitRunner = async (args, cwd, limits) => {
   let proc: any;

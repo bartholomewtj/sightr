@@ -13,7 +13,7 @@ import { containedRealpath } from "./containment.ts";
 import { parseRelPath } from "./workdir.ts";
 import {
   FULL_SHA, hardenedInvoke, isHiddenPath, openRepo, parseStatusV2, readEffectiveAutocrlf, resolveBase, spawnGit,
-  type GitRun, type GitRunner, type ParsedStatus,
+  type GitLimits, type GitRun, type GitRunner, type ParsedStatus,
 } from "./workdir-git.ts";
 import type { ReviewBranch, ReviewBranches, ReviewDiffFileContents, ReviewDiffFilePatch, ReviewDiffPreview, ReviewFileKind, ReviewFileStat, ReviewSide, ReviewUnavailable } from "../shared/v2/review.ts";
 import { quoteGitPatchPath, unquoteGitPatchPath } from "../shared/v2/gitPatchPath.ts";
@@ -28,6 +28,8 @@ export const UNTRACKED_READ_BUDGET = 8 * 1024 * 1024;
 /** Bound on the text of any list-shaped git output (numstat, raw, ls-files, for-each-ref). */
 export const LIST_OUTPUT_CAP_BYTES = 8 * 1024 * 1024;
 export const BRANCH_SCAN_COUNT = 1000;
+/** Output bound for the calls that print an oid, a size or a path (rev-parse, merge-base, cat-file -s); a caller with more to read passes its own. */
+export const DEFAULT_CALL_CAP_BYTES = 64 * 1024;
 /** At most this many git processes at once across the bridge, and per repository. Tune after measuring on the real box. */
 export const REVIEW_MAX_GIT = 4;
 export const REVIEW_MAX_PER_REPO = 2;
@@ -44,6 +46,12 @@ export const REVIEW_SUBCOMMANDS: readonly string[] = ["rev-parse", "merge-base",
  * its content is not, so the refresh is switched off too. A review never writes into the repo.
  */
 export const REVIEW_GIT_PREFIX = ["-c", "diff.autoRefreshIndex=false", "--no-optional-locks"];
+/**
+ * `-I<regex>` ignores a change whose every changed line matches it, which makes git compare content instead of
+ * trusting a stale stat entry. This pattern can never match (a word boundary between two word characters), so it
+ * hides nothing real. Used on the `--raw` list call; a real binary change is still listed.
+ */
+const CONTENT_COMPARE = ["-Ix\\bx"];
 /** Flags on every patch and list call: no external diff, no textconv, no colour, no submodule walk, fixed `a/` `b/` prefixes, renames on. */
 const DIFF_FLAGS = ["-M", "--no-ext-diff", "--no-textconv", "--no-color", "--ignore-submodules=all", "--src-prefix=a/", "--dst-prefix=b/"];
 
@@ -222,9 +230,13 @@ export function createFolderReview(workRoot: string, run: GitRunner = spawnGit, 
       const sub = args[0];
       if (sub === undefined || !REVIEW_SUBCOMMANDS.includes(sub)) throw new Error(`review: git ${sub} is not allowed`);
       if (Date.now() >= deadline) return TIMED_OUT;
-      const r = await gate.schedule(cwd, deadline, () => invoke([...REVIEW_GIT_PREFIX, ...args], cwd, limits));
+      // Every call is bounded (so a killed process frees its slot even when a child holds its pipes). A caller that
+      // does not say it copes with cut output gets a failure, never a half-read answer.
+      const bounded: GitLimits = { maxStdoutBytes: limits?.maxStdoutBytes ?? DEFAULT_CALL_CAP_BYTES };
+      const r = await gate.schedule(cwd, deadline, () => invoke([...REVIEW_GIT_PREFIX, ...args], cwd, bounded));
       if (r === "busy") throw new ReviewStop("busy");
-      return r === "timeout" ? TIMED_OUT : r;
+      if (r === "timeout") return TIMED_OUT;
+      return r.overflow && limits?.allowPartial !== true ? { ...r, timedOut: true } : r;
     };
     let timer: ReturnType<typeof setTimeout> | undefined;
     const expiry = new Promise<{ available: false; reason: ReviewUnavailable }>((r) => { timer = setTimeout(() => r(unavailable("timeout")), deadlineMs); });
@@ -237,7 +249,7 @@ export function createFolderReview(workRoot: string, run: GitRunner = spawnGit, 
   }
 
   /** One git call that must work: spawn failure and timeout stop the request. */
-  async function git(inv: GitRunner, args: string[], cwd: string, limits?: { maxStdoutBytes: number }): Promise<GitRun> {
+  async function git(inv: GitRunner, args: string[], cwd: string, limits?: GitLimits): Promise<GitRun> {
     const r = await inv(args, cwd, limits);
     if (r.failed) throw new ReviewStop("git-unavailable");
     if (r.timedOut) throw new ReviewStop("timeout");
@@ -251,7 +263,7 @@ export function createFolderReview(workRoot: string, run: GitRunner = spawnGit, 
     const oid = r.code === 0 ? r.stdout.trim() : ""; return FULL_SHA.test(oid) ? oid : null;
   }
   async function statusOf(inv: GitRunner, root: string): Promise<ParsedStatus> {
-    const r = await git(inv, ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=no"], root);
+    const r = await git(inv, ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=no"], root, { maxStdoutBytes: LIST_OUTPUT_CAP_BYTES });
     return parseStatusV2(r.stdout.split("\0").filter(Boolean));
   }
   async function pickBase(inv: GitRunner, root: string, base: string): Promise<string | null> {
@@ -268,15 +280,16 @@ export function createFolderReview(workRoot: string, run: GitRunner = spawnGit, 
   /** Counts and kinds for `range` (`HEAD`, or `from to`), joined on the new path. */
   async function trackedRows(inv: GitRunner, root: string, range: string[], ignoreWhitespace: boolean): Promise<{ rows: Array<{ s: RawRow; n: NumstatRow | undefined }>; truncated: boolean }> {
     const flags = ["diff", "-z", ...DIFF_FLAGS, ...(ignoreWhitespace ? ["-w"] : [])];
-    const limits = { maxStdoutBytes: LIST_OUTPUT_CAP_BYTES };
-    const [num, names] = await Promise.all([git(inv, [...flags, "--numstat", ...range, "--"], root, limits), git(inv, [...flags, "--raw", "--no-abbrev", ...range, "--"], root, limits)]);
+    const limits = { maxStdoutBytes: LIST_OUTPUT_CAP_BYTES, allowPartial: true };
+    const [num, names] = await Promise.all([git(inv, [...flags, "--numstat", ...range, "--"], root, limits), git(inv, [...flags, ...CONTENT_COMPARE, "--raw", "--no-abbrev", ...range, "--"], root, limits)]);
     if (num.code !== 0 && !num.overflow) throw new ReviewStop("bad-commit");
     if (names.code !== 0 && !names.overflow) throw new ReviewStop("bad-commit");
     const a = listOut(num), b = listOut(names);
     const counts = new Map(parseNumstatZ(a.text).map((r) => [r.path, r] as const));
-    // With the index refresh off (REVIEW_GIT_PREFIX), `--raw` also lists a tracked file whose stat is stale but whose
-    // content is the same; numstat compares content and omits it. A modified row with the same mode and no numstat
-    // entry is that file, not a change (a real mode change differs in mode and stays).
+    // With the index refresh off (REVIEW_GIT_PREFIX), a plain `--raw` lists every tracked file whose stat is stale,
+    // changed or not; CONTENT_COMPARE makes git compare content so such files drop out (text and binary alike). The
+    // filter below is a second guard: a modified row with the same mode and no numstat entry is not a change (a real
+    // mode change differs in mode and stays).
     const rows = parseRawZ(b.text).map((s) => ({ s, n: counts.get(s.path) })).filter(({ s, n }) => n !== undefined || s.status !== "M" || s.oldMode !== s.newMode);
     return { rows, truncated: a.truncated || b.truncated };
   }
@@ -289,7 +302,7 @@ export function createFolderReview(workRoot: string, run: GitRunner = spawnGit, 
   const rowRev = (f: Omit<ReviewFileStat, "rev">, extra: string): string => sha(f.kind, f.added, f.removed, f.path, f.oldPath ?? "", f.binary ? "b" : "", f.whitespaceOnly ? "w" : "", extra).slice(0, 16);
 
   async function untrackedStats(inv: GitRunner, root: string, room: number): Promise<{ files: ReviewFileStat[]; hidden: number; truncated: boolean }> {
-    const r = await git(inv, ["ls-files", "--others", "--exclude-standard", "-z"], root, { maxStdoutBytes: LIST_OUTPUT_CAP_BYTES });
+    const r = await git(inv, ["ls-files", "--others", "--exclude-standard", "-z"], root, { maxStdoutBytes: LIST_OUTPUT_CAP_BYTES, allowPartial: true });
     const { text, truncated: cutOut } = listOut(r); let hidden = 0; const paths: string[] = [];
     for (const p of text.split("\0")) { if (!p || p.endsWith("/")) continue; if (isHiddenPath(p)) hidden++; else paths.push(p); }
     const files: ReviewFileStat[] = []; let budget = UNTRACKED_READ_BUDGET; let truncated = cutOut;
@@ -390,10 +403,10 @@ export function createFolderReview(workRoot: string, run: GitRunner = spawnGit, 
         if (!await headOid(inv, root)) return unavailable("no-commits");
         range = ["HEAD"];
         // An untracked file has no git diff, so its patch is built here from the file, as an addition.
-        const others = await git(inv, ["ls-files", "--others", "--exclude-standard", "-z", "--", literal(q.file)], root, { maxStdoutBytes: LIST_OUTPUT_CAP_BYTES });
+        const others = await git(inv, ["ls-files", "--others", "--exclude-standard", "-z", "--", literal(q.file)], root, { maxStdoutBytes: LIST_OUTPUT_CAP_BYTES, allowPartial: true });
         if (others.stdout.split("\0").includes(q.file)) return finish(await untrackedPatch(root, q.file));
       }
-      const d = await git(inv, ["diff", ...DIFF_FLAGS, "-U3", ...(w ? ["-w"] : []), ...range, "--", ...specs], root, { maxStdoutBytes: FILE_PATCH_CAP_BYTES });
+      const d = await git(inv, ["diff", ...DIFF_FLAGS, "-U3", ...(w ? ["-w"] : []), ...range, "--", ...specs], root, { maxStdoutBytes: FILE_PATCH_CAP_BYTES, allowPartial: true });
       if (d.code !== 0 && !d.overflow) return unavailable(q.scope === "branch" ? "bad-commit" : "git-unavailable");
       const cut = d.overflow ? { patch: keepWholeHunks(d.stdout), truncated: true } : cutPatchAtHunk(d.stdout);
       if (!patchHeadersMatch(cut.patch, q.file, q.oldFile)) return unavailable("bad-file");
@@ -418,7 +431,7 @@ export function createFolderReview(workRoot: string, run: GitRunner = spawnGit, 
     const spec = `${rev}:${file}`;
     const size = await git(inv, ["cat-file", "-s", spec], root);
     const n = size.code === 0 ? Number(size.stdout.trim()) : NaN; if (!Number.isFinite(n)) return { state: "absent" };
-    const blob = await git(inv, ["cat-file", "blob", spec], root, { maxStdoutBytes: n > FILE_CONTENTS_CAP_BYTES ? SNIFF_BYTES : FILE_CONTENTS_CAP_BYTES + 1 });
+    const blob = await git(inv, ["cat-file", "blob", spec], root, { maxStdoutBytes: n > FILE_CONTENTS_CAP_BYTES ? SNIFF_BYTES : FILE_CONTENTS_CAP_BYTES + 1, allowPartial: n > FILE_CONTENTS_CAP_BYTES });
     if (blob.code !== 0 && !blob.overflow) return { state: "absent" };
     if (hasNulText(blob.stdout)) return { state: "binary", bytes: n };
     if (n > FILE_CONTENTS_CAP_BYTES) return { state: "too-large", bytes: n };
@@ -455,9 +468,9 @@ export function createFolderReview(workRoot: string, run: GitRunner = spawnGit, 
       const { root } = repo;
       if (!await headOid(inv, root)) return unavailable("no-commits");
       const st = await statusOf(inv, root);
-      const r = await git(inv, ["for-each-ref", "--sort=-committerdate", `--count=${BRANCH_SCAN_COUNT}`, "--format=%(HEAD)%09%(refname)%09%(committerdate:unix)", "refs/heads", "refs/remotes"], root, { maxStdoutBytes: LIST_OUTPUT_CAP_BYTES });
+      const r = await git(inv, ["for-each-ref", "--sort=-committerdate", `--count=${BRANCH_SCAN_COUNT}`, "--format=%(HEAD)%09%(refname)%09%(committerdate:unix)", "refs/heads", "refs/remotes"], root, { maxStdoutBytes: LIST_OUTPUT_CAP_BYTES, allowPartial: true });
       const out: ReviewBranch[] = []; let truncated = r.overflow === true; let current: string | undefined;
-      for (const line of r.stdout.split("\n")) {
+      for (const line of (r.overflow ? r.stdout.slice(0, r.stdout.lastIndexOf("\n") + 1) : r.stdout).split("\n")) {
         const [mark = "", ref = "", time = "0"] = line.split("\t");
         const m = /^refs\/(heads|remotes)\/(.+)$/.exec(ref); if (!m) continue;
         const remote = m[1] === "remotes", name = m[2]!;
