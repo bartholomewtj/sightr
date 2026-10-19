@@ -1,6 +1,6 @@
 # T28 — Diff panel: split view, ignore whitespace, expand unchanged lines
 
-Status: draft (diffs series). Depends on: T25 (the `DiffCodeView` seam and the renderer decision), T26 (`ignoreWhitespace` on the file list and per-file patch routes; the whole-file contents route), T27 (the diff panel and its lazy per-file patch cache). Plan: [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md). Web2 only.
+Status: built and merged 2026-10-19 (PR #108; diffs series). Build-time amendments are recorded in this file. Depends on: T25 (the `DiffCodeView` seam and the renderer decision), T26 (`ignoreWhitespace` on the file list and per-file patch routes; the whole-file contents route), T27 (the diff panel and its lazy per-file patch cache). Plan: [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md). Web2 only.
 
 ## Problem
 

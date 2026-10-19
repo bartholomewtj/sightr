@@ -1,6 +1,6 @@
 # T27 — Diff panel: scope picker, changed-files tree, lazy per-file patches
 
-Status: draft (diffs series). Depends on: T13 (right panel, Git tab), T24 (per-run changed-files summary and its tap-through), T25 (renderer decision, behind the `DiffCodeView` seam), T26 (bridge diff API). Plan: [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md). web2 only; read-only.
+Status: built and merged 2026-10-19 (PR #106; diffs series). Build-time amendments are recorded in this file. Depends on: T13 (right panel, Git tab), T24 (per-run changed-files summary and its tap-through), T25 (renderer decision, behind the `DiffCodeView` seam), T26 (bridge diff API). Plan: [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md). web2 only; read-only.
 
 ## Problem
 

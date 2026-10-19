@@ -1,6 +1,6 @@
 # T29 — Line comments on a diff become quoted text in the composer
 
-Status: draft (diffs series). Depends on: T25 (the `DiffCodeView` seam and its annotation hook), T27 (the diff panel), T12 (composer). Plan: [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md). Read `README.md` in this folder first. web2 only: no bridge, contract or migration change.
+Status: built and merged 2026-10-19 (PR #110; diffs series). Build-time amendments are recorded in this file. Depends on: T25 (the `DiffCodeView` seam and its annotation hook), T27 (the diff panel), T12 (composer). Plan: [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md). Read `README.md` in this folder first. web2 only: no bridge, contract or migration change.
 
 ## Problem
 

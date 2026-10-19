@@ -1,6 +1,6 @@
 # T24 — A changed-files card under each run's reply, from the journal
 
-Status: draft (diffs series, T24-T31). Depends on: T11 (timeline rows), T13 (`openPrintedPath`, `useSheetHistory`). Plan: [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md); the series reverses its "per-turn diffs" line, rollback stays out. web2 only: no bridge, contract or migration change.
+Status: built and merged 2026-10-19 (PR #103; diffs series, T24-T31). Build-time amendments are recorded in this file. Depends on: T11 (timeline rows), T13 (`openPrintedPath`, `useSheetHistory`). Plan: [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md); the series reverses its "per-turn diffs" line, rollback stays out. web2 only: no bridge, contract or migration change.
 
 ## Problem
 

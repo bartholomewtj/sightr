@@ -1,6 +1,6 @@
 # T25 — A measured spike picks the diff renderer, behind one seam
 
-Status: draft (diffs series). Depends on: T23 (method, `SIGHTR_COMPILER` flag pattern), T20 (ledger `decisions`); builds on
+Status: built and merged 2026-10-19 (PR #105; diffs series). Build-time amendments are recorded in this file. Depends on: T23 (method, `SIGHTR_COMPILER` flag pattern), T20 (ledger `decisions`); builds on
 `web2/src/components/right-panel/DiffView.tsx` (`parseDiff`, `lineStyle`, `DiffLines`). Plan:
 [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md), "React Compiler spike" in [`README.md`](README.md).
 

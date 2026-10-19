@@ -1,6 +1,6 @@
 # T26 — Bridge review API: file list, lazy patches and whole-file contents for the working tree and a branch
 
-Status: draft (diffs series). Depends on: `bridge/workdir-git.ts`, `bridge/workdir.ts` (Git tab, built 18 Oct), T20 (`shape` ledger mode, landed). Feeds: T27, T28, T29 (consumers), T30 (fills `scope=run`). Bridge and shared types only, no web2. Plan: [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md).
+Status: built and merged 2026-10-19 (PR #104; diffs series). Build-time amendments are recorded in this file. Depends on: `bridge/workdir-git.ts`, `bridge/workdir.ts` (Git tab, built 18 Oct), T20 (`shape` ledger mode, landed). Feeds: T27, T28, T29 (consumers), T30 (fills `scope=run`). Bridge and shared types only, no web2. Plan: [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md).
 
 ## Problem
 
