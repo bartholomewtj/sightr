@@ -131,4 +131,10 @@ Deviations from the text above:
 - Live check: a scratch bridge (port 8790) against the herd; the coordinator's Claude thread rendered messages, grouped
   tool calls with output, thinking rows, "Start of thread", the working header and the Jump-to-latest pill. That thread's
   window held 50 items and no user message (T03's first read keeps the last 50 entries).
-
+- Blank-list guard (19 Oct 2026, `useBlankViewportGuard.ts`). A phone showed the list as a gap after a send, with the text pages
+  above it, until the thread was left and re-entered. `MessagesTimeline` now looks every 500 ms for a row, header or footer frame
+  touching the scroller's visible band; two looks in a row with none, with no scroll or touch for 400 ms, rebuild the
+  `LegendList` (a `key` bump, `data-list-generation` on the timeline) and re-follow. Hidden pages, a scroller with no size and a
+  list that has drawn nothing are skipped, and a rebuild is followed by a 5 s cooldown. Tests: `useBlankViewportGuard.test.ts`
+  (the rules) and `MessagesTimeline.test.tsx` "blank list" (a gap is rebuilt; a healthy list is not). The trigger was not found,
+  so the guard is a symptom repair; `@legendapp/list` stays on 3.3.5 (T3's pin) and 3.3.9+ is the next lead.
