@@ -33,7 +33,7 @@ One spec = one run. Do not implement a sibling spec in the same run. The rules a
 ## Domain (shared/v2/contracts.ts, spec T01)
 
 - **Project** `{ id: workspace_id, label, labelSource: herd|user, number, repoKey?, worktreeOf?, order, status (roll-up), closedAt? }`.
-- **Thread** `{ id (bridge uuid), paneId, terminalId, projectId, title, titleSource, harness, status, shelf: active|pinned|snoozed|settled|archived, snoozedUntil?, pinnedAt?, pinOrder?, settledAt?, unreadDone, lastActivityAt, createdAt, updatedAt, archivedAt?, archiveReason?, sessionRef?, capabilities, permissionMode?, model? }`. Shelf and time fields use T3's `OrchestrationV2AppThread` names.
+- **Thread** `{ id (bridge uuid), paneId, terminalId, projectId, title, titleSource, harness, status, shelf: active|pinned|snoozed|settled|archived, snoozedUntil?, pinnedAt?, pinOrder?, settledAt?, unreadDone, lastActivityAt, createdAt, updatedAt, archivedAt?, archiveReason?, paneAlive?, sessionRef?, capabilities, permissionMode?, model? }`. `paneAlive` is whether herdr still lists the pane: ingest sets it on every poll, and `undefined` means not yet reported (store migration 8). Shelf and time fields use T3's `OrchestrationV2AppThread` names.
   - Identity: a thread is bound to `(paneId, terminalId)`. A new `terminal_id` on the same `pane_id` is a new thread. Herdr pane ids are long and not reused, but the terminal id is the guard.
   - A harness session change inside the pane (relaunch, `/clear`, `/new`) is a `session` divider item, not a new thread.
 - **Thread status** (worst-first, also the project roll-up): `approval` · `input` · `failed` · `working` · `done` (unread) · `idle` · `starting` (T07, while a spawn is in flight). From herdr `agent_status` plus `dialogDetected` plus the open runtime request's kind.
@@ -50,7 +50,7 @@ One spec = one run. Do not implement a sibling spec in the same run. The rules a
 (`bridge/pane-queue.ts`). The reply is `{ sequence }`: the intent committed, not that the work finished.
 
 `thread.create` · `thread.rename` · `thread.pin {pinOrder?}|unpin` · `thread.snooze {until}|unsnooze` · `thread.settle|unsettle` ·
-`thread.archive|unarchive` · `thread.markRead|markUnread` · `message.dispatch {text, attachments, mode: start|queue|steer}` ·
+`thread.archive|unarchive` · `thread.pane.close` (closes the herdr pane; idempotent; an active thread archives as `pane-closed`, an archived one gets `paneAlive: false`) · `thread.markRead|markUnread` · `message.dispatch {text, attachments, mode: start|queue|steer}` ·
 `queued.reorder|edit|cancel` · `run.interrupt` · `runtime-request.respond {requestId, optionIndex}` ·
 `thread.permissionMode.set` · `thread.model.set` · `project.create` · `project.rename`.
 
