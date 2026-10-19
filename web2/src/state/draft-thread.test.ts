@@ -16,6 +16,8 @@ import {
   editAndRetry,
   mountDraftScreen,
   noteOpenThread,
+  retryWithoutAttachments,
+  finishStart,
   openNewProjectForm,
   pickDraftMode,
   selectDraftProject,
@@ -236,6 +238,54 @@ describe("start", () => {
         attachments: [{ path: "C:\\up\\shot.png", name: "shot.png" }],
       },
     ]);
+  });
+
+  it("a refused attachment: retry without it sends the message, and a failed start can be left", async () => {
+    let refuse = true;
+    __setDraftDeps({
+      upload: async () => (refuse ? ({ ok: false, error: "unsupported file type" } as never) : ({ ok: true, path: "up-x" } as never)),
+    });
+    const unmount = mountDraftScreen();
+    ready();
+    setDraftText("read this");
+    addDraftAttachments([new File(["x"], "paper.pdf")]);
+    await startDraft();
+    shellEvent(created(20, "cmd-1", thread("n1", { paneId: "w1:p9", status: "starting" })));
+    await vi.waitFor(() => expect(start()?.messageState).toBe("failed"));
+    expect(start()?.messageError).toContain("paper.pdf");
+    refuse = false;
+    retryWithoutAttachments();
+    expect(useDraftThread.getState().attachments).toEqual([]);
+    await vi.waitFor(() => expect(start()?.messageState).toBe("sent"));
+    unmount();
+  });
+
+  it("finishStart leaves a failed first message behind so the next draft is not blocked", async () => {
+    __setDraftDeps({ upload: async () => ({ ok: false, error: "unsupported file type" }) as never });
+    const unmount = mountDraftScreen();
+    ready();
+    setDraftText("read this");
+    addDraftAttachments([new File(["x"], "paper.pdf")]);
+    await startDraft();
+    shellEvent(created(20, "cmd-1", thread("n1", { paneId: "w1:p9", status: "starting" })));
+    await vi.waitFor(() => expect(start()?.messageState).toBe("failed"));
+    finishStart();
+    expect(start()).toBeNull();
+    unmount();
+  });
+
+  it("a send that was in flight when the page reloaded comes back failed, not spinning", async () => {
+    vi.resetModules();
+    localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({
+        draft: {},
+        start: { commandId: "c", threadId: "n1", phase: "ready", startedAt: 1, harnessLabel: "pi", commandLine: null, firstMessage: "hi", messageState: "pending", messageError: null, failure: null },
+      }),
+    );
+    const fresh = await import("./draft-thread");
+    expect(fresh.useDraftThread.getState().start).toMatchObject({ messageState: "failed" });
+    fresh.__resetDraftThread();
   });
 
   it("creating → starting → ready; with no screen open the draft then clears by itself", async () => {

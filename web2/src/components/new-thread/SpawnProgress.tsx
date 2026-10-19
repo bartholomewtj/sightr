@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { cn } from "@/lib/utils";
 import { openThreadTerminal } from "@/threadViewStore";
-import { editAndRetry, finishStart, readyToOpen, retryFirstMessage, type DraftStart } from "@/state/draft-thread";
+import { editAndRetry, finishStart, readyToOpen, retryFirstMessage, retryWithoutAttachments, type DraftStart, useDraftThread } from "@/state/draft-thread";
 import { useShell } from "@/stream/stores";
 
 import { READY_NAV_MS, STILL_STARTING_MS } from "./NewThread.logic";
@@ -21,13 +21,16 @@ export function SpawnProgress({ start, now: clock = () => Date.now() }: { start:
   const thread = useShell((s) => (start.threadId ? (s.threads[start.threadId] ?? null) : null));
   const [now, setNow] = useState(clock);
   const running = start.phase === "creating" || start.phase === "starting";
+  const waitingOnMessage =
+    start.phase === "ready" && start.firstMessage !== null && start.messageState !== "sent" && start.messageState !== "failed";
 
   useEffect(() => {
-    if (!running) return;
+    if (!running && !waitingOnMessage) return;
     const id = setInterval(() => setNow(clock()), 1_000);
     return () => clearInterval(id);
-  }, [running, clock]);
+  }, [running, waitingOnMessage, clock]);
 
+  const hasAttachments = useDraftThread((s) => s.attachments.length > 0);
   const open = readyToOpen(start);
   const threadId = start.threadId;
   useEffect(() => {
@@ -47,6 +50,9 @@ export function SpawnProgress({ start, now: clock = () => Date.now() }: { start:
     openThreadTerminal(threadId);
   };
 
+  // The first message is "queuing" for longer than any upload should take (or a reload brought the
+  // start back mid-way): say so and offer the way out instead of an endless spinner.
+  const messageStuck = waitingOnMessage && now - start.startedAt >= STILL_STARTING_MS;
   const slow = running && now - start.startedAt >= STILL_STARTING_MS;
   const paneExists = thread !== null && thread.shelf !== "archived";
   const steps: { label: string; state: StepState }[] = [
@@ -81,7 +87,12 @@ export function SpawnProgress({ start, now: clock = () => Date.now() }: { start:
         {start.messageState === "failed" ? (
           <div role="alert" className="flex flex-col gap-2 text-sm text-warn">
             <p>The first message was not queued: {start.messageError}</p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              {hasAttachments ? (
+                <Button size="sm" variant="outline" onClick={retryWithoutAttachments}>
+                  Send without attachments
+                </Button>
+              ) : null}
               <Button size="sm" variant="outline" onClick={retryFirstMessage}>
                 Try again
               </Button>
@@ -89,11 +100,32 @@ export function SpawnProgress({ start, now: clock = () => Date.now() }: { start:
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => void navigate({ to: "/thread/$threadId", params: { threadId } })}
+                  onClick={() => {
+                    // Leave the failed message behind: a kept start would bring this screen back on
+                    // the next "New thread" and block a fresh draft.
+                    finishStart();
+                    void navigate({ to: "/thread/$threadId", params: { threadId } });
+                  }}
                 >
                   Open the thread
                 </Button>
               ) : null}
+              <Button size="sm" variant="ghost" onClick={finishStart}>
+                Start a new thread
+              </Button>
+            </div>
+          </div>
+        ) : null}
+        {messageStuck ? (
+          <div className="flex flex-col gap-2 text-sm">
+            <p>The first message is taking too long.</p>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={retryFirstMessage}>
+                Try again
+              </Button>
+              <Button size="sm" variant="ghost" onClick={finishStart}>
+                Start a new thread
+              </Button>
             </div>
           </div>
         ) : null}

@@ -60,6 +60,7 @@ After Start, the draft screen becomes a progress view bound to the `commandId` o
 - A start that has not reached Ready after 45 s shows "Still starting…" with an "Open terminal" button (T13). It does not time out by itself; the thread's own events decide.
 - The progress view survives a reload: it is rebuilt from the thread's status in the shell snapshot.
 - Closing the screen during progress does not cancel the start; the new thread simply appears in the sidebar with its status.
+- **Build amendment (19 Oct 2026), the first message can fail or hang without trapping the screen.** The start is saved in `localStorage`, so a failed or half-finished first message came back on every visit. Now: a saved `messageState: "pending"` loads as `failed` ("the page reloaded before it was sent"); the failed state offers "Send without attachments" (`retryWithoutAttachments`), "Try again", "Open the thread" (which calls `finishStart` first) and "Start a new thread" (`finishStart`); a first message still unsent 45 s after `startedAt` (`STILL_STARTING_MS`) shows "The first message is taking too long" with Try again and Start a new thread; the header Discard (`discardDraft`) shows in every state. Discard clears the draft, so the project and harness must be picked again before Start enables.
 
 ## Invariants
 
@@ -67,6 +68,7 @@ After Start, the draft screen becomes a progress view bound to the `commandId` o
 - No harness name is tested in the UI code; options and notes come from the launch table and capabilities.
 - Nothing is sent to the bridge until Start is tapped, and one tap makes one `thread.create` (same `commandId` on retry).
 - A failed start never loses the draft or the first message.
+- No start state is a dead end: Discard is always reachable, and a failed or stalled first message can be retried, sent without its attachments, or left.
 - herdr older than 0.9.0: the shell shows the T09 full-screen state, so this screen is unreachable there.
 
 ## Tests
