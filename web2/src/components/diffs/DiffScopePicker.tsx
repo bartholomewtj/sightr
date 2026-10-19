@@ -167,7 +167,7 @@ function ScopeSheet({ scope, onScope, runs, defaultBase, branches, onWantBranche
                 <span className="min-w-0 flex-1 wrap-anywhere">Base: {scope.kind === "branch" ? (scope.baseRef ?? defaultBase ?? "default") : (defaultBase ?? "default")}</span>
               </button>
               {runs.length > 0 ? <p className="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground">Runs</p> : null}
-              {runs.map((run) => option(`run:${run.runId}`, `Run ${run.ordinal} · ${runDetail(run)}`, `+${run.additions} −${run.deletions} from the agent's edits`, { kind: "run", runId: run.runId }))}
+              {runs.map((run) => option(`run:${run.runId}`, `Run ${run.ordinal} · ${runDetail(run)}`, `+${run.additions} −${run.deletions} ${run.source === "checkpoint" ? "exact, from snapshots" : "from the agent's edits"}`, { kind: "run", runId: run.runId }))}
               {runs.length === 0 ? (
                 <p className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
                   <PlayIcon className="size-3 shrink-0" aria-hidden="true" />

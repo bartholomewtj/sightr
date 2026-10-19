@@ -1,9 +1,10 @@
 // Sightr code (T27). The Diff panel's "Run" scope: the files one run changed, read from the thread's journal
 // (T24's `file_change` items grouped by path), not from git. It needs no fetch: it follows the thread stream.
 // It never claims to be exact: the journal holds each edit on its own (no net diff of a file edited twice),
-// misses edits made through a shell command, and a long diff is cut by the journal. T31 swaps the source of
-// this adapter for checkpoints and changes nothing else (`useRunScopeFiles` keeps its shape).
-import type { TurnItem } from "@shared/v2/contracts";
+// misses edits made through a shell command, and a long diff is cut by the journal. T31 keeps this as the journal
+// half of the run scope (the fallback, and what a working run shows): the panel prefers the run's checkpoint
+// (`lib/runChanges.ts`) and reads this when there is none. Only the run options below look at checkpoints.
+import type { RunCheckpoint, TurnItem } from "@shared/v2/contracts";
 import { useMemo } from "react";
 
 import { deriveRunChangedFilesFromItems, normalizeChangedPath, type ChangedFileRow } from "../chat/ChangedFiles.logic";
@@ -141,20 +142,33 @@ export interface RunOption {
   deletions: number;
   /** When the run finished (or started, while it runs), epoch ms. */
   at: number;
+  /** T31: where the counts come from (`checkpoint`: a ready snapshot's, else the journal's). Never summed. */
+  source: "checkpoint" | "journal";
 }
 
-/** The thread's runs that changed files, newest first: what the scope picker offers. */
+/**
+ * The thread's runs that changed files, newest first: what the scope picker and the run picker offer. T31: a run with a
+ * ready checkpoint that lists files counts with the checkpoint's numbers (and is offered even if the journal saw no edit);
+ * otherwise a run with journal edits counts with the journal's. A run with neither is not offered.
+ */
 export function runOptionsFromState(
-  runs: Record<string, { id: string; ordinal: number; startedAt: number; completedAt?: number }> | undefined,
+  runs: Record<string, { id: string; ordinal: number; startedAt: number; completedAt?: number; checkpoint?: RunCheckpoint }> | undefined,
   items: Record<string, TurnItem> | undefined,
 ): RunOption[] {
   if (!runs || !items) return [];
   const summaries = deriveRunChangedFilesFromItems(Object.values(items));
   const out: RunOption[] = [];
   for (const run of Object.values(runs)) {
+    const at = run.completedAt ?? run.startedAt;
+    const cp = run.checkpoint;
     const s = summaries.get(run.id);
+    // A ready snapshot with no net change is still offered when the agent edited something: the panel says "No net changes."
+    if (cp?.status === "ready" && (cp.files.length > 0 || (cp.hidden ?? 0) + (cp.skipped ?? 0) > 0 || (s?.files ?? 0) > 0)) {
+      out.push({ runId: run.id, ordinal: run.ordinal, files: cp.files.length, additions: cp.additions, deletions: cp.deletions, at, source: "checkpoint" });
+      continue;
+    }
     if (!s || s.files === 0) continue;
-    out.push({ runId: run.id, ordinal: run.ordinal, files: s.files, additions: s.additions, deletions: s.deletions, at: run.completedAt ?? run.startedAt });
+    out.push({ runId: run.id, ordinal: run.ordinal, files: s.files, additions: s.additions, deletions: s.deletions, at, source: "journal" });
   }
   return out.sort((a, b) => b.ordinal - a.ordinal);
 }

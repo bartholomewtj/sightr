@@ -32,6 +32,7 @@ import {
   commandDisplayText,
   commandProgramName,
 } from "@t3tools/client-runtime/work-log/command-label";
+import { checkpointSignature, hasRunChanges, resolveRunChanges } from "@/lib/runChanges";
 import { changedFilesSignature, deriveRunChangedFiles, type RunChangedFiles } from "./ChangedFiles.logic";
 import {
   liveActivityToolStatus,
@@ -359,12 +360,17 @@ type MessagesTimelineRowContent =
       projectedItem: TurnItem;
     }
   | {
-      /** Sightr (T24): the files a run changed, from its `file_change` items. Not a work-log row. */
+      /**
+       * Sightr (T24, T31): the files a run changed. `summary` is the journal's (T24; null for a run whose only source is its
+       * checkpoint, a shell-made change); `run` carries the checkpoint (T30) the card prefers when it is `ready`. Not a
+       * work-log row.
+       */
       kind: "changed-files";
       id: string;
       createdAt: number;
       runId: RunId;
-      summary: RunChangedFiles;
+      summary: RunChangedFiles | null;
+      run?: Run;
     }
   | {
       /** Sightr: the calendar day changed between two rows. */
@@ -1191,6 +1197,7 @@ export function deriveMessagesTimelineRows(input: MessagesTimelineRowsInput): Me
   const result = insertChangedFilesRows(
     attachTrailingToolGroupsToAssistant(nextRows),
     deriveRunChangedFiles(timelineEntries),
+    runsById,
   );
   const linked = result.map((row, index) =>
     timelineRowIsWorkLog(row) && timelineRowIsWorkLog(result[index + 1])
@@ -1224,8 +1231,16 @@ function rowRunId(row: MessagesTimelineRow): RunId | null {
  */
 function insertChangedFilesRows(
   rows: MessagesTimelineRow[],
-  summaries: ReadonlyMap<RunId, RunChangedFiles>,
+  journalSummaries: ReadonlyMap<RunId, RunChangedFiles>,
+  runsById: ReadonlyMap<RunId, Run>,
 ): MessagesTimelineRow[] {
+  // T31: a run with a `ready` checkpoint that lists files (or could not show some) gets a card even when the journal saw
+  // no edit (a change made by a shell command). A `ready` run with nothing net and no journal edit draws none.
+  const summaries = new Map<RunId, RunChangedFiles | null>(journalSummaries);
+  for (const run of runsById.values()) {
+    if (summaries.has(run.id) || run.checkpoint?.status !== "ready") continue;
+    if (hasRunChanges(resolveRunChanges({ run, journalFiles: null, now: 0 }))) summaries.set(run.id, null);
+  }
   if (summaries.size === 0) return rows;
   const lastMessageIndex = new Map<RunId, number>();
   const lastWorkIndex = new Map<RunId, number>();
@@ -1257,6 +1272,7 @@ function insertChangedFilesRows(
       createdAt: rows[anchor]!.createdAt ?? 0,
       runId,
       summary,
+      ...(runsById.has(runId) ? { run: runsById.get(runId)! } : {}),
     };
     const list = after.get(anchor);
     if (list) list.push(row);
@@ -1400,7 +1416,13 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       return a.projectedItem === (b as typeof a).projectedItem;
     case "changed-files": {
       const bc = b as typeof a;
-      return a.runId === bc.runId && changedFilesSignature(a.summary) === changedFilesSignature(bc.summary);
+      return (
+        a.runId === bc.runId &&
+        (a.summary === null ? bc.summary === null : bc.summary !== null && changedFilesSignature(a.summary) === changedFilesSignature(bc.summary)) &&
+        a.run?.status === bc.run?.status &&
+        a.run?.completedAt === bc.run?.completedAt &&
+        checkpointSignature(a.run?.checkpoint) === checkpointSignature(bc.run?.checkpoint)
+      );
     }
     case "work": {
       const bw = b as typeof a;

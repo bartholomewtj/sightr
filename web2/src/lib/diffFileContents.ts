@@ -50,7 +50,9 @@ export class DiffContentsCache {
 
   /** The file's text, or null when the read failed (the caller shows "Couldn't read this file" and may try again). */
   load(target: DiffContentsTarget): Promise<DiffExpandContents | null> {
-    const key = [target.folder, target.scope.kind, target.scope.kind === "branch" ? (target.scope.base ?? "") : "", target.diffHash, target.file.path].join("\0");
+    const { scope: s } = target;
+    const detail = s.kind === "branch" ? (s.base ?? "") : s.kind === "run" ? `${s.threadId}\0${s.runId}` : "";
+    const key = [target.folder, s.kind, detail, target.diffHash, target.file.path].join("\0");
     const live = this.entries.get(key);
     if (live) return live;
     const controller = new AbortController();

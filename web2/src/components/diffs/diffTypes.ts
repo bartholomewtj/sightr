@@ -21,6 +21,8 @@ export interface DiffFileEntry {
   rev: string;
   /** Run scope: how many edits the file had in the run. */
   edits?: number;
+  /** Run scope, from a checkpoint (T31): no edit tool reported this path, so a shell command made the change. */
+  shell?: boolean;
 }
 
 export function entryFromStat(file: ReviewFileStat): DiffFileEntry {

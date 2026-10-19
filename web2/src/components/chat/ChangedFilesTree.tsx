@@ -57,6 +57,16 @@ function RowMarks({ row }: { row: ChangedFileRow }) {
           new
         </span>
       ) : null}
+      {row.deleted ? (
+        <span data-mark="deleted" className="shrink-0 rounded-full border border-destructive/25 bg-destructive/8 px-1.5 text-3xs leading-4 text-destructive">
+          deleted
+        </span>
+      ) : null}
+      {row.shell ? (
+        <span data-mark="shell" title="No edit tool reported this change; a shell command made it" className="shrink-0 rounded-full border border-border bg-background/60 px-1.5 text-3xs leading-4 text-muted-foreground">
+          shell
+        </span>
+      ) : null}
       {row.failed > 0 ? (
         <span data-mark="failed" className="shrink-0 rounded-full border border-destructive/25 bg-destructive/8 px-1.5 text-3xs leading-4 text-destructive">
           failed
@@ -75,6 +85,9 @@ function RowMarks({ row }: { row: ChangedFileRow }) {
 }
 
 function RowStat({ row }: { row: ChangedFileRow }) {
+  if (row.binary) {
+    return <span className="ml-auto shrink-0 font-mono text-3xs text-muted-foreground">binary</span>;
+  }
   if (!row.countsKnown) return null;
   return (
     <span className="ml-auto shrink-0 font-mono text-3xs tabular-nums">

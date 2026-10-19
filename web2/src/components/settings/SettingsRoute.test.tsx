@@ -34,11 +34,11 @@ describe("/settings", () => {
   it("shows the sections in order; Bridge, Connection, Shortcuts and v1 sit folded under Advanced", async () => {
     setViewportWidth(1280);
     await open();
-    expect(sectionTitles()).toEqual(["Display", "Composer", "Gesture wheel", "New threads", "Notifications", "Security", "About"]);
+    expect(sectionTitles()).toEqual(["Display", "Composer", "Gesture wheel", "New threads", "Notifications", "Run snapshots", "Security", "About"]);
     expect(screen.queryByRole("region", { name: "Bridge" })).toBeNull();
     openAdvanced();
     await screen.findByRole("region", { name: "Bridge" });
-    expect(sectionTitles()).toEqual(["Display", "Composer", "Gesture wheel", "New threads", "Notifications", "Security", "Bridge", "Connection", "Shortcuts", "Sightr v1", "About"]);
+    expect(sectionTitles()).toEqual(["Display", "Composer", "Gesture wheel", "New threads", "Notifications", "Run snapshots", "Security", "Bridge", "Connection", "Shortcuts", "Sightr v1", "About"]);
     fireEvent.click(screen.getByRole("button", { name: "Show shortcuts" }));
     expect(await screen.findByRole("table", { name: "Keyboard shortcuts" })).toBeInTheDocument();
   });

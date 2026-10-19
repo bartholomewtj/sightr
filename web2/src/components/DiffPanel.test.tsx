@@ -584,10 +584,10 @@ describe("DiffPanel: run scope", () => {
     await waitFor(() => expect(sections().map((s) => s.dataset.diffFile)).toEqual(["b.ts", "c.ts"]));
   });
 
-  it("says when the run's edits are not loaded", async () => {
+  it("says when the run has no recorded changes (not loaded, or none)", async () => {
     act(() => useDiffPanelStore.getState().setScope("t1", { kind: "run", runId: "gone" }));
     render(<DiffPanel threadId="t1" />);
-    expect(await screen.findByText(/This run's edits aren't loaded/)).toBeInTheDocument();
+    expect(await screen.findByText("No recorded changes for this run.")).toBeInTheDocument();
   });
 });
 

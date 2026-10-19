@@ -148,8 +148,8 @@ describe("runOptionsFromState", () => {
       assistant("m:0", "no files in r2", { runId: "r2" }),
     ]);
     expect(runOptionsFromState(runs, list)).toEqual([
-      { runId: "r3", ordinal: 3, files: 1, additions: 4, deletions: 0, at: 12_000 },
-      { runId: "r1", ordinal: 1, files: 2, additions: 3, deletions: 1, at: 5_000 },
+      { runId: "r3", ordinal: 3, files: 1, additions: 4, deletions: 0, at: 12_000, source: "journal" },
+      { runId: "r1", ordinal: 1, files: 2, additions: 3, deletions: 1, at: 5_000, source: "journal" },
     ]);
     expect(runOptionsFromState(undefined, list)).toEqual([]);
   });

@@ -526,7 +526,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
 /** T24: the files this run changed, under its reply. */
 function ChangedFilesTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "changed-files" }> }) {
   const ctx = use(TimelineRowCtx);
-  return <AssistantChangedFilesSection threadId={ctx.threadId} runId={row.runId} summary={row.summary} />;
+  return <AssistantChangedFilesSection threadId={ctx.threadId} runId={row.runId} summary={row.summary} run={row.run} />;
 }
 
 // ── Time ──────────────────────────────────────────────────────────────────────────────────────────
