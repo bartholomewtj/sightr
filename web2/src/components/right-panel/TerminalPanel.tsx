@@ -19,7 +19,7 @@
  * typing box share one row, the armed strip shows only for a held paste or a password prompt, and the
  * Keys pad gives way to a one-row key bar whose "More" opens the full pad.
  */
-import { ArrowDownIcon, CopyIcon, KeyboardIcon, MinusIcon, PlusIcon, SearchIcon } from "lucide-react";
+import { ArrowDownIcon, CopyIcon, KeyboardIcon, MinusIcon, PlusIcon, PowerIcon, SearchIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { MIRROR_INVERT, MIRROR_SPACE, styleFor } from "@v1/components/mirror-space";
@@ -33,6 +33,7 @@ import { Button } from "~/components/ui/button";
 import { KeyBar } from "@/components/keys/key-bar";
 import { NavTray } from "@/components/keys/nav-tray";
 import { showToast } from "@/components/toast";
+import { useClosePane } from "@/hooks/useClosePane";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
 import { attachPinchZoom } from "@/hooks/use-pinch-zoom";
 import { useLayout } from "@/hooks/useLayout";
@@ -104,6 +105,7 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
     [setFontSize],
   );
   const [atBottom, setAtBottom] = useState(true);
+  const closePane = useClosePane();
   const archived = thread?.shelf === "archived";
   const writable = !readOnly && !archived && paneId !== null;
 
@@ -296,6 +298,17 @@ export function TerminalPanel({ threadId }: { threadId: string }) {
         >
           <SearchIcon />
         </Button>
+        {!readOnly && thread.paneAlive === true ? (
+          <Button
+            size="icon-xs"
+            variant={closePane.armed(threadId) ? "destructive" : "ghost-muted"}
+            aria-label={closePane.armed(threadId) ? "Tap again to close pane" : "Close pane"}
+            onPointerDown={compact ? (e) => e.preventDefault() : undefined}
+            onClick={() => closePane.request(threadId)}
+          >
+            <PowerIcon />
+          </Button>
+        ) : null}
         {compact ? null : (
           <>
         <Button

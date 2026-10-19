@@ -130,6 +130,7 @@ export function startServer(opts: {
     effects: opts.v2?.effects ?? {},
     ...(opts.v2?.watchers ? { watchers: opts.v2.watchers } : {}),
     herdIngestor: opts.v2?.herdIngestor ?? null,
+    herdr,
     onSeen: () => events.notify(),
   });
 

@@ -14,6 +14,7 @@ import { useSyncExternalStore, type ReactNode } from "react";
 import { descriptorFor } from "@shared/agents";
 import type { Thread } from "@shared/v2/contracts";
 
+import { useClosePane } from "@/hooks/useClosePane";
 import { useLayout } from "@/hooks/useLayout";
 import { useRightPanelStore } from "@/rightPanelStore";
 import { useSidebarThread } from "@/state/sidebar";
@@ -81,6 +82,7 @@ export function ThreadDetailsContent({ threadId }: { threadId: string }) {
   const thread: Thread | undefined = state?.thread ?? shellThread;
   const project = useShell((s) => (thread ? s.projects[thread.projectId] : undefined));
   const folder = usePaneFolder(thread?.paneId || null);
+  const closePane = useClosePane();
   if (!thread) return <p className="px-4 py-6 text-sm text-muted-foreground">This thread isn't loaded.</p>;
   const runs = state ? Object.values(state.runs) : [];
   const descriptor = descriptorFor(thread.harness);
@@ -130,6 +132,30 @@ export function ThreadDetailsContent({ threadId }: { threadId: string }) {
             ) : (
               muted("Outside the Files root")
             )}
+          </DetailRow>
+          <DetailRow
+            label="Herdr pane"
+            action={
+              thread.paneAlive === true ? (
+                <Button
+                  size="xs"
+                  variant={closePane.armed(threadId) ? "destructive" : "outline"}
+                  onClick={() => closePane.request(threadId)}
+                >
+                  {closePane.armed(threadId) ? "Tap again to close" : "Close pane"}
+                </Button>
+              ) : null
+            }
+          >
+            <span className="font-mono text-xs">{thread.paneId || "—"}</span>
+            {thread.terminalId ? <span className="font-mono text-xs text-muted-foreground"> · {thread.terminalId}</span> : null}
+            <span className="mt-0.5 flex items-center gap-1.5 text-xs" data-pane-state={thread.paneAlive === true ? "open" : "closed"}>
+              <span
+                aria-hidden="true"
+                className={thread.paneAlive === true ? "size-2 rounded-full bg-emerald-500" : "size-2 rounded-full bg-muted-foreground/50"}
+              />
+              {thread.paneAlive === true ? "Open / Running" : "Closed"}
+            </span>
           </DetailRow>
         </dl>
       </ThreadDetailsSection>

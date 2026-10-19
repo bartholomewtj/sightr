@@ -25,6 +25,14 @@ describe("ThreadStatusDot", () => {
     expect(STATUS_DOT_CLASS[status]).toContain(token);
   });
 
+  it("a closed pane reads as an inactive dashed ring that does not pulse", () => {
+    render(<ThreadStatusDot status="working" paneClosed />);
+    const ring = dot("Pane closed");
+    expect(ring).toHaveClass("border-dashed");
+    expect(ring).not.toHaveClass("animate-status-pulse");
+    expect(screen.getByRole("img", { name: "Pane closed" })).toHaveAttribute("data-pane", "closed");
+  });
+
   it("is solid with the needs-you weight only for approval, input and done; idle is a hollow ring", () => {
     for (const s of ["approval", "input", "done"] as const) expect(STATUS_DOT_CLASS[s]).toContain("size-2.5");
     for (const s of ["failed", "working", "idle", "starting"] as const) expect(STATUS_DOT_CLASS[s]).not.toContain("size-2.5");

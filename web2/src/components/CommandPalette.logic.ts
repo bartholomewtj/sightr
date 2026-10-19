@@ -132,6 +132,23 @@ function threadItem(
   };
 }
 
+/** Threads whose Herdr pane is still open, archived ones included (the palette's pane audit), newest first. */
+export function buildOpenPaneItems(input: Parameters<typeof buildThreadActionItems>[0], query = ""): CommandPaletteActionItem[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  return [...input.threads]
+    .filter((t) => t.paneAlive === true)
+    .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+    .map((thread) => {
+      const item = threadItem(thread, input);
+      const where = thread.shelf === "archived" ? "Archived" : thread.shelf;
+      return { ...item, description: [item.description, where, thread.paneId].filter(Boolean).join(" · ") };
+    })
+    .filter((item) => {
+      const hay = `${item.title} ${item.description ?? ""} ${(item.searchTerms ?? []).join(" ")}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+}
+
 /** "Needs you" threads, worst first (the sidebar's order). */
 export function buildNeedsYouItems(input: Parameters<typeof buildThreadActionItems>[0]): CommandPaletteActionItem[] {
   return [...input.threads].filter(isNeedsYou).sort(compareActive).map((thread) => threadItem(thread, input));

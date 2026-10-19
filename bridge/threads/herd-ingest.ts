@@ -200,6 +200,8 @@ export function diffHerd(snap: EngineSnapshot, projection: HerdProjection, ctx: 
     }
     threadEvents.push({ type: "thread.archived", threadId: thread.id, payload: { reason, at } });
     next.set(thread.id, { ...next.get(thread.id)!, shelf: "archived", archivedAt: at, archiveReason: reason, updatedAt: at });
+    // Every reason but "user" means the pane is gone.
+    if (next.get(thread.id)!.paneAlive !== false) patch(thread.id, { paneAlive: false });
   };
 
   const panes = [...snap.agents, ...snap.shellPanes];
@@ -245,6 +247,7 @@ export function diffHerd(snap: EngineSnapshot, projection: HerdProjection, ctx: 
         createdAt: at,
         updatedAt: at,
         capabilities,
+        paneAlive: true,
         ...(pane.agentSession ? { sessionRef: pane.agentSession } : {}),
       };
       threadEvents.push({ type: "thread.created", threadId: created.id, payload: { thread: created } });
@@ -256,13 +259,17 @@ export function diffHerd(snap: EngineSnapshot, projection: HerdProjection, ctx: 
     if (thread.shelf === "archived") {
       // The pane came back after we gave up on it: it is the same pane and terminal, so revive it.
       // A thread the operator archived stays archived (unarchive is theirs).
-      if (thread.archiveReason !== "pane-closed" && thread.archiveReason !== "closed-while-down") continue;
+      if (thread.archiveReason !== "pane-closed" && thread.archiveReason !== "closed-while-down") {
+        if (thread.paneAlive !== true) patch(thread.id, { paneAlive: true });
+        continue;
+      }
       shelfActive(thread.id);
     }
 
     const current = next.get(thread.id)!;
     const p: ServerThreadPatch = {};
     if (adopted) p.terminalId = terminalId;
+    if (current.paneAlive !== true) p.paneAlive = true;
     // T07 is starting an agent in this pane and herdr still sees the bare shell: the thread keeps the
     // harness, title and `starting` status the spawn gave it until the agent shows up (or T07 gives up).
     const spawning = current.status === "starting" && pane.kind === "shell";
@@ -300,6 +307,14 @@ export function diffHerd(snap: EngineSnapshot, projection: HerdProjection, ctx: 
     if (thread.status === "starting" && at - thread.updatedAt < STARTING_GRACE_MS) continue;
     if (ctx.missingThreads.has(thread.id)) archive(thread, "pane-closed");
     else missingThreads.add(thread.id);
+  }
+
+  // A thread the operator archived leaves its pane running; once Herdr stops listing the pane it is
+  // closed. (Archived-by-ingest threads were already marked closed by `archive`.)
+  for (const thread of projection.threads) {
+    if (thread.shelf !== "archived" || thread.archiveReason !== "user" || thread.paneAlive === false) continue;
+    if (claimed.has(thread.id) || livePanes.has(thread.paneId)) continue;
+    patch(thread.id, { paneAlive: false });
   }
 
   // Snooze expiry.

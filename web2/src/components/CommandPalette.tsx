@@ -71,6 +71,7 @@ import {
   buildNeedsYouItems,
   buildProjectActionItems,
   buildRootGroups,
+  buildOpenPaneItems,
   buildThreadActionItems,
   filterCommandPaletteGroups,
   findHighlightedCommandPaletteItem,
@@ -143,7 +144,7 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
   const initialMode = useCommandPaletteStore((s) => s.initialMode);
   const [query, setQuery] = useState(initialQuery);
   // "files": the Open file… list. Backspace on an empty box, or the Back row, returns to the commands.
-  const [mode, setMode] = useState<"commands" | "files">(initialMode ?? "commands");
+  const [mode, setMode] = useState<"commands" | "files" | "panes">(initialMode ?? "commands");
   const [highlightedItemValue, setHighlightedItemValue] = useState<string | null>(null);
   const executed = useRef(false);
   const threads = useSidebarThreads();
@@ -153,6 +154,7 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
   const { view } = useThreadView(threadId ?? "");
   const timeline = view !== "cli";
   const filesMode = mode === "files";
+  const panesMode = mode === "panes";
   const fileSearch = useFilePickerSearch(query, filesMode && threadId !== undefined);
 
   const fileGroups = useMemo(() => {
@@ -231,6 +233,17 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
         keepOpen: true,
         run: () => {
           setMode("files");
+          setQuery("");
+        },
+      },
+      {
+        value: "open-panes",
+        title: "Show threads with open Herdr panes",
+        searchTerms: ["pane", "panes", "herdr", "running", "background", "audit"],
+        icon: icon(TerminalSquareIcon),
+        keepOpen: true,
+        run: () => {
+          setMode("panes");
           setQuery("");
         },
       },
@@ -317,8 +330,25 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
     });
   }, [threads, projects, threadId, thread, timeline, query, readOnly, props, navigate]);
 
+  // Open Herdr panes: every thread whose pane Herdr still lists, archived ones too.
+  const paneGroups = useMemo(() => {
+    if (!panesMode) return [];
+    const items = buildOpenPaneItems(
+      {
+        threads: Object.values(threads),
+        projects,
+        icon: icon(MessageSquareIcon),
+        renderLeadingContent: (t: Thread) => <ThreadStatusDot status={t.status} showElapsed={false} />,
+        formatTimestamp: (ms: number) => timeAgoShort(ms),
+        runThread: (t: Thread) => void navigate({ to: "/thread/$threadId", params: { threadId: t.id } }),
+      },
+      query,
+    );
+    return items.length === 0 ? [] : [{ value: "panes", label: "Open Herdr panes", items }];
+  }, [panesMode, threads, projects, query, navigate]);
+
   // Messages: after the thread/project/action groups; not in the ">" actions-only filter.
-  const messageSearch = useMessageSearch(query, !filesMode && !query.startsWith(">"));
+  const messageSearch = useMessageSearch(query, !filesMode && !panesMode && !query.startsWith(">"));
   const messageGroups = useMemo(() => {
     const items = buildMessageItems({
       matches: messageSearch.matches,
@@ -332,8 +362,8 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
     });
     return items.length === 0 ? [] : [{ value: "messages", label: "Messages", items }];
   }, [messageSearch.matches, navigate]);
-  const groups = filesMode ? fileGroups : [...commandGroups, ...messageGroups];
-  const searchingMessages = !filesMode && groups.length === 0;
+  const groups = filesMode ? fileGroups : panesMode ? paneGroups : [...commandGroups, ...messageGroups];
+  const searchingMessages = !filesMode && !panesMode && groups.length === 0;
   const commandsEmptyMessage = messageSearch.pending
     ? "Searching messages…"
     : (messageSearch.error ?? "No matching threads, projects, actions or messages.");
@@ -357,9 +387,11 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
     ? "Open a thread to search its files."
     : (fileSearch.error ?? (fileSearch.tooShort ? "Type at least 2 characters of a file name." : fileSearch.pending ? "Searching…" : "No files match."));
 
+  const panesEmptyMessage = "No thread has an open Herdr pane.";
+
   const firstItemValue = groups[0]?.items[0]?.value ?? null;
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement> & { preventBaseUIHandler?: () => void }) => {
-    if (filesMode && event.key === "Backspace" && query === "" && !event.nativeEvent.isComposing) {
+    if ((filesMode || panesMode) && event.key === "Backspace" && query === "" && !event.nativeEvent.isComposing) {
       event.preventDefault();
       backToCommands();
       return;
@@ -377,9 +409,9 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
       aria-label="Command palette"
       autoHighlight="always"
       footerActionLabel="Open"
-      {...(filesMode ? { showBackHint: true } : {})}
+      {...(filesMode || panesMode ? { showBackHint: true } : {})}
       panelSize={props.desktop ? "list" : "fill"}
-      inputProps={{ placeholder: filesMode ? getFilePickerPlaceholder() : getCommandPaletteInputPlaceholder(), onKeyDown: handleKeyDown }}
+      inputProps={{ placeholder: filesMode ? getFilePickerPlaceholder() : panesMode ? "Filter open panes" : getCommandPaletteInputPlaceholder(), onKeyDown: handleKeyDown }}
       {...(props.desktop ? {} : { inputAccessory: <PaletteCloseButton /> })}
       mode="none"
       items={groups}
@@ -389,8 +421,9 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
       value={query}
     >
       {filesMode ? <FilesModeBar onBack={backToCommands} truncated={fileSearch.truncated} /> : null}
+      {panesMode ? <FilesModeBar onBack={backToCommands} truncated={false} label="Open Herdr panes" /> : null}
       <CommandPaletteResults
-        {...(filesMode ? { emptyStateMessage: filesEmptyMessage } : searchingMessages && query.trim().length >= 2 ? { emptyStateMessage: commandsEmptyMessage } : {})}
+        {...(filesMode ? { emptyStateMessage: filesEmptyMessage } : panesMode ? { emptyStateMessage: panesEmptyMessage } : searchingMessages && query.trim().length >= 2 ? { emptyStateMessage: commandsEmptyMessage } : {})}
         groups={groups}
         highlightedItemValue={highlightedItemValue}
         keybindings={KEYBINDINGS}
@@ -401,13 +434,13 @@ function OpenCommandPaletteDialog(props: { desktop: boolean; onRename: (thread: 
 }
 
 /** The files list's header: a Back button (a phone has no Backspace-on-empty habit) and a note when the search was cut short. */
-function FilesModeBar({ onBack, truncated }: { onBack: () => void; truncated: boolean }) {
+function FilesModeBar({ onBack, truncated, label = "Open file" }: { onBack: () => void; truncated: boolean; label?: string }) {
   return (
     <div className="flex items-center gap-2 border-b px-2 py-1 text-xs text-muted-foreground">
       <Button size="xs" variant="ghost-muted" aria-label="Back to commands" className="pointer-coarse:min-h-11" onClick={onBack}>
         <ArrowLeftIcon aria-hidden /> Commands
       </Button>
-      <span className="min-w-0 flex-1 truncate">Open file</span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
       {truncated ? <span>Search stopped early. Try a longer name.</span> : null}
     </div>
   );

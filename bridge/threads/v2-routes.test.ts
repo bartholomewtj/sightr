@@ -518,6 +518,63 @@ describe("POST /api/v2/command", () => {
     expect((await call(r, post({ commandId: "d3", type: "thread.delete", threadId: "t3" }))).status).toBe(404);
   });
 
+  describe("thread.pane.close", () => {
+    const closer = () => {
+      const closed: string[] = [];
+      return { closed, herdr: { closePane: async (paneId: string) => void closed.push(paneId) } };
+    };
+
+    test("closes the pane on its queue key, audits it, and archives an active thread as pane-closed", async () => {
+      const { closed, herdr } = closer();
+      const r = await rig({ herdr });
+      r.store.append([{ type: "run.started", threadId: "t1", payload: { run: { id: "run1", threadId: "t1", ordinal: 1, status: "running", startedAt: 1 } } }]);
+      const res = await call(r, post({ commandId: "pc1", type: "thread.pane.close", threadId: "t1" }));
+      expect(res.status).toBe(200);
+      expect(closed).toEqual(["w1:p-t1"]);
+      expect(r.queueKeys).toContain("w1:p-t1");
+      expect(r.audits).toContainEqual({ action: "pane.close", paneId: "w1:p-t1", detail: { threadId: "t1", via: "v2-command" } });
+      const t = r.store.getThread("t1")!;
+      expect(t).toMatchObject({ shelf: "archived", archiveReason: "pane-closed", paneAlive: false });
+      expect(r.store.openRuns()).toEqual([]);
+      expect(r.reconciles).toBe(1);
+      // A retry of the same id replays the receipt and does not close again.
+      const again = await call(r, post({ commandId: "pc1", type: "thread.pane.close", threadId: "t1" }));
+      expect(await body(again)).toEqual(await body(res));
+      expect(closed).toHaveLength(1);
+    });
+
+    test("an already archived thread only has its paneAlive cleared", async () => {
+      const { closed, herdr } = closer();
+      const r = await rig({ herdr });
+      r.store.append([
+        { type: "thread.updated", threadId: "t1", payload: { patch: { paneAlive: true }, at: 1 } },
+        { type: "thread.archived", threadId: "t1", payload: { reason: "user", at: 1 } },
+      ]);
+      const res = await call(r, post({ commandId: "pc2", type: "thread.pane.close", threadId: "t1" }));
+      expect(res.status).toBe(200);
+      expect(closed).toEqual(["w1:p-t1"]);
+      expect(r.store.getThread("t1")).toMatchObject({ shelf: "archived", archiveReason: "user", paneAlive: false });
+    });
+
+    test("a pane that is already gone succeeds without calling herdr", async () => {
+      const { closed, herdr } = closer();
+      const r = await rig({ herdr });
+      r.store.append([createThread(thread("t3", { paneId: "w1:gone" }))]);
+      const res = await call(r, post({ commandId: "pc3", type: "thread.pane.close", threadId: "t3" }));
+      expect(res.status).toBe(200);
+      expect(closed).toEqual([]);
+      expect(r.audits.filter((a) => a.action === "pane.close")).toEqual([]);
+    });
+
+    test("an unknown thread is 404", async () => {
+      const { herdr } = closer();
+      const r = await rig({ herdr });
+      const res = await call(r, post({ commandId: "pc4", type: "thread.pane.close", threadId: "nope" }));
+      expect(res.status).toBe(404);
+      expect((await body(res)).error).toBe("no-such-thread");
+    });
+  });
+
   describe("runtime-request.respond", () => {
     const pending = (r: Rig): RuntimeRequest => {
       const request: RuntimeRequest = {

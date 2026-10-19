@@ -27,17 +27,19 @@ import { ACTIVITY_KEY, type ActivityLedger } from "../activity.ts";
 import { SILENT_AUDIT, type AuditLog } from "../audit.ts";
 import type { Config } from "../config.ts";
 import { SILENT_CONN, type ConnLog } from "../conn-log.ts";
+import type { HerdrClient } from "../herdr-client.ts";
 import { paneKey, PaneBusyError, type PaneQueue } from "../pane-queue.ts";
 import { decodePathSegment, failureText, json, requireJsonBody, text } from "../responses.ts";
 import type { StateEngine } from "../state-engine.ts";
 import { buildId as defaultBuildId } from "../static-assets.ts";
 import { attachmentResponse, ATTACHMENT_ROUTE, createAttachmentReader, type AttachmentReader } from "./attachments.ts";
 import { decide, type DecideState } from "./decide.ts";
-import type { ServerThread } from "./events.ts";
+import type { EventDraft, ServerThread } from "./events.ts";
 import type { HerdIngestor } from "./herd-ingest.ts";
 import { HERDR_FLOOR, type V2Gate } from "./herdr-floor.ts";
 import type { ThreadWatchers } from "./journal-ingest.ts";
 import type { RespondHandler } from "./respond.ts";
+import { requestEvents } from "./request-items.ts";
 import { clampSearchLimit } from "./search.ts";
 import { decodeHistoryCursor, type ThreadStore } from "./store.ts";
 
@@ -164,6 +166,8 @@ export interface V2RoutesDeps {
   effects?: EffectRegistry;
   watchers?: Pick<ThreadWatchers, "add" | "remove">;
   herdIngestor?: Pick<HerdIngestor, "reconcile"> | null;
+  /** What `thread.pane.close` needs from herdr. Without it the command is unsupported. */
+  herdr?: Pick<HerdrClient, "closePane">;
   /** A seen mark changed; v1's snapshot stream should push. */
   onSeen?: () => void;
   now?: () => number;
@@ -232,6 +236,7 @@ const COMMAND_FIELDS: Partial<Record<CommandType, Record<string, FieldKind>>> = 
   "thread.archive": { threadId: "string" },
   "thread.unarchive": { threadId: "string" },
   "thread.delete": { threadId: "string" },
+  "thread.pane.close": { threadId: "string" },
   "thread.markRead": { threadId: "string" },
   "thread.markUnread": { threadId: "string" },
   "project.rename": { projectId: "string", label: "string" },
@@ -411,7 +416,54 @@ export function createV2Routes(deps: V2RoutesDeps): V2Routes {
     });
   }
 
+  /**
+   * `thread.pane.close`: close the thread's Herdr pane (structural, no keystrokes) on the pane's queue
+   * turn, then bring the projection in line at once instead of waiting for the next herd poll. A pane
+   * that is already gone succeeds without touching herdr.
+   */
+  async function closePaneEffect(s: ThreadStore, req: Request, command: Command, hash: string): Promise<Reply> {
+    if (command.type !== "thread.pane.close") return refuse(400, "invalid", "wrong-type");
+    const herdr = deps.herdr;
+    if (!herdr) return refuse(501, "unsupported", `${command.type} is not supported by this bridge yet`);
+    const first = s.getThread(command.threadId);
+    if (!first) return refuse(404, "not_found", "no-such-thread");
+    return queue.run(paneKey(first.paneId), async (): Promise<Reply> => {
+      const again = fromReceipt(s, command.commandId, command.type, hash);
+      if (again) return again;
+      const thread = s.getThread(command.threadId);
+      if (!thread) return refuse(404, "not_found", "no-such-thread");
+      const receipt = { type: command.type, result: { hash } satisfies ReceiptBody };
+      if (!paneAlive(thread)) {
+        // Idempotent: nothing to close. Record the receipt so a retry of this id answers the same.
+        const { last } = s.append([], { commandId: command.commandId, receipt });
+        return { status: 200, body: { ok: true, sequence: last } };
+      }
+      await herdr.closePane(thread.paneId);
+      auditFor(req).record({ action: "pane.close", paneId: thread.paneId, detail: { threadId: thread.id, via: "v2-command" } });
+      const at = s.now();
+      const events: EventDraft[] = [];
+      if (thread.shelf === "archived") {
+        events.push({ type: "thread.updated", threadId: thread.id, payload: { patch: { paneAlive: false }, at } });
+      } else {
+        for (const run of s.openRuns()) {
+          if (run.threadId === thread.id) {
+            events.push({ type: "run.ended", threadId: thread.id, payload: { runId: run.id, status: "interrupted", completedAt: at } });
+          }
+        }
+        for (const request of s.pendingRequests()) {
+          if (request.threadId === thread.id) events.push(...requestEvents({ ...request, status: "expired", updatedAt: at }));
+        }
+        events.push({ type: "thread.archived", threadId: thread.id, payload: { reason: "pane-closed", at } });
+        events.push({ type: "thread.updated", threadId: thread.id, payload: { patch: { paneAlive: false }, at } });
+      }
+      const { last } = s.append(events, { commandId: command.commandId, receipt });
+      deps.herdIngestor?.reconcile(engine.current());
+      return { status: 200, body: { ok: true, sequence: last } };
+    });
+  }
+
   async function runEffect(s: ThreadStore, req: Request, command: Command, hash: string): Promise<Reply> {
+    if (command.type === "thread.pane.close") return closePaneEffect(s, req, command, hash);
     const handler = effects[command.type];
     if (!handler) return refuse(501, "unsupported", `${command.type} is not supported by this bridge yet`);
     const result: ReceiptBody = { hash };
