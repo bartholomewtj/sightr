@@ -13,8 +13,11 @@ import {
 
 import { ApiError, noteIfLocked, XHR_HEADER, XHR_HEADER_VALUE } from "./api";
 
-/** The scope a request names. A run is not fetched (it follows the thread stream). */
-export type DiffRequestScope = ({ kind: "working-tree" } | { kind: "branch"; base?: string }) & {
+/**
+ * The scope a request names. A run (T30/T31) names a thread and a run instead of a folder: the bridge finds the repo
+ * from the run's checkpoint. Its file list is `Run.checkpoint.files` on the thread stream, so only its patch and contents are fetched.
+ */
+export type DiffRequestScope = ({ kind: "working-tree" } | { kind: "branch"; base?: string } | { kind: "run"; threadId: string; runId: string }) & {
   /** Ask the host for `git diff -w` (T28). The list and the patches take it; the contents route does not. */
   ignoreWhitespace?: boolean;
 };
@@ -31,6 +34,14 @@ function withTimeout(signal: AbortSignal | undefined): AbortSignal | undefined {
 
 function query(folderPath: string, scope: DiffRequestScope | null): URLSearchParams {
   const q = new URLSearchParams();
+  if (scope?.kind === "run") {
+    // No `path`: the checkpoint row names the repo. `w` is the run route's ignore-whitespace flag.
+    q.set("scope", "run");
+    q.set("threadId", scope.threadId);
+    q.set("runId", scope.runId);
+    q.set("w", scope.ignoreWhitespace ? "1" : "0");
+    return q;
+  }
   q.set("path", folderPath);
   if (scope) {
     q.set("scope", scope.kind);
@@ -106,6 +117,7 @@ export async function fetchDiffFileContents(
 ): Promise<ReviewDiffFileContents> {
   const q = query(folderPath, scope);
   q.delete("ignoreWhitespace"); // the contents are the files as they are
+  q.delete("w");
   q.set("file", file.path);
   if (file.oldPath !== undefined) q.set("oldFile", file.oldPath);
   if (scope.kind === "branch") {
@@ -113,6 +125,21 @@ export async function fetchDiffFileContents(
     q.set("to", range.to ?? "");
   }
   return (await (await getJson(`${REVIEW_PATHS.contents}?${q}`, signal)).json()) as ReviewDiffFileContents;
+}
+
+/**
+ * One file of a run's diff (T30's `scope=run` route, filling T26's stub): the patch the bridge stored when the run ended
+ * (`ignoreWhitespace` false), or computed from the run's snapshots (true, which needs them to be live). No folder: the
+ * route finds the repo from the run's checkpoint, so an archived thread works. `file` is the checkpoint's repo path.
+ */
+export async function fetchRunDiff(
+  runId: string,
+  opts: { threadId: string; file: string; ignoreWhitespace?: boolean },
+  signal?: AbortSignal,
+): Promise<ReviewDiffFilePatch> {
+  const q = query("", { kind: "run", threadId: opts.threadId, runId, ...(opts.ignoreWhitespace ? { ignoreWhitespace: true } : {}) });
+  q.set("file", opts.file);
+  return (await (await getJson(`${REVIEW_PATHS.patch}?${q}`, signal)).json()) as ReviewDiffFilePatch;
 }
 
 /** The branches for the base picker. */

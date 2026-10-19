@@ -563,6 +563,13 @@
       "note": "resolveRenameCommit verbatim; title opens the sidebar ThreadRowMenu; Rename is a menu item (no double-click); no breadcrumb or parent link"
     },
     {
+      "local": "src/t3/client-runtime/state/threadCheckpoints.ts",
+      "upstream": "packages/client-runtime/src/state/threadCheckpoints.ts",
+      "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
+      "mode": "pattern",
+      "note": "T31: the idea of deriveThreadCheckpointSummaries as deriveRunCheckpointSummaries(runs, checkpointByRun): plain functions over Sightr's runs (Run.checkpoint, T30), ordered by Run.ordinal, a run with no checkpoint left out; not taken: the assistant message id, checkpointRef (no ref or sha reaches a client) and the ISO completedAt"
+    },
+    {
       "local": "src/t3/client-runtime/state/composerDispatch.ts",
       "upstream": "packages/client-runtime/src/state/composerDispatch.ts",
       "commit": "db5919d87daffd2d2db16e72602a586feb002adb",
@@ -1002,7 +1009,7 @@
       "upstream": "apps/web/src/components/DiffPanel.tsx",
       "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
       "mode": "pattern",
-      "note": "T27: the Diff right-panel tab: scope (working tree, branch vs a base, a run), a changed-files tree and one section per file, patches fetched only for unfolded or near files (4 at once), phone sheet and 600 px two-column layout; written against the DiffCodeView seam. Not taken: @pierre/diffs CodeView, Effect atoms and RPC, T3's turn and PR views ; T28: header toggles for split (desktop, 640 px column) and ignore whitespace (the host's -w only, T3's client-side hiding is left out), unchanged-line expansion wired to the contents route; a File list button (per device, in rightPanelStore) hides the wide layout's file list so the diffs can have 640 px"
+      "note": "T27: the Diff right-panel tab: scope (working tree, branch vs a base, a run), a changed-files tree and one section per file, patches fetched only for unfolded or near files (4 at once), phone sheet and 600 px two-column layout; written against the DiffCodeView seam. Not taken: @pierre/diffs CodeView, Effect atoms and RPC, T3's turn and PR views ; T28: header toggles for split (desktop, 640 px column) and ignore whitespace (the host's -w only, T3's client-side hiding is left out), unchanged-line expansion wired to the contents route; a File list button (per device, in rightPanelStore) hides the wide layout's file list so the diffs can have 640 px; T31: the run scope reads the run's checkpoint (exact; patches per file from the scope=run route; Ignore whitespace and unchanged lines while its snapshots are live) and falls back to the journal; T3's per-turn scope is taken as read-only run scope, with a run picker and a source badge, and no rollback or restore control"
     },
     {
       "local": "src/components/DiffPanelShell.tsx",

@@ -139,6 +139,8 @@ const VALID: Record<string, (p: Record<string, unknown>, e: Record<string, unkno
   "turn-item.updated": (p) => hasId(p.item) && isStr((p.item as Record<string, unknown>).type),
   "runtime-request.updated": (p) => hasId(p.request) && isStr((p.request as Record<string, unknown>).threadId),
   "queue.updated": (p, e) => isStr(e.threadId) && Array.isArray(p.messages) && p.messages.every(hasId),
+  "checkpoint.captured": (p) => isObj(p.checkpoint) && isStr(p.checkpoint.runId) && isStr(p.checkpoint.status) && (p.phase === "start" || p.phase === "end"),
+  "checkpoint.expired": (p) => isStr(p.runId),
   "command.rejected": () => true,
   "dispatch.failed": () => true,
   "thread.create.failed": () => true,
@@ -293,13 +295,31 @@ export function applyThreadEvent(state: ThreadState, raw: unknown, onDrop?: OnDr
     case "run.started": {
       const run = event.payload.run;
       if (run.threadId !== state.threadId) return state;
-      return at({ runs: { ...state.runs, [run.id]: run } });
+      const prior = state.runs[run.id]?.checkpoint;
+      return at({ runs: { ...state.runs, [run.id]: prior && !run.checkpoint ? { ...run, checkpoint: prior } : run } });
     }
     case "run.ended": {
       const run = state.runs[event.payload.runId];
       if (!run) return state;
       const ended: Run = { ...run, status: event.payload.status, completedAt: event.payload.completedAt };
       return at({ runs: { ...state.runs, [run.id]: ended } });
+    }
+    case "checkpoint.captured": {
+      // T30/T31: the run's snapshot result. A run not loaded here (older than the window) has nothing to update;
+      // a snapshot or history page brings its checkpoint with it. The `checkpoint` item the bridge also writes is
+      // not mirrored: nothing draws it, and a fresh snapshot carries it.
+      const checkpoint = event.payload.checkpoint;
+      const run = state.runs[checkpoint.runId];
+      if (!run || checkpoint.threadId !== state.threadId) return state;
+      // A start arriving after its end (replay order) must not take a finished checkpoint back to `pending`.
+      if (event.payload.phase === "start" && (run.checkpoint?.status === "ready" || run.checkpoint?.status === "absent")) return state;
+      return at({ runs: { ...state.runs, [run.id]: { ...run, checkpoint } } });
+    }
+    case "checkpoint.expired": {
+      // The snapshot objects are gone; the list and the stored patches stay, so only `live` flips.
+      const run = state.runs[event.payload.runId];
+      if (!run?.checkpoint) return state;
+      return at({ runs: { ...state.runs, [run.id]: { ...run, checkpoint: { ...run.checkpoint, live: false } } } });
     }
     case "turn-item.updated": {
       const incoming = event.payload.item;

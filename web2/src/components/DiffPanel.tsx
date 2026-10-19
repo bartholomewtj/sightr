@@ -3,7 +3,8 @@
 // every file, an Effect-atom read per file. Sightr's is a right-panel tab (`diff`, opened by `mod+d` or
 // from the Git tab and a run's changed-files card) written against the `DiffCodeView` seam (T25) and plain
 // fetches to the bridge (T26):
-//   - scope: the working tree, the branch against a base, or one run (from the thread's journal);
+//   - scope: the working tree, the branch against a base, or one run: T31 reads the run's checkpoint when it has a ready one
+//     (the list is on the run, each patch comes from T30's `scope=run` route, badge "Exact"), else the thread's journal;
 //   - a changed-files tree (our own `role="tree"`), and one section per file, unfolded to fetch its patch;
 //   - at most 4 patch requests at once, only for files that are unfolded or near the screen;
 //   - phone (a sheet, one column): the tree folds open and shut under a "Files · 12 · +230 -41" header;
@@ -23,8 +24,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
+import { deriveRunChangedFilesFromItems } from "@/components/chat/ChangedFiles.logic";
+import { ChangedFilesSnapshotNotes } from "@/components/chat/ChangedFilesSnapshotNotes";
+import { ChangedFilesSourceBadge } from "@/components/chat/ChangedFilesSourceBadge";
 import { DiffStatLabel } from "@/components/chat/DiffStatLabel";
+import { useRunChanges } from "@/components/chat/useRunChanges";
 import { showToast } from "@/components/toast";
+import { samePath } from "@/lib/runChanges";
 import { useLayout } from "@/hooks/useLayout";
 import { useDiffPanelStore, useDiffScope, type DiffScope } from "@/diffPanelStore";
 import { DiffContentsCache } from "@/lib/diffFileContents";
@@ -51,7 +57,10 @@ import { reviewReason } from "./diffs/diffReasons";
 import { IDLE, type DiffFileEntry, type PatchState } from "./diffs/diffTypes";
 import { useRunOptions, useRunScopeFiles } from "./diffs/runScope";
 import { requestScope, useDiffFilePatches } from "./diffs/useDiffFilePatches";
+import { useRunCheckpointPatches } from "./diffs/useRunCheckpointPatches";
+import { checkpointDiffState, entryOfCheckpointRow } from "./right-panel/checkpointDiffState";
 import { openPrintedPath } from "./right-panel/OpenFileLink";
+import { RunPicker } from "./right-panel/RunPicker";
 import { useRefreshTriggers } from "./right-panel/useRefreshTriggers";
 import { usePaneFolder } from "./right-panel/usePaneFolder";
 
@@ -145,8 +154,21 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
   const commentsCtx = useMemo<DiffCommentsContextValue>(() => ({ threadId, off: commentsOff, run: scope.kind === "run" }), [threadId, commentsOff, scope.kind]);
 
   // ── The files and their patches ──
-  // A run reads the journal, which `-w` cannot change: the preference stays stored but does not apply there.
-  const ignoreWs = wsPref && scope.kind !== "run";
+  // A run (T31): the run's checkpoint when it has a ready one, else the journal. The list of a checkpoint is on the run
+  // (`Run.checkpoint.files`), so only its patches are fetched; the journal needs no fetch at all.
+  const runId = scope.kind === "run" ? scope.runId : "";
+  const threadState = useThread(threadId);
+  const runRecord = runId ? threadState?.runs[runId] : undefined;
+  const journalSummary = useMemo(() => {
+    const items = threadState?.items;
+    if (!runId || !items) return null;
+    return deriveRunChangedFilesFromItems(Object.values(items).filter((item) => item.runId === runId)).get(runId) ?? null;
+  }, [threadState?.items, runId]);
+  const changes = useRunChanges(runRecord, journalSummary);
+  const exactRun = scope.kind === "run" && changes.source === "checkpoint";
+  // Ignore whitespace needs the run's snapshots to exist (`w=1` is computed from them); the journal's edits cannot be re-diffed.
+  const exactLive = exactRun && changes.live;
+  const ignoreWs = wsPref && (scope.kind !== "run" || exactLive);
   const patches = useDiffFilePatches({
     folderPath: scope.kind === "run" ? null : folderPath,
     scope: fetchScope,
@@ -154,19 +176,46 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
     near,
     revealPath,
     refreshToken: refreshes,
-    ignoreWhitespace: ignoreWs,
+    ignoreWhitespace: ignoreWs && scope.kind !== "run",
   });
-  const run = useRunScopeFiles(threadId, scope.kind === "run" ? scope.runId : "");
+  const run = useRunScopeFiles(threadId, runId);
   const runs = useRunOptions(threadId);
   const runByPath = useMemo(() => new Map(run.files.map((f) => [f.entry.path, f.state] as const)), [run.files]);
-  const sourceFiles = useMemo(() => (scope.kind === "run" ? run.files.map((f) => f.entry) : patches.files), [scope.kind, run.files, patches.files]);
+  const journalEntries = useMemo(() => run.files.map((f) => f.entry), [run.files]);
+  const exactFiles = useMemo(() => (exactRun ? changes.files.map(entryOfCheckpointRow) : null), [exactRun, changes.files]);
+  const runPatches = useRunCheckpointPatches({
+    threadId,
+    runId,
+    files: exactFiles,
+    unfolded: unfolded ?? NO_PATHS,
+    near,
+    revealPath,
+    ignoreWhitespace: ignoreWs && scope.kind === "run",
+    pauseOnFailure: journalEntries.length > 0,
+  });
+  const loaded = threadState !== null;
+  const diffState = useMemo(
+    () => (scope.kind === "run" ? checkpointDiffState({ threadLoaded: loaded, changes, journalFiles: journalEntries, fetchFailed: runPatches.failed }) : null),
+    [scope.kind, loaded, changes, journalEntries, runPatches.failed],
+  );
+  const exactShown = diffState?.status === "ready" && diffState.source === "checkpoint";
+  // Patches come from the run route when the listed files are the checkpoint's (also after a failed read, so each can retry).
+  const runFiles = diffState?.status === "ready" && diffState.filesFrom === "checkpoint";
+  const sourceFiles = useMemo(
+    () => (scope.kind === "run" ? (diffState && (diffState.status === "ready" || diffState.status === "running") ? diffState.files : NO_ENTRIES) : patches.files),
+    [scope.kind, diffState, patches.files],
+  );
   const files = useMemo(() => treeOrder(sourceFiles), [sourceFiles]);
-  const patchFor = useCallback((path: string): PatchState => (scope.kind === "run" ? (runByPath.get(path) ?? IDLE) : patches.patchFor(path)), [scope.kind, runByPath, patches]);
+  const patchFor = useCallback(
+    (path: string): PatchState => (scope.kind === "run" ? (runFiles ? runPatches.patchFor(path) : (runByPath.get(path) ?? IDLE)) : patches.patchFor(path)),
+    [scope.kind, runFiles, runPatches, runByPath, patches],
+  );
+  const onRetryFile = scope.kind === "run" && runFiles ? runPatches.retry : patches.retry;
   const summary = patches.summary;
   // A list to work from: the server's, once it has answered and is available; a run's, once the thread has its items.
-  const listOk = scope.kind === "run" ? run.found : summary.status === "ready";
+  const listOk = scope.kind === "run" ? diffState?.status === "ready" || diffState?.status === "running" : summary.status === "ready";
   // Nothing more is coming for a request that has failed for good, so a reveal waiting for the list is dropped then.
-  const listFailed = scope.kind !== "run" && (summary.status === "unavailable" || summary.status === "error");
+  const listFailed = scope.kind === "run" ? diffState?.status === "unavailable" : summary.status === "unavailable" || summary.status === "error";
 
   // A file the current scope does not list: its comments are outdated until it comes back.
   useEffect(() => {
@@ -197,7 +246,8 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
   useEffect(() => {
     if (!reveal || reveal.threadId !== threadId || !(listOk || listFailed)) return;
     consumeReveal(reveal.requestId);
-    const hit = files.find((f) => f.path === reveal.filePath);
+    // A run's card may name a path the journal wrote (a folder deeper than the repo's) where the checkpoint has the repo's own.
+    const hit = files.find((f) => f.path === reveal.filePath) ?? (scope.kind === "run" ? files.find((f) => samePath(reveal.filePath, f.path)) : undefined);
     if (!hit) return;
     skipRestore.current = true;
     anchor.current?.stopRestoring();
@@ -207,7 +257,7 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
     setHighlight(hit.path);
     // Asked for a file, so the file is the point: the phone's tree folds out of the way, as when one is picked in it.
     if (!wide) setTreeOpen(false);
-  }, [reveal, threadId, listOk, listFailed, files, unfold, consumeReveal, wide]);
+  }, [reveal, threadId, listOk, listFailed, files, unfold, consumeReveal, wide, scope.kind]);
   useEffect(() => {
     if (!highlight) return;
     const t = setTimeout(() => setHighlight(null), 1600);
@@ -309,10 +359,23 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
   contents.current ??= new DiffContentsCache();
   useEffect(() => () => contents.current?.dispose(), []);
   const readyPreview = summary.status === "ready" ? summary.preview : null;
-  const expandSource = useRef({ folderPath, scope: fetchScope, preview: readyPreview, files: patches.files });
-  expandSource.current = { folderPath, scope: fetchScope, preview: readyPreview, files: patches.files };
+  // A run read from live snapshots expands from the run route (`scope=run`, T30); the stamp stands for the list's `diffHash`.
+  const runExpand = exactShown && exactLive ? { threadId, runId, stamp: String(runRecord?.checkpoint?.capturedAt ?? 0), files: sourceFiles } : null;
+  const expandSource = useRef({ folderPath, scope: fetchScope, preview: readyPreview, files: patches.files, runExpand });
+  expandSource.current = { folderPath, scope: fetchScope, preview: readyPreview, files: patches.files, runExpand };
   const onExpandContext = useCallback(async (filePath: string) => {
     const src = expandSource.current;
+    if (src.runExpand) {
+      const hit = src.runExpand.files.find((f) => f.path === filePath);
+      if (!hit) return null;
+      return (contents.current as DiffContentsCache).load({
+        folder: "",
+        scope: { kind: "run", threadId: src.runExpand.threadId, runId: src.runExpand.runId },
+        diffHash: src.runExpand.stamp,
+        file: { path: hit.path },
+        range: {},
+      });
+    }
     const file = src.files.find((f) => f.path === filePath);
     if (!src.scope || src.folderPath == null || !src.preview || !file) return null;
     return (contents.current as DiffContentsCache).load({
@@ -323,7 +386,7 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
       range: { ...(src.preview.from === undefined ? {} : { from: src.preview.from }), ...(src.preview.to === undefined ? {} : { to: src.preview.to }) },
     });
   }, []);
-  const canExpand = scope.kind !== "run" && folderPath != null;
+  const canExpand = scope.kind === "run" ? runExpand !== null : folderPath != null;
 
   // ── Actions ──
   const onToggle = useCallback((path: string) => setUnfolded((prev) => {
@@ -380,6 +443,18 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
   const totals = useMemo(() => diffTotals(files), [files]);
   const anyUnfolded = unfolded !== null && unfolded.size > 0;
   const loading = scope.kind !== "run" && summary.status === "loading";
+  // The source of what is listed, for the badge: "Exact" only for a checkpoint whose diff loaded.
+  const sourceInfo =
+    diffState?.status === "ready"
+      ? {
+          source: diffState.source,
+          state: changes.state,
+          reason: changes.reason,
+          ...(diffState.loadFailed ? { note: "Couldn't load the exact diff, so this is the list of the agent's edits." } : {}),
+        }
+      : diffState?.status === "running"
+        ? { source: "journal" as const, state: changes.state, reason: changes.reason }
+        : null;
 
   const toolbar = (
     <>
@@ -391,6 +466,8 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
         branches={branches}
         onWantBranches={() => setBranchesWanted(true)}
       />
+      {scope.kind === "run" ? <RunPicker runs={runs} runId={scope.runId} onPick={(id) => setScope(threadId, { kind: "run", runId: id })} /> : null}
+      {sourceInfo ? <ChangedFilesSourceBadge info={sourceInfo} /> : null}
       <span className="flex-1" />
       {wide ? (
         <Button size="xs" variant="ghost-muted" aria-label={treeColumn ? "Hide file list" : "Show file list"} onClick={() => setTreeColumn(!treeColumn)} className={cn(treeColumn && "bg-accent text-foreground")} data-diff-tree-column-toggle="">
@@ -414,8 +491,8 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
         size="xs"
         variant="ghost-muted"
         aria-pressed={ignoreWs}
-        disabled={scope.kind === "run"}
-        title={scope.kind === "run" ? "Not available for this run" : undefined}
+        disabled={scope.kind === "run" && !exactLive}
+        title={scope.kind === "run" && !exactLive ? (exactRun ? "No longer available for this run" : "Not available for this run") : undefined}
         onClick={() => setWsPref(!wsPref)}
         className={cn(ignoreWs && "bg-accent text-foreground")}
       >
@@ -459,7 +536,8 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
 
   const diffBody = (() => {
     if (scope.kind === "run") {
-      if (!run.found) return <DiffPanelMessage>This run's edits aren't loaded, or it changed no files.</DiffPanelMessage>;
+      if (diffState?.status === "loading") return <DiffPanelLoadingState label="Loading changes" />;
+      if (diffState?.status === "unavailable") return <DiffPanelMessage>No recorded changes for this run.</DiffPanelMessage>;
     } else if (summary.status === "loading" || summary.status === "idle") {
       return <DiffPanelLoadingState label="Loading changes" />;
     } else if (summary.status === "unavailable") {
@@ -479,7 +557,9 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
       );
     }
     if (files.length === 0) {
-      return <DiffPanelMessage>{emptyText(scope, summary.status === "ready" ? summary.preview.base : undefined)}</DiffPanelMessage>;
+      return (
+        <DiffPanelMessage>{scope.kind === "run" && exactShown ? emptyNetText(changes.journalCount) : emptyText(scope, summary.status === "ready" ? summary.preview.base : undefined)}</DiffPanelMessage>
+      );
     }
     const first = files[0]?.path;
     return (
@@ -528,7 +608,26 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
                 {storedBase} isn't a branch here any more, so this is against the default base{defaultBase ? ` (${defaultBase})` : ""}.
               </p>
             ) : null}
-            {scope.kind === "run" ? (
+            {diffState?.status === "running" ? (
+              <p className="border-b px-3 py-1.5 text-xs text-muted-foreground" role="status" data-diff-note="run-running">
+                {diffState.phase === "finishing" ? "Finishing snapshot. The exact diff appears in a moment." : "Run in progress. The exact diff appears when it ends."}
+              </p>
+            ) : null}
+            {diffState?.status === "ready" && diffState.loadFailed ? (
+              <div className="flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground" data-diff-note="load-failed">
+                <span className="min-w-0 flex-1">Couldn't load the exact diff.{diffState.filesFrom === "journal" ? " This is the list of the agent's edits." : ""}</span>
+                <Button size="xs" variant="outline" onClick={runPatches.retryFailed}>
+                  <RotateCwIcon aria-hidden="true" />
+                  Retry
+                </Button>
+              </div>
+            ) : null}
+            {scope.kind === "run" && exactShown && !changes.live ? (
+              <p className="border-b px-3 py-1.5 text-xs text-muted-foreground" data-diff-note="expired">
+                No longer available for this run: Ignore whitespace and unchanged lines. The saved diffs still show.
+              </p>
+            ) : null}
+            {scope.kind === "run" && !runFiles ? (
               <p className="border-b px-3 py-1.5 text-xs text-muted-foreground" data-diff-note="run">
                 From the agent's edits in this run, one after another; it may not match what is on disk now. Each edit's line numbers are its own.
                 {run.shellRan ? " A shell command ran too, and files it changed are not listed." : ""} Ignore whitespace and unchanged lines are not available for this run.
@@ -547,7 +646,7 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
                 highlighted={highlight === file.path}
                 canOpen={canOpenInFiles(file)}
                 onToggle={onToggle}
-                onRetry={patches.retry}
+                onRetry={onRetryFile}
                 onOpenInFiles={onOpenInFiles}
               />
             ))}
@@ -561,6 +660,7 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
                 {summary.preview.truncated ? <p className="px-3 py-1.5 text-xs text-muted-foreground">The list was cut at 500 files.</p> : null}
               </>
             ) : null}
+            {scope.kind === "run" && exactShown ? <ChangedFilesSnapshotNotes changes={changes} className="px-3 py-1.5 pb-1.5" /> : null}
             <p className="px-3 py-2 text-xs text-muted-foreground" data-diff-caveats="">
               Long diffs draw a screenful at a time: Ctrl+F finds only the lines already drawn, and a returning scroll position is the file and a place inside it, not an exact line.
             </p>
@@ -590,6 +690,11 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
 }
 
 const NO_PATHS: ReadonlySet<string> = new Set();
+const NO_ENTRIES: DiffFileEntry[] = [];
+
+function emptyNetText(journalCount: number): string {
+  return journalCount > 0 ? `No net changes. The agent edited ${journalCount} file${journalCount === 1 ? "" : "s"}; the folder ended as it started.` : "No net changes.";
+}
 
 function emptyText(scope: DiffScope, base: string | undefined): string {
   if (scope.kind === "workingTree") return "Working tree clean.";

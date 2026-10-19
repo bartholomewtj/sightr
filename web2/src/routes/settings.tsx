@@ -1,7 +1,7 @@
 // Same job and name as T3 Code apps/web/src/routes/settings.tsx @ e3b35d1b (pattern; MIT, see
 // THIRD_PARTY.md). T3 splits Settings into child routes under a settings sidebar; Sightr has a handful
 // of rows, and the phone reads them as one scroll: sections in order (Display, Composer, New threads,
-// Notifications, Security, Advanced, About), built from T3's SettingsSection / SettingsRow
+// Notifications, Run snapshots, Security, Advanced, About), built from T3's SettingsSection / SettingsRow
 // (components/settings/settingsLayout.tsx), with section chips pinned under the header (SettingsNav) and
 // the bridge, connection, shortcuts and v1 rows folded into "Advanced" (FoldedSettingsSection) so the
 // page stays short at 360 px. Each section uses the bridge endpoint v1 uses for the same setting (no new
@@ -24,6 +24,7 @@ import { LockSettings } from "@/components/settings/LockSettings";
 import { NewThreadSettings } from "@/components/settings/NewThreadSettings";
 import { NotificationSettings } from "@/components/settings/NotificationSettings";
 import { SettingsNav, type SettingsNavItem } from "@/components/settings/SettingsNav";
+import { SnapshotSettings } from "@/components/settings/SnapshotSettings";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "@/components/settings/settingsLayout";
 import { ThemeSettings } from "@/components/settings/ThemeSettings";
 import { useLayout } from "@/hooks/useLayout";
@@ -77,6 +78,10 @@ function SettingsRouteView() {
 
         <SettingsSection title="Notifications" id="notifications">
           <NotificationSettings readOnly={readOnly} />
+        </SettingsSection>
+
+        <SettingsSection title="Run snapshots" id="snapshots">
+          <SnapshotSettings readOnly={readOnly} />
         </SettingsSection>
 
         <SettingsSection title="Security" id="security">

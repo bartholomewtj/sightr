@@ -146,6 +146,11 @@ export const DiffFileSection = memo(function DiffFileSection(props: {
               <DiffStatLabel additions={file.added} deletions={file.removed} layout="inline" />
             ) : null}
             {edits ? <span className="ml-1 text-3xs text-muted-foreground">{edits}</span> : null}
+            {file.shell ? (
+              <span data-mark="shell" title="No edit tool reported this change; a shell command made it" className="ml-1 rounded-full border border-border px-1.5 text-3xs leading-4 text-muted-foreground">
+                shell
+              </span>
+            ) : null}
           </span>
         </button>
         <DiffFilePathCopyButton filePath={file.path} />

@@ -1,8 +1,9 @@
 // Pattern from T3 Code packages/client-runtime/src/state/threadCheckpoints.ts @ 3a4d118a518a (MIT, see THIRD_PARTY.md).
 // The same job as T3's `deriveThreadCheckpointSummaries`: one summary of the files a run changed, for
-// the card under that run's reply. T3 reads its git checkpoints; Sightr has none yet (T30/T31), so this
-// reads the journal's `file_change` items (T24). Counts are the sum of the agent's edits, not the net
-// change of the file, and edits made through a shell command are not seen at all.
+// the card under that run's reply. T3 reads its git checkpoints; this reads the journal's `file_change` items
+// (T24). Counts are the sum of the agent's edits, not the net change of the file, and edits made through a shell
+// command are not seen at all. T31 puts the run's checkpoint (T30) first where there is a ready one
+// (`lib/runChanges.ts`); this stays the fallback, and says what the agent edited when the checkpoint cannot.
 import type { TimelineEntry } from "~/session-logic";
 import type { TurnItem } from "@shared/v2/contracts";
 
@@ -28,6 +29,12 @@ export interface ChangedFileRow {
   readonly running: boolean;
   /** An item's diff was cut by the journal (the counts were taken before the cut). */
   readonly truncated: boolean;
+  /** T31, a row built from a checkpoint file (never set on a journal row): no edit tool reported this path, so a shell command made the change. */
+  readonly shell?: boolean;
+  /** T31, checkpoint rows: the file is gone at the end of the run. */
+  readonly deleted?: boolean;
+  /** T31, checkpoint rows: a binary file (no counts). */
+  readonly binary?: boolean;
 }
 
 export interface RunChangedFiles {

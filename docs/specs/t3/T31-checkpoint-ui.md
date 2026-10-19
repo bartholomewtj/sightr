@@ -68,8 +68,18 @@ A failed `scope=run` fetch for a `ready` run falls back to the journal with a on
 - `lib/runChanges.test.ts`: every row of the fallback matrix as a fixture, including reverted, shell-made, empty net, truncated, running, finishing-timeout, and neither source.
 - `components/chat/ChangedFilesCard.source.test.tsx`: badge text per source, sheet opens and closes, Back closes it, the reverted footer, the empty-net line, and a source flip keeping expanded rows.
 - `components/right-panel/RunDiffPanel.test.tsx` (msw fake bridge serving `scope=run`): run picker previous/next, default run, tap-through from the card reveals the file, running strip then refetch on `run.ended`, `scope=run` failure falls back with Retry, `checkpoint.expired` flipping `live` (whitespace and expand disabled, stored patches still load), an archived thread loading a stored patch, the `shared`/`approximate`/`unsettled` footers.
-- `routes/settings.test.tsx`: the toggle writes `project.checkpoints.set`, read-only disables it, `SIGHTR_CHECKPOINTS=0` shows "Off for this bridge".
+- `routes/-settings.test.tsx` (the `-` prefix keeps the router from reading it as a route): the toggle writes `project.checkpoints.set`, read-only disables it, `SIGHTR_CHECKPOINTS=0` shows "Off for this bridge".
 - Live, at 390 px in a scratch herdr workspace (`ca`, scratch bridge): a run that edits through `sed` (shows the shell tag), a run that edits then reverts, a run with no net change, a run in progress then ending, a project with snapshots off. Check badge, sheet, Back, picker, and reveal from the card.
+
+## Amended at build
+
+- **Matrix row 2.** A `ready` run with no net change and no journal edit draws no card (every chat-only run would get one). The "No net changes." card stays when the journal listed files, and reads "The agent edited N files; the folder ended as it started." The panel's run scope says the same for such a run.
+- **"Off for this bridge" is inferred.** `SIGHTR_CHECKPOINTS=0` is on no wire shape (T30 keeps it out of `Project.checkpoints`), so the Settings row shows it when the open thread's newest run is `absent: disabled` while its project switch is on. A thread that is not open says nothing, and a run begun before the operator re-enabled a project can read `disabled` for a moment (the lag after re-enabling), which is why only the newest run counts.
+- **Truncated footer.** The contract has no total file count, so "Showing M of N files" reads "Showing the first M files. The counts include every file."
+- **Reverted names are repo-relative.** An absolute journal path is shown without the repo root learned from an edit that matches a listed file, else as its last two segments; no absolute path renders.
+- **A failed exact read with an empty journal** still shows "Couldn't load the exact diff." with Retry and the "From agent edits" badge, over the checkpoint's list, so each file can retry. "Exact" shows only while the data loaded.
+- **Stream.** `checkpoint.captured` and `checkpoint.expired` update `Run.checkpoint` in `stream/apply.ts` (they were ignored as unknown events); a `start` phase after the run's checkpoint is `ready` or `absent` is ignored.
+- **Settings test path** is `routes/-settings.test.tsx`.
 
 ## Open questions
 

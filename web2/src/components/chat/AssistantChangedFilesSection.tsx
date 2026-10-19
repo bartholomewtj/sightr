@@ -7,15 +7,23 @@
 // or more; the choice is a per-device preference), "Collapse all" / "Expand all", a cap of 50 rows with
 // "Show all N", and a caveat line when the counts can mislead (a shell command ran, or a file was edited
 // more than once).
+// T31: the list is the run's git checkpoint when it has a `ready` one (badge "Exact"), else the journal's (badge
+// "From agent edits"); `resolveRunChanges` decides, and the badge opens the sheet that says why. Checkpoint rows tag a
+// shell-made change, a footer names the edits the run undid, and the snapshot's own caveats (shared folder, late start,
+// files still changing, files not shown) say so under the list.
 import { ListIcon, ListTreeIcon } from "lucide-react";
 import { memo, useCallback, useState, useSyncExternalStore } from "react";
 
+import type { Run } from "@shared/v2/contracts";
 import { setChangedDirsCollapsed, collapsedChangedDirsOf, toggleChangedDir, useThreadTimelineUi } from "@/state/timeline";
 
 import type { RunChangedFiles } from "./ChangedFiles.logic";
+import { ChangedFilesSnapshotNotes } from "./ChangedFilesSnapshotNotes";
+import { ChangedFilesSourceBadge } from "./ChangedFilesSourceBadge";
 import { ChangedFilesTree, collectChangedDirectoryPaths } from "./ChangedFilesTree";
 import { openChangedFile } from "./changedFilesTarget";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
+import { useRunChanges } from "./useRunChanges";
 import { Button } from "../ui/button";
 
 /** Rows drawn before "Show all N". */
@@ -74,25 +82,37 @@ export function autoChangedFilesView(paths: ReadonlyArray<string>): View {
 export const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(props: {
   threadId: string;
   runId: string;
-  summary: RunChangedFiles;
+  /** The journal's files (T24); null for a run only its checkpoint knows. */
+  summary: RunChangedFiles | null;
+  /** The run, with its checkpoint (T30). Without it the card is the journal's, as before T31. */
+  run?: Run | undefined;
 }) {
-  const { threadId, runId, summary } = props;
+  const { threadId, runId, summary, run } = props;
   const ui = useThreadTimelineUi(threadId);
   const collapsedDirs = collapsedChangedDirsOf(ui, runId);
   const [showAll, setShowAll] = useState(false);
   const chosen = useSyncExternalStore(subscribe, readOverride, () => null);
+  const changes = useRunChanges(run, summary);
+  const exact = changes.source === "checkpoint";
 
-  const total = summary.rows.length;
-  const rows = showAll || total <= CHANGED_FILES_CAP ? summary.rows : summary.rows.slice(0, CHANGED_FILES_CAP);
-  const view = chosen ?? autoChangedFilesView(summary.rows.map((row) => row.path));
+  const allRows = changes.files;
+  const total = allRows.length;
+  const rows = showAll || total <= CHANGED_FILES_CAP ? allRows : allRows.slice(0, CHANGED_FILES_CAP);
+  const view = chosen ?? autoChangedFilesView(allRows.map((row) => row.path));
   const dirPaths = view === "tree" ? collectChangedDirectoryPaths(rows) : [];
   const allCollapsed = dirPaths.length > 0 && dirPaths.every((dir) => collapsedDirs.has(dir));
 
   const onToggleDir = useCallback((dir: string) => toggleChangedDir(threadId, runId, dir), [threadId, runId]);
   const onSelect = useCallback((path: string) => openChangedFile({ threadId, runId, path }), [threadId, runId]);
 
-  const heading = summary.files === 0 ? "No files changed" : `Changed files (${summary.files})`;
-  const caveat = summary.shellRan || summary.editedTwice;
+  if (changes.state === "none" || (changes.state === "empty" && changes.journalCount === 0)) return null;
+
+  const fileCount = exact ? total : (summary?.files ?? 0);
+  const heading =
+    changes.state === "empty" ? "No net changes" : exact ? `Changed files (${total}${changes.truncated ? "+" : ""})` : fileCount === 0 ? "No files changed" : `Changed files (${fileCount})`;
+  const caveat = !exact && summary !== null && (summary.shellRan || summary.editedTwice);
+  const statusLabel = changes.state === "running" ? "Run in progress" : changes.state === "finishing" ? "Finishing snapshot" : null;
+  const showStat = exact ? total > 0 || changes.notShown > 0 : fileCount > 0;
 
   return (
     <section
@@ -101,12 +121,20 @@ export const AssistantChangedFilesSection = memo(function AssistantChangedFilesS
       data-thread-find-ignore=""
       data-changed-files={runId}
       data-changed-files-view={view}
+      data-changed-files-source={changes.source}
+      data-changed-files-state={changes.state}
     >
       <div className="flex items-center justify-between gap-2 px-3 py-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-foreground">
           <span>{heading}</span>
-          {summary.files > 0 && hasNonZeroStat(summary) ? (
-            <DiffStatLabel additions={summary.additions} deletions={summary.deletions} layout="inline" className="text-xs leading-4" />
+          {showStat && hasNonZeroStat(changes) ? (
+            <DiffStatLabel additions={changes.additions} deletions={changes.deletions} layout="inline" className="text-xs leading-4" />
+          ) : null}
+          <ChangedFilesSourceBadge info={{ source: changes.source, state: changes.state, reason: changes.reason }} />
+          {statusLabel ? (
+            <span className="font-normal text-muted-foreground" data-changed-files-status="">
+              {statusLabel}
+            </span>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -142,6 +170,15 @@ export const AssistantChangedFilesSection = memo(function AssistantChangedFilesS
           </Button>
         </div>
       ) : null}
+      {changes.state === "empty" ? (
+        <p className="px-3 pb-2 text-xs text-muted-foreground" data-changed-files-empty="">
+          No net changes.
+          {changes.journalCount > 0
+            ? ` The agent edited ${changes.journalCount} file${changes.journalCount === 1 ? "" : "s"}; the folder ended as it started.`
+            : ""}
+        </p>
+      ) : null}
+      <ChangedFilesSnapshotNotes changes={changes} />
       {caveat ? (
         <p className="px-3 pb-2 text-2xs text-muted-foreground" data-changed-files-caveat="">
           Counts add up each edit and miss changes made by shell commands.

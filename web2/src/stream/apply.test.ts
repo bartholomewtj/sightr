@@ -198,6 +198,46 @@ describe("applyThreadEvent", () => {
     expect(queued.queue.map((m) => m.id)).toEqual(["q1", "q2"]);
   });
 
+  it("keeps a run's checkpoint through captured, run end, expiry and a repeated start (T31)", () => {
+    const run = { id: "r1", threadId: "t1", ordinal: 0, status: "running" as const, startedAt: 1 };
+    const checkpoint = { runId: "r1", threadId: "t1", appRunOrdinal: 0, status: "pending" as const, files: [], additions: 0, deletions: 0 };
+    let s = applyThreadEvent(emptyThread("t1"), { sequence: 1, threadId: "t1", type: "run.started", payload: { run }, ts: 1 });
+    s = applyThreadEvent(s, { sequence: 2, threadId: "t1", type: "checkpoint.captured", payload: { checkpoint, phase: "start" }, ts: 2 });
+    expect(s.runs.r1?.checkpoint?.status).toBe("pending");
+    s = applyThreadEvent(s, { sequence: 3, threadId: "t1", type: "run.ended", payload: { runId: "r1", status: "completed", completedAt: 9 }, ts: 9 });
+    expect(s.runs.r1?.checkpoint?.status).toBe("pending");
+    const ready = { ...checkpoint, status: "ready" as const, live: true, files: [{ path: "a.ts", kind: "modified" as const, additions: 1, deletions: 0 }], additions: 1 };
+    s = applyThreadEvent(s, { sequence: 4, threadId: "t1", type: "checkpoint.captured", payload: { checkpoint: ready, phase: "end" }, ts: 10 });
+    expect(s.runs.r1?.checkpoint).toMatchObject({ status: "ready", additions: 1 });
+    s = applyThreadEvent(s, { sequence: 5, threadId: "t1", type: "run.started", payload: { run }, ts: 11 });
+    expect(s.runs.r1?.checkpoint?.status).toBe("ready");
+    s = applyThreadEvent(s, { sequence: 6, threadId: "t1", type: "checkpoint.expired", payload: { runId: "r1" }, ts: 12 });
+    expect(s.runs.r1?.checkpoint).toMatchObject({ status: "ready", live: false, files: ready.files });
+  });
+
+  it("ignores a start phase that arrives after the end", () => {
+    const run = { id: "r1", threadId: "t1", ordinal: 0, status: "completed" as const, startedAt: 1, completedAt: 5 };
+    const base1 = { runId: "r1", threadId: "t1", appRunOrdinal: 0, files: [], additions: 0, deletions: 0 };
+    let s = applyThreadEvent(emptyThread("t1"), { sequence: 1, threadId: "t1", type: "run.started", payload: { run }, ts: 1 });
+    s = applyThreadEvent(s, { sequence: 2, threadId: "t1", type: "checkpoint.captured", payload: { checkpoint: { ...base1, status: "ready" as const }, phase: "end" }, ts: 2 });
+    const late = applyThreadEvent(s, { sequence: 3, threadId: "t1", type: "checkpoint.captured", payload: { checkpoint: { ...base1, status: "pending" as const }, phase: "start" }, ts: 3 });
+    expect(late.runs.r1?.checkpoint?.status).toBe("ready");
+    s = applyThreadEvent(emptyThread("t1"), { sequence: 1, threadId: "t1", type: "run.started", payload: { run }, ts: 1 });
+    s = applyThreadEvent(s, { sequence: 2, threadId: "t1", type: "checkpoint.captured", payload: { checkpoint: { ...base1, status: "absent" as const, reason: "no-repo" as const }, phase: "start" }, ts: 2 });
+    s = applyThreadEvent(s, { sequence: 3, threadId: "t1", type: "checkpoint.captured", payload: { checkpoint: { ...base1, status: "pending" as const }, phase: "start" }, ts: 3 });
+    expect(s.runs.r1?.checkpoint?.status).toBe("absent");
+  });
+
+  it("ignores a checkpoint for a run it does not hold, and drops a malformed one", () => {
+    const onDrop = vi.fn();
+    const checkpoint = { runId: "nope", threadId: "t1", appRunOrdinal: 0, status: "ready", files: [], additions: 0, deletions: 0 };
+    const same = applyThreadEvent(base, { sequence: 11, threadId: "t1", type: "checkpoint.captured", payload: { checkpoint, phase: "end" }, ts: 1 });
+    expect(same).toBe(base);
+    expect(applyThreadEvent(base, { sequence: 11, threadId: "t1", type: "checkpoint.expired", payload: { runId: "nope" }, ts: 1 })).toBe(base);
+    applyThreadEvent(base, { sequence: 11, threadId: "t1", type: "checkpoint.captured", payload: { checkpoint: {}, phase: "end" }, ts: 1 }, onDrop);
+    expect(onDrop).toHaveBeenCalledWith("malformed", expect.anything());
+  });
+
   it("fills a missing ordinal with the next one", () => {
     const { ordinal: _o, ...noOrdinal } = userItem("i9", "t1", "late", 0);
     const next = applyThreadEvent(base, { sequence: 11, threadId: "t1", type: "turn-item.updated", payload: { item: noOrdinal }, ts: 1 });
