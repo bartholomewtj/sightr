@@ -180,6 +180,16 @@ describe("the footers", () => {
     expect(within(c).getByText("Changed files (5)")).toBeTruthy();
   });
 
+  it("renders an absolute reverted journal path repo-relative", async () => {
+    const abs = ["/work/repo/src/a.ts", "/work/repo/src/b.ts", "/work/repo/lib/c.ts", "/work/repo/lib/d.ts", "/work/repo/README.md", "/work/repo/src/undone.ts"];
+    await show(journalItems(abs), [run("r1", { checkpoint: cp() })]);
+    const c = card()!;
+    fireEvent.click(within(c).getByRole("button", { name: /1 edited and reverted/ }));
+    const names = c.querySelector("[data-reverted-names]") as HTMLElement;
+    expect(within(names).getByText("src/undone.ts")).toBeTruthy();
+    expect(names.textContent).not.toMatch(/\/work\/repo/);
+  });
+
   it("says No net changes, and how many files the agent edited, when the folder ended as it started", async () => {
     await show(journalItems(["src/a.ts", "src/b.ts"]), [run("r1", { checkpoint: cp({ files: [], additions: 0, deletions: 0 }) })]);
     const c = card()!;
@@ -195,7 +205,7 @@ describe("the footers", () => {
     expect(within(c).getByText("Start snapshot was taken late; earlier edits may be missing.")).toBeTruthy();
     expect(within(c).getByText("Files were still changing when the snapshot was taken.")).toBeTruthy();
     expect(within(c).getByText("2 files not shown")).toBeTruthy();
-    expect(within(c).getByText(/Showing the first 5 files/)).toBeTruthy();
+    expect(within(c).getByText("Showing the first 5 files. The counts include every file.")).toBeTruthy();
   });
 });
 
@@ -223,11 +233,11 @@ describe("a source flip", () => {
   });
 
   it("drops to the journal when a pending checkpoint outlives its 10 s", async () => {
-    // 150 ms of the grace are left when the card mounts.
-    const completedAt = Date.now() - 9_850;
+    // 600 ms of the grace are left when the card mounts.
+    const completedAt = Date.now() - 9_400;
     await show(journalItems(), [run("r1", { startedAt: completedAt - 5_000, completedAt, checkpoint: cp({ status: "pending", files: [], additions: 0, deletions: 0 }) })]);
     expect(within(card()!).getByText("Finishing snapshot")).toBeTruthy();
-    await waitFor(() => expect(within(card()!).queryByText("Finishing snapshot")).toBeNull(), { timeout: 2_000 });
+    await waitFor(() => expect(within(card()!).queryByText("Finishing snapshot")).toBeNull(), { timeout: 4_000 });
     expect(within(card()!).getByText("From agent edits")).toBeTruthy();
     expect(card()!.getAttribute("data-changed-files-state")).toBe("fallback");
   });

@@ -13,9 +13,10 @@ export type CheckpointDiffState =
   | { status: "running"; phase: "working" | "finishing"; files: DiffFileEntry[] }
   /**
    * The files to list. `source` is what they came from (`checkpoint` is "Exact"). `loadFailed`: the exact diff could not
-   * be read, so these are the journal's files and the panel offers Retry; `source` is `journal` then, and the badge says so.
+   * be read and the panel offers Retry; `source` is `journal` then, and the badge says so. `filesFrom` is where the list came
+   * from: the journal's, or (a failed read with no journal list to fall back to) the checkpoint's, so each file can retry.
    */
-  | { status: "ready"; source: "checkpoint" | "journal"; files: DiffFileEntry[]; truncated: boolean; loadFailed: boolean }
+  | { status: "ready"; source: "checkpoint" | "journal"; filesFrom: "checkpoint" | "journal"; files: DiffFileEntry[]; truncated: boolean; loadFailed: boolean }
   /** Nothing to show: `none` is "No recorded changes for this run." */
   | { status: "unavailable"; reason: "none" };
 
@@ -48,10 +49,15 @@ export function checkpointDiffState(input: {
   if (changes.state === "none") return { status: "unavailable", reason: "none" };
   if (changes.source === "checkpoint") {
     // A failed read falls back to the journal's list (never a blank panel); "Exact" is only for data that loaded.
-    if (fetchFailed && journalFiles.length > 0) return { status: "ready", source: "journal", files: journalFiles, truncated: false, loadFailed: true };
-    return { status: "ready", source: "checkpoint", files: changes.files.map(entryOfCheckpointRow), truncated: changes.truncated, loadFailed: false };
+    const files = changes.files.map(entryOfCheckpointRow);
+    if (fetchFailed) {
+      return journalFiles.length > 0
+        ? { status: "ready", source: "journal", filesFrom: "journal", files: journalFiles, truncated: false, loadFailed: true }
+        : { status: "ready", source: "journal", filesFrom: "checkpoint", files, truncated: changes.truncated, loadFailed: true };
+    }
+    return { status: "ready", source: "checkpoint", filesFrom: "checkpoint", files, truncated: changes.truncated, loadFailed: false };
   }
   if (changes.state === "running") return { status: "running", phase: "working", files: journalFiles };
   if (changes.state === "finishing") return { status: "running", phase: "finishing", files: journalFiles };
-  return { status: "ready", source: "journal", files: journalFiles, truncated: false, loadFailed: false };
+  return { status: "ready", source: "journal", filesFrom: "journal", files: journalFiles, truncated: false, loadFailed: false };
 }

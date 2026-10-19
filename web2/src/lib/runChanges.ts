@@ -91,7 +91,30 @@ function rowOfCheckpointFile(file: CheckpointFile): ChangedFileRow {
   };
 }
 
-const isRefused = (path: string): boolean => path.split("/").some((segment) => segment !== "" && isRefusedName(segment));
+const isAbsolute = (path: string): boolean => path.startsWith("/") || /^[A-Za-z]:/.test(path);
+
+/** The folders a journal path sits under that the checkpoint's repo-relative paths do not: learned from each edited path that matches a listed one. */
+function repoRootsOf(journalPaths: ReadonlyArray<string>, files: ReadonlyArray<CheckpointFile>): string[] {
+  const roots = new Set<string>();
+  for (const path of journalPaths) {
+    const hit = files.find((f) => path !== f.path && path.endsWith(`/${f.path}`));
+    if (hit) roots.add(path.slice(0, path.length - hit.path.length));
+  }
+  return [...roots];
+}
+
+/**
+ * A journal path as the card shows it: repo-relative. An absolute path loses the repo root learned from a matching
+ * edit; with none known it shows its last two segments. No absolute path is ever rendered.
+ */
+export function displayPath(path: string, roots: ReadonlyArray<string>): string {
+  if (!isAbsolute(path)) return path;
+  const root = roots.find((r) => path.startsWith(r));
+  if (root) return path.slice(root.length);
+  return path.split("/").filter((s) => s !== "" && !/^[A-Za-z]:$/.test(s)).slice(-2).join("/");
+}
+
+const isRefused =(path: string): boolean => path.split("/").some((segment) => segment !== "" && isRefusedName(segment));
 
 /** Journal rows with an edit that landed or is landing. A path with only failed edits changed nothing. */
 function editedRows(journal: RunChangedFiles | null | undefined): ReadonlyArray<ChangedFileRow> {
@@ -110,10 +133,12 @@ export function resolveRunChanges(input: ResolveRunChangesInput): RunChanges {
     // The list cap hides the rest and an unreadable file was left out of the snapshot: an edit the list lacks may not be undone then.
     // A refused name is never listed, so it is skipped by name below.
     const whole = checkpoint.truncated !== true && !checkpoint.skipped;
+    const edited = editedRows(journalFiles).map((row) => row.path);
+    const roots = repoRootsOf(edited, checkpoint.files);
     const reverted = whole
-      ? editedRows(journalFiles)
-          .map((row) => row.path)
+      ? edited
           .filter((path) => !checkpoint.files.some((f) => samePath(path, f.path)) && !isRefused(path))
+          .map((path) => displayPath(path, roots))
       : [];
     const notShown = (checkpoint.hidden ?? 0) + (checkpoint.skipped ?? 0);
     return {

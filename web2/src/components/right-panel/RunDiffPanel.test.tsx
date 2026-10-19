@@ -230,6 +230,36 @@ describe("when the exact diff cannot be loaded", () => {
   });
 });
 
+describe("when the exact diff cannot be loaded and the journal has nothing", () => {
+  it("still says so with Retry, and does not call the list Exact", async () => {
+    open([done("r1", 1, cp("r1", { files: [file("gen/out.ts", { authored: false })], additions: 1, deletions: 1 }))]); // a shell-made change: no journal item
+    failPatch = 1;
+    showRun("r1");
+    await mountPanel();
+    await waitFor(() => expect(note("load-failed")).not.toBeNull());
+    expect(note("load-failed")).toHaveTextContent("Couldn't load the exact diff");
+    expect(note("load-failed")).not.toHaveTextContent("agent's edits");
+    expect(within(badge()!).getByText("From agent edits")).toBeTruthy();
+    expect(within(badge()!).queryByText("Exact")).toBeNull();
+    expect(sections().map((s) => s.dataset.diffFile)).toEqual(["gen/out.ts"]);
+
+    fireEvent.click(within(note("load-failed")!).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(note("load-failed")).toBeNull());
+    await waitFor(() => expect(within(badge()!).getByText("Exact")).toBeTruthy());
+    await waitFor(() => expect(stateOf("gen/out.ts")).toBe("ready"));
+  });
+});
+
+describe("neither source", () => {
+  it("says there are no recorded changes for a run with no checkpoint and no journal edit", async () => {
+    open([done("r1", 1, cp("r1", { status: "absent", reason: "no-repo", files: [], additions: 0, deletions: 0 }))], [user("u:0", "hi", { runId: "r1" })]);
+    showRun("r1");
+    render(<DiffPanel threadId="t1" />);
+    expect(await screen.findByText("No recorded changes for this run.")).toBeInTheDocument();
+    expect(badge()).toBeNull();
+  });
+});
+
 describe("expiry", () => {
   it("turns off Ignore whitespace and unchanged lines, and the stored patches still load", async () => {
     open([done("r1", 1, cp("r1", { files: ["a", "b", "c", "d"].map((n) => file(`src/${n}.ts`)) }))]);

@@ -215,6 +215,19 @@ describe("applyThreadEvent", () => {
     expect(s.runs.r1?.checkpoint).toMatchObject({ status: "ready", live: false, files: ready.files });
   });
 
+  it("ignores a start phase that arrives after the end", () => {
+    const run = { id: "r1", threadId: "t1", ordinal: 0, status: "completed" as const, startedAt: 1, completedAt: 5 };
+    const base1 = { runId: "r1", threadId: "t1", appRunOrdinal: 0, files: [], additions: 0, deletions: 0 };
+    let s = applyThreadEvent(emptyThread("t1"), { sequence: 1, threadId: "t1", type: "run.started", payload: { run }, ts: 1 });
+    s = applyThreadEvent(s, { sequence: 2, threadId: "t1", type: "checkpoint.captured", payload: { checkpoint: { ...base1, status: "ready" as const }, phase: "end" }, ts: 2 });
+    const late = applyThreadEvent(s, { sequence: 3, threadId: "t1", type: "checkpoint.captured", payload: { checkpoint: { ...base1, status: "pending" as const }, phase: "start" }, ts: 3 });
+    expect(late.runs.r1?.checkpoint?.status).toBe("ready");
+    s = applyThreadEvent(emptyThread("t1"), { sequence: 1, threadId: "t1", type: "run.started", payload: { run }, ts: 1 });
+    s = applyThreadEvent(s, { sequence: 2, threadId: "t1", type: "checkpoint.captured", payload: { checkpoint: { ...base1, status: "absent" as const, reason: "no-repo" as const }, phase: "start" }, ts: 2 });
+    s = applyThreadEvent(s, { sequence: 3, threadId: "t1", type: "checkpoint.captured", payload: { checkpoint: { ...base1, status: "pending" as const }, phase: "start" }, ts: 3 });
+    expect(s.runs.r1?.checkpoint?.status).toBe("absent");
+  });
+
   it("ignores a checkpoint for a run it does not hold, and drops a malformed one", () => {
     const onDrop = vi.fn();
     const checkpoint = { runId: "nope", threadId: "t1", appRunOrdinal: 0, status: "ready", files: [], additions: 0, deletions: 0 };

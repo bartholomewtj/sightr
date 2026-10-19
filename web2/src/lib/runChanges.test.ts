@@ -82,6 +82,16 @@ describe("resolveRunChanges: the fallback matrix", () => {
     expect(r.revertedCount).toBe(0);
   });
 
+  it("names an absolute reverted path repo-relative, never absolute", () => {
+    const j = journal([row("/repo/src/a.ts"), row("/repo/src/undone.ts"), row("C:/elsewhere/deep/x.ts")]);
+    const r = resolveRunChanges({ run: ended, checkpoint: cp(), journalFiles: j, now: 2_000 });
+    expect(r.reverted).toEqual(["src/undone.ts", "deep/x.ts"]);
+    expect(r.reverted.some((p) => p.startsWith("/") || /^[A-Za-z]:/.test(p))).toBe(false);
+    // With no edit matching a listed file there is no root to strip: the last two segments show.
+    const lone = resolveRunChanges({ run: ended, checkpoint: cp({ files: [file("other.ts")] }), journalFiles: journal([row("/repo/src/undone.ts")]), now: 2_000 });
+    expect(lone.reverted).toEqual(["src/undone.ts"]);
+  });
+
   it("a failed-only journal path is not an undone edit", () => {
     const r = resolveRunChanges({ run: ended, checkpoint: cp(), journalFiles: journal([row("src/a.ts"), row("src/never.ts", { edits: 0, failed: 1 })]), now: 2_000 });
     expect(r.revertedCount).toBe(0);

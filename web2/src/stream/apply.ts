@@ -311,6 +311,8 @@ export function applyThreadEvent(state: ThreadState, raw: unknown, onDrop?: OnDr
       const checkpoint = event.payload.checkpoint;
       const run = state.runs[checkpoint.runId];
       if (!run || checkpoint.threadId !== state.threadId) return state;
+      // A start arriving after its end (replay order) must not take a finished checkpoint back to `pending`.
+      if (event.payload.phase === "start" && (run.checkpoint?.status === "ready" || run.checkpoint?.status === "absent")) return state;
       return at({ runs: { ...state.runs, [run.id]: { ...run, checkpoint } } });
     }
     case "checkpoint.expired": {

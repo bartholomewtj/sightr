@@ -199,16 +199,18 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
     [scope.kind, loaded, changes, journalEntries, runPatches.failed],
   );
   const exactShown = diffState?.status === "ready" && diffState.source === "checkpoint";
+  // Patches come from the run route when the listed files are the checkpoint's (also after a failed read, so each can retry).
+  const runFiles = diffState?.status === "ready" && diffState.filesFrom === "checkpoint";
   const sourceFiles = useMemo(
     () => (scope.kind === "run" ? (diffState && (diffState.status === "ready" || diffState.status === "running") ? diffState.files : NO_ENTRIES) : patches.files),
     [scope.kind, diffState, patches.files],
   );
   const files = useMemo(() => treeOrder(sourceFiles), [sourceFiles]);
   const patchFor = useCallback(
-    (path: string): PatchState => (scope.kind === "run" ? (exactShown ? runPatches.patchFor(path) : (runByPath.get(path) ?? IDLE)) : patches.patchFor(path)),
-    [scope.kind, exactShown, runPatches, runByPath, patches],
+    (path: string): PatchState => (scope.kind === "run" ? (runFiles ? runPatches.patchFor(path) : (runByPath.get(path) ?? IDLE)) : patches.patchFor(path)),
+    [scope.kind, runFiles, runPatches, runByPath, patches],
   );
-  const onRetryFile = scope.kind === "run" && exactShown ? runPatches.retry : patches.retry;
+  const onRetryFile = scope.kind === "run" && runFiles ? runPatches.retry : patches.retry;
   const summary = patches.summary;
   // A list to work from: the server's, once it has answered and is available; a run's, once the thread has its items.
   const listOk = scope.kind === "run" ? diffState?.status === "ready" || diffState?.status === "running" : summary.status === "ready";
@@ -613,7 +615,7 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
             ) : null}
             {diffState?.status === "ready" && diffState.loadFailed ? (
               <div className="flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground" data-diff-note="load-failed">
-                <span className="min-w-0 flex-1">Couldn't load the exact diff. This is the list of the agent's edits.</span>
+                <span className="min-w-0 flex-1">Couldn't load the exact diff.{diffState.filesFrom === "journal" ? " This is the list of the agent's edits." : ""}</span>
                 <Button size="xs" variant="outline" onClick={runPatches.retryFailed}>
                   <RotateCwIcon aria-hidden="true" />
                   Retry
@@ -625,7 +627,7 @@ function DiffPanelBody({ threadId, paneId, folderPath, scope }: { threadId: stri
                 No longer available for this run: Ignore whitespace and unchanged lines. The saved diffs still show.
               </p>
             ) : null}
-            {scope.kind === "run" && !exactShown ? (
+            {scope.kind === "run" && !runFiles ? (
               <p className="border-b px-3 py-1.5 text-xs text-muted-foreground" data-diff-note="run">
                 From the agent's edits in this run, one after another; it may not match what is on disk now. Each edit's line numbers are its own.
                 {run.shellRan ? " A shell command ran too, and files it changed are not listed." : ""} Ignore whitespace and unchanged lines are not available for this run.
