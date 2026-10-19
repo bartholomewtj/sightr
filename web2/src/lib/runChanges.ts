@@ -114,7 +114,7 @@ export function displayPath(path: string, roots: ReadonlyArray<string>): string 
   return path.split("/").filter((s) => s !== "" && !/^[A-Za-z]:$/.test(s)).slice(-2).join("/");
 }
 
-const isRefused =(path: string): boolean => path.split("/").some((segment) => segment !== "" && isRefusedName(segment));
+const isRefused = (path: string): boolean => path.split("/").some((segment) => segment !== "" && isRefusedName(segment));
 
 /** Journal rows with an edit that landed or is landing. A path with only failed edits changed nothing. */
 function editedRows(journal: RunChangedFiles | null | undefined): ReadonlyArray<ChangedFileRow> {

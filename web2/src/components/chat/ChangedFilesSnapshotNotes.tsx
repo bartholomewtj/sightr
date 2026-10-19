@@ -38,8 +38,8 @@ export function ChangedFilesSnapshotNotes({ changes, className }: { changes: Run
           </button>
           {open ? (
             <ul className="ml-4 flex flex-col gap-0.5 font-mono text-muted-foreground/60" data-reverted-names="">
-              {changes.reverted.map((path) => (
-                <li key={path} className="wrap-anywhere">
+              {changes.reverted.map((path, i) => (
+                <li key={`${i}:${path}`} className="wrap-anywhere">
                   {path}
                 </li>
               ))}
