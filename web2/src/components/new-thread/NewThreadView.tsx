@@ -57,11 +57,12 @@ export function NewThreadView({ projectId }: { projectId?: string }) {
         {!desktop ? <BackToThreads /> : !sidebarOpen ? <SidebarToggle /> : null}
         <h2 className="min-w-0 flex-1 truncate font-semibold">New thread</h2>
         <DraftBranchChip />
-        {!start || start.phase === "failed" ? (
-          <Button size="sm" variant="ghost" onClick={discardDraft}>
-            Discard
-          </Button>
-        ) : null}
+        {/* Always offered: a start that hangs (a lost event, a pane closed under it, a send that never
+            answers) must not leave the screen with no way out. Discarding forgets the draft and the
+            start; it does not close the pane, which stays in the sidebar. */}
+        <Button size="sm" variant="ghost" onClick={discardDraft}>
+          Discard
+        </Button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 pt-6 pb-[max(env(safe-area-inset-bottom),1.5rem)]">
         {start ? (

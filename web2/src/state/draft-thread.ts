@@ -141,7 +141,13 @@ function loadSaved(): { draft: DraftThread; start: DraftStart | null } {
   const saved = readJson(DRAFT_KEY);
   if (!isObj(saved) || !isObj(saved.draft)) return { draft: EMPTY_DRAFT, start: null };
   const draft = { ...EMPTY_DRAFT, ...(saved.draft as Partial<DraftThread>) };
-  const start = isObj(saved.start) && typeof saved.start.commandId === "string" ? (saved.start as unknown as DraftStart) : null;
+  let start = isObj(saved.start) && typeof saved.start.commandId === "string" ? (saved.start as unknown as DraftStart) : null;
+  // A send in flight when the page went away never finishes, and nothing retries a "pending" start: it
+  // would spin on "Queuing the first message…" for ever. Show it as failed so it can be retried or left.
+  // (The attachments are File objects and do not survive a reload either.)
+  if (start && start.messageState === "pending") {
+    start = { ...start, messageState: "failed", messageError: "the page reloaded before it was sent" };
+  }
   return { draft, start };
 }
 
@@ -470,6 +476,12 @@ export function finishStart(): void {
 export function retryFirstMessage(): void {
   patchStart({ messageState: "none", messageError: null });
   advance();
+}
+
+/** Retry the first message without the attachments that were refused. */
+export function retryWithoutAttachments(): void {
+  set({ attachments: [] });
+  retryFirstMessage();
 }
 
 /** Draft screens mounted; with none, a ready start finishes by itself (the thread is in the sidebar). */
