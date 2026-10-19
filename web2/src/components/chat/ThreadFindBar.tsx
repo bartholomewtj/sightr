@@ -117,7 +117,7 @@ export function TimelineFind({ threadId }: { threadId: string }) {
   const find = useThreadFind(threadId);
   if (!find.isOpen) return null;
   return (
-    <div className="absolute inset-x-2 top-2 z-30 rounded-xl border bg-popover px-2 py-1 shadow-md sm:left-auto sm:w-[min(26rem,calc(100%-1rem))]">
+    <div className="absolute inset-x-2 top-2 z-30 rounded-xl border bg-popover px-2 py-1 shadow-md sm:left-auto sm:right-2 sm:w-[min(26rem,calc(100%-1rem))]">
       <ThreadFindBar
         query={find.query}
         onQueryChange={setThreadFindQuery}

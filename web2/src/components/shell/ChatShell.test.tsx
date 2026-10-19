@@ -65,11 +65,11 @@ describe("adaptive layout", () => {
 
   it("collapses the right panel and remembers it", async () => {
     setViewportWidth(1280);
-    await boot("/v2/");
+    await boot("/v2/thread/t1");
     fireEvent.click(await screen.findByRole("button", { name: "Close the right panel" }));
     expect(region("right-panel")).not.toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem("sightr:v2:right-panel-state:v1") ?? "{}").state).toMatchObject({ isOpen: false });
-    fireEvent.click(await screen.findByRole("button", { name: "Open the right panel" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Terminal" }));
     expect(region("right-panel")).toBeInTheDocument();
   });
 

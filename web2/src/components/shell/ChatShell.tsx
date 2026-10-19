@@ -1,8 +1,6 @@
 import { useParams } from "@tanstack/react-router";
-import { PanelLeftOpen, PanelRightOpen } from "lucide-react";
 import { useRef, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 
-import { Button } from "~/components/ui/button";
 import { CommandPalette } from "@/components/CommandPalette";
 import { GlobalShortcuts } from "@/components/GlobalShortcuts";
 import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
@@ -27,9 +25,7 @@ export function ChatShell({ children }: { children: ReactNode }) {
   const desktop = useLayout() === "desktop";
   const width = useUiState((s) => s.sidebarWidth);
   const sidebarOpen = useUiState((s) => s.sidebarOpen);
-  const setSidebarOpen = useUiState((s) => s.setSidebarOpen);
   const panelOpen = useRightPanelStore((s) => s.isOpen);
-  const showPanel = useRightPanelStore((s) => s.show);
   const { threadId } = useParams({ strict: false }) as { threadId?: string };
 
   return (
@@ -44,16 +40,6 @@ export function ChatShell({ children }: { children: ReactNode }) {
       ) : null}
       {desktop && sidebarOpen ? <SidebarResizer /> : null}
       <main data-region="chat" className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        {desktop && !sidebarOpen ? (
-          <Button size="icon-sm" variant="ghost" className="absolute left-2 top-2 z-10" aria-label="Show the sidebar" onClick={() => setSidebarOpen(true)}>
-            <PanelLeftOpen />
-          </Button>
-        ) : null}
-        {desktop && !panelOpen ? (
-          <Button size="icon-sm" variant="ghost" className="absolute right-2 top-2 z-10" aria-label="Open the right panel" onClick={showPanel}>
-            <PanelRightOpen />
-          </Button>
-        ) : null}
         {children}
       </main>
       {desktop && panelOpen ? <RightPanelTabs threadId={threadId ?? null} /> : null}

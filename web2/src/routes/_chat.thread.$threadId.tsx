@@ -11,21 +11,24 @@ import { openCommandPalette } from "@/commandPaletteBus";
 import { RenderErrorBoundary } from "@/components/RenderErrorBoundary";
 import { ErrorFallback } from "@/components/shell/ErrorFallback";
 import { BackToThreads } from "@/components/shell/BackToThreads";
+import { SidebarToggle } from "@/components/shell/SidebarToggle";
+import { PanelToolbar } from "@/components/shell/PanelToolbar";
 import type { ThreadMenuAction } from "@/components/sidebar/ThreadRowMenu";
 import { useShortcutHandler } from "@/shortcutHandlers";
 import { Button } from "~/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
 import { RightPanelSheet } from "@/components/RightPanelSheet";
-import { RIGHT_PANEL_ICON, RightPanelSurface } from "@/components/RightPanelTabs";
+import { RightPanelSurface } from "@/components/RightPanelTabs";
 import { TerminalPanel } from "@/components/right-panel/TerminalPanel";
 import { useLayout } from "@/hooks/useLayout";
 import { useThreadStream } from "@/hooks/useThreadStream";
 import { canUnarchive } from "@/lib/archived";
 import { noteOpenThread } from "@/state/draft-thread";
 import { performThreadCommand, useSidebarThread } from "@/state/sidebar";
-import { RIGHT_PANEL_KINDS, RIGHT_PANEL_LABEL, useRightPanelStore } from "@/rightPanelStore";
+import { RIGHT_PANEL_LABEL, useRightPanelStore } from "@/rightPanelStore";
 import { useBridgeInfo, useThread, useThreadStore } from "@/stream/stores";
 import { useThreadView, useThreadViewStore, type ThreadView } from "@/threadViewStore";
+import { useUiState } from "@/uiStateStore";
 
 export const Route = createFileRoute("/_chat/thread/$threadId")({
   component: ThreadRoute,
@@ -60,6 +63,7 @@ function ThreadRouteView() {
   // T14: the new-thread draft offers a split next to the thread that was open.
   useEffect(() => noteOpenThread(threadId), [threadId]);
   const desktop = useLayout() === "desktop";
+  const sidebarOpen = useUiState((s) => s.sidebarOpen);
   const shellThread = useSidebarThread(threadId);
   const state = useThread(threadId);
   const missing = useThreadStore((s) => s.missing === threadId);
@@ -92,7 +96,7 @@ function ThreadRouteView() {
   return (
     <section aria-label={title} className="flex min-h-0 flex-1 flex-col">
       <header className="relative flex items-center gap-2 border-b px-3 py-2">
-        {!desktop && <BackToThreads />}
+        {!desktop ? <BackToThreads /> : !sidebarOpen ? <SidebarToggle /> : null}
         {/* The title opens this thread's menu (rename, pin, snooze, settle, archive, mark unread). On a
             phone Find and the Command palette lead that menu instead of taking header buttons: at 360 px
             back, title, find, palette and three panel buttons left the title ~10 characters. */}
@@ -108,7 +112,7 @@ function ThreadRouteView() {
             <SearchIcon />
           </Button>
         ) : null}
-        {!desktop && !missing ? <PhonePanelButtons cli={cli} /> : null}
+        {!missing ? <PanelToolbar cli={cli} /> : null}
         {/* Syncing is a thin line on the header's bottom edge, not a word in the title row: at 360 px a
             word there squeezed the title to a few letters. */}
         {state?.syncing && !cli ? (
@@ -131,7 +135,7 @@ function ThreadRouteView() {
               <TerminalPanel threadId={threadId} />
             </div>
           ) : (
-            <div data-region="timeline" className="relative min-h-0 flex-1">
+            <div data-region="timeline" className="relative min-h-0 flex-1 overflow-hidden">
               <MessagesTimeline threadId={threadId} />
               <TimelineFind threadId={threadId} />
             </div>
@@ -172,28 +176,6 @@ function ThreadViewToggle({ threadId, view }: { threadId: string; view: ThreadVi
       <ToggleGroupItem value="cli">CLI</ToggleGroupItem>
       <ToggleGroupItem value="thread">Thread</ToggleGroupItem>
     </ToggleGroup>
-  );
-}
-
-/**
- * Phone: Terminal, Files and Git open as one full-height sheet at a time (T13). With the CLI as the main
- * view the Terminal button would only repeat it, so it goes.
- */
-function PhonePanelButtons({ cli }: { cli: boolean }) {
-  const sheet = useRightPanelStore((s) => s.sheet);
-  const openSheet = useRightPanelStore((s) => s.openSheet);
-  const kinds = cli ? RIGHT_PANEL_KINDS.filter((kind) => kind !== "terminal") : RIGHT_PANEL_KINDS;
-  return (
-    <div className="-mr-1 flex items-center" role="group" aria-label="Thread tools">
-      {kinds.map((kind) => {
-        const Icon = RIGHT_PANEL_ICON[kind];
-        return (
-          <Button key={kind} size="icon-sm" variant="ghost-muted" aria-label={RIGHT_PANEL_LABEL[kind]} aria-pressed={sheet === kind} onClick={() => openSheet(kind)}>
-            <Icon />
-          </Button>
-        );
-      })}
-    </div>
   );
 }
 

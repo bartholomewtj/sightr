@@ -8,11 +8,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { BranchToolbar } from "@/components/BranchToolbar";
 import { BackToThreads } from "@/components/shell/BackToThreads";
+import { SidebarToggle } from "@/components/shell/SidebarToggle";
 import { BranchChip } from "@/components/sidebar/BranchChip";
 import { DraftHeroHeadline } from "@/components/chat/DraftHeroHeadline";
 import { ProviderModelPicker } from "@/components/chat/ProviderModelPicker";
 import { TraitsPicker } from "@/components/chat/TraitsPicker";
 import { useLayout } from "@/hooks/useLayout";
+import { useUiState } from "@/uiStateStore";
 import {
   currentSplitSource,
   discardDraft,
@@ -33,6 +35,7 @@ import { SpawnProgress } from "./SpawnProgress";
 
 export function NewThreadView({ projectId }: { projectId?: string }) {
   const desktop = useLayout() === "desktop";
+  const sidebarOpen = useUiState((s) => s.sidebarOpen);
   const start = useDraftThread((s) => s.start);
   const loaded = useShell((s) => s.loaded);
   const projectCount = useShell((s) => Object.values(s.projects).filter((p) => p.closedAt === undefined).length);
@@ -51,7 +54,7 @@ export function NewThreadView({ projectId }: { projectId?: string }) {
   return (
     <section aria-label="New thread" className="flex min-h-0 flex-1 flex-col">
       <header className="flex items-center gap-2 border-b px-3 py-2">
-        {!desktop && <BackToThreads />}
+        {!desktop ? <BackToThreads /> : !sidebarOpen ? <SidebarToggle /> : null}
         <h2 className="min-w-0 flex-1 truncate font-semibold">New thread</h2>
         <DraftBranchChip />
         {!start || start.phase === "failed" ? (

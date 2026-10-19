@@ -52,10 +52,10 @@ describe("right panel: desktop", () => {
     const panel = region("right-panel") as HTMLElement;
     expect(await within(panel).findByText(/\$ mirror/)).toBeInTheDocument();
     act(() => useRightPanelStore.getState().setWidth(560));
-    fireEvent.click(within(panel).getByRole("tab", { name: "Files" }));
+    fireEvent.click(screen.getByRole("button", { name: "Files" }));
     expect(await within(panel).findByRole("treeitem", { name: /readme\.txt/ })).toBeInTheDocument();
     expect(within(panel).queryByText(/\$ mirror/)).toBeNull();
-    fireEvent.click(within(panel).getByRole("tab", { name: "Git" }));
+    fireEvent.click(screen.getByRole("button", { name: "Git" }));
     expect(await within(panel).findByText("This folder is not a git repository.")).toBeInTheDocument();
     expect((region("right-panel") as HTMLElement).style.width).toBe("560px");
     expect(JSON.parse(localStorage.getItem("sightr:v2:right-panel-state:v1") ?? "{}").state).toMatchObject({ width: 560, activeSurfaceId: "git" });
@@ -77,11 +77,11 @@ describe("right panel: desktop", () => {
   it("asks before a tab switch drops unsaved edits", async () => {
     await boot("/v2/thread/t1", 1280);
     const panel = region("right-panel") as HTMLElement;
-    fireEvent.click(within(panel).getByRole("tab", { name: "Files" }));
+    fireEvent.click(screen.getByRole("button", { name: "Files" }));
     fireEvent.click(await within(panel).findByRole("treeitem", { name: /readme\.txt/ }));
     fireEvent.click(await within(panel).findByRole("button", { name: "Edit" }));
     fireEvent.change(within(panel).getByLabelText("Edit readme.txt"), { target: { value: "changed" } });
-    fireEvent.click(within(panel).getByRole("tab", { name: "Terminal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Terminal" }));
     expect(await within(panel).findByRole("alertdialog", { name: "Unsaved edits" })).toBeInTheDocument();
     expect(useRightPanelStore.getState().activeSurfaceId).toBe("files");
     fireEvent.click(within(panel).getByRole("button", { name: "Discard edits" }));
