@@ -151,7 +151,7 @@ describe("palette: Messages", () => {
     expect(await within(dialog).findByText("Message search failed.")).toBeInTheDocument();
 
     searchApi(404);
-    fireEvent.change(input, { target: { value: "eeee" } });
+    fireEvent.change(input, { target: { value: "qqqq" } });
     expect(await within(dialog).findByText(/No matching/)).toBeInTheDocument();
   });
 

@@ -61,7 +61,7 @@ describe("contracts", () => {
     expect<string[]>([...COMMAND_TYPES].sort()).toEqual(
       [
         "thread.create", "thread.rename", "thread.pin", "thread.unpin", "thread.snooze", "thread.unsnooze", "thread.settle",
-        "thread.unsettle", "thread.archive", "thread.unarchive", "thread.delete", "thread.markRead", "thread.markUnread",
+        "thread.unsettle", "thread.archive", "thread.unarchive", "thread.delete", "thread.pane.close", "thread.markRead", "thread.markUnread",
         "message.dispatch", "queued.reorder", "queued.edit", "queued.cancel", "queue.resume", "run.interrupt",
         "runtime-request.respond", "thread.permissionMode.set", "thread.model.set", "project.create", "project.rename",
         "project.checkpoints.set",

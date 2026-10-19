@@ -2,7 +2,8 @@
  * The row menu (T10): Rename, Pin/Unpin, Mark unread/read, Snooze (presets, Pick time, Wake now),
  * Settle/Unsettle, Archive. One menu for the whole sidebar, anchored to the row that opened it (right
  * click, `Space`, or a long press on touch). It is also the keyboard alternative to dragging. Copy thread id
- * and Copy folder path are the palette's actions (`threadCopy.ts`).
+ * and Copy folder path are the palette's actions (`threadCopy.ts`). Close pane (two taps) closes the
+ * thread's Herdr pane and archives it as closed; Archive keeps the pane running.
  */
 import type { ComponentType } from "react";
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator } from "~/components/ui/menu";
@@ -10,6 +11,7 @@ import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator } f
 import type { Thread } from "@shared/v2/contracts";
 import type { ShelfCommand } from "@/components/Sidebar.logic";
 import { resolveSnoozePresets } from "@/components/Sidebar.snooze";
+import { useClosePane } from "@/hooks/useClosePane";
 import { copyThreadFolderPath, copyThreadId } from "@/components/sidebar/threadCopy";
 
 const TOUCH_ITEM = "pointer-coarse:min-h-11";
@@ -43,6 +45,8 @@ export function ThreadRowMenu({
   const open = thread !== null && anchor !== null;
   const threadId = thread?.id ?? "";
   const presets = open ? resolveSnoozePresets(new Date()) : [];
+  const closePane = useClosePane();
+  const closeArmed = closePane.armed(threadId);
   return (
     <Menu
       open={open}
@@ -92,6 +96,18 @@ export function ThreadRowMenu({
           <MenuItem variant="destructive" className={TOUCH_ITEM} onClick={() => run({ type: "thread.archive", threadId })}>
             Archive
           </MenuItem>
+          {thread.paneAlive === true ? (
+            // The first tap arms and keeps the menu open; the second closes the pane and the menu.
+            <MenuItem
+              variant="destructive"
+              className={TOUCH_ITEM}
+              closeOnClick={closeArmed}
+              data-menu-action="close-pane"
+              onClick={() => closePane.request(threadId)}
+            >
+              {closeArmed ? "Tap again to close pane" : "Close pane"}
+            </MenuItem>
+          ) : null}
         </MenuPopup>
       ) : null}
     </Menu>

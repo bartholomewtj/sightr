@@ -158,6 +158,11 @@ export interface Thread {
    * a steer would cancel the compaction, so follow-ups queue while this is true. Absent = false.
    */
   compacting?: boolean;
+  /**
+   * Herdr's live snapshot currently lists this thread's pane. False (or absent on an older snapshot)
+   * means the pane is gone; an archived thread the operator archived keeps `true` while its pane runs.
+   */
+  paneAlive?: boolean;
 }
 
 /**
@@ -645,6 +650,8 @@ export type Command =
   | (CommandBase & { type: "thread.unarchive"; threadId: string })
   /** Forget an archived thread: the thread and its runs, items, requests and queue (T3's name). */
   | (CommandBase & { type: "thread.delete"; threadId: string })
+  /** Close the thread's Herdr pane (structural: no keystrokes). An active thread is archived as `pane-closed`. */
+  | (CommandBase & { type: "thread.pane.close"; threadId: string })
   | (CommandBase & { type: "thread.markRead"; threadId: string })
   | (CommandBase & { type: "thread.markUnread"; threadId: string })
   | (CommandBase & {
@@ -690,6 +697,7 @@ export const COMMAND_TYPES = [
   "thread.archive",
   "thread.unarchive",
   "thread.delete",
+  "thread.pane.close",
   "thread.markRead",
   "thread.markUnread",
   "message.dispatch",
@@ -724,6 +732,7 @@ export type ThreadPatch = Partial<
     | "model"
     | "contextUsage"
     | "compacting"
+    | "paneAlive"
   >
 > & {
   /** `null` clears it. */

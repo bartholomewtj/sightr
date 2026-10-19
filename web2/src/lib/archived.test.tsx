@@ -22,6 +22,7 @@ const THREADS = [
   archived("a2", { title: "Write docs", projectId: "w2", archivedAt: NOW - 2 * DAY }),
   archived("a3", { title: "Parser tests", projectId: "w1", archivedAt: NOW - 60 * DAY, harness: "pi" }),
   archived("a4", { title: "Still open", projectId: "w2", archiveReason: "user", archivedAt: NOW - 90 * DAY }),
+  archived("a5", { title: "Pane runs", projectId: "w2", archiveReason: "user", archivedAt: NOW - 3 * DAY, paneAlive: true }),
   thread("live", { title: "Active one" }),
 ];
 const PROJECTS = [project("w1", { label: "Sightr" }), project("w2", { label: "Docs" })];
@@ -50,6 +51,7 @@ async function open() {
   frame(() => shell().emit("snapshot", shellSnapshot(1, THREADS, PROJECTS)));
 }
 
+const closes = () => posts.filter((p) => p.type === "thread.pane.close").map((p) => p.threadId);
 const deletes = () => posts.filter((p) => p.type === "thread.delete").map((p) => p.threadId);
 
 describe("/archived", () => {
@@ -95,6 +97,33 @@ describe("/archived", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete Still open" }));
     fireEvent.click(screen.getByRole("button", { name: "Tap again to delete Still open" }));
     expect(await screen.findByText(/pane is still open/)).toBeInTheDocument();
+  });
+
+  it("badges an archived thread whose pane is still open, and counts them", async () => {
+    await open();
+    expect(screen.getByText("● Pane open in Herdr")).toBeInTheDocument();
+    expect(screen.getAllByText("Pane closed").length).toBeGreaterThan(0);
+    expect(screen.getByText(/1 archived thread has an open pane running in Herdr/)).toBeInTheDocument();
+  });
+
+  it("Close pane takes two taps, then posts thread.pane.close", async () => {
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: "Close pane of Pane runs" }));
+    expect(closes()).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Tap again to close the pane of Pane runs" }));
+    await waitFor(() => expect(closes()).toEqual(["a5"]));
+    expect(deletes()).toEqual([]);
+  });
+
+  it("smart delete: an open pane arms 'Close pane & delete?', then closes the pane and deletes the thread", async () => {
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: "Delete Pane runs" }));
+    expect(screen.getByText("Close pane & delete?")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Tap again to close the pane and delete Pane runs" }));
+    await waitFor(() => expect(deletes()).toEqual(["a5"]));
+    expect(closes()).toEqual(["a5"]);
+    expect(posts.map((p) => p.type)).toEqual(["thread.pane.close", "thread.delete"]);
+    expect(await screen.findByText("Deleted Pane runs.")).toBeInTheDocument();
   });
 
   it("Clear older than N days: counts, confirms, deletes each, and reports the ones kept", async () => {

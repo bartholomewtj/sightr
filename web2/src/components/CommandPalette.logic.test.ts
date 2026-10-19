@@ -10,6 +10,7 @@ import {
   buildCommandPaletteRows,
   buildFileItems,
   buildNeedsYouItems,
+  buildOpenPaneItems,
   buildProjectActionItems,
   buildRootGroups,
   buildThreadActionItems,
@@ -67,6 +68,26 @@ describe("palette threads", () => {
     expect(isSubsequence("bx", "build")).toBe(false);
     const groups = filterCommandPaletteGroups({ activeGroups: [], query: "fxbld", projectSearchItems: [], threadSearchItems: buildThreadActionItems(input) });
     expect(values(groups[0]!.items)).toEqual(["thread:a"]);
+  });
+});
+
+describe("palette open Herdr panes", () => {
+  const withPanes: Thread[] = [
+    thread("a", { title: "Fix the build", lastActivityAt: 10, paneAlive: true }),
+    thread("b", { title: "Write docs", lastActivityAt: 50, paneAlive: false }),
+    thread("d", { title: "Old work", lastActivityAt: 90, shelf: "archived", archiveReason: "user", paneAlive: true }),
+    thread("e", { title: "No flag", lastActivityAt: 20 }),
+  ];
+  const panes = { ...input, threads: withPanes };
+
+  it("lists threads whose pane is open, archived ones included, newest first", () => {
+    expect(values(buildOpenPaneItems(panes))).toEqual(["thread:d", "thread:a"]);
+    expect(buildOpenPaneItems(panes)[0]!.description).toContain("Archived");
+  });
+
+  it("filters by every word of the query", () => {
+    expect(values(buildOpenPaneItems(panes, "old"))).toEqual(["thread:d"]);
+    expect(buildOpenPaneItems(panes, "nothing")).toEqual([]);
   });
 });
 

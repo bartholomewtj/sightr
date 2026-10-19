@@ -703,6 +703,7 @@ describe("herd ingest and a starting thread", () => {
     status: "starting",
     title: "claude-2",
     capabilities: capabilitiesFor("claude", journals),
+    paneAlive: true,
     updatedAt: T0,
   });
   const projection = { projects: [project("w1", { label: "demo", order: 1, number: 1 })], threads: [starting], openRuns: [], pendingRequests: [] };

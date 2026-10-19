@@ -85,6 +85,7 @@ function liveThread(id: string, paneId: string, over: Partial<ServerThread> = {}
     title: "claude · demo",
     capabilities: capabilitiesFor("claude", journals),
     lastActivityAt: 1_000,
+    paneAlive: true,
     ...over,
   });
 }
@@ -130,6 +131,7 @@ describe("diffHerd", () => {
       createdAt: 5_000,
       updatedAt: 5_000,
       capabilities: capabilitiesFor("claude", journals),
+      paneAlive: true,
     });
     expect(created.capabilities.canSwitchPermissionMode).toBe(true);
   });
@@ -303,7 +305,7 @@ describe("adoption", () => {
   test("a thread with a different non-empty terminal is not adopted", () => {
     const projection = { ...EMPTY, projects: [demo], threads: [liveThread("t1", "w1:p1", { terminalId: "old" })] };
     const { events } = diffHerd(snap([agent("w1:p1")]), projection, ctx());
-    expect(types(events)).toEqual(["thread.archived", "thread.created"]);
+    expect(types(events)).toEqual(["thread.archived", "thread.updated", "thread.created"]);
     expect(events[0]).toMatchObject({ threadId: "t1", payload: { reason: "terminal-replaced" } });
   });
 
@@ -321,8 +323,8 @@ describe("identity", () => {
   test("same pane with a new terminal archives the old thread and creates a new one", () => {
     const projection = { ...EMPTY, projects: [demo], threads: [liveThread("t1", "w1:p1")] };
     const { events } = diffHerd(snap([agent("w1:p1", { terminalId: "term-2" })]), projection, ctx());
-    expect(types(events)).toEqual(["thread.archived", "thread.created"]);
-    expect((events[1] as Extract<EventDraft, { type: "thread.created" }>).payload.thread).toMatchObject({
+    expect(types(events)).toEqual(["thread.archived", "thread.updated", "thread.created"]);
+    expect((events[2] as Extract<EventDraft, { type: "thread.created" }>).payload.thread).toMatchObject({
       paneId: "w1:p1",
       terminalId: "term-2",
     });
@@ -354,6 +356,40 @@ describe("identity", () => {
     };
     const { events } = diffHerd(snap([agent("w1:p1")]), projection, ctx());
     expect(events).toEqual([{ type: "thread.shelf-changed", threadId: "t1", payload: { shelf: "active", at: 5_000 } }]);
+  });
+});
+
+describe("paneAlive", () => {
+  test("a live thread without the flag is marked open", () => {
+    const projection = { ...EMPTY, projects: [demo], threads: [liveThread("t1", "w1:p1", { paneAlive: undefined })] };
+    const { events } = diffHerd(snap([agent("w1:p1")]), projection, ctx());
+    expect(updated(events)).toEqual({ patch: { paneAlive: true }, at: 5_000 });
+  });
+
+  test("a user-archived thread is marked closed when its pane drops off the snapshot", () => {
+    const archived = liveThread("t1", "w1:p1", { shelf: "archived", archiveReason: "user", archivedAt: 1 });
+    const projection = { ...EMPTY, projects: [demo], threads: [archived] };
+    const { events } = diffHerd(snap([]), projection, ctx());
+    expect(events.filter((e) => e.type === "thread.updated")).toEqual([
+      { type: "thread.updated", threadId: "t1", payload: { patch: { paneAlive: false }, at: 5_000 } },
+    ]);
+    expect(events.some((e) => e.type === "thread.archived")).toBe(false);
+    // Already closed: nothing more to say.
+    const again = diffHerd(snap([]), { ...projection, threads: [{ ...archived, paneAlive: false }] }, ctx());
+    expect(events.length - again.events.length).toBe(1);
+  });
+
+  test("a user-archived thread whose pane is still listed stays open", () => {
+    const archived = liveThread("t1", "w1:p1", { shelf: "archived", archiveReason: "user", archivedAt: 1 });
+    const { events } = diffHerd(snap([agent("w1:p1")]), { ...EMPTY, projects: [demo], threads: [archived] }, ctx());
+    expect(events.filter((e) => e.type === "thread.updated")).toEqual([]);
+  });
+
+  test("a pane that closes under an unarchived thread archives it as closed", () => {
+    const projection = { ...EMPTY, projects: [demo], threads: [liveThread("t1", "w1:p1")] };
+    const { events } = diffHerd(snap([]), projection, ctx({ missingThreads: new Set(["t1"]) }));
+    expect(types(events).filter((t) => t.startsWith("thread."))).toEqual(["thread.archived", "thread.updated"]);
+    expect(updated(events)).toEqual({ patch: { paneAlive: false }, at: 5_000 });
   });
 });
 
@@ -556,7 +592,7 @@ describe("ingestor", () => {
     expect(store.getThread(t1.id)?.shelf).toBe("active");
 
     const events = poll(snap([agent("w1:p2")]));
-    expect(types(events)).toEqual(["project.upserted", "run.ended", "runtime-request.updated", "turn-item.updated", "thread.archived"]);
+    expect(types(events)).toEqual(["project.upserted", "run.ended", "runtime-request.updated", "turn-item.updated", "thread.archived", "thread.updated"]);
     expect(store.getThread(t1.id)).toMatchObject({ shelf: "archived", archiveReason: "pane-closed" });
     expect(store.openRuns()).toEqual([]);
     expect(store.pendingRequests()).toEqual([]);

@@ -250,6 +250,13 @@ export const MIGRATIONS: readonly Migration[] = [
       db.run(`ALTER TABLE projects ADD COLUMN checkpoints INTEGER`);
     },
   },
+  {
+    // Thread.paneAlive: herdr lists the pane (1), no longer does (0), or the ingest has not said (NULL).
+    version: 8,
+    up(db) {
+      db.run(`ALTER TABLE threads ADD COLUMN pane_alive INTEGER`);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
@@ -341,6 +348,7 @@ interface ThreadRow {
   model: string | null;
   context_usage_json: string | null;
   compacting: number | null;
+  pane_alive: number | null;
 }
 
 interface RunRow {
@@ -434,6 +442,7 @@ function threadFromRow(r: ThreadRow): ServerThread {
   if (r.model !== null) t.model = r.model;
   if (r.context_usage_json !== null) t.contextUsage = JSON.parse(r.context_usage_json) as Thread["contextUsage"] & object;
   if (r.compacting === 1) t.compacting = true;
+  if (r.pane_alive !== null) t.paneAlive = r.pane_alive === 1;
   return t;
 }
 
@@ -464,6 +473,7 @@ function threadParams(t: ServerThread) {
     model: t.model ?? null,
     context_usage_json: t.contextUsage ? JSON.stringify(t.contextUsage) : null,
     compacting: t.compacting === true ? 1 : null,
+    pane_alive: t.paneAlive === undefined ? null : t.paneAlive ? 1 : 0,
   };
 }
 

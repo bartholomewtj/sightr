@@ -90,3 +90,23 @@ export function deleteRefusalText(reason: string): string {
   if (reason === "not-archived") return "It is no longer archived.";
   return `Could not delete: ${reason}`;
 }
+
+/** Threads whose Herdr pane is still listed (archived or not). */
+export function paneOpenThreads(threads: Iterable<Thread>): Thread[] {
+  return [...threads].filter((t) => t.paneAlive === true);
+}
+
+/** What one `thread.pane.close` came to. `gone`: the bridge no longer has the thread. */
+export type CloseOutcome = { kind: "closed" } | { kind: "gone" } | { kind: "refused"; reason: string };
+
+/** Close a thread's Herdr pane on the bridge (an active thread is archived as `pane-closed`). Never throws. */
+export async function closeThreadPane(threadId: string): Promise<CloseOutcome> {
+  try {
+    await sendCommand("thread.pane.close", { threadId }, commandDeps());
+    return { kind: "closed" };
+  } catch (err) {
+    if (err instanceof V2CommandError && err.status === 404) return { kind: "gone" };
+    if (err instanceof V2CommandError) return { kind: "refused", reason: err.body?.error ?? err.code };
+    return { kind: "refused", reason: "the bridge did not answer" };
+  }
+}

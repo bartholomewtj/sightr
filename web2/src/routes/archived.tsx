@@ -9,16 +9,19 @@ import { Button } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
 import { BackToThreads } from "@/components/shell/BackToThreads";
 import { AgentIcon } from "@/components/AgentIcon";
+import { closePaneRefusalText } from "@/hooks/useClosePane";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import {
   ARCHIVED_PAGE,
   archivedOlderThan,
   archivedThreads,
   canUnarchive,
+  closeThreadPane,
   DEFAULT_CLEAR_DAYS,
   deleteArchivedThread,
   deleteRefusalText,
   groupArchived,
+  paneOpenThreads,
   searchArchived,
 } from "@/lib/archived";
 import { performThreadCommand, useSidebarThreads } from "@/state/sidebar";
@@ -35,6 +38,10 @@ const REASON: Record<ArchiveReason, string> = {
   "closed-while-down": "Closed while the bridge was down",
   "spawn-failed": "Spawn failed",
 };
+
+/** After Close pane & delete, how long and how often to retry a delete the herd view still refuses. */
+const PANE_SETTLE_MS = 600;
+const PANE_SETTLE_TRIES = 4;
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -58,6 +65,7 @@ function Archived() {
   const list = useMemo(() => searchArchived(all, query, projects), [all, query, projects]);
   const groups = useMemo(() => groupArchived(list.slice(0, shown), projects), [list, shown, projects]);
   const dayCount = Number.parseInt(days, 10);
+  const open = useMemo(() => paneOpenThreads(all), [all]);
   const stale = useMemo(
     () => (Number.isFinite(dayCount) && dayCount >= 0 ? archivedOlderThan(all, dayCount, Date.now()) : []),
     [all, dayCount],
@@ -79,10 +87,40 @@ function Archived() {
     return { deleted, kept };
   };
 
+  /** Close one archived thread's pane. Returns whether it is closed (or already gone). */
+  const closeOne = async (t: Thread, { quiet = false }: { quiet?: boolean } = {}): Promise<boolean> => {
+    setBusy((b) => new Set([...b, t.id]));
+    try {
+      const out = await closeThreadPane(t.id);
+      if (out.kind === "refused") {
+        setStatus(closePaneRefusalText(out.reason));
+        return false;
+      }
+      if (!quiet) setStatus(`Closed the pane of ${t.title}.`);
+      return true;
+    } finally {
+      setBusy((b) => new Set([...b].filter((id) => id !== t.id)));
+    }
+  };
+
+  const closeRequest = (t: Thread) => {
+    if (!confirm(`close:${t.id}`)) return;
+    setStatus(null);
+    void closeOne(t);
+  };
+
   const deleteOne = async (t: Thread) => {
     if (!confirm(`delete:${t.id}`)) return;
     setStatus(null);
-    const { kept } = await remove([t]);
+    // Smart delete: an open pane would only bring the thread back on the next herd poll, so close it first.
+    const closing = t.paneAlive === true;
+    if (closing && !(await closeOne(t, { quiet: true }))) return;
+    let { kept } = await remove([t]);
+    // The bridge's herd view may lag the close by a poll: give it a moment before reporting "pane open".
+    for (let tries = 0; closing && kept[0] === "pane-open" && tries < PANE_SETTLE_TRIES; tries++) {
+      await new Promise((resolve) => setTimeout(resolve, PANE_SETTLE_MS));
+      ({ kept } = await remove([t]));
+    }
     setStatus(kept.length > 0 ? deleteRefusalText(kept[0]!) : `Deleted ${t.title}.`);
   };
 
@@ -145,6 +183,11 @@ function Archived() {
               {pending === "clear" ? `Delete ${plural(stale.length, "thread")}? Tap again` : `Clear ${stale.length}`}
             </Button>
           </div>
+          {open.length > 0 ? (
+            <p className="text-sm text-amber-500" data-open-panes="">
+              {plural(open.length, "archived thread")} {open.length === 1 ? "has an open pane" : "have open panes"} running in Herdr.
+            </p>
+          ) : null}
           {status ? (
             <p role="status" className="text-sm text-muted-foreground">
               {status}
@@ -160,6 +203,8 @@ function Archived() {
               <ul aria-label={`Archived threads in ${g.label}`} className="divide-y rounded-lg border">
                 {g.threads.map((t) => {
                   const armed = pending === `delete:${t.id}`;
+                  const closeArmed = pending === `close:${t.id}`;
+                  const paneOpen = t.paneAlive === true;
                   return (
                     <li key={t.id} className="flex items-center gap-3 px-4 py-2 pointer-coarse:min-h-14">
                       <AgentIcon agent={t.harness} className="size-5" />
@@ -170,6 +215,13 @@ function Archived() {
                             .filter(Boolean)
                             .join(" · ")}
                         </span>
+                        {paneOpen ? (
+                          <span className="mt-0.5 inline-block rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs text-amber-500">
+                            ● Pane open in Herdr
+                          </span>
+                        ) : (
+                          <span className="block text-2xs text-muted-foreground">Pane closed</span>
+                        )}
                       </Link>
                       {canUnarchive(t.archiveReason) ? (
                         <Button
@@ -181,16 +233,30 @@ function Archived() {
                           Unarchive
                         </Button>
                       ) : null}
+                      {paneOpen ? (
+                        <Button
+                          size="xs"
+                          variant={closeArmed ? "destructive" : "outline"}
+                          disabled={busy.has(t.id)}
+                          aria-label={closeArmed ? `Tap again to close the pane of ${t.title}` : `Close pane of ${t.title}`}
+                          className="pointer-coarse:min-h-11"
+                          onClick={() => closeRequest(t)}
+                        >
+                          {closeArmed ? "Tap again to close" : "Close pane"}
+                        </Button>
+                      ) : null}
                       <Button
                         size="xs"
                         variant={armed ? "destructive" : "ghost"}
                         disabled={busy.has(t.id)}
-                        aria-label={armed ? `Tap again to delete ${t.title}` : `Delete ${t.title}`}
+                        aria-label={
+                          armed ? (paneOpen ? `Tap again to close the pane and delete ${t.title}` : `Tap again to delete ${t.title}`) : `Delete ${t.title}`
+                        }
                         onClick={() => void deleteOne(t)}
                         className={cn("pointer-coarse:min-h-11 pointer-coarse:min-w-11", !armed && "text-muted-foreground")}
                       >
                         <Trash2Icon className="size-3.5" aria-hidden="true" />
-                        {armed ? "Tap again" : null}
+                        {armed ? (paneOpen ? "Close pane & delete?" : "Tap again") : null}
                       </Button>
                     </li>
                   );

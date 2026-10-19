@@ -62,12 +62,15 @@ export function ThreadStatusDot({
   status,
   workingSince,
   showElapsed = true,
+  paneClosed = false,
   className,
 }: {
   status: ThreadStatus;
   /** When the current run started (epoch ms); the working dot shows the time since. */
   workingSince?: number | undefined;
   showElapsed?: boolean;
+  /** The thread's Herdr pane is gone: the ring reads inactive (dashed, faded) whatever the status was. */
+  paneClosed?: boolean;
   className?: string;
 }) {
   const reduced = usePrefersReducedMotion();
@@ -79,13 +82,18 @@ export function ThreadStatusDot({
     <span className={cn("inline-flex shrink-0 items-center gap-1.5", className)}>
       <span
         role="img"
-        aria-label={statusLabel(status, elapsedText)}
+        aria-label={paneClosed ? "Pane closed" : statusLabel(status, elapsedText)}
         data-status={status}
+        data-pane={paneClosed ? "closed" : undefined}
         className="inline-flex size-3.5 items-center justify-center"
       >
         <span
           data-slot="status-dot"
-          className={cn("rounded-full", STATUS_DOT_CLASS[status], pulse && "animate-status-pulse")}
+          className={cn(
+            "rounded-full",
+            paneClosed ? "size-2 border border-dashed border-house-muted bg-transparent opacity-60" : STATUS_DOT_CLASS[status],
+            pulse && !paneClosed && "animate-status-pulse",
+          )}
         />
       </span>
       {elapsedText !== null && showElapsed ? (

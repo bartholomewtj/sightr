@@ -236,7 +236,7 @@ export function SidebarThreadRow({
               {projectLabel ? <span className="block truncate text-2xs text-muted-foreground">{projectLabel}</span> : null}
             </span>
             {thread.unreadDone ? <span role="img" aria-label="Unread" className="size-1.5 shrink-0 rounded-full bg-you" /> : null}
-            <ThreadStatusDot status={status} workingSince={workingSince} />
+            <ThreadStatusDot status={status} workingSince={workingSince} paneClosed={thread.shelf === "settled" && thread.paneAlive === false} />
             {thread.shelf === "snoozed" && thread.snoozedUntil !== undefined ? (
               <span className="shrink-0 font-mono text-2xs text-muted-foreground" title="Wakes in">
                 {snoozeWakeLabel(thread.snoozedUntil, Date.now())}
