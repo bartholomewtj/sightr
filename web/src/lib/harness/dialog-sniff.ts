@@ -141,3 +141,28 @@ export function isCompactingScreen(agent: string, text: string): boolean {
   for (let i = end; i >= 0 && end - i < COMPACTING_TAIL_ROWS; i--) if (re.test(rows[i]!)) return true;
   return false;
 }
+
+const WAITING_BACKGROUND: Record<string, RegExp> = {
+  // The row starts with Claude's spinner glyph (it cycles); a transcript line that only quotes the phrase does not.
+  claude: /^\s*[·✢✳✶✻✽*]\s*Waiting for [1-9]\d* background agents? to finish/i,
+};
+
+/** True when `agent` has a background-agents status row this file knows. */
+export function detectsBackgroundAgents(agent: string): boolean {
+  return Object.hasOwn(WAITING_BACKGROUND, agent);
+}
+
+/**
+ * True when `text` (a pane read, plain or ANSI) shows `agent`'s waiting-for-background-agents row near
+ * its tail. Only the last rows count, like `isCompactingScreen`: transcript text above that quotes the
+ * phrase is not the status row, and a false match would let a message go in while the agent works.
+ */
+export function isWaitingBackgroundScreen(agent: string, text: string): boolean {
+  if (!Object.hasOwn(WAITING_BACKGROUND, agent) || text.length === 0) return false;
+  const re = WAITING_BACKGROUND[agent]!;
+  const rows = text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").split(/\r?\n/);
+  let end = rows.length - 1;
+  while (end >= 0 && rows[end]!.trim() === "") end--;
+  for (let i = end; i >= 0 && end - i < COMPACTING_TAIL_ROWS; i--) if (re.test(rows[i]!)) return true;
+  return false;
+}

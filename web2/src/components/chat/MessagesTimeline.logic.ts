@@ -124,6 +124,26 @@ export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string
     const thought = entry.detail?.trim().replace(/\s+/g, " ");
     return thought || entry.label;
   }
+  if (entry.itemType === "approval_request") {
+    const item = entry.projectedItem ?? entry.structuredPayload;
+    if (item?.type === "approval_request") {
+      const s = item.subject;
+      if (s) {
+        const title = s.title?.trim();
+        const detail = s.detail?.trim();
+        const target = s.target?.trim();
+        if (detail) {
+          return title ? `${title} · ${detail}` : detail;
+        }
+        if (target) {
+          const preview = commandPreview(target);
+          return title ? `${title} · ${preview}` : preview;
+        }
+        if (title) return title;
+      }
+    }
+    return entry.label?.trim() || "Approval requested";
+  }
   const toolPresentation = resolveWorkEntryToolPresentation(entry);
   if (toolPresentation) return toolPresentation.displayName;
   if (entry.command?.trim()) return commandDisplayText(entry.command);

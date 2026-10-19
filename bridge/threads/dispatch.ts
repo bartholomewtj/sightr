@@ -11,7 +11,7 @@ import { paneKey, PaneBusyError, type PaneQueue } from "../pane-queue.ts";
 import { sendKeysPaced, type SleepFn } from "../pane-write-routes.ts";
 import { failureText } from "../responses.ts";
 import type { StateEngine } from "../state-engine.ts";
-import { detectsCompaction, isCompactingScreen } from "../../web/src/lib/harness/dialog-sniff.ts";
+import { detectsBackgroundAgents, detectsCompaction, isCompactingScreen, isWaitingBackgroundScreen } from "../../web/src/lib/harness/dialog-sniff.ts";
 import { COMPACTION_READ_LINES } from "./compaction-watch.ts";
 import type { EventDraft, ServerThread } from "./events.ts";
 import type { JournalIngestor } from "./journal-ingest.ts";
@@ -295,6 +295,19 @@ export function createDispatcher(deps: DispatchDeps): Dispatcher {
     }
   };
 
+  /** The harness is waiting for background agents with its prompt box open (read fresh off the screen). */
+  const waitingBackgroundNow = async (thread: ServerThread): Promise<boolean> => {
+    if (!detectsBackgroundAgents(thread.harness) || typeof herdr.readPane !== "function") return false;
+    try {
+      const read = await herdr.readPane(thread.paneId, "visible", COMPACTION_READ_LINES, "text");
+      if (!isWaitingBackgroundScreen(thread.harness, read.text)) return false;
+      const target = { paneId: thread.paneId, ...(thread.terminalId ? { terminalId: thread.terminalId } : {}) };
+      return (await sender.composerReady(target)) === true;
+    } catch {
+      return false;
+    }
+  };
+
   /**
    * One press of the thread's interrupt keys, in the pane's queue turn; marks the open run. With
    * `steering`, a run found to have started from `/compact` by then is left alone (no key).
@@ -373,6 +386,53 @@ export function createDispatcher(deps: DispatchDeps): Dispatcher {
   const runSteer = async (threadId: string, rowId: string, press: boolean): Promise<void> => {
     const thread = store.getThread(threadId);
     if (!thread) return;
+
+    const deliverSteer = async (t: ServerThread, r: QueuedMessage): Promise<void> => {
+      const finish = drainer.beginSend(threadId);
+      let result: DeliverResult;
+      try {
+        result = await deliver(t, r.text, r.attachments, "steer");
+      } catch (err) {
+        result = { kind: "failed", reason: "error", message: (err as Error).message };
+      }
+      finish(result.kind === "sent");
+      switch (result.kind) {
+        case "sent": {
+          const rest = store.listQueued(threadId).filter((q) => q.id !== rowId);
+          store.append([...result.events, queueEvent(threadId, rest, "sent")]);
+          // The rows behind it drain after the steered run ends.
+          return;
+        }
+        case "delivered": {
+          const rest = store.listQueued(threadId).filter((q) => q.id !== rowId);
+          store.append([
+            queueEvent(threadId, rest),
+            {
+              type: "dispatch.failed",
+              threadId,
+              payload: { reason: "error", message: result.message, textDelivered: true, queuedId: rowId },
+            },
+          ]);
+          return;
+        }
+        case "skipped":
+          holdSteer(threadId, rowId, result.reason);
+          return;
+        case "failed":
+          holdSteer(threadId, rowId, result.reason, result.message);
+          return;
+      }
+    };
+
+    // If waiting for background agents with prompt box open, deliver directly:
+    if (await waitingBackgroundNow(thread)) {
+      const fresh = store.getThread(threadId);
+      const row = store.getQueued(rowId);
+      if (!fresh || fresh.shelf === "archived" || !row || row.state !== "sending") return;
+      await deliverSteer(fresh, row);
+      return;
+    }
+
     // A Stop was just pressed: the run is already stopping, and a second key would do something else.
     const pressed: InterruptResult = press ? await sendInterrupt(thread, { steering: true }) : { ok: true };
     if (!pressed.ok) {
@@ -384,51 +444,25 @@ export function createDispatcher(deps: DispatchDeps): Dispatcher {
       holdSteer(threadId, rowId, "interrupt-failed", o.ok ? undefined : o.error);
       return;
     }
+
     // The wait holds no pane-queue turn: keys taps and other panes' writes go on meanwhile.
-    const waited = await drainer.waitSettled(threadId, steerWaitMs);
+    let waited = await drainer.waitSettled(threadId, steerWaitMs);
     if (waited === "gone") return; // archived: the drainer holds every row with `pane-closed`
+
     if (waited === "timeout") {
-      holdSteer(threadId, rowId, "interrupt-timeout");
-      return;
+      if (await waitingBackgroundNow(thread)) {
+        waited = "settled";
+      } else {
+        holdSteer(threadId, rowId, "interrupt-timeout");
+        return;
+      }
     }
+
     const fresh = store.getThread(threadId);
     const row = store.getQueued(rowId);
     if (!fresh || fresh.shelf === "archived" || !row || row.state !== "sending") return;
 
-    const finish = drainer.beginSend(threadId);
-    let result: DeliverResult;
-    try {
-      result = await deliver(fresh, row.text, row.attachments, "steer");
-    } catch (err) {
-      result = { kind: "failed", reason: "error", message: (err as Error).message };
-    }
-    finish(result.kind === "sent");
-    switch (result.kind) {
-      case "sent": {
-        const rest = store.listQueued(threadId).filter((r) => r.id !== rowId);
-        store.append([...result.events, queueEvent(threadId, rest, "sent")]);
-        // The rows behind it drain after the steered run ends.
-        return;
-      }
-      case "delivered": {
-        const rest = store.listQueued(threadId).filter((r) => r.id !== rowId);
-        store.append([
-          queueEvent(threadId, rest),
-          {
-            type: "dispatch.failed",
-            threadId,
-            payload: { reason: "error", message: result.message, textDelivered: true, queuedId: rowId },
-          },
-        ]);
-        return;
-      }
-      case "skipped":
-        holdSteer(threadId, rowId, result.reason);
-        return;
-      case "failed":
-        holdSteer(threadId, rowId, result.reason, result.message);
-        return;
-    }
+    await deliverSteer(fresh, row);
   };
 
   // ── Handlers ──
@@ -455,7 +489,10 @@ export function createDispatcher(deps: DispatchDeps): Dispatcher {
 
     const startNow = async (): Promise<EffectOutcome> => {
       if (blocked) return conflict("needs-response");
-      if (!resting) return conflict("thread-busy");
+      if (!resting) {
+        if (await waitingBackgroundNow(thread)) return startPath(thread, c.text, attachments, ctx);
+        return conflict("thread-busy");
+      }
       return startPath(thread, c.text, attachments, ctx);
     };
 
@@ -491,6 +528,11 @@ export function createDispatcher(deps: DispatchDeps): Dispatcher {
     // A run started from `/compact` cannot take steering: the interrupt key would cancel the
     // compaction. The follow-up waits in the queue like any other (T3 #20184).
     if (openRunIsMaintenance(store, thread.id)) return enqueue();
+
+    // If waiting for background agents with prompt box open, deliver directly:
+    if (await waitingBackgroundNow(thread)) {
+      return startPath(thread, c.text, attachments, ctx);
+    }
     const stopping = pressedRecently(thread.id);
     const refusal = stopping ? null : interruptRefusal(thread);
     if (refusal) return refusal;

@@ -359,8 +359,9 @@ function projectedWorkEntry(item: TurnItem, reasoningTime: ReasoningTime | undef
     case "approval_request":
       return {
         ...common,
-        label: title ?? "Approval requested",
-        detail: item.prompt ?? item.requestKind,
+        label: title ?? item.subject?.title ?? "Approval requested",
+        detail: item.subject?.target ?? item.subject?.detail ?? item.prompt ?? item.requestKind,
+        toolTitle: item.subject?.title ?? title ?? "Approval",
         toolData: item,
       };
     case "user_input_request":
