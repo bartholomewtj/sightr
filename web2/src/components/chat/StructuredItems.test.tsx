@@ -230,4 +230,46 @@ describe("structured items in the timeline", () => {
     expect(args).toHaveTextContent("count: 3");
     expect(args.querySelector("dd")?.className).toContain("wrap-anywhere");
   });
+
+  it("renders an approval request with subject title + detail and rich expandable details", async () => {
+    const approval = item("req:0", {
+      type: "approval_request",
+      requestId: "r1",
+      requestKind: "permission",
+      prompt: "Do you want to proceed?",
+      options: [{ label: "Yes" }, { label: "No" }],
+      subject: {
+        title: "Run command",
+        target: "cd C:/bench && gh pr merge 1144",
+        detail: "Record the review, merge PR 1144, remove the 7e worktree",
+      },
+    });
+    await show([user("u:0", "go", inRun), approval, assistant("b:0", "ok", inRun)], [live]);
+    // Row header displays subject, not "Do you want to proceed?"
+    expect(screen.getByText("Run command · Record the review, merge PR 1144, remove the 7e worktree")).toBeInTheDocument();
+    expect(screen.queryByText("Do you want to proceed?")).toBeNull();
+
+    // Click row to open dropdown
+    const row = document.querySelector('[data-item-type="approval_request"]') as HTMLElement;
+    fireEvent.click(row);
+    await settle();
+
+    // Inside dropdown: target command and prompt are displayed
+    expect(screen.getByText("cd C:/bench && gh pr merge 1144")).toBeInTheDocument();
+    expect(screen.getByText("Do you want to proceed?")).toBeInTheDocument();
+  });
+
+  it("does not show dropdown toggle when approval request has no additional details", async () => {
+    const approval = item("req:1", {
+      type: "approval_request",
+      title: "Approval requested",
+      requestId: "r2",
+      requestKind: "permission",
+      prompt: "Approval requested",
+    });
+    await show([user("u:0", "go", inRun), approval, assistant("b:0", "ok", inRun)], [live]);
+    const row = document.querySelector('[data-item-type="approval_request"]') as HTMLElement;
+    // Row should not be an expandable button
+    expect(row.getAttribute("role")).not.toBe("button");
+  });
 });

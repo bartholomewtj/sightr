@@ -123,8 +123,17 @@ export function toolItemHasDetail(item: TurnItem, label: string): boolean {
       return (item.results?.length ?? 0) > 0 || filled(item.errorText);
     case "todo_list":
       return item.steps.length > 0;
-    case "approval_request":
-      return filled(item.prompt);
+    case "approval_request": {
+      const subjectDetail = item.subject?.detail?.trim();
+      const prompt = item.prompt?.trim();
+      const target = item.subject?.target?.trim();
+      const normLabel = label.trim();
+      return Boolean(
+        target ||
+        (subjectDetail && subjectDetail !== normLabel) ||
+        (prompt && prompt !== normLabel),
+      );
+    }
     case "user_input_request":
       return item.questions.length > 0;
     case "error":
@@ -335,7 +344,31 @@ export function ToolItemDetail({ item }: { item: TurnItem }) {
         </ul>
       ) : null}
 
-      {item.type === "approval_request" && item.prompt ? <OutputBlock text={item.prompt} label="Prompt" /> : null}
+      {item.type === "approval_request" ? (
+        <div className="space-y-2">
+          {item.subject?.title ? (
+            <div className="font-medium text-foreground/90">{item.subject.title}</div>
+          ) : null}
+          {item.subject?.target ? (
+            <OutputBlock
+              text={item.subject.target}
+              label={item.subject.title === "Run command" ? "Command" : "Target"}
+              copy
+            />
+          ) : item.prompt ? (
+            <OutputBlock text={item.prompt} label="Prompt" />
+          ) : null}
+          {item.subject?.detail && item.subject.detail.trim() !== item.subject.title?.trim() ? (
+            <p className="text-xs text-muted-foreground">{item.subject.detail}</p>
+          ) : null}
+          {item.prompt &&
+          item.subject?.target &&
+          item.prompt.trim() !== item.subject.target.trim() &&
+          item.prompt.trim() !== item.subject.detail?.trim() ? (
+            <p className="text-xs text-muted-foreground italic">{item.prompt}</p>
+          ) : null}
+        </div>
+      ) : null}
       {item.type === "user_input_request" ? (
         <OutputBlock text={item.questions.map((question) => question.question).join("\n\n")} label="Questions" />
       ) : null}

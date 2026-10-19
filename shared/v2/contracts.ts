@@ -483,6 +483,7 @@ export type TurnItem =
       requestKind: ProviderRequestKind | RuntimeRequestKind;
       prompt?: string;
       options?: ApprovalOption[];
+      subject?: RuntimeRequestSubject;
     })
   | (TurnItemBase & { type: "user_input_request"; requestId: string; questions: UserInputQuestion[] })
   /** T3's `run_interrupt_result`: the harness recorded that the run was stopped (Claude's interrupt marker). */

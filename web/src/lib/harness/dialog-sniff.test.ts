@@ -4,7 +4,15 @@ import { describe, expect, it } from "vitest";
 
 import { lineText, parseLines } from "../blocks";
 import { hasParsedDialog } from "../dialog-presence";
-import { detectsCompaction, hasBlockingDialog, isCompactingScreen, sniffsDialogs, sniffsDialogsAt } from "./dialog-sniff";
+import {
+  detectsBackgroundAgents,
+  detectsCompaction,
+  hasBlockingDialog,
+  isCompactingScreen,
+  isWaitingBackgroundScreen,
+  sniffsDialogs,
+  sniffsDialogsAt,
+} from "./dialog-sniff";
 import { adapterFor } from "./registry";
 
 // The bridge reads a resting Cursor / Antigravity pane as plain text (`format: "text"`) from the
@@ -174,5 +182,39 @@ describe("isCompactingScreen", () => {
     expect(detectsCompaction("grok")).toBe(false);
     expect(isCompactingScreen("grok", live)).toBe(false);
     expect(isCompactingScreen("claude", "")).toBe(false);
+  });
+});
+
+describe("isWaitingBackgroundScreen", () => {
+  const BOX = "─────\n❯ \n─────\n  footer";
+
+  it("Claude's captured waiting screen (status row above the prompt box) is waiting", () => {
+    expect(detectsBackgroundAgents("claude")).toBe(true);
+    expect(isWaitingBackgroundScreen("claude", raw("claude--draft-footer-empty.txt"))).toBe(true);
+  });
+
+  it("the spinner glyph cycles and the count may be plural", () => {
+    for (const glyph of ["·", "✢", "✳", "✶", "✻", "✽", "*"]) {
+      expect(isWaitingBackgroundScreen("claude", `${glyph} Waiting for 3 background agents to finish\n${BOX}`)).toBe(true);
+    }
+  });
+
+  it("in the Claude corpus only the three draft-footer captures (a waiting row above the box) read as waiting", () => {
+    const waiting = fixtures("claude").filter((file) => isWaitingBackgroundScreen("claude", raw(file)));
+    expect(waiting).toEqual(["claude--draft-footer-empty.txt", "claude--draft-footer-single.txt", "claude--draft-footer-wrapped.txt"]);
+  });
+
+  it("a transcript line that only quotes the phrase does not count, near the tail or far above", () => {
+    expect(isWaitingBackgroundScreen("claude", `The log says: Waiting for 1 background agent to finish\n${BOX}`)).toBe(false);
+    expect(isWaitingBackgroundScreen("claude", `> Waiting for 1 background agent to finish\n${BOX}`)).toBe(false);
+    const far = ["✻ Waiting for 1 background agent to finish", ...Array.from({ length: 30 }, (_, i) => `line ${i}`)].join("\n");
+    expect(isWaitingBackgroundScreen("claude", far)).toBe(false);
+  });
+
+  it("zero agents, other agents and empty text are false", () => {
+    expect(isWaitingBackgroundScreen("claude", `✻ Waiting for 0 background agents to finish\n${BOX}`)).toBe(false);
+    expect(isWaitingBackgroundScreen("pi", `✻ Waiting for 1 background agent to finish\n${BOX}`)).toBe(false);
+    expect(detectsBackgroundAgents("pi")).toBe(false);
+    expect(isWaitingBackgroundScreen("claude", "")).toBe(false);
   });
 });

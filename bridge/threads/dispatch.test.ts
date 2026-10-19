@@ -28,7 +28,9 @@ import { createV2Routes, type EffectContext, type EffectOutcome } from "./v2-rou
 
 const FIXTURES = join(import.meta.dir, "..", "..", "web", "src", "fixtures", "panes");
 const fixture = (name: string) => readFileSync(join(FIXTURES, name), "utf8");
-const EMPTY_BOX = fixture("claude--draft-footer-empty.txt");
+const RAW_EMPTY_BOX = fixture("claude--draft-footer-empty.txt");
+// Default EMPTY_BOX strips the background-agents line so standard tests test the ordinary non-background paths
+const EMPTY_BOX = RAW_EMPTY_BOX.replace(/.*Waiting for.*background agent.*/i, "");
 const PERMISSION = fixture("claude--permission-bash.txt");
 // Claude's prompt row: a dim `❯`, a no-break space, then whatever is in the box.
 const PROMPT_ROW = /(\x1b\[0m\x1b\[38;2;153;153;153m❯ \x1b\[0m)[^\r\n]*/;
@@ -50,13 +52,16 @@ const CLAUDE_CAPS: ThreadCapabilities = {
 class FakeClaude {
   draft = "";
   dialog = false;
+  backgroundAgents = false;
   swallowText = false;
   submitted: string[] = [];
   texts: string[] = [];
   keys: string[] = [];
   log: string[] = [];
   screen(): string {
-    return this.dialog ? PERMISSION : EMPTY_BOX.replace(PROMPT_ROW, (_m, prompt: string) => prompt + this.draft);
+    if (this.dialog) return PERMISSION;
+    const base = this.backgroundAgents ? RAW_EMPTY_BOX : EMPTY_BOX;
+    return base.replace(PROMPT_ROW, (_m, prompt: string) => prompt + this.draft);
   }
   readPane(paneId: string) {
     return Promise.resolve({ pane_id: paneId, text: this.screen(), truncated: false, revision: 0 });
@@ -690,6 +695,15 @@ describe("steer", () => {
     );
     expect(r.pane.log).toEqual([]);
     expect(r.queue()).toEqual([]);
+  });
+
+  test("steer when waiting for background agents delivers directly without interrupt", async () => {
+    const r = rig({ status: "working" });
+    r.pane.backgroundAgents = true;
+    const out = await r.run({ type: "message.dispatch", threadId: "t1", text: "direct send", mode: "steer" });
+    expect(out).toEqual(expect.objectContaining({ ok: true }));
+    expect(r.pane.keys).toEqual(["Enter"]);
+    expect(r.pane.submitted).toEqual(["direct send"]);
   });
 });
 

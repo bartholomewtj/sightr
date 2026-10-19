@@ -26,7 +26,7 @@ export function requestTurnItem(request: RuntimeRequest): TurnItemDraft {
     threadId: request.threadId,
     runId: request.runId ?? null,
     status: ITEM_STATUS[request.status],
-    title: null,
+    title: request.subject?.title ?? null,
     startedAt: request.createdAt,
     completedAt: request.status === "pending" ? null : request.updatedAt,
     createdAt: request.createdAt,
@@ -47,6 +47,7 @@ export function requestTurnItem(request: RuntimeRequest): TurnItemDraft {
     requestKind: request.kind,
     prompt: request.prompt,
     options: request.options.map((o) => ({ label: o.label })),
+    ...(request.subject ? { subject: { ...request.subject } } : {}),
   };
 }
 

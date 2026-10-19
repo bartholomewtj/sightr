@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { Run, TurnItem } from "@shared/v2/contracts";
 
-import { deriveTimelineEntries } from "~/session-logic";
+import { deriveTimelineEntries, type WorkLogEntry } from "~/session-logic";
 import { assistant, command, edit, read, reasoning, resetOrdinals, run, screen, session, user } from "@/test/turn-items";
 
 import {
@@ -10,6 +10,7 @@ import {
   deriveMessagesTimelineRows,
   insertDayDividers,
   resolveTimelineIsAtEnd,
+  workEntryDisplayLabel,
   type MessagesTimelineRow,
   type MessagesTimelineRowsInput,
 } from "./MessagesTimeline.logic";
@@ -326,5 +327,87 @@ describe("commandPreview (the live row's command)", () => {
     expect(commandPreview("for i in $(seq 1 60); do echo tick $i; sleep 1; done")).toBe("for i in $(seq 1 60); do echo tick $i; s…");
     expect(commandPreview("cat <<EOF\nhello\nEOF")).toBe("cat <<EOF hello EOF");
     expect(commandPreview("  ")).toBe("");
+  });
+});
+
+describe("workEntryDisplayLabel for approval_request", () => {
+  it("prefers subject title + detail when detail is present", () => {
+    const entry = {
+      id: "req1",
+      createdAt: 1000,
+      runId: "r1",
+      tone: "tool" as const,
+      itemType: "approval_request" as const,
+      label: "Approval requested",
+      projectedItem: {
+        id: "req1",
+        threadId: "t1",
+        runId: "r1",
+        status: "completed" as const,
+        type: "approval_request" as const,
+        requestId: "r1",
+        requestKind: "permission" as const,
+        prompt: "Do you want to proceed?",
+        subject: {
+          title: "Run command",
+          target: "cd C:/bench && gh pr merge 1144",
+          detail: "Record the review, merge PR 1144, remove the 7e worktree",
+        },
+      },
+    };
+    expect(workEntryDisplayLabel(entry as unknown as WorkLogEntry, undefined)).toBe(
+      "Run command · Record the review, merge PR 1144, remove the 7e worktree",
+    );
+  });
+
+  it("shows subject title + command target preview when no detail is present", () => {
+    const entry = {
+      id: "req2",
+      createdAt: 1000,
+      runId: "r1",
+      tone: "tool" as const,
+      itemType: "approval_request" as const,
+      label: "Approval requested",
+      projectedItem: {
+        id: "req2",
+        threadId: "t1",
+        runId: "r1",
+        status: "completed" as const,
+        type: "approval_request" as const,
+        requestId: "r2",
+        requestKind: "permission" as const,
+        prompt: "Do you want to proceed?",
+        subject: {
+          title: "Bash command",
+          target: "git branch -D strip/7e-css",
+        },
+      },
+    };
+    expect(workEntryDisplayLabel(entry as unknown as WorkLogEntry, undefined)).toBe(
+      "Bash command · git branch -D strip/7e-css",
+    );
+  });
+
+  it("falls back to entry.label or 'Approval requested' instead of 'Do you want to proceed?' when no subject is present", () => {
+    const entry = {
+      id: "req3",
+      createdAt: 1000,
+      runId: "r1",
+      tone: "tool" as const,
+      itemType: "approval_request" as const,
+      label: "Approval requested",
+      detail: "Do you want to proceed?",
+      projectedItem: {
+        id: "req3",
+        threadId: "t1",
+        runId: "r1",
+        status: "waiting" as const,
+        type: "approval_request" as const,
+        requestId: "r3",
+        requestKind: "permission" as const,
+        prompt: "Do you want to proceed?",
+      },
+    };
+    expect(workEntryDisplayLabel(entry as unknown as WorkLogEntry, undefined)).toBe("Approval requested");
   });
 });
