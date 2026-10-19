@@ -10,11 +10,8 @@ import { DiffIcon, FilesIcon, GitBranchIcon, TerminalSquareIcon, XIcon } from "l
 import { useRef, type KeyboardEvent, type PointerEvent } from "react";
 
 import { Button } from "~/components/ui/button";
-import { cn } from "~/lib/utils";
 import { shortcutLabelForCommand, KEYBINDINGS } from "@/keybindings";
 import {
-  RIGHT_PANEL_KINDS,
-  RIGHT_PANEL_LABEL,
   RIGHT_PANEL_MAX,
   RIGHT_PANEL_MIN,
   useRightPanelStore,
@@ -66,7 +63,6 @@ const KEY_STEP = 16;
 export function RightPanelTabs({ threadId }: { threadId: string | null }) {
   const active = useRightPanelStore((s) => s.activeSurfaceId);
   const width = useRightPanelStore((s) => s.width);
-  const open = useRightPanelStore((s) => s.open);
   const close = useRightPanelStore((s) => s.close);
   const toggleLabel = shortcutLabelForCommand(KEYBINDINGS, "rightPanel.toggle");
 
@@ -78,30 +74,7 @@ export function RightPanelTabs({ threadId }: { threadId: string | null }) {
       style={{ width }}
     >
       <RightPanelResizeHandle />
-      <div role="tablist" aria-label="Right panel tabs" className="flex items-center gap-0.5 border-b px-1.5 py-1">
-        {RIGHT_PANEL_KINDS.map((kind) => {
-          const Icon = RIGHT_PANEL_ICON[kind];
-          const selected = kind === active;
-          return (
-            <button
-              key={kind}
-              type="button"
-              role="tab"
-              id={`right-panel-tab-${kind}`}
-              aria-selected={selected}
-              aria-controls="right-panel-surface"
-              onClick={() => (kind === active ? undefined : guardPanelLeave(() => open(kind)))}
-              className={cn(
-                "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-sm",
-                selected ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-              )}
-            >
-              <Icon className="size-3.5" aria-hidden="true" />
-              {RIGHT_PANEL_LABEL[kind]}
-            </button>
-          );
-        })}
-        <span className="flex-1" />
+      <div className="flex h-10 items-center justify-end border-b px-2">
         <Button
           size="icon-xs"
           variant="ghost-muted"
@@ -112,7 +85,12 @@ export function RightPanelTabs({ threadId }: { threadId: string | null }) {
           <XIcon />
         </Button>
       </div>
-      <div id="right-panel-surface" role="tabpanel" aria-labelledby={`right-panel-tab-${active}`} className="flex min-h-0 flex-1 flex-col">
+      <div
+        id="right-panel-surface"
+        role="tabpanel"
+        aria-labelledby={threadId ? `panel-toolbar-tab-${active}` : undefined}
+        className="flex min-h-0 flex-1 flex-col"
+      >
         {threadId ? (
           <RightPanelSurface key={`${active}:${threadId}`} kind={active} threadId={threadId} />
         ) : (

@@ -48,8 +48,10 @@ describe("Diff tab: desktop", () => {
   it("is the fourth tab, and shows the working tree", async () => {
     await boot(1280);
     const panel = region("right-panel") as HTMLElement;
-    expect(within(panel).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Terminal", "Files", "Git", "Diff"]);
-    fireEvent.click(within(panel).getByRole("tab", { name: "Diff" }));
+    const toolbar = screen.getByRole("group", { name: "Right panel" });
+    expect(within(toolbar).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Terminal", "Files", "Git", "Diff"]);
+    expect(within(panel).queryAllByRole("tab")).toHaveLength(0);
+    fireEvent.click(within(toolbar).getByRole("button", { name: "Diff" }));
     expect(await within(panel).findByRole("tree", { name: "Changed files" })).toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem("sightr:v2:right-panel-state:v1") ?? "{}").state).toMatchObject({ activeSurfaceId: "diff" });
     expect(fake.listCalls).toHaveLength(1);
