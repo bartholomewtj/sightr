@@ -1,6 +1,6 @@
 # T31 — Checkpoint UI: the card and the panel's run scope read checkpoints, fall back to the journal
 
-Status: draft (diffs series). Depends on: T24 (changed-files card, journal-derived), T27 (diff panel, run scope from the journal), T30 (git checkpoints; bridge + shared, and the `scope=run` diff route, T26 shape). Plan: [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md). Web2 only: no bridge or `shared/` change.
+Status: built and merged 2026-10-19 (PR #111; diffs series). Build-time amendments are recorded in this file. Depends on: T24 (changed-files card, journal-derived), T27 (diff panel, run scope from the journal), T30 (git checkpoints; bridge + shared, and the `scope=run` diff route, T26 shape). Plan: [`docs/T3_ADAPTATION.md`](../../T3_ADAPTATION.md). Web2 only: no bridge or `shared/` change.
 
 ## Problem
 

@@ -432,6 +432,8 @@ Fixture language mix: `threads.sqlite` was not present on the build machine, so 
 
 ## Diffs series (T24–T31, decided 18 Oct 2026)
 
+**Built and merged 18–19 Oct 2026** (PRs #103–#111, main `1a9324a`, live since the 19 Oct rebuild). Each spec carries its build-time amendments; how the build went, and what is still unverified, is in [`DIFFS-RUNBOOK.md`](DIFFS-RUNBOOK.md) "Outcome".
+
 Bart reversed the earlier "no per-turn diffs, no checkpoints" line. T3's diff work reaches Sightr as a
 series of its own, in this order (value first), one spec per run, bridge before web2:
 

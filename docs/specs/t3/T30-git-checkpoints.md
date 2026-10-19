@@ -1,6 +1,6 @@
 # T30 — Git checkpoints: a snapshot at each run's start and end, for exact per-run diffs
 
-Status: draft (diffs series). Depends on: T01 (store, `applyEvent`, 90-day thread prune), T03 (`run.started`/`run.ended` in `bridge/threads/journal-ingest.ts`), T26 (`scope=run` 501 stubs on `/api/files/git/review/patch` and `/review/contents`, the contents route in `shared/v2/review.ts`, shared numstat parser), the Sightr state dir. Plan: [`README.md`](README.md) "Diffs series". Bridge + shared only; the UI is T31.
+Status: built and merged 2026-10-19 (PR #109; diffs series). Build-time amendments are recorded in this file. Depends on: T01 (store, `applyEvent`, 90-day thread prune), T03 (`run.started`/`run.ended` in `bridge/threads/journal-ingest.ts`), T26 (`scope=run` 501 stubs on `/api/files/git/review/patch` and `/review/contents`, the contents route in `shared/v2/review.ts`, shared numstat parser), the Sightr state dir. Plan: [`README.md`](README.md) "Diffs series". Bridge + shared only; the UI is T31.
 
 ## Problem
 
