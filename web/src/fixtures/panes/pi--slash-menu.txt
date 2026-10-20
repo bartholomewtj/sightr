@@ -1,0 +1,29 @@
+
+ Messages
+ Total: 0
+ User: 0
+ Assistant: 0
+ Tools: 0 calls, 0 results
+
+ Tokens
+ Input: 0
+ Output: 0
+ Total: 0
+
+ Cache Warming
+ Mode: idle
+ Status: Inactive (waiting for first request)
+
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+/s
+─────────────────────────────────────────────────────────────────────────────────────────────
+→ settings            Open settings menu
+  scoped-models       Enable/disable models for Ctrl+P cycling
+  share               Share session via a Radius artifact or a GitHub gist
+  session             Show session info and stats
+  subagents:settings  [u:npm:@gotgenes/pi-subagents] Configure subagent settings (concurren
+  (1/12)
+~\AppData\Local\Temp
+0.0%/1.0M (auto)                                                 (subs) claude/sonnet • xhigh
+thickAPI claude via bridge

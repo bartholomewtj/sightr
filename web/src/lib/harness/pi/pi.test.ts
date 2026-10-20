@@ -22,10 +22,12 @@ const foreignFixtures = allFixtures.filter(
     f.startsWith("cursor--"),
 );
 
-/** Composer screens (no dialog): the editor at rest, with a draft, and during startup. */
+/** Composer screens (no dialog): the editor at rest, with a draft, with the slash menu open, and during startup. */
 const neutralFixtures: string[] = [
   "pi--draft-wrapped.txt",
   "pi--idle-empty.txt",
+  "pi--slash-menu-new.txt",
+  "pi--slash-menu.txt",
   "pi--startup-done-draft.txt",
   "pi--startup-in-progress.txt",
 ];

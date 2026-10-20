@@ -34,6 +34,9 @@ const TOP_BORDER = /^─{2,}/;
 const MAX_EDITOR_ROWS = 60;
 /** The bottom border sits this close to the last non-blank row (pwd, stats, one status row). */
 const MAX_FOOTER_ROWS = 4;
+/** Pi's completion list: the selected row opens with an arrow; at most this many rows show. */
+const COMPLETION_SELECTED = /^→ \S/;
+const MAX_COMPLETION_ROWS = 10;
 
 const DIALOG_ROWS = [HELP_SINGLE, HELP_MULTI, HELP_INPUT, TAB_BAR, YOUR_ANSWER];
 
@@ -49,7 +52,7 @@ function locateEditor(texts: string[]): EditorBox | null {
 
   // The bottom border: the last rule within the footer's reach of the tail.
   let bottom = -1;
-  for (let i = end; i >= Math.max(0, end - MAX_FOOTER_ROWS); i--) {
+  for (let i = end; i >= Math.max(0, end - MAX_FOOTER_ROWS - MAX_COMPLETION_ROWS); i--) {
     const t = texts[i]!.trimEnd();
     if (RULE.test(t) || BOTTOM_BORDER.test(t)) {
       bottom = i;
@@ -63,7 +66,13 @@ function locateEditor(texts: string[]): EditorBox | null {
   const after = texts.slice(bottom + 1, end + 1);
   if (after.length > 0) {
     if (after.some(isBlank)) return null;
-    if (after.length < 2 || !STATS.test(after[1]!)) return null;
+    // A slash-command or path completion list may sit between the border and the footer (captured
+    // live: pi--slash-menu.txt): up to MAX_COMPLETION_ROWS rows, the selected one first, led by
+    // `→ `. It is the composer with its menu open, not another screen.
+    let footer = 0;
+    while (footer < after.length && !(footer + 1 < after.length && STATS.test(after[footer + 1]!))) footer++;
+    if (footer >= after.length - 1 || after.length - footer > MAX_FOOTER_ROWS) return null;
+    if (footer > 0 && (footer > MAX_COMPLETION_ROWS || !COMPLETION_SELECTED.test(after[0]!))) return null;
   }
 
   // The top border starts at column 0; the ask dialog's own rows are indented.
