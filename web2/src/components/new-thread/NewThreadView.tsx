@@ -46,6 +46,13 @@ export function NewThreadView({ projectId }: { projectId?: string }) {
   useEffect(() => {
     if (projectId && !useDraftThread.getState().start) selectDraftProject(projectId);
   }, [projectId]);
+  // One open project and none chosen: take it, so Start is not waiting on a choice with no other answer.
+  useEffect(() => {
+    if (loaded && projectCount === 1 && !projectId && !useDraftThread.getState().draft.projectId && !useDraftThread.getState().start) {
+      const only = Object.values(useShell.getState().projects).find((p) => p.closedAt === undefined);
+      if (only) selectDraftProject(only.id);
+    }
+  }, [loaded, projectCount, projectId]);
   // No projects yet: open on the New project form.
   useEffect(() => {
     if (loaded && projectCount === 0 && !useDraftThread.getState().form.open) openNewProjectForm();
@@ -122,7 +129,11 @@ function DraftBody() {
             The agent will run tools without asking. Tap again to start.
           </p>
         ) : null}
-        {!check.ok && draft.projectId && tile ? <p className="text-xs text-muted-foreground">{check.reason}</p> : null}
+        {!check.ok ? (
+          <p role="status" data-testid="draft-start-reason" className="text-xs text-muted-foreground">
+            {check.reason}
+          </p>
+        ) : null}
         <Button disabled={!canStart} variant={startConfirm && destructive ? "destructive" : "default"} onClick={submit}>
           {startConfirm && destructive ? "Start with approvals off" : hasText ? "Start and send" : "Start"}
         </Button>
