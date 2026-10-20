@@ -498,11 +498,17 @@ export function createDispatcher(deps: DispatchDeps): Dispatcher {
 
     if (c.mode === "start") return startNow();
 
-    const enqueue = (): EffectOutcome | Promise<EffectOutcome> => {
+    const enqueue = async (): Promise<EffectOutcome> => {
       if (!caps.canQueueDrain) return refuse(409, "unsupported", "queue-unsupported");
       const rows = store.listQueued(thread.id);
-      // Nothing ahead of it and nothing in the way: there is no reason to wait.
-      if (rows.length === 0 && resting && !blocked) return startPath(thread, c.text, attachments, ctx);
+      // Nothing ahead of it and nothing in the way: there is no reason to wait. "In the way" includes a
+      // composer that is not drawn yet: a new pane reads `idle` a second after it opens, before the agent
+      // has drawn its input box, and a send then is refused and the text lost (the first message of a new
+      // thread). A queued row waits for the box; the drainer tries again every DRAIN_RETRY_MS.
+      if (rows.length === 0 && resting && !blocked) {
+        const ready = await sender.composerReady({ paneId: thread.paneId, ...(thread.terminalId ? { terminalId: thread.terminalId } : {}) });
+        if (ready !== false) return startPath(thread, c.text, attachments, ctx);
+      }
       const row: QueuedMessage = {
         id: store.newId(),
         threadId: thread.id,
