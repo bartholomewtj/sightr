@@ -365,6 +365,40 @@ describe("MessagesTimeline: follow mode", () => {
   }, 30_000);
 });
 
+describe("MessagesTimeline: blank list", () => {
+  /** Draw every row frame far from the band, as the phone's gap did, without telling the list. */
+  function pushFramesOffScreen(): void {
+    for (const frame of document.querySelectorAll<HTMLElement>(".messages-timeline-row-frame")) {
+      const real = frame.getBoundingClientRect();
+      frame.getBoundingClientRect = () =>
+        ({ ...real.toJSON(), top: 9_000, bottom: 9_040, y: 9_000 }) as DOMRect;
+    }
+  }
+  const generation = () => document.querySelector("[data-timeline]")?.getAttribute("data-list-generation");
+
+  it("rebuilds a list that shows only a gap, and the rows come back", async () => {
+    const items = Array.from({ length: 30 }, (_, i) => user(`u${i}:0`, `m ${i}`));
+    await show(items);
+    expect(generation()).toBe("0");
+    const scrollerBefore = document.querySelector(".messages-timeline-scroll");
+    expect(scrollerBefore).not.toBeNull();
+    // The send happens: the reader sees nothing but the gap.
+    pushFramesOffScreen();
+    await waitFor(() => expect(generation()).toBe("1"), { timeout: 5_000 });
+    expect(document.querySelector(".messages-timeline-scroll")).not.toBe(scrollerBefore);
+    await waitFor(() => expect(rowEl("u29:0")).not.toBeNull(), { timeout: 5_000 });
+    // The new list is whole, so the guard stays quiet.
+    await settle(1_300);
+    expect(generation()).toBe("1");
+  }, 20_000);
+
+  it("leaves a healthy list alone", async () => {
+    await show(Array.from({ length: 30 }, (_, i) => user(`u${i}:0`, `m ${i}`)));
+    await settle(1_400);
+    expect(generation()).toBe("0");
+  });
+});
+
 describe("MessagesTimeline: history paging", () => {
   function page(nextCursor: string | null, items: TurnItem[]) {
     return { runs: [{ run: run("r0", { ordinal: 0 }), items }], loose: [], nextCursor };

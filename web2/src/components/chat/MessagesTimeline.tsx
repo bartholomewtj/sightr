@@ -124,6 +124,7 @@ import { TimelineAttachments } from "./TimelineAttachments";
 import { TimelineSystemDivider } from "./TimelineSystemDivider";
 import { ToolItemDetail, toolItemHasDetail } from "./ToolItemDetail";
 import { useTimelineFollow } from "./useTimelineFollow";
+import { useBlankViewportGuard } from "./useBlankViewportGuard";
 import { EverythingSet } from "./threadFind";
 import { useThreadFind } from "./useThreadFind";
 import { useItemJump } from "./useItemJump";
@@ -254,6 +255,15 @@ function MessagesTimelineBody({ threadId }: MessagesTimelineProps) {
     anyScrollLeaves: find.isOpen,
   });
 
+  // ── Blank guard: a list that shows only a gap (pages of empty space, the text above it) is rebuilt at
+  // the end, which is what leaving the thread and coming back did by hand. ──
+  const [listGeneration, setListGeneration] = useState(0);
+  const rebuildList = useCallback(() => {
+    setListGeneration((g) => g + 1);
+    jumpToLatest();
+  }, [jumpToLatest]);
+  useBlankViewportGuard({ container: timelineEl, enabled: rows.length > 0, onBlank: rebuildList });
+
   // ── Find (T19): reveal and highlight the focused hit; the bar itself is the thread route's ──
   useThreadFindNavigation({
     threadId,
@@ -355,8 +365,14 @@ function MessagesTimelineBody({ threadId }: MessagesTimelineProps) {
   return (
     <TimelineRowCtx value={sharedState}>
       <TimelineRowActivityCtx value={activityState}>
-        <TooltipScrollDismissArea ref={setTimelineEl} className="relative h-full min-h-0" data-timeline="true">
+        <TooltipScrollDismissArea
+          ref={setTimelineEl}
+          className="relative h-full min-h-0"
+          data-timeline="true"
+          data-list-generation={listGeneration}
+        >
           <LegendList<MessagesTimelineRow>
+            key={listGeneration}
             ref={listRef}
             data={rows}
             extraData={activityState}
