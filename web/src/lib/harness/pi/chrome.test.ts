@@ -15,6 +15,20 @@ const load = (name: string) => parseLines(readFileSync(join(PANES_DIR, name), "u
 const FIRST_MESSAGE =
   "List the files in the web2/src/components/chat folder that end in .logic.ts, then tell me which is largest. Keep it to two sentences.";
 
+describe("pi editor: slash completion list open", () => {
+  it("is still the composer, and the draft reads back as the typed command", () => {
+    for (const [name, draft] of [
+      ["pi--slash-menu.txt", "/s"],
+      ["pi--slash-menu-new.txt", "/new"],
+    ] as const) {
+      const lines = load(name);
+      expect(composerReady(lines)).toBe(true);
+      expect(extractInputDraft(lines)).toBe(draft);
+      expect(submitHeld(lines)).toBe(false);
+    }
+  });
+});
+
 describe("pi editor: draft extraction", () => {
   it("reads a wrapped draft back as the text that was typed", () => {
     const lines = load("pi--draft-wrapped.txt");

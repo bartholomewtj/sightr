@@ -1,0 +1,24 @@
+
+ Messages
+ Total: 0
+ User: 0
+ Assistant: 0
+ Tools: 0 calls, 0 results
+
+ Tokens
+ Input: 0
+ Output: 0
+ Total: 0
+
+ Cache Warming
+ Mode: idle
+ Status: Inactive (waiting for first request)
+
+
+─────────────────────────────────────────────────────────────────────────────────────────────
+/new
+─────────────────────────────────────────────────────────────────────────────────────────────
+→ new         Start a new session
+~\AppData\Local\Temp
+0.0%/1.0M (auto)                                                 (subs) claude/sonnet • xhigh
+thickAPI claude via bridge
