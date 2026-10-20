@@ -66,6 +66,31 @@ describe("entry points", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("What should we build in Other?");
   });
 
+  it("with no project chosen, Start is disabled and says why, even after a harness is picked", async () => {
+    await openNew("/v2/new");
+    expect(screen.getByTestId("draft-start-reason")).toHaveTextContent("Pick a project.");
+    fireEvent.click(radio("Start", "pi"));
+    expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
+    expect(screen.getByTestId("draft-start-reason")).toHaveTextContent("Pick a project.");
+    await pickProject("Other");
+    expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
+    expect(screen.queryByTestId("draft-start-reason")).toBeNull();
+  });
+
+  it("with several projects and a last start, the top button opens on that project", async () => {
+    localStorage.setItem("sightr:v2:new-thread:last-project", JSON.stringify("w2"));
+    await openNew("/v2/new");
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("What should we build in Other?"));
+    localStorage.removeItem("sightr:v2:new-thread:last-project");
+  });
+
+  it("a shell with one project takes it, so the top New thread button can start", async () => {
+    await openNew("/v2/new", [], [project("w1", { label: "Sightr" })]);
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("What should we build in Sightr?"));
+    fireEvent.click(radio("Start", "pi"));
+    expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
+  });
+
   it("an empty shell opens on the New project form", async () => {
     await openNew("/v2/new", [], []);
     expect(screen.getByRole("form", { name: "New project" })).toBeInTheDocument();

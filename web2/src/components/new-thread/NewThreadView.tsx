@@ -17,6 +17,7 @@ import { useLayout } from "@/hooks/useLayout";
 import { useUiState } from "@/uiStateStore";
 import {
   currentSplitSource,
+  defaultDraftProject,
   discardDraft,
   mountDraftScreen,
   openNewProjectForm,
@@ -40,12 +41,21 @@ export function NewThreadView({ projectId }: { projectId?: string }) {
   const loaded = useShell((s) => s.loaded);
   const projectCount = useShell((s) => Object.values(s.projects).filter((p) => p.closedAt === undefined).length);
   const formOpen = useDraftThread((s) => s.form.open);
+  const draftProject = useDraftThread((s) => s.draft.projectId);
 
   useEffect(() => mountDraftScreen(), []);
   // A row's "+" or the palette preselects the project (only before a start).
   useEffect(() => {
     if (projectId && !useDraftThread.getState().start) selectDraftProject(projectId);
   }, [projectId]);
+  // None chosen (the top "New thread" button): the open thread's project, the last one started in, or
+  // the only one. With several and no history the operator picks from the project button.
+  useEffect(() => {
+    const { draft, start: started } = useDraftThread.getState();
+    if (!loaded || projectId || draft.projectId || started) return;
+    const wanted = defaultDraftProject();
+    if (wanted) selectDraftProject(wanted);
+  }, [loaded, projectCount, projectId, draftProject]);
   // No projects yet: open on the New project form.
   useEffect(() => {
     if (loaded && projectCount === 0 && !useDraftThread.getState().form.open) openNewProjectForm();
@@ -122,7 +132,11 @@ function DraftBody() {
             The agent will run tools without asking. Tap again to start.
           </p>
         ) : null}
-        {!check.ok && draft.projectId && tile ? <p className="text-xs text-muted-foreground">{check.reason}</p> : null}
+        {!check.ok ? (
+          <p role="status" data-testid="draft-start-reason" className="text-xs text-muted-foreground">
+            {check.reason}
+          </p>
+        ) : null}
         <Button disabled={!canStart} variant={startConfirm && destructive ? "destructive" : "default"} onClick={submit}>
           {startConfirm && destructive ? "Start with approvals off" : hasText ? "Start and send" : "Start"}
         </Button>
