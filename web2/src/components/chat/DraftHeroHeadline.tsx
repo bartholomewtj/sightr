@@ -32,7 +32,7 @@ export function DraftHeroHeadline() {
 
   return (
     <div className="flex w-full flex-col items-center gap-2">
-      <h1 className="flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xl font-normal tracking-tight text-foreground sm:text-2xl">
+      <h1 className="flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-base font-normal tracking-tight text-foreground sm:text-lg">
         {active ? "What should we build in " : "Start in "}
         {/* A bordered button with a chevron, not an underlined word: on a phone the plain-text trigger read
             as a caption and nobody found it. */}
@@ -43,7 +43,7 @@ export function DraftHeroHeadline() {
           data-draft-project-trigger=""
           onClick={() => setOpen((o) => !o)}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11",
+            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-0.5 text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11",
             active ? "border-border" : "border-primary bg-accent",
           )}
         >

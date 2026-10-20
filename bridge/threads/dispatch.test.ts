@@ -412,6 +412,24 @@ describe("message.dispatch queue", () => {
     expect(types(r.events)).not.toContain("queue.updated");
   });
 
+  test("on an idle thread whose composer is not drawn yet it queues, and sends once the box is there", async () => {
+    // A new pane reads idle a second after it opens, before the agent draws its input box (the first
+    // message of a new thread was refused as "blocked" and dropped).
+    const r = rig();
+    r.pane.dialog = true;
+    const out = await r.run({ type: "message.dispatch", threadId: "t1", text: "first message", mode: "queue" });
+    expect(out).toEqual(expect.objectContaining({ ok: true }));
+    await r.idle();
+    expect(failed(r.events)).toEqual([]);
+    expect(r.queue()).toEqual([expect.objectContaining({ text: "first message", state: "queued" })]);
+    expect(r.pane.submitted).toEqual([]);
+    r.pane.dialog = false;
+    r.timers.advance(DRAIN_RETRY_MS);
+    await r.idle();
+    expect(r.pane.submitted).toEqual(["first message"]);
+    expect(r.queue()).toEqual([]);
+  });
+
   test("a shell thread refuses queue", async () => {
     const r = rig({ caps: NO_CAPABILITIES, harness: "shell", status: "working" });
     expect(await r.run({ type: "message.dispatch", threadId: "t1", text: "ls -la", mode: "queue" })).toEqual(

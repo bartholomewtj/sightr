@@ -79,7 +79,7 @@ export function NewThreadView({ projectId }: { projectId?: string }) {
           <SpawnProgress start={start} />
         ) : (
           <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-5">
-            {projectCount > 0 || !loaded ? <DraftHeroHeadline /> : <h1 className="text-xl">Add a project to start</h1>}
+            {projectCount > 0 || !loaded ? <DraftHeroHeadline /> : <h1 className="text-base sm:text-lg">Add a project to start</h1>}
             {formOpen ? <NewProjectForm canCancel={projectCount > 0} /> : null}
             <DraftBody />
           </div>
