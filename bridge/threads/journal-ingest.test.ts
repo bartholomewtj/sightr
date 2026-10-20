@@ -473,6 +473,28 @@ describe("journal ingest: session divider", () => {
     expect(r.store.lastSequence()).toBe(seq);
   });
 
+  test("a new session whose log is not written yet still draws the divider, and its first rows follow", async () => {
+    const r = rig();
+    r.logs.write("s1", claudeRow.user("u1", "first session", T0) + claudeRow.assistant("a1", "ok", T0 + 1));
+    await r.ingestor.catchUp("t1");
+
+    r.pane.agentSession = { kind: "id", value: "s2" };
+    r.clock.now += 10_000;
+    await r.ingestor.catchUp("t1");
+    expect(items(r).map((i) => i.id).at(-1)).toBe("session:s2");
+    expect(r.warnings).toHaveLength(0);
+
+    const seq = r.store.lastSequence();
+    r.clock.now += 10_000;
+    await r.ingestor.catchUp("t1");
+    expect(r.store.lastSequence()).toBe(seq);
+
+    r.logs.write("s2", claudeRow.user("v1", "after /new", T0 + 10));
+    r.clock.now += 10_000;
+    await r.ingestor.catchUp("t1");
+    expect(items(r).map((i) => i.id).slice(-2)).toEqual(["session:s2", "v1:0"]);
+  });
+
   test("a Claude log that continues the same conversation draws no divider and adds only what is new", async () => {
     const r = rig();
     const lineage = claudeRow.user("root", "start", T0) + claudeRow.assistant("a1", "ok", T0 + 1);

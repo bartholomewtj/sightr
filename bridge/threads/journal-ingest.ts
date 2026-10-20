@@ -389,6 +389,12 @@ export function createJournalIngestor(deps: JournalIngestorDeps): JournalIngesto
     }
     const read = await transcripts.readSince(adapter, ref, sessionChanged ? null : saved);
     if (read.kind === "missing") {
+      // A new session whose log is not written yet (pi writes it at the first reply): the divider
+      // still lands now, and an empty offset under the new key makes the next read start fresh.
+      if (drafts.length > 0 && store.getThread(thread.id) !== null) {
+        store.append(drafts, { offsets: [{ threadId: thread.id, path: "", offset: 0, size: 0, mtimeMs: 0, sessionKey: key }] });
+        return;
+      }
       warn(thread.id, "no session log to read");
       return;
     }
