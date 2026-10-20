@@ -17,6 +17,7 @@ import { useLayout } from "@/hooks/useLayout";
 import { useUiState } from "@/uiStateStore";
 import {
   currentSplitSource,
+  defaultDraftProject,
   discardDraft,
   mountDraftScreen,
   openNewProjectForm,
@@ -40,19 +41,21 @@ export function NewThreadView({ projectId }: { projectId?: string }) {
   const loaded = useShell((s) => s.loaded);
   const projectCount = useShell((s) => Object.values(s.projects).filter((p) => p.closedAt === undefined).length);
   const formOpen = useDraftThread((s) => s.form.open);
+  const draftProject = useDraftThread((s) => s.draft.projectId);
 
   useEffect(() => mountDraftScreen(), []);
   // A row's "+" or the palette preselects the project (only before a start).
   useEffect(() => {
     if (projectId && !useDraftThread.getState().start) selectDraftProject(projectId);
   }, [projectId]);
-  // One open project and none chosen: take it, so Start is not waiting on a choice with no other answer.
+  // None chosen (the top "New thread" button): the open thread's project, the last one started in, or
+  // the only one. With several and no history the operator picks from the project button.
   useEffect(() => {
-    if (loaded && projectCount === 1 && !projectId && !useDraftThread.getState().draft.projectId && !useDraftThread.getState().start) {
-      const only = Object.values(useShell.getState().projects).find((p) => p.closedAt === undefined);
-      if (only) selectDraftProject(only.id);
-    }
-  }, [loaded, projectCount, projectId]);
+    const { draft, start: started } = useDraftThread.getState();
+    if (!loaded || projectId || draft.projectId || started) return;
+    const wanted = defaultDraftProject();
+    if (wanted) selectDraftProject(wanted);
+  }, [loaded, projectCount, projectId, draftProject]);
   // No projects yet: open on the New project form.
   useEffect(() => {
     if (loaded && projectCount === 0 && !useDraftThread.getState().form.open) openNewProjectForm();

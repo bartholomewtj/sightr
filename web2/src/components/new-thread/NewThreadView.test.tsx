@@ -77,6 +77,13 @@ describe("entry points", () => {
     expect(screen.queryByTestId("draft-start-reason")).toBeNull();
   });
 
+  it("with several projects and a last start, the top button opens on that project", async () => {
+    localStorage.setItem("sightr:v2:new-thread:last-project", JSON.stringify("w2"));
+    await openNew("/v2/new");
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("What should we build in Other?"));
+    localStorage.removeItem("sightr:v2:new-thread:last-project");
+  });
+
   it("a shell with one project takes it, so the top New thread button can start", async () => {
     await openNew("/v2/new", [], [project("w1", { label: "Sightr" })]);
     await waitFor(() => expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("What should we build in Sightr?"));

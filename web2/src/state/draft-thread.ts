@@ -116,6 +116,8 @@ const CLOSED_FORM: NewProjectForm = { open: false, label: "", cwd: "", commandId
 
 export const DRAFT_KEY = "sightr:v2:new-thread:draft";
 export const LAST_KEY = "sightr:v2:new-thread:last";
+/** The project the last start went to. */
+export const LAST_PROJECT_KEY = "sightr:v2:new-thread:last-project";
 
 function readJson(key: string): unknown {
   try {
@@ -261,6 +263,23 @@ export function selectDraftProject(projectId: string): void {
     return;
   }
   set({ draft: withDefaultHarness({ ...draft, projectId }), bypassArmed: null, startConfirm: false });
+}
+
+/**
+ * The project a draft with none chosen opens on, so the top "New thread" button is not a dead end: the
+ * project of the thread open beside it, else the one the last start went to, else the only one there is.
+ * Null when there is no sensible answer (several projects and no history): the operator chooses.
+ */
+export function defaultDraftProject(): string | null {
+  const { projects, threads } = useShell.getState();
+  const open = (id: string | null | undefined): id is string => !!id && projects[id] !== undefined && projects[id]!.closedAt === undefined;
+  const openThread = get().openThreadId;
+  const fromThread = openThread ? threads[openThread]?.projectId : null;
+  if (open(fromThread)) return fromThread;
+  const last = readJson(LAST_PROJECT_KEY);
+  if (open(typeof last === "string" ? last : null)) return last as string;
+  const all = Object.values(projects).filter((p) => p.closedAt === undefined);
+  return all.length === 1 ? all[0]!.id : null;
 }
 
 /** A draft with no harness yet takes the operator's default harness and its default pickers. */
@@ -441,6 +460,7 @@ export async function startDraft(): Promise<StartResult> {
   };
   ensureListening();
   set({ start, posting: true, startConfirm: false });
+  writeJson(LAST_PROJECT_KEY, built.payload.projectId);
   rememberLastUsed(built.payload.projectId!, {
     tile: tile.id,
     permissionMode: destructive ? "" : draft.permissionMode,
@@ -580,6 +600,7 @@ export function __resetDraftThread(): void {
   persisting = false;
   writeJson(DRAFT_KEY, null);
   writeJson(LAST_KEY, null);
+  writeJson(LAST_PROJECT_KEY, null);
   useDraftThread.setState(initialState(), true);
   persisting = true;
   sending = false;

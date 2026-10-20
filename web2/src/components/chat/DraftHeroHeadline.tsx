@@ -3,7 +3,7 @@
 // the sentence. T3's picker is a combobox popup; Sightr's opens inline under the headline (search, the
 // project list in sidebar order with worktrees nested, then "New project…"), which reads the same on a
 // phone. A project is a herdr workspace.
-import { FolderPlusIcon, GitBranch } from "lucide-react";
+import { ChevronDown, FolderPlusIcon, GitBranch } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Input } from "~/components/ui/input";
@@ -32,19 +32,25 @@ export function DraftHeroHeadline() {
 
   return (
     <div className="flex w-full flex-col items-center gap-2">
-      <h1 className="w-full text-center text-xl font-normal tracking-tight text-foreground sm:text-2xl">
-        {active ? "What should we build in " : null}
+      <h1 className="flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xl font-normal tracking-tight text-foreground sm:text-2xl">
+        {active ? "What should we build in " : "Start in "}
+        {/* A bordered button with a chevron, not an underlined word: on a phone the plain-text trigger read
+            as a caption and nobody found it. */}
         <button
           type="button"
           aria-expanded={open}
           aria-controls="draft-project-picker"
           data-draft-project-trigger=""
           onClick={() => setOpen((o) => !o)}
-          className="border-b border-dotted border-muted-foreground/60 text-foreground outline-none hover:border-foreground focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11",
+            active ? "border-border" : "border-primary bg-accent",
+          )}
         >
           {active ? active.label : "Choose a project"}
+          <ChevronDown className="size-4 text-muted-foreground" aria-hidden />
         </button>
-        {active ? "?" : " to start"}
+        {active ? "?" : null}
       </h1>
       {active ? <ProjectFolder projectId={active.id} /> : null}
       {open ? (
