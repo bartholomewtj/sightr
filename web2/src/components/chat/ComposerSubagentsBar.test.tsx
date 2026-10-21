@@ -132,6 +132,16 @@ describe("ComposerSubagentsBar", () => {
     expect(document.querySelector("[data-subagents-unseen='failed']")).not.toBeNull();
   });
 
+  it("older runs that load after the first render are history, not news", () => {
+    fakeBridge();
+    const older = finished("Old survey", "old-1"); // logged before anything the first render has
+    const launch = running();
+    const { rerender } = render(<ComposerSubagentsBar threadId={T} items={byId(launch)} />);
+    rerender(<ComposerSubagentsBar threadId={T} items={byId(older, launch)} />);
+    expect(document.querySelector("[data-subagents-unseen]")).toBeNull();
+    expect(screen.getByRole("button", { name: /^Subagents: 1 running · 1 done$/ })).toBeInTheDocument();
+  });
+
   it("a tapped agent opens its own view: a running one on the live transcript, with a way back to the list", async () => {
     fakeBridge();
     render(<ComposerSubagentsBar threadId={T} items={byId(running(), finished())} />);

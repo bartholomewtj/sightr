@@ -4,17 +4,36 @@
 //  - `seen`: the finishes the operator has looked at, as `<agent key>|<phase>`. An agent that is done,
 //    failed or stopped and not in `seen` puts the unread dot on the bar; opening the list marks them all.
 //
-// The first time a thread is opened on a device nothing is unread: everything already finished is taken
-// as seen, so history never lights the bar.
+// History is not news. The first time a thread's items are on screen on a device, the time of its newest
+// item is kept as a baseline, and only an agent whose newest call is later than that can light the dot.
+// (Counting "everything finished at first sight" failed: the older runs load after the first render.)
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { ThreadAgent } from "./subagentGroups";
 
-const KEY = (kind: "dismissed" | "seen", threadId: string) => `sightr:v2:subagents-${kind}:${threadId}`;
+const KEY = (kind: "dismissed" | "seen" | "baseline", threadId: string) => `sightr:v2:subagents-${kind}:${threadId}`;
 
 /** Most entries kept per thread (a long thread's record must not grow without end). */
 const MAX_KEPT = 400;
+
+function readBaseline(threadId: string): number | null {
+  try {
+    const raw = window.localStorage.getItem(KEY("baseline", threadId));
+    const n = raw === null ? NaN : Number(raw);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeBaseline(threadId: string, at: number): void {
+  try {
+    window.localStorage.setItem(KEY("baseline", threadId), String(at));
+  } catch {
+    /* blocked: the bar works, it just forgets */
+  }
+}
 
 function read(kind: "dismissed" | "seen", threadId: string): string[] | null {
   try {
@@ -51,40 +70,45 @@ export interface SubagentBarState {
   finishedCount: number;
 }
 
-export function useSubagentBarState(threadId: string, agents: readonly ThreadAgent[]): SubagentBarState {
+export function useSubagentBarState(
+  threadId: string,
+  agents: readonly ThreadAgent[],
+  /** The time of the thread's newest item as loaded now (any kind), or null while nothing is loaded. */
+  newestItemAt: number | null,
+): SubagentBarState {
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set(read("dismissed", threadId) ?? []));
-  const [seen, setSeen] = useState<Set<string> | null>(() => {
-    const stored = read("seen", threadId);
-    return stored === null ? null : new Set(stored);
-  });
+  const [seen, setSeen] = useState<Set<string>>(() => new Set(read("seen", threadId) ?? []));
+  const [baseline, setBaseline] = useState<number | null>(() => readBaseline(threadId));
 
   // A different thread: load its record.
   useEffect(() => {
     setDismissed(new Set(read("dismissed", threadId) ?? []));
-    const stored = read("seen", threadId);
-    setSeen(stored === null ? null : new Set(stored));
+    setSeen(new Set(read("seen", threadId) ?? []));
+    setBaseline(readBaseline(threadId));
   }, [threadId]);
+
+  // First sight of a thread's items on this device: what is already in it is history.
+  useEffect(() => {
+    if (baseline !== null || newestItemAt === null) return;
+    setBaseline(newestItemAt);
+    writeBaseline(threadId, newestItemAt);
+  }, [baseline, newestItemAt, threadId]);
 
   const finished = useMemo(() => agents.filter((a) => a.phase !== "running"), [agents]);
 
-  // First sight of a thread on this device: what has already finished is not news.
-  useEffect(() => {
-    if (seen !== null) return;
-    const initial = new Set(finished.map(seenKeyOf));
-    setSeen(initial);
-    write("seen", threadId, initial);
-  }, [seen, finished, threadId]);
-
   const visible = useMemo(() => agents.filter((a) => !dismissed.has(a.key)), [agents, dismissed]);
   const unseen = useMemo(
-    () => (seen === null ? [] : visible.filter((a) => a.phase !== "running" && !seen.has(seenKeyOf(a)))),
-    [visible, seen],
+    () =>
+      baseline === null
+        ? []
+        : visible.filter((a) => a.phase !== "running" && a.lastAt > baseline && !seen.has(seenKeyOf(a))),
+    [visible, seen, baseline],
   );
 
   const markSeen = useCallback(() => {
     setSeen((prev) => {
-      const next = new Set(prev ?? []);
-      let changed = prev === null;
+      const next = new Set(prev);
+      let changed = false;
       for (const a of finished) {
         const k = seenKeyOf(a);
         if (!next.has(k)) {
