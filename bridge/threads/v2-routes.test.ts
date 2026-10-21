@@ -13,7 +13,7 @@ import type { EventDraft } from "./events.ts";
 import { createV2Gate, type V2Gate } from "./herdr-floor.ts";
 import { createThreadWatchers } from "./journal-ingest.ts";
 import type { RespondHandler, RespondResult } from "./respond.ts";
-import { encodeHistoryCursor, openThreadStore, type ThreadStore } from "./store.ts";
+import { encodeHistoryCursor, openThreadStore, SNAPSHOT_RUNS, type ThreadStore } from "./store.ts";
 import {
   commandHash,
   createV2Routes,
@@ -914,7 +914,8 @@ describe("GET /api/v2/thread/:id/history", () => {
       cursor = p.nextCursor;
       pages += 1;
     }
-    expect(pages).toBe(4);
+    // The snapshot now holds SNAPSHOT_RUNS runs (spec 26), so the rest pages in `limit` runs at a time.
+    expect(pages).toBe(Math.ceil((25 - SNAPSHOT_RUNS) / 4));
     const all = r.store.recentItems("t1", 1_000).map((x) => x.id);
     expect(new Set(seen).size).toBe(seen.length);
     expect([...seen].sort()).toEqual([...all].sort());

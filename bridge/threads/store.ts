@@ -45,6 +45,13 @@ export const RETAIN_EVENTS_MIN = 50_000;
 export const RETAIN_RECEIPTS_MS = 7 * 24 * 60 * 60 * 1000;
 export const MAX_ITEMS_PER_THREAD = 5_000;
 export const RETAIN_ARCHIVED_MS = 90 * 24 * 60 * 60 * 1000;
+/**
+ * How far back a thread-open snapshot reaches (spec 26, ADR 0028): the newest N runs and at most this
+ * many items, with `historyCursor` carrying the rest. A bound here keeps the SSE frame independent of
+ * how long one run grew.
+ */
+export const SNAPSHOT_RUNS = 3;
+export const MAX_SNAPSHOT_ITEMS = 200;
 export const SIZE_WARN_BYTES = 256 * 1024 * 1024;
 
 /** The database was written by a newer bridge. The bridge leaves v2 off rather than guess. */
@@ -1228,7 +1235,7 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
         if (!thread) return null;
         const runs = db
           .query<RunRow, [string, number]>("SELECT * FROM runs WHERE thread_id = ? ORDER BY ordinal DESC LIMIT ?")
-          .all(id, o.runs ?? 10)
+          .all(id, o.runs ?? SNAPSHOT_RUNS)
           .reverse()
           .map(runFromRow);
         // The window starts at the earliest item of the returned runs; loose items (no run) inside it
@@ -1243,6 +1250,15 @@ export function openThreadStore(path: string, opts: StoreOptions = {}): ThreadSt
               )
               .get(...ids)?.p ?? 0;
         }
+        // Spec 26 (ADR 0028): bound the window to the newest MAX_SNAPSHOT_ITEMS items. The floor is
+        // the 200th-newest item's position, so a single long run cannot make the frame unbounded. The
+        // `from` above already starts at the returned runs; whichever is newer wins.
+        const capFrom = db
+          .query<{ p: number | null }, [string, number]>(
+            "SELECT position AS p FROM turn_items WHERE thread_id = ? ORDER BY position DESC LIMIT 1 OFFSET ?",
+          )
+          .get(id, MAX_SNAPSHOT_ITEMS - 1)?.p;
+        if (capFrom !== null && capFrom !== undefined && capFrom > from) from = capFrom;
         const items = db
           .query<{ body_json: string }, [string, number]>(
             "SELECT body_json FROM turn_items WHERE thread_id = ? AND position >= ? ORDER BY position",
