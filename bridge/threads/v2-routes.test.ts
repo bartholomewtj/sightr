@@ -223,6 +223,15 @@ function sse(res: Response) {
   };
 }
 
+/** A thread snapshot frame's payload, decoding the `gz` envelope the bridge sends (spec 26). */
+function snapshotOf(f: Frame | undefined): Record<string, unknown> {
+  if (!f) throw new Error("no snapshot frame");
+  const data = f.data as { gz?: string };
+  if (typeof data?.gz !== "string") return data as Record<string, unknown>;
+  const json = new TextDecoder().decode(Bun.gunzipSync(Buffer.from(data.gz, "base64")));
+  return JSON.parse(json) as Record<string, unknown>;
+}
+
 const named = (frames: Frame[], event: string) => frames.filter((f) => f.event === event);
 const synced = (frames: Frame[]) => named(frames, "synchronized").length > 0;
 const eventsOf = (frames: Frame[]) => named(frames, "event").map((f) => f.data as ThreadEvent);
@@ -788,7 +797,7 @@ describe("GET /api/v2/thread/:id", () => {
     r.store.append([startRun("r1", "t1", 1), item("i1", "t1", "r1"), item("x1", "t2")]);
     const s = sse(await call(r, get("/api/v2/thread/t1")));
     let frames = await s.until(synced);
-    const snap = frames[0]!.data as { thread: { id: string }; runs: { id: string }[]; items: { id: string }[]; historyCursor: string | null };
+    const snap = snapshotOf(frames[0]) as { thread: { id: string }; runs: { id: string }[]; items: { id: string }[]; historyCursor: string | null };
     expect(frames[0]!.event).toBe("snapshot");
     expect(snap.thread.id).toBe("t1");
     expect(snap.runs.map((x) => x.id)).toEqual(["r1"]);
@@ -801,6 +810,21 @@ describe("GET /api/v2/thread/:id", () => {
     expect(eventsOf(frames).map((e) => (e.payload as { item?: { id: string } }).item?.id)).toEqual(["i2"]);
     await s.cancel();
     expect(r.watchers.count("t1")).toBe(0);
+  });
+
+  test("the snapshot frame is gzipped under a marker and decodes to the same snapshot", async () => {
+    const r = await rig();
+    r.store.append([startRun("r1", "t1", 1), item("i1", "t1", "r1"), item("i2", "t1", "r1")]);
+    const s = sse(await call(r, get("/api/v2/thread/t1")));
+    const frames = await s.until(synced);
+    const wire = frames[0]!.data as { gz?: string; thread?: unknown };
+    expect(frames[0]!.event).toBe("snapshot");
+    expect(typeof wire.gz).toBe("string");
+    expect(wire.thread).toBeUndefined();
+    const snap = snapshotOf(frames[0]);
+    expect(frames[0]!.id).toBe(String(snap.sequence));
+    expect(snap).toEqual(r.store.snapshotThread("t1") as unknown as Record<string, unknown>);
+    await s.cancel();
   });
 
   test("replay is scoped to the thread; a thread more than 128 events behind gets a snapshot", async () => {
@@ -829,7 +853,7 @@ describe("GET /api/v2/thread/:id", () => {
     r.store.append([item("i1", "t1"), { type: "thread.archived", threadId: "t1", payload: { reason: "pane-closed", at: 2 } }]);
     const s = sse(await call(r, get("/api/v2/thread/t1")));
     const frames = await s.until(synced);
-    const snap = frames[0]!.data as { thread: { shelf: string }; items: { id: string }[] };
+    const snap = snapshotOf(frames[0]) as { thread: { shelf: string }; items: { id: string }[] };
     expect(snap.thread.shelf).toBe("archived");
     expect(snap.items.map((x) => x.id)).toEqual(["i1"]);
     expect(s.done).toBe(false);
