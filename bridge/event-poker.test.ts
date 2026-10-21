@@ -270,3 +270,47 @@ describe("EventPoker — stop()", () => {
     expect(client.streams.length).toBe(1);
   });
 });
+
+describe("EventPoker — one rejected subscription type does not kill the stream", () => {
+  test("drops the offending global type and reconnects at once", () => {
+    const { client, poker } = makePoker({ backoffMs: [1000] });
+    poker.start();
+    client.last.onUp();
+    // A server that does not know `pane.moved` rejects the whole subscribe; the reason names it.
+    client.last.onDown("invalid_request: unknown variant `pane.moved`, expected one of ...");
+    // Immediate reconnect, not a backoff wait.
+    expect(client.streams.length).toBe(2);
+    const types = client.last.subscriptions.map((s) => s.type);
+    expect(types).not.toContain("pane.moved");
+    expect(types).toContain("pane.created");
+    // The drop is remembered: a later ordinary reconnect still omits it.
+    client.last.onUp();
+    client.last.onDown("socket error");
+    expect(client.streams.length).toBe(2);
+    poker.stop();
+  });
+
+  test("a socket error still takes the backoff and drops nothing", () => {
+    const { client, clock, poker } = makePoker({ backoffMs: [1000] });
+    poker.start();
+    client.last.onUp();
+    client.last.onDown("socket error");
+    expect(client.streams.length).toBe(1);
+    expect(clock.scheduled.at(-1)).toBe(1000);
+    clock.advance(1000);
+    expect(client.streams.length).toBe(2);
+    expect(client.last.subscriptions.map((s) => s.type)).toContain("pane.moved");
+    poker.stop();
+  });
+
+  test("a pane-scoped rejection drops only the named pane", () => {
+    const { client, poker } = makePoker();
+    poker.start();
+    poker.setAgentPanes(["w1:p1", "w2:p2"]);
+    client.last.onUp();
+    client.last.onDown("invalid_request: unknown variant `pane.agent_status_changed`, pane w1:p1");
+    const scoped = client.last.subscriptions.filter((s) => s.type === "pane.agent_status_changed");
+    expect(scoped).toEqual([{ type: "pane.agent_status_changed", pane_id: "w2:p2" }]);
+    poker.stop();
+  });
+});
