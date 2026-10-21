@@ -80,7 +80,16 @@ export const ComposerSubagentsBar = memo(function ComposerSubagentsBar({
   readonly items: Readonly<Record<string, TurnItem>> | undefined;
 }) {
   const agents = useMemo(() => deriveThreadAgents(items), [items]);
-  const bar = useSubagentBarState(threadId, agents);
+  const newestItemAt = useMemo(() => {
+    if (!items) return null;
+    let newest: number | null = null;
+    for (const item of Object.values(items)) {
+      const at = item.updatedAt ?? item.createdAt;
+      if (newest === null || at > newest) newest = at;
+    }
+    return newest;
+  }, [items]);
+  const bar = useSubagentBarState(threadId, agents, newestItemAt);
   const [expanded, setExpanded] = useState(false);
   const [detailKey, setDetailKey] = useState<string | null>(null);
   const { visible, markSeen } = bar;
