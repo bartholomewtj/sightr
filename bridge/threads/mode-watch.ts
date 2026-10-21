@@ -1,8 +1,8 @@
 import type { HerdrClient } from "../herdr-client.ts";
 import { paneKey, type PaneQueue } from "../pane-queue.ts";
 import type { EngineSnapshot, StateEngine } from "../state-engine.ts";
-import { parseLines } from "../../web/src/lib/blocks.ts";
-import { composerFor } from "../../web/src/lib/harness/composer-kit.ts";
+import { parseLines } from "../../shared/harness/blocks.ts";
+import { composerFor } from "../../shared/harness/composer-kit.ts";
 import type { ServerThread } from "./events.ts";
 import { modeOnScreen } from "./live-modes.ts";
 import { isSettled } from "./queue-drain.ts";

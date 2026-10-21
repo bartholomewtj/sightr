@@ -7,10 +7,10 @@ import { bracketedPasteChunks, sendKeysPaced, sendReplySteps, type SleepFn } fro
 import { json, requireJsonBody, text } from "./responses.ts";
 import { effectiveSettings } from "./runtime-settings.ts";
 import type { AgentView, StateEngine } from "./state-engine.ts";
-import { parseLines } from "../web/src/lib/blocks.ts";
+import { parseLines } from "../shared/harness/blocks.ts";
 import { runGuardedSend, type GuardedSendIo, type ReplyOutcome, type WriteResult } from "../web/src/lib/guarded-send.ts";
-import { composerFor, type ComposerKit } from "../web/src/lib/harness/composer-kit.ts";
-import type { StyledLine } from "../web/src/lib/blocks.ts";
+import { composerFor, type ComposerKit } from "../shared/harness/composer-kit.ts";
+import type { StyledLine } from "../shared/harness/blocks.ts";
 
 // POST /api/pane/:id/send — the free-text reply, guarded, in one request (spec 24).
 //

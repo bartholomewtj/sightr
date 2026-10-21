@@ -7,7 +7,7 @@ import {
   type RecipeIO,
   type RecipeResult,
 } from "../../web/src/lib/dialog-recipes.ts";
-import type { DialogKind, DialogModels } from "../../web/src/lib/harness/dialog-contract.ts";
+import type { DialogKind, DialogModels } from "../../shared/harness/dialog-contract.ts";
 import { dialogModel, dialogRegion, freeTextModel } from "../../web/src/lib/harness/dialog-kit.ts";
 import { SILENT_AUDIT, type AuditDetail, type AuditLog } from "../audit.ts";
 import type { Config } from "../config.ts";

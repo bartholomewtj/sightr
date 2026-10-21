@@ -31,8 +31,10 @@ vi.mock("@/lib/actions", async (importOriginal) => ({
   submitWizardKeys: vi.fn(),
   submitMultiSelectIntent: vi.fn(),
 }));
-vi.mock("@/lib/ansi", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/ansi")>("@/lib/ansi");
+// `@/lib/ansi` is a re-export of `@shared/harness/ansi` now, and the render path reaches the real
+// module through `@/lib/blocks` → shared, so the mock has to sit on the module id itself.
+vi.mock("@shared/harness/ansi", async () => {
+  const actual = await vi.importActual<typeof import("@shared/harness/ansi")>("@shared/harness/ansi");
   return {
     ...actual,
     parseAnsi: vi.fn((text: string) => {
