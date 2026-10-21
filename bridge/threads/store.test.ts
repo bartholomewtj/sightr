@@ -8,6 +8,7 @@ import { createProject, createThread, project, textItem, thread } from "../test/
 import type { EventDraft } from "./events.ts";
 import {
   MAX_ITEMS_PER_THREAD,
+  MAX_SNAPSHOT_ITEMS,
   openThreadStore,
   RETAIN_ARCHIVED_MS,
   RETAIN_EVENTS_MS,
@@ -454,7 +455,9 @@ describe("retention", () => {
     expect(store.receipt("c-old")).toBeNull();
     expect(store.receipt("c-new")).not.toBeNull();
     expect(result.items).toBe(6);
-    const items = store.snapshotThread("t1")!.items.map((i) => i.id);
+    // `recentItems`, not `snapshotThread`: the snapshot is bounded to the newest items (spec 26), so it
+    // is no longer a way to read a whole thread.
+    const items = store.recentItems("t1", MAX_ITEMS_PER_THREAD + 10).map((i) => i.id);
     expect(items).toContain("keep");
     expect(items).not.toContain("f5");
     expect(items).toContain("f6");
@@ -567,5 +570,47 @@ describe("thread.deleted", () => {
     const store = open();
     store.append([createProject()]);
     expect(() => store.append([{ type: "thread.deleted", threadId: "nope", payload: { at: 1 } }])).toThrow();
+  });
+});
+
+describe("snapshot bound (spec 26)", () => {
+  const run = (id: string, ordinal: number) => ({
+    id,
+    threadId: "t1",
+    ordinal,
+    status: "running" as const,
+    startedAt: ordinal,
+  });
+
+  test("the window holds the newest MAX_SNAPSHOT_ITEMS items and points at the rest", () => {
+    const store = open();
+    store.append([createProject(), createThread()]);
+    const total = MAX_SNAPSHOT_ITEMS + 37;
+    for (let i = 0; i < total; i++) {
+      store.append([{ type: "turn-item.updated", threadId: "t1", payload: { item: textItem(`i${i}`) } }]);
+    }
+    const snapshot = store.snapshotThread("t1")!;
+    expect(snapshot.items).toHaveLength(MAX_SNAPSHOT_ITEMS);
+    // The newest is kept; the window starts at item 37; the rest is reachable by cursor.
+    expect(snapshot.items.at(-1)!.id).toBe(`i${total - 1}`);
+    expect(snapshot.items[0]!.id).toBe("i37");
+    expect(snapshot.historyCursor).not.toBeNull();
+  });
+
+  test("a small thread is unchanged and has no older cursor", () => {
+    const store = open();
+    store.append([createProject(), createThread()]);
+    store.append([{ type: "turn-item.updated", threadId: "t1", payload: { item: textItem("a") } }]);
+    const snapshot = store.snapshotThread("t1")!;
+    expect(snapshot.items.map((i) => i.id)).toEqual(["a"]);
+    expect(snapshot.historyCursor).toBeNull();
+  });
+
+  test("the snapshot returns at most three runs", () => {
+    const store = open();
+    store.append([createProject(), createThread()]);
+    for (let i = 1; i <= 5; i++) store.append([{ type: "run.started", threadId: "t1", payload: { run: run(`r${i}`, i) } }]);
+    const snapshot = store.snapshotThread("t1")!;
+    expect(snapshot.runs.map((r) => r.id)).toEqual(["r3", "r4", "r5"]);
   });
 });
