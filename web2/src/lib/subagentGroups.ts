@@ -89,6 +89,8 @@ export function mergeSubagentItems(items: readonly SubagentItem[]): SubagentItem
   if (progress === undefined) delete merged.progress;
   else merged.progress = progress;
   if (items.some((i) => i.truncated)) merged.truncated = true;
+  // T33: any of the agent's calls can say its log is open-able (Pi names the file only on a later check).
+  if (items.some((i) => i.transcript)) merged.transcript = true;
   return merged;
 }
 

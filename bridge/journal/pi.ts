@@ -148,6 +148,7 @@ export function applyPiDetails(part: ToolPart, details: unknown): void {
         title: d.description ?? d.displayName,
         status: d.status,
         progress,
+        transcriptPath: d.transcriptPath,
         model: d.modelName,
         durationMs: typeof d.durationMs === "number" && d.durationMs > 0 ? d.durationMs : seconds ? Number(seconds[1]) * 1000 : undefined,
         tokens: d.tokens,

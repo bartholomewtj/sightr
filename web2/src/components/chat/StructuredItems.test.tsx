@@ -1,6 +1,6 @@
 // The structured turn items the journal adapters now emit (diffs, failed edits, task lists, plans,
 // subagents, interrupts, compaction, page fetches, usage limits), rendered through the real timeline.
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Run, TurnItem } from "@shared/v2/contracts";
@@ -260,6 +260,41 @@ describe("structured items in the timeline", () => {
       expect(within(last).getByRole("button", { name: "Fix PR #1153, Running in the background" })).toBeInTheDocument();
       expect(within(last).getByText("Fix the failing review comments on PR #1153.")).toBeInTheDocument();
       expect(within(last).queryByRole("button", { name: /^fd9eec52-cc41-447,/ })).toBeNull();
+    });
+
+    it("a running agent with an open-able log says what it is doing and opens its transcript", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+        const url = new URL(String(input), "http://x");
+        const body = url.searchParams.get("latest") === "1"
+          ? { ok: true, latest: { label: "Running", text: "git status" }, size: 5, running: true, toolCount: 1 }
+          : { ok: true, size: 5, running: true, cutHead: false, items: [user("tu:0", "Fix PR #1153.", {}), assistant("ta:0", "Looking at the diff.", {})] };
+        return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }));
+      });
+      const launch = agent("s:0", "r1", {
+        title: "Fix PR #1153",
+        subagentId: "fd9eec52-cc41-447",
+        prompt: "Fix it.",
+        agentStatus: "running",
+        status: "completed",
+        transcript: true,
+      });
+      await show([user("u:0", "go", inRun), launch, assistant("b:0", "ok", inRun)], [run("r1")]);
+      // The closed row's second line is the newest action from the agent's own log.
+      await waitFor(() => expect(screen.getByText("Running: git status")).toBeInTheDocument());
+      // A sole running agent is open already.
+      expect(screen.getByRole("button", { name: "Fix PR #1153, Still running" })).toHaveAttribute("aria-expanded", "true");
+      fireEvent.click(document.querySelector("[data-subagent-watch]") as HTMLElement);
+      expect(await screen.findByText("Looking at the diff.")).toBeInTheDocument();
+      expect(document.querySelector("[data-transcript-status]")).toHaveTextContent("· live");
+      expect(fetchSpy.mock.calls.some(([u]) => String(u).includes("/item/s%3A0/transcript"))).toBe(true);
+    });
+
+    it("an agent whose log cannot be opened has no Watch button", async () => {
+      const launch = agent("s:0", "r1", { title: "Fix", subagentId: "fd9eec52-cc41-447", prompt: "Fix it.", agentStatus: "completed", result: "Done." });
+      await show([user("u:0", "go", inRun), launch, assistant("b:0", "ok", inRun)], [run("r1")]);
+      fireEvent.click(screen.getByRole("button", { name: "Fix, Completed" }));
+      await settle();
+      expect(document.querySelector("[data-subagent-watch]")).toBeNull();
     });
   });
 

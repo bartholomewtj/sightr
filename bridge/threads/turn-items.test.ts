@@ -134,6 +134,16 @@ describe("entryItems", () => {
     expect(items[3]).toMatchObject({ type: "subagent", status: "failed", subagentId: "e1:3" });
   });
 
+  test("an agent's own log can be opened: Claude by its agent id, Pi by the path a check named", () => {
+    const sub = (detail: Record<string, unknown>) => ({ kind: "tool" as const, name: "Agent", summary: "x", detail: { kind: "subagent" as const, ...detail }, result: { text: "ok" } });
+    const claude = entryItems(entry({ parts: [sub({ agentId: "abc123" }), sub({})] }), { ...CTX, harness: "claude" });
+    expect(claude[0]).toMatchObject({ type: "subagent", transcript: true });
+    expect(claude[1]).not.toHaveProperty("transcript"); // a synthetic key names no file
+    const pi = entryItems(entry({ parts: [sub({ agentId: "p-1" }), sub({ agentId: "p-1", transcriptPath: "C:\s\tasks\a.jsonl" })] }), { ...CTX, harness: "pi" });
+    expect(pi[0]).not.toHaveProperty("transcript"); // launched, never checked: no path yet
+    expect(pi[1]).toMatchObject({ transcript: true, transcriptPath: "C:\s\tasks\a.jsonl" });
+  });
+
   test("a dynamic tool keeps its capped arguments as rawInput; a command its exit code", () => {
     const items = entryItems(
       entry({
