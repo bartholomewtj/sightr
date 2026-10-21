@@ -160,8 +160,8 @@ export const ComposerSubagentsBar = memo(function ComposerSubagentsBar({
                 </Button>
               ) : null}
             </div>
-            <ComposerBanner.Scroll>
-              <ul role="list" aria-label="Subagents" className="grid gap-px">
+            <ComposerBanner.Scroll className="overflow-x-hidden">
+              <ul role="list" aria-label="Subagents" className="grid grid-cols-[minmax(0,1fr)] gap-px">
                 {visible.map((agent) => (
                   <AgentRow key={agent.key} threadId={threadId} agent={agent} listOpen={expanded} onOpen={() => setDetailKey(agent.key)} />
                 ))}
