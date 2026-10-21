@@ -301,6 +301,14 @@ function frame(event: V2StreamFrame, data: unknown, id?: number): string {
   return `${id !== undefined ? `id: ${id}\n` : ""}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
+/**
+ * A thread snapshot on the wire (spec 26): the snapshot JSON, gzipped and base64'd under `gz`. The
+ * client decodes before parsing, so the marker is how it tells this from a plain snapshot object.
+ */
+export interface GzippedSnapshot {
+  gz: string;
+}
+
 const eventFrame = (e: ThreadEvent): string => frame("event", e, e.sequence);
 
 const SSE_HEADERS = {
@@ -760,7 +768,10 @@ export function createV2Routes(deps: V2RoutesDeps): V2Routes {
     if (!replayed) {
       const snapshot = s.snapshotThread(threadId);
       if (!snapshot) return respondJson(refuse(404, "not_found", "no-such-thread"), req);
-      catchUp.push(frame("snapshot", snapshot, snapshot.sequence));
+      // The snapshot is by far the largest frame (spec 26), so it goes gzipped. A client that does
+      // not know `gz` still reads a plain snapshot from an older bridge; only this side changed.
+      const body: GzippedSnapshot = { gz: Buffer.from(Bun.gzipSync(JSON.stringify(snapshot))).toString("base64") };
+      catchUp.push(frame("snapshot", body, snapshot.sequence));
       synced = snapshot.sequence;
     }
 
