@@ -94,19 +94,34 @@ describe("ComposerSubagentsBar", () => {
     await waitFor(() => expect(within(list).getByText("Running: git status")).toBeInTheDocument());
   });
 
-  it("Clear finished takes finished agents off the bar and keeps running ones, and it is remembered", () => {
+  it("Hide finished leaves only the running agents in the list; Show finished brings them back; it is remembered", () => {
     fakeBridge();
     const items = byId(finished(), running());
     const { unmount } = render(<ComposerSubagentsBar threadId={T} items={items} />);
     fireEvent.click(screen.getByRole("button", { name: /^Subagents:/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Clear finished" }));
+    expect(screen.getByRole("button", { name: "Survey src, Completed" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hide finished" }));
     expect(screen.queryByRole("button", { name: "Survey src, Completed" })).toBeNull();
     expect(screen.getByRole("button", { name: "Fix PR #1153, Running" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Clear finished" })).toBeNull();
+    // Nothing is removed: the strip still counts every agent.
+    expect(screen.getByRole("button", { name: /^Subagents: 1 running · 1 done/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show finished (1)" })).toHaveAttribute("aria-pressed", "true");
     unmount();
     render(<ComposerSubagentsBar threadId={T} items={items} />);
     fireEvent.click(screen.getByRole("button", { name: /^Subagents:/ }));
     expect(screen.queryByRole("button", { name: "Survey src, Completed" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show finished (1)" }));
+    expect(screen.getByRole("button", { name: "Survey src, Completed" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hide finished" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("with finished hidden and nothing running, the list says so and the toggle is still there", () => {
+    fakeBridge();
+    render(<ComposerSubagentsBar threadId={T} items={byId(finished())} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Subagents:/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide finished" }));
+    expect(document.querySelector("[data-subagents-none-running]")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Show finished (1)" })).toBeInTheDocument();
   });
 
   it("an agent that finishes while the list is closed puts a dot on the bar; opening the list clears it", () => {
