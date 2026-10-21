@@ -132,6 +132,9 @@ Order matters: T01→T05 make the bridge serve v2 with no UI; T09 can start once
 | T29 | [T29-line-comments.md](T29-line-comments.md) | web2 | Line comments become quoted text in the composer |
 | T30 | [T30-git-checkpoints.md](T30-git-checkpoints.md) | bridge + shared | Snapshots in a private store at run start and end; exact per-run diffs, patches kept in SQLite |
 | T31 | [T31-checkpoint-ui.md](T31-checkpoint-ui.md) | web2 | Card and panel run scope read checkpoints, fall back to the journal |
+| T35 | [T35-sync-688ee52-markdown.md](T35-sync-688ee52-markdown.md) | web2 | Math (KaTeX), Mermaid, code highlighting + fence titles, GitHub alerts, table copy/expand |
+| T36 | [T36-sync-688ee52-media.md](T36-sync-688ee52-media.md) | web2 | Inline images/video; markdown links to workspace paths as file chips |
+| T37 | [T37-sync-688ee52-composer.md](T37-sync-688ee52-composer.md) | web2 | Composer stays usable during a pending request; a send queues |
 
 ## React Compiler spike (T23, 18 Oct 2026): not adopted
 

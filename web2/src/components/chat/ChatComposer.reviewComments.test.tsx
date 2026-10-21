@@ -189,7 +189,7 @@ describe("what Add does not change", () => {
   });
 });
 
-describe("while a request replaces the box", () => {
+describe("while a request is pending, the box stays usable (T37)", () => {
   const ask: RuntimeRequest = {
     id: "r1",
     threadId: "t1",
@@ -202,11 +202,11 @@ describe("while a request replaces the box", () => {
     updatedAt: 1,
   };
 
-  it("hides the row, but an Add from the Diff panel still updates the draft and the toast says the message is waiting", async () => {
+  it("keeps the row and the box, so an Add from the Diff panel still updates the draft and the toast says the message is waiting", async () => {
     const a = comment("note");
     show({ requests: [ask] });
-    expect(bar()).toBeNull();
-    expect(screen.queryByLabelText("Message")).toBeNull();
+    expect(bar()).not.toBeNull();
+    expect(screen.getByLabelText("Message")).toBeInTheDocument();
     act(() => requestInsert("t1", [blockOf(a)]));
     await waitFor(() => expect(loadDraft("t1")).toBe(blockOf(a)));
     expect(toasts()).toContain("Added 1 comment to your message. The agent is asking something; your message is waiting.");
