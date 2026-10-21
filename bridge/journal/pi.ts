@@ -89,6 +89,27 @@ export function piCallDetail(name: string, args: unknown): TranscriptToolDetail 
   }
 }
 
+/**
+ * Pi's `get_subagent_result` text is a report wrapped in bookkeeping: header lines (`Agent:`, `Type:`,
+ * `Model:`, `Progress:`, `Description:`), a blank line, the body, then `Full transcript available at:`.
+ * A running agent has no report, only "Agent is still running…". The header's facts already arrive in
+ * `details`, so keep just the body, and the Progress line for the row.
+ */
+export function cleanSubagentResult(text: string, status: string | undefined): { body: string; progress?: string } {
+  const split = text.search(/\r?\n\r?\n/);
+  const header = split === -1 ? text : text.slice(0, split);
+  if (!/^Agent:\s/.test(header)) return { body: text }; // not the shape we know: leave it alone
+  const progress = /^Progress:\s*(.+)$/m
+    .exec(header)?.[1]
+    ?.trim()
+    .replace(/\s*\|\s*Last progress:.*$/i, "")
+    .replace(/\s*\|\s*/g, " · ");
+  let body = split === -1 ? "" : text.slice(split).trim();
+  body = body.replace(/\s*Full transcript available at:[^\n]*$/i, "").trim();
+  if (status?.toLowerCase() === "running" || /^Agent is still running\b/.test(body)) body = "";
+  return { body, ...(progress ? { progress } : {}) };
+}
+
 /** Refine a call's detail from its toolResult's `details` (edit's patch, todo's list, subagent facts). */
 export function applyPiDetails(part: ToolPart, details: unknown): void {
   if (details === null || typeof details !== "object" || Array.isArray(details)) return;
@@ -114,12 +135,19 @@ export function applyPiDetails(part: ToolPart, details: unknown): void {
   }
   if (SUBAGENT_TOOLS.has(part.name)) {
     const seconds = /^([\d.]+)s/.exec(str(d.duration) ?? "");
+    let progress: string | undefined;
+    if (part.name === "get_subagent_result" && part.result) {
+      const cleaned = cleanSubagentResult(part.result.text, str(d.status));
+      progress = cleaned.progress;
+      part.result = { ...part.result, text: cleaned.body };
+    }
     part.detail = mergeSubagent(
       part.detail,
       subagentDetail({
         agentId: d.agentId,
         title: d.description ?? d.displayName,
         status: d.status,
+        progress,
         model: d.modelName,
         durationMs: typeof d.durationMs === "number" && d.durationMs > 0 ? d.durationMs : seconds ? Number(seconds[1]) * 1000 : undefined,
         tokens: d.tokens,

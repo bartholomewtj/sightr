@@ -119,6 +119,7 @@ import { ProposedPlanCard } from "./ProposedPlanCard";
 import { OpenFileThreadContext } from "../right-panel/OpenFileLink";
 import { ScreenTimelineRow } from "./ScreenTimelineRow";
 import { ThreadDetailsSheet } from "./ThreadDetailsPanel";
+import { SubagentGroupRow } from "./SubagentGroup";
 import { isV2LifecycleItem, V2LifecycleRow } from "./V2LifecycleRow";
 import { TimelineAttachments } from "./TimelineAttachments";
 import { TimelineSystemDivider } from "./TimelineSystemDivider";
@@ -840,6 +841,7 @@ function EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event" }
   if (item.type === "proposed_plan") {
     return <ProposedPlanCard planMarkdown={item.markdown} truncated={item.truncated === true} />;
   }
+  if (row.subagents) return <SubagentGroupRow agents={row.subagents} />;
   if (isV2LifecycleItem(item)) return <V2LifecycleRow item={item} createdAt={row.createdAt} />;
   return null;
 }

@@ -232,6 +232,7 @@ export function subagentDetail(fields: {
   title?: unknown;
   prompt?: unknown;
   status?: unknown;
+  progress?: unknown;
   model?: unknown;
   durationMs?: unknown;
   tokens?: unknown;
@@ -252,6 +253,8 @@ export function subagentDetail(fields: {
   }
   const status = str(fields.status);
   if (status) detail.status = status;
+  const progress = str(fields.progress);
+  if (progress) detail.progress = progress.length > 200 ? `${progress.slice(0, 200)}…` : progress;
   const model = str(fields.model);
   if (model) detail.model = model;
   const durationMs = num(fields.durationMs);

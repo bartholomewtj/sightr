@@ -165,6 +165,8 @@ export type TranscriptToolDetail =
       title?: string;
       prompt?: string;
       status?: string;
+      /** What a running agent says it is doing now (Pi's "Progress:" line), e.g. "thinking… · 15 turns". */
+      progress?: string;
       model?: string;
       durationMs?: number;
       tokens?: string;

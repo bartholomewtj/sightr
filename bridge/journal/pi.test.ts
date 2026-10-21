@@ -107,6 +107,44 @@ describe("parsePiTranscript", () => {
     expect(entries[0]!.parts[0]).toMatchObject({ kind: "tool", result: { text: "file contents" } });
   });
 
+  // Live 21 Oct 2026: `get_subagent_result` wraps the report in header lines and a transcript footer, and
+  // a running agent has only "Agent is still running". The row must show the report, not the wrapping.
+  describe("get_subagent_result", () => {
+    const result = (id: string, details: Record<string, unknown>, text: string) =>
+      row(id, { role: "toolResult", toolCallId: "call_s", toolName: "get_subagent_result", details, content: [{ type: "text", text }] });
+    const call = row("a", {
+      role: "assistant",
+      content: [{ type: "toolCall", id: "call_s", name: "get_subagent_result", arguments: { agent_id: "9d72dd89-5fa3-401", wait: true } }],
+    });
+    const header = "Agent: 9d72dd89-5fa3-401\nType: Agent | Status: running | Tool uses: 15 | 121.5k token\nModel: subs/claude/opus\nProgress: thinking… | Turns: 15 | Last progress: 16.0s ago\nDescription: Fresh review of PR #717";
+
+    test("a running agent: no report, the progress line instead", () => {
+      const entries = parsePiTranscript(
+        [call, result("b", { agentId: "9d72dd89-5fa3-401", status: "running", description: "Fresh review of PR #717", toolUses: 15, tokens: "121.5k token" }, `${header}\n\nAgent is still running. Use wait: true or check back later.\n\nFull transcript available at: C:/x/tasks/a.jsonl`)].join("\n"),
+      );
+      expect(entries[0]!.parts[0]).toMatchObject({
+        result: { text: "" },
+        detail: { kind: "subagent", agentId: "9d72dd89-5fa3-401", title: "Fresh review of PR #717", status: "running", progress: "thinking… · Turns: 15", toolUses: 15 },
+      });
+    });
+
+    test("a finished agent: just the report", () => {
+      const done = header.replace("Status: running", "Status: completed").replace(/\nProgress:[^\n]*/, "");
+      const entries = parsePiTranscript(
+        [call, result("b", { agentId: "9d72dd89-5fa3-401", status: "completed", description: "Fresh review of PR #717" }, `${done}\n\n**CHANGES NEEDED**\n\n1. A thing.\n\nFull transcript available at: C:/x/tasks/a.jsonl`)].join("\n"),
+      );
+      const part = entries[0]!.parts[0] as { result?: { text: string } };
+      expect(part.result?.text).toBe("**CHANGES NEEDED**\n\n1. A thing.");
+    });
+
+    test("text that is not the known wrapping is left alone", () => {
+      const entries = parsePiTranscript(
+        [call, result("b", { agentId: "x", status: "completed" }, "Something else entirely.")].join("\n"),
+      );
+      expect((entries[0]!.parts[0] as { result?: { text: string } }).result?.text).toBe("Something else entirely.");
+    });
+  });
+
   // Live 18 Oct 2026 (pi, claude-haiku-5-5): Escape during a bash call wrote `stopReason: "error"` with
   // only the abort as its message. That is the operator's Stop, not a provider failure.
   test("an error that is only the operator's abort renders nothing; a real provider error still does", () => {

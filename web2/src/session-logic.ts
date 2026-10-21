@@ -16,6 +16,7 @@
 // - Reasoning gets a duration (Sightr, `reasoningTime`), because journals record thinking as one
 //   finished block with the entry's timestamp.
 import type { ChatAttachment, Run, TurnItem } from "@shared/v2/contracts";
+import { planSubagentGroups, type SubagentItem } from "@/lib/subagentGroups";
 
 import {
   workEntryIndicatesToolFailure,
@@ -81,6 +82,8 @@ export type TimelineEntry =
       readonly kind: "event";
       readonly createdAt: number;
       readonly projectedItem: TurnItem;
+      /** Sightr (T32): set on the anchor of a run's subagent card: the run's agents, each merged from all its items. */
+      readonly subagents?: readonly SubagentItem[];
     };
 
 export function workLogEntryIsToolLike(entry: WorkLogEntry): boolean {
@@ -496,8 +499,14 @@ export function deriveTimelineEntries(input: TimelineEntriesInput): TimelineEntr
   }
 
   const entries: TimelineEntry[] = [];
+  const subagentPlan = planSubagentGroups(items);
   const push = (item: TurnItem, index: number) => {
     const createdAt = itemCreatedAt(item);
+    if (item.type === "subagent") {
+      const agents = subagentPlan.anchors.get(item.id);
+      if (agents) entries.push({ id: item.id, kind: "event", createdAt, projectedItem: item, subagents: agents });
+      return; // the rest of a run's agents are drawn inside its card
+    }
     if (item.type === "user_message" || item.type === "assistant_message") {
       const message: ChatMessage = {
         id: item.id,
