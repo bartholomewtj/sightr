@@ -240,4 +240,25 @@ describe("free-text answer — Pi ask", () => {
     expect(pane.log.some((l) => /^key:\d$/.test(l))).toBe(false); // Pi ignores digits; none are sent
     expect(r.store.getRequest(request.id)).toMatchObject({ status: "resolved", customAnswer: "my pi answer" });
   });
+  test("a long answer whose wrap lost its space in the read still goes in", async () => {
+    // Pi wraps a long answer onto two editor lines; the read can show "very" + "complex" with no space.
+    const answer = "my pi answer is long enough to wrap onto a second line in the editor box";
+    let downs = 0;
+    const pane = new ScriptedPane(
+      PI_FRESH,
+      (key, p) => {
+        if (key === "Down") downs++;
+        else if (key === "Enter") p.screen = p.screen === PI_FRESH && downs === 2 ? PI_OPEN : DONE;
+      },
+      (text, p) => {
+        p.screen = piTyped(text.replace("a second", "asecond"));
+      },
+    );
+    const r = rig(pane, "pi");
+    await r.ingestor.poll();
+    const request = r.pending();
+    const result = await r.ingestor.respond({ requestId: request.id, text: answer });
+    expect(result.ok).toBe(true);
+    expect(pane.log.at(-1)).toBe("key:Enter");
+  });
 });

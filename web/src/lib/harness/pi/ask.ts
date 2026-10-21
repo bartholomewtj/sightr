@@ -159,7 +159,7 @@ function helpAbove(
  * The editor Pi paints under the options once Enter has opened `Type something.`.
  * Returns the blank row directly under the options (where the normal walker starts) and the text.
  * Border rows are `─`; a non-final visual line is `width - 1` columns (the cursor column is reserved),
- * so a space at a wrap survives. The last line's trailing spaces are the cursor plus padding.
+ * so a wrapped line shorter than that ended at a space (put back in `readEditorText`). The last line's trailing spaces are the cursor plus padding.
  */
 function takeEditor(
   texts: string[],
@@ -192,7 +192,13 @@ function readEditorText(rows: string[]): string {
   return content
     .map((r, idx) => {
       const body = r.startsWith(" ") ? r.slice(1) : r;
-      if (idx < content.length - 1) return body.slice(0, layout);
+      if (idx < content.length - 1) {
+        // Rows are read with their trailing blanks cut, so a space at the wrap and the row's padding
+        // look alike. A row that stops short of the full line was wrapped at a space: put one back
+        // ("very" + "complex" must not read as "verycomplex"). A full row was cut mid-word.
+        const line = body.slice(0, layout).trimEnd();
+        return line.length < layout ? `${line} ` : line;
+      }
       return body.trimEnd();
     })
     .join("");
