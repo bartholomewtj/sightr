@@ -325,6 +325,7 @@ export function entryItems(entry: TranscriptEntry, ctx: ItemContext): TurnItemDr
         result: result ? result.text : null,
         ...(detail.model ? { model: detail.model } : {}),
         ...(detail.status ? { agentStatus: detail.status } : {}),
+        ...(detail.progress ? { progress: detail.progress } : {}),
         ...(detail.durationMs !== undefined ? { durationMs: detail.durationMs } : {}),
         ...(detail.tokens ? { tokens: detail.tokens } : {}),
         ...(detail.toolUses !== undefined ? { toolUses: detail.toolUses } : {}),

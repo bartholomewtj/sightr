@@ -186,11 +186,81 @@ describe("structured items in the timeline", () => {
       status: "running",
     });
     await show([user("u:0", "go", inRun), sub, assistant("b:0", "ok", inRun)], [run("r1")]);
-    fireEvent.click(screen.getByRole("button", { name: /fd9eec52-cc41-447, Running/ }));
+    // A sole running agent opens by itself; the bare id is not its name.
+    expect(screen.getByRole("button", { name: "Subagent, Running" })).toHaveAttribute("aria-expanded", "true");
     await settle();
     const detail = document.querySelector("[data-subagent-detail]") as HTMLElement;
     expect(detail).toHaveTextContent("fd9eec52-cc41-447");
     expect(detail).toHaveTextContent("Waiting for this agent's report");
+  });
+
+  describe("subagent card (T32)", () => {
+    const agent = (id: string, runId: string, fields: Record<string, unknown>) =>
+      item(id, {
+        type: "subagent",
+        runId,
+        origin: "provider_native",
+        driver: "pi",
+        providerInstanceId: "pi",
+        childThreadId: null,
+        prompt: "",
+        result: null,
+        ...fields,
+      });
+
+    it("draws a run's agents as one card with counts, the brief and a result card", async () => {
+      const launch = agent("s:0", "r1", {
+        title: "Fix PR #1153",
+        subagentId: "fd9eec52-cc41-447",
+        prompt: "Fix the failing review comments on PR #1153.",
+        agentStatus: "background",
+        status: "completed",
+      });
+      const second = agent("s:1", "r1", {
+        title: "Survey src",
+        subagentId: "aaaa1111-bbbb-222",
+        prompt: "List the files in src.",
+        result: "Two files: **greet.ts** and index.ts.",
+        agentStatus: "completed",
+        status: "completed",
+      });
+      await show([user("u:0", "go", inRun), launch, assistant("b:0", "wait", inRun), second], [run("r1")]);
+      expect(document.querySelectorAll("[data-subagent-group]")).toHaveLength(1);
+      expect(document.querySelector("[data-subagent-counts]")).toHaveTextContent("1 running · 1 done");
+      fireEvent.click(screen.getByRole("button", { name: "Survey src, Completed" }));
+      await settle();
+      const detail = document.querySelector('[data-subagent-agent="aaaa1111-bbbb-222"] [data-subagent-detail]') as HTMLElement;
+      expect(within(detail).getByText("List the files in src.")).toBeInTheDocument();
+      const result = detail.querySelector("[data-subagent-result]") as HTMLElement;
+      expect(within(result).getByText("greet.ts").tagName).toBe("STRONG");
+      expect(within(result).getByRole("button", { name: "Copy the result" })).toBeInTheDocument();
+    });
+
+    it("joins a later check-on call to its launch, in another run, so it has a name and a brief", async () => {
+      const launch = agent("s:0", "r1", {
+        title: "Fix PR #1153",
+        subagentId: "fd9eec52-cc41-447",
+        prompt: "Fix the failing review comments on PR #1153.",
+        agentStatus: "background",
+        status: "completed",
+      });
+      // Pi's get_subagent_result while it waits: the id is its summary, and it carries nothing else.
+      const check = agent("s:1", "r2", {
+        title: "fd9eec52-cc41-447",
+        subagentId: "fd9eec52-cc41-447",
+        status: "running",
+      });
+      await show(
+        [user("u:0", "go", inRun), launch, assistant("b:0", "ok", inRun), user("u:1", "again", { runId: "r2" }), check],
+        [run("r1"), run("r2", { status: "running", completedAt: undefined })],
+      );
+      const cards = document.querySelectorAll("[data-subagent-group]");
+      expect(cards).toHaveLength(2); // the launch's run and the check-on run each have a card
+      const last = cards[1] as HTMLElement;
+      expect(within(last).getByRole("button", { name: "Fix PR #1153, Running in the background" })).toBeInTheDocument();
+      expect(within(last).getByText("Fix the failing review comments on PR #1153.")).toBeInTheDocument();
+      expect(within(last).queryByRole("button", { name: /^fd9eec52-cc41-447,/ })).toBeNull();
+    });
   });
 
   it("draws the journal's interrupt as T3's divider, with no second Stopped notice", async () => {

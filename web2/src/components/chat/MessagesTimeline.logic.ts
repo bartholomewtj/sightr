@@ -33,6 +33,7 @@ import {
   commandProgramName,
 } from "@t3tools/client-runtime/work-log/command-label";
 import { checkpointSignature, hasRunChanges, resolveRunChanges } from "@/lib/runChanges";
+import { sameSubagents, type SubagentItem } from "@/lib/subagentGroups";
 import { changedFilesSignature, deriveRunChangedFiles, type RunChangedFiles } from "./ChangedFiles.logic";
 import {
   liveActivityToolStatus,
@@ -378,6 +379,8 @@ type MessagesTimelineRowContent =
       id: string;
       createdAt: number;
       projectedItem: TurnItem;
+      /** Sightr (T32): the agents of a run's subagent card (see `TimelineEntry`). */
+      subagents?: readonly SubagentItem[];
     }
   | {
       /**
@@ -1149,6 +1152,7 @@ export function deriveMessagesTimelineRows(input: MessagesTimelineRowsInput): Me
         id: timelineEntry.id,
         createdAt: timelineEntry.createdAt,
         projectedItem: timelineEntry.projectedItem,
+        ...(timelineEntry.subagents ? { subagents: timelineEntry.subagents } : {}),
       });
       continue;
     }
@@ -1433,7 +1437,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       return a.createdAt === bf.createdAt && a.label === bf.label && a.expanded === bf.expanded;
     }
     case "event":
-      return a.projectedItem === (b as typeof a).projectedItem;
+      return a.projectedItem === (b as typeof a).projectedItem && sameSubagents(a.subagents, (b as typeof a).subagents);
     case "changed-files": {
       const bc = b as typeof a;
       return (
