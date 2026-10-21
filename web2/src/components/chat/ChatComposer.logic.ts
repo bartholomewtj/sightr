@@ -304,6 +304,16 @@ export function heldReasonText(reason: string | undefined): string {
   }
 }
 
+/**
+ * The notice for a queue a bridge restart put back on its own (Phase 5.3): what happened, in the
+ * operator's words, with how many messages it concerned when this client saw them held.
+ */
+export function queueAutoResumeText(count: number): string {
+  if (count === 1) return "A queued message resumed automatically after the restart.";
+  if (count > 1) return `${count} queued messages resumed automatically after the restart.`;
+  return "Queued messages resumed automatically after the restart.";
+}
+
 /** The queue's header line: "Paused after restart" when every held row says so. */
 export function queueHeldSummary(queue: readonly QueuedMessage[]): { held: boolean; restart: boolean; resumable: boolean } {
   const held = queue.filter((q) => q.state === "held");

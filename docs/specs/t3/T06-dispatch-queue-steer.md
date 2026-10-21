@@ -65,11 +65,13 @@ with `state` in `queued | sending | held`.
   drainer backs off until the next status event. Three failures in a row set `state = held` and emit
   `queue.updated {change: "held", reason}`. An `error` with `textDelivered: true` deletes the row (the text is in the box) and
   emits `dispatch.failed`.
-- **Restart.** On bridge start every `queued` or `sending` row becomes `held`. The drainer does not send held
-  rows. `queue.resume {threadId}` (new command) flips them back to `queued` in order and emits
-  `queue.updated {change: "resumed"}`. A `sending` row at crash time is ambiguous (text may be in the box), so it
-  loads with `heldReason: "restart"`, and the UI shows the
-  text for the user to decide. T3 holds its queue the same way.
+- **Restart.** On bridge start every `queued` or `sending` row becomes `held` first: nothing may be typed at a
+  pane that could be mid-run. A `sending` row at crash time is ambiguous (text may be in the box), so it loads
+  with `heldReason: "restart"` too. The hold then lifts **itself** as soon as the pane is proven to rest — the
+  same conditions as any drain (status `idle`/`done`, no pending request, composer on screen) — by flipping the
+  `restart` rows back to `queued` in order and emitting `queue.updated {change: "resumed", reason: "auto"}`
+  (Phase 5.3; `reason: "auto"` is how a client tells it from a manual resume, which carries no reason).
+  `queue.resume {threadId}` still lifts it at once by hand. T3 holds its queue the same way.
 - **Edit and reorder.** Both are plain store writes and never touch the pane.
 
 ### Steer
@@ -124,7 +126,8 @@ dispatch appends the `user_message` item itself on `sent` (T03, `screen` items).
   submit only after the text shows.
 - A blocked thread never receives a dispatch. Approvals are answered, never talked past.
 - A queued message is sent at most once. A row leaves the table only on `sent`, `cancel`, or `textDelivered`.
-- After a restart nothing is sent until the user resumes.
+- After a restart nothing is sent until the pane is proven to rest; the hold lifts itself then, and
+  `queue.resume` can lift it sooner.
 - The drainer sends one message per settle.
 - Dispatch makes no decision on harness id; it reads capability flags.
 
@@ -139,7 +142,9 @@ Bridge, with a fake Herdr and a fake clock (`bridge/threads/dispatch.test.ts`, `
 - a `done` that flips back to `working` inside the hold does not drain.
 - drain backs off when the composer is not ready; three `stalled` results hold the row.
 - `error` with `textDelivered` deletes the row; `blocked` leaves it in place.
-- restart: rows load as `held`, nothing is sent, `queue.resume` releases them in order; a `sending` row loads held with reason `restart`.
+- restart: rows load as `held` and nothing is sent while the pane works; once it rests the hold lifts itself
+  (`resumed` with reason `auto`) and the rows drain in order; a `sending` row loads held with reason `restart`;
+  `queue.resume` still releases them by hand. A pending request keeps them held until it is answered.
 - steer: interrupt key goes out once, text is sent only after settle; timeout holds the row at position 0.
 - interrupt marks the open run; a fake status change to `idle` makes T03's ingestor end it `interrupted`.
 - steer with an open runtime request is refused; interrupt on an unsupported thread is refused.
@@ -189,6 +194,8 @@ Deviations and additions:
 - **Closed pane.** When a thread is archived its rows are held with `heldReason: "pane-closed"` (T12's "Not sent: pane
   closed"); rows never leave the table on their own.
 - **Restart** holds `queued` rows too, with `heldReason: "restart"`, not only `sending` ones (T12 shows one Resume).
+  **Phase 5.3** then lifts that hold by itself once the pane rests and no dialog is open, through the same
+  `pass` the ordinary drain uses; the client's notice for it is keyed on `change: "resumed", reason: "auto"`.
 - **Steer.** The row's insert commits with the receipt and the reply returns at once; interrupt, wait and send run in
   the background. A steer whose send fails is held at position 0 with the outcome as its reason (not retried). A
   resumed steer row drains like a queue row.

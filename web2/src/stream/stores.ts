@@ -74,6 +74,18 @@ export function clearBlocked(): void {
 }
 
 /**
+ * Clear the open thread's "the queue resumed by itself" notice (the banner's Dismiss). Only the
+ * notice goes: the queue itself is the bridge's, and nothing here writes to it.
+ */
+export function dismissQueueAutoResume(threadId: string): void {
+  useThreadStore.setState((s) =>
+    s.current && s.current.threadId === threadId && s.current.queueAutoResume
+      ? { current: { ...s.current, queueAutoResume: null } }
+      : {},
+  );
+}
+
+/**
  * What the bridge says about the host and this device (T12's banners):
  * - `herdr`: the bridge's herdr socket, from the shell snapshot, `synchronized` and `ping` frames;
  *   null until the first one.

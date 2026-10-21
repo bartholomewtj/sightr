@@ -232,6 +232,9 @@ const failed = (events: ThreadEvent[]) =>
   events.filter((e): e is Extract<ThreadEvent, { type: "dispatch.failed" }> => e.type === "dispatch.failed").map((e) => e.payload);
 const changes = (events: ThreadEvent[]) =>
   events.flatMap((e) => (e.type === "queue.updated" && e.payload.change ? [e.payload.change] : []));
+/** The `reason` on every `queue.updated`: `restart` on the start hold, `auto` when it lifts itself. */
+const resumedReasons = (events: ThreadEvent[]) =>
+  events.flatMap((e) => (e.type === "queue.updated" && e.payload.reason ? [e.payload.reason] : []));
 
 /** A `user_message` item (the text that opened a run), as the journal or dispatch writes it. */
 function compactItem(id: string, runId: string | null, text: string, attachments: ChatAttachment[] = []): ThreadEvent {
@@ -538,7 +541,7 @@ describe("message.dispatch queue", () => {
     expect(b.queue()).toEqual([expect.objectContaining({ text: "keep me", state: "queued", position: 0 })]);
   });
 
-  test("restart: rows load held, nothing is sent, and queue.resume releases them in order", async () => {
+  test("restart: rows load held and resume by themselves once the pane rests (Phase 5.3)", async () => {
     const r = rig({ status: "working", started: false });
     const base = { threadId: "t1", attachments: [], mode: "queue" as const, createdAt: T0 };
     r.store.append([
@@ -558,15 +561,39 @@ describe("message.dispatch queue", () => {
       expect.objectContaining({ id: "q1", state: "held", heldReason: "restart" }),
       expect.objectContaining({ id: "q2", state: "held", heldReason: "restart" }),
     ]);
-    await r.setStatus("idle");
+    // While the pane works the hold stands: no key, no text, no interrupt.
+    await r.idle();
     expect(r.pane.log).toEqual([]);
 
-    await r.run({ type: "queue.resume", threadId: "t1" });
-    expect(changes(r.events).slice(-2)).toEqual(["resumed", "sent"]);
+    await r.setStatus("idle");
+    // The hold lifted itself, said so with `reason: "auto"`, and the first row went.
+    expect(changes(r.events)).toEqual(["held", "resumed", "sent"]);
+    expect(resumedReasons(r.events)).toEqual(["restart", "auto"]);
     expect(r.pane.submitted).toEqual(["was sending"]);
     await r.setStatus("working");
     await r.setStatus("done");
     expect(r.pane.submitted).toEqual(["was sending", "was queued"]);
+  });
+
+  test("restart: queue.resume still lifts the hold by hand, and says nothing was automatic", async () => {
+    const r = rig({ status: "working", started: false });
+    const base = { threadId: "t1", attachments: [], mode: "queue" as const, createdAt: T0 };
+    r.store.append([
+      { type: "queue.updated", threadId: "t1", payload: { messages: [{ ...base, id: "q1", text: "was queued", position: 0, state: "queued" }] } },
+    ]);
+    r.dispatcher.start();
+    await r.idle();
+    expect(r.queue()[0]).toEqual(expect.objectContaining({ state: "held", heldReason: "restart" }));
+
+    // With the pane still working, the manual resume queues the row but writes nothing to the pane.
+    await r.run({ type: "queue.resume", threadId: "t1" });
+    expect(r.queue()[0]).toEqual(expect.objectContaining({ state: "queued" }));
+    expect(r.pane.log).toEqual([]);
+
+    await r.setStatus("idle");
+    expect(r.pane.submitted).toEqual(["was queued"]);
+    // Only the hold is automatic; a manual resume carries no `auto` reason.
+    expect(resumedReasons(r.events)).toEqual(["restart"]);
   });
 
   test("a closed pane holds its rows", async () => {

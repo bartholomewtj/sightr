@@ -44,7 +44,7 @@ One primary button; its state comes from the thread's status and the queue, neve
 
 - Above the box, a collapsible "Queued (3)" list from `thread.queue` in the store. Each row: position, first line of text, attachment count, drag handle, Edit, Steer now, Cancel.
 - **Reorder:** drag (pointer) or the Up/Down buttons on the row menu; sends `queued.reorder`. **Edit:** puts the text in the box with an "Editing queued message" chip; sending sends `queued.edit` and returns to normal; Escape discards the edit. **Cancel:** `queued.cancel`, 5 s Undo toast (re-queue at the same position).
-- **Persisted.** The queue is bridge state. After a bridge restart the rows are `held` (`heldReason: "restart"`); the list shows "Paused after restart" with a single Resume button. Resume sends `queue.resume {threadId}` (T06); the bridge drains from the head when the pane is idle. A row held for another reason (three failed sends) shows the reason and the same Resume.
+- **Persisted.** The queue is bridge state. After a bridge restart the rows are `held` (`heldReason: "restart"`) and the list shows "Paused after restart" with a single Resume button; Resume sends `queue.resume {threadId}` (T06). The bridge usually lifts that hold itself once the pane is idle (`queue.updated {change: "resumed", reason: "auto"}`, T06 / Phase 5.3); the composer then shows a dismissible notice ("… resumed automatically after the restart") instead of the paused list. A row held for another reason (three failed sends) shows the reason and the same Resume.
 - A queued message that the bridge dropped (pane closed) shows "Not sent: pane closed".
 
 ### Attachments
@@ -100,7 +100,7 @@ While `lost`, Send is disabled but the draft is kept.
 - **Enter setting:** both modes; IME composition never sends; phone default is "adds a line".
 - **Draft:** saved per thread; cleared on confirmed reply only; kept on 500; large paste prompts.
 - **Destructive text** needs a second tap.
-- **Queue:** reorder posts `queued.reorder`; edit flow posts `queued.edit`; cancel then Undo re-queues in place; "Paused after restart" shows Resume and posts `queue.resume`; dropped message notice.
+- **Queue:** reorder posts `queued.reorder`; edit flow posts `queued.edit`; cancel then Undo re-queues in place; "Paused after restart" shows Resume and posts `queue.resume`; a `resumed`/`auto` event shows the dismissible auto-resume notice; dropped message notice.
 - **Attachments** (msw upload): chip states, Send waits for uploads, retry, remove, payload shape.
 - **Slash menu:** operator rows replace the catalog on a pane they address; no-arg sends, arg inserts; `dangerous` needs two taps.
 - **Keys pad:** opens in flow, sends keys through `sendKeys`, hidden on desktop width.

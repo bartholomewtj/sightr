@@ -56,6 +56,19 @@ export interface ThreadState {
   historyCursor: string | null;
   /** The newest `dispatch.failed` this stream applied (T12's error banner); a snapshot clears it. */
   dispatchFailure: DispatchFailure | null;
+  /**
+   * The newest queue a bridge restart lifted by itself (`queue.updated {change: "resumed", reason:
+   * "auto"}`): the composer's notice says so, and Dismiss clears it. A snapshot clears it too: it is
+   * news about an event, not queue state.
+   */
+  queueAutoResume: QueueAutoResume | null;
+}
+
+/** A restart-held queue that resumed without the operator asking (Phase 5.3). */
+export interface QueueAutoResume {
+  sequence: number;
+  /** How many rows the bridge put back on the send path (0 when this client never saw them held). */
+  count: number;
 }
 
 /** A `dispatch.failed` notice as the composer reads it. */
@@ -82,6 +95,7 @@ export function emptyThread(threadId: string): ThreadState {
     queue: [],
     historyCursor: null,
     dispatchFailure: null,
+    queueAutoResume: null,
   };
 }
 
@@ -115,6 +129,7 @@ export function threadFromSnapshot(snapshot: ThreadSnapshot, syncing: boolean): 
     queue: [...snapshot.queue].sort((a, b) => a.position - b.position),
     historyCursor: snapshot.historyCursor,
     dispatchFailure: null,
+    queueAutoResume: null,
   };
 }
 
@@ -334,8 +349,14 @@ export function applyThreadEvent(state: ThreadState, raw: unknown, onDrop?: OnDr
       if (request.threadId !== state.threadId) return state;
       return at({ requests: { ...state.requests, [request.id]: request } });
     }
-    case "queue.updated":
-      return at({ queue: [...event.payload.messages].sort((a, b) => a.position - b.position) });
+    case "queue.updated": {
+      const messages = [...event.payload.messages].sort((a, b) => a.position - b.position);
+      if (event.payload.change !== "resumed" || event.payload.reason !== "auto") return at({ queue: messages });
+      // The bridge lifted a restart hold by itself: count the rows it put back, for the notice.
+      const held = new Set(state.queue.filter((q) => q.state === "held").map((q) => q.id));
+      const count = messages.filter((m) => m.state === "queued" && held.has(m.id)).length;
+      return at({ queue: messages, queueAutoResume: { sequence: event.sequence, count } });
+    }
     case "dispatch.failed": {
       const p = event.payload;
       if (typeof p.reason !== "string") return state;
