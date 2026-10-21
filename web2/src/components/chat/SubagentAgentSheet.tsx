@@ -18,18 +18,19 @@ import { TranscriptPane } from "./SubagentTranscriptSheet";
 type Tab = "transcript" | "details";
 
 export function SubagentAgentSheet(props: { threadId: string; agent: ThreadAgent | null; onBack: () => void }) {
-  const { agent, onBack } = props;
+  const { onBack } = props;
+  const shown = props.agent; // the open agent, or null when the list is showing
   const layout = useLayout();
-  useSheetHistory(agent !== null, onBack);
+  useSheetHistory(shown !== null, onBack);
   return (
-    <Sheet open={agent !== null} onOpenChange={(next) => !next && onBack()}>
+    <Sheet open={shown !== null} onOpenChange={(next) => !next && onBack()}>
       <SheetPopup
         side={layout === "desktop" ? "right" : "bottom"}
         showCloseButton={false}
         className={cn(layout === "desktop" ? "max-w-2xl sm:w-[40rem]" : "h-[92dvh] max-h-[92dvh] rounded-t-2xl")}
         data-subagent-agent-sheet=""
       >
-        {agent ? <AgentView threadId={props.threadId} agent={agent} onBack={onBack} /> : null}
+        {shown ? <AgentView threadId={props.threadId} agent={shown} onBack={onBack} /> : null}
       </SheetPopup>
     </Sheet>
   );
