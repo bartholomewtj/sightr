@@ -337,6 +337,13 @@ export async function setPermissionMode(
 /** `responding.optionIndex` while a checkbox step's wanted set is in flight (its advance button). */
 export const RESPONDING_ADVANCE = -1;
 
+/** `responding.optionIndex` while a Back step is in flight, and while a Next step is. */
+export const RESPONDING_BACK = -3;
+export const RESPONDING_NEXT = -4;
+
+/** How long a step move may stay busy if the next step never shows up (the terminal ignored the key). */
+export const NAVIGATE_SETTLE_MS = 4_000;
+
 /** `responding.optionIndex` while a typed answer to a `freeText` question is in flight. */
 export const RESPONDING_TEXT = -2;
 
@@ -368,6 +375,28 @@ export async function respondWithText(threadId: string, requestId: string, text:
 function verdictFor(threadId: string, requestId: string, verdict: string, extra: Partial<ThreadComposer> = {}): void {
   if (getThreadComposer(threadId).responding?.requestId !== requestId) return;
   patchComposer(threadId, { ...extra, verdict });
+}
+
+/**
+ * Walk a multi-question ask one step (Left / Right in the terminal). Nothing is answered: the card is
+ * replaced by the next step's. The card stays busy until then, so ChatComposer does not call the move
+ * "answered elsewhere"; if no new card comes, it frees itself after `NAVIGATE_SETTLE_MS`.
+ */
+export async function navigateRequest(threadId: string, requestId: string, direction: "back" | "next"): Promise<void> {
+  const current = getThreadComposer(threadId).responding;
+  if (current && current.requestId === requestId) return;
+  patchComposer(threadId, {
+    responding: { requestId, optionIndex: direction === "back" ? RESPONDING_BACK : RESPONDING_NEXT },
+    verdict: null,
+  });
+  try {
+    await post("runtime-request.navigate", { requestId, direction });
+    setTimeout(() => {
+      if (getThreadComposer(threadId).responding?.requestId === requestId) patchComposer(threadId, { responding: null });
+    }, NAVIGATE_SETTLE_MS);
+  } catch (err) {
+    patchComposer(threadId, { responding: null, verdict: refusalText(err) });
+  }
 }
 
 /** Answer a request: one option by index, or a checkbox step's wanted set of boxes (T17). */

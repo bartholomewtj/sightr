@@ -63,7 +63,7 @@ describe("contracts", () => {
         "thread.create", "thread.rename", "thread.pin", "thread.unpin", "thread.snooze", "thread.unsnooze", "thread.settle",
         "thread.unsettle", "thread.archive", "thread.unarchive", "thread.delete", "thread.pane.close", "thread.markRead", "thread.markUnread",
         "message.dispatch", "queued.reorder", "queued.edit", "queued.cancel", "queue.resume", "run.interrupt",
-        "runtime-request.respond", "thread.permissionMode.set", "thread.model.set", "project.create", "project.rename",
+        "runtime-request.respond", "runtime-request.navigate", "thread.permissionMode.set", "thread.model.set", "project.create", "project.rename",
         "project.checkpoints.set",
       ].sort(),
     );

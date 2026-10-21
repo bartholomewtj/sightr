@@ -304,3 +304,83 @@ export function createRespondHandler(deps: RespondDeps): RespondHandler {
     }
   };
 }
+
+// ── Step navigation ─────────────────────────────────────────────────────────────────────────────
+
+export interface NavigateCommand {
+  requestId: string;
+  direction: "back" | "next";
+}
+
+export type NavigateHandler = (command: NavigateCommand, opts?: RespondOptions) => Promise<RespondResult>;
+
+/** The keys that walk a multi-question ask one step (v1's `WIZARD_BACK_KEYS` / `WIZARD_NEXT_KEYS`). */
+const NAVIGATE_KEYS: Record<NavigateCommand["direction"], string[]> = { back: ["Left"], next: ["Right"] };
+
+/**
+ * `runtime-request.navigate`: Left or Right on a `navigable` request, after the same fresh read and
+ * binding check an answer gets. Nothing is answered. The step on screen changes, so the request is
+ * expired and the ingestor opens the next step's. `onNavigated` lets it look at once.
+ */
+export function createNavigateHandler(deps: RespondDeps & { onNavigated?: (request: RuntimeRequest) => void }): NavigateHandler {
+  const { store, herdr, cfg, queue } = deps;
+  const audit = deps.audit ?? SILENT_AUDIT;
+  const now = deps.now ?? Date.now;
+
+  return async (command, opts = {}) => {
+    const request = store.getRequest(command.requestId);
+    if (!request) return fail("not_found", "no-such-request");
+    if (request.status !== "pending") return fail("conflict", "not-pending");
+    if (command.direction !== "back" && command.direction !== "next") return fail("invalid", "bad-direction");
+    if (request.via === "whistlr") return fail("invalid", "whistlr-card");
+    if (request.navigable !== true) return fail("invalid", "not-navigable");
+    const thread = store.getThread(request.threadId);
+    if (!thread || thread.shelf === "archived") return fail("conflict", "thread-archived");
+    const boundText = store.requestBoundText(request.id);
+    if (!boundText) return fail("conflict", "unbound");
+    const keys = NAVIGATE_KEYS[command.direction];
+    const paneId = thread.paneId;
+    const commandId = opts.commandId !== undefined ? { commandId: opts.commandId } : {};
+
+    try {
+      return await queue.run(paneKey(paneId), async (): Promise<RespondResult> => {
+        const current = store.getRequest(request.id);
+        if (!current || current.status !== "pending") return fail("conflict", "not-pending");
+
+        const binding = await checkPromptBinding(herdr, cfg, paneId, boundText, "visible");
+        if (!binding.ok) {
+          audit.record({ action: "keys", paneId, detail: { keys, sent: false, promptBinding: binding.audit } });
+          if (binding.status !== 409) return fail("failed", binding.error);
+          store.append(requestEvents({ ...current, status: "expired", updatedAt: now() }), commandId);
+          return fail("prompt-changed", "prompt changed");
+        }
+
+        try {
+          await sendKeysPaced(herdr, paneId, keys, deps.sleep);
+        } catch (err) {
+          audit.record({ action: "keys", paneId, detail: { keys, sent: false, promptBinding: binding.audit } });
+          return fail("failed", failureText("key send", err));
+        }
+        audit.record({ action: "keys", paneId, detail: { keys, recipe: "navigate", promptBinding: binding.audit } });
+
+        const expired: RuntimeRequest = { ...current, status: "expired", updatedAt: now() };
+        const { last } = store.append(requestEvents(expired), {
+          ...commandId,
+          ...(opts.commandId !== undefined
+            ? {
+                receipt: {
+                  type: "runtime-request.navigate",
+                  result: opts.receiptResult !== undefined ? opts.receiptResult : { requestId: request.id, direction: command.direction },
+                },
+              }
+            : {}),
+        });
+        deps.onNavigated?.(expired);
+        return { ok: true, sequence: last, request: expired };
+      });
+    } catch (err) {
+      if (err instanceof PaneBusyError) return fail("busy", "pane busy");
+      throw err;
+    }
+  };
+}

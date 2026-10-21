@@ -30,7 +30,7 @@ import { createModeWatcher } from "./threads/mode-watch.ts";
 import { createAutoSettler } from "./threads/auto-settle.ts";
 import { createPaneQueue } from "./pane-queue.ts";
 import { createV2Gate } from "./threads/herdr-floor.ts";
-import { respondEffect } from "./threads/v2-routes.ts";
+import { navigateEffect, respondEffect } from "./threads/v2-routes.ts";
 import { createGuardedSender } from "./guarded-send-route.ts";
 import { createDispatcher } from "./threads/dispatch.ts";
 import { createSpawner } from "./threads/spawn.ts";
@@ -312,7 +312,12 @@ const server = startServer({
     disabledReason: v2DisabledReason,
     gate: v2Gate,
     effects: {
-      ...(requestIngestor ? { "runtime-request.respond": respondEffect(requestIngestor.respond) } : {}),
+      ...(requestIngestor
+        ? {
+            "runtime-request.respond": respondEffect(requestIngestor.respond),
+            "runtime-request.navigate": navigateEffect(requestIngestor.navigate),
+          }
+        : {}),
       ...(dispatcher?.effects ?? {}),
       ...(spawner?.effects ?? {}),
       ...(liveModes?.effects ?? {}),

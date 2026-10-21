@@ -7,6 +7,7 @@ a build where they disagree.
 ## [Unreleased]
 
 ### Added
+- v2 question cards for multi-question asks (Pi's `askuserquestion`, Claude's wizard) have Back / Next chevrons (and the ← / → keys) that walk the steps without answering, through a new `runtime-request.navigate` command. Rows the terminal has picked (Pi's `✓` on a multi-select question) now show as selected on the card. Not drawn while an editor has the keyboard.
 - The v2 timeline and its detail view show what a permission request is about: the tool ("Run command"), the command or path, and the dialog's own description, instead of only "Do you want to proceed?". The request item carries an optional `subject`; older stored requests without one render as before.
 - The v2 sidebar can rename a project: right-click it (or press Space on it) and choose Rename.
 - v2 can now close a thread's Herdr pane ("Close pane" in the thread menu, thread header, details sheet and Terminal tab; two taps to confirm). Archived shows which threads still have a pane open, deleting one offers "Close pane & delete?", and the command palette can filter to threads with open panes. The thread store moves to migration 8 (a `pane_alive` column) on the first start; it is additive.

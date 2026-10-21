@@ -49,6 +49,8 @@ export interface DialogOption {
   /** The label is on the adapter's own deny / abort list, or the menu marks it as cancel. */
   destructive?: boolean;
   description?: string;
+  /** The terminal paints this row as picked (Pi's trailing `✓`). */
+  chosen?: boolean;
 }
 
 export interface DialogParse {
@@ -63,6 +65,8 @@ export interface DialogParse {
   boundText: string;
   /** T17: the stepper chips of a multi-question ask. */
   steps?: WizardStepChip[];
+  /** The steps can be walked with Left / Right (set with `steps`). */
+  navigable?: true;
   /** T17: a checkbox step: box state per option (the first `checked.length` options) and the advance label. */
   multiSelect?: { checked: boolean[]; advanceLabel: string };
   /** T17: a preview select: the pointed option's preview pane. */
@@ -217,8 +221,14 @@ type Lifted = Omit<DialogParse, "boundText">;
 
 const REVIEW_PROMPT = "Review your answers";
 
-const stepsOf = (steps: readonly WizardStepChip[] | null | undefined) =>
-  steps && steps.length > 0 ? { steps: steps.map((s) => ({ label: s.label, answered: s.answered, current: s.current })) } : {};
+/** `typing`: an editor has the keyboard, so Left / Right would move its caret, not the step. */
+const stepsOf = (steps: readonly WizardStepChip[] | null | undefined, typing = false) =>
+  steps && steps.length > 0
+    ? {
+        steps: steps.map((s) => ({ label: s.label, answered: s.answered, current: s.current })),
+        ...(typing ? {} : { navigable: true as const }),
+      }
+    : {};
 
 const answersOf = (answers: readonly { question: string; answer: string }[]) =>
   answers.length > 0 ? { answers: answers.map((a) => ({ question: a.question, answer: a.answer })) } : {};
@@ -240,8 +250,9 @@ function fromWizard(model: WizardModel): Lifted {
         keys: [...o.keys],
         ...(o.escape ? { destructive: true } : {}),
         ...(o.description ? { description: o.description } : {}),
+        ...(o.chosen ? { chosen: true } : {}),
       }));
-  return { kind: "question", prompt: model.question, options, ...stepsOf(model.steps) };
+  return { kind: "question", prompt: model.question, options, ...stepsOf(model.steps, model.feedback?.editing === true) };
 }
 
 /**
@@ -284,7 +295,7 @@ function fromPreview(model: PreviewSelectModel): Lifted {
     // While the note input has the keyboard every key is typed into it.
     options: model.note.state === "editing" ? [] : model.options.map((o) => ({ label: o.label, keys: [String(o.n)] })),
     ...(pointed >= 0 ? { preview: { optionIndex: pointed, lines: [...model.preview] } } : {}),
-    ...stepsOf(model.steps),
+    ...stepsOf(model.steps, model.note.state === "editing"),
   };
 }
 

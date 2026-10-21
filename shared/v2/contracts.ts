@@ -522,6 +522,8 @@ export interface RuntimeRequestOption {
   destructive?: boolean;
   /** T17. */
   description?: string;
+  /** The terminal paints this row as picked (Pi's trailing `✓` on a toggled row). */
+  chosen?: boolean;
 }
 
 /** A dialog on the pane's screen, bound to the text it was read from (`bindingHash`). */
@@ -548,6 +550,11 @@ export interface RuntimeRequest {
    * is one step of one). Each step is its own request; the client answers one at a time.
    */
   steps?: RuntimeRequestStep[];
+  /**
+   * The ask's steps can be walked with Left / Right (`runtime-request.navigate`): back to an earlier
+   * question, on to the next or the Submit step. Set with `steps`.
+   */
+  navigable?: boolean;
   /**
    * T17: a checkbox question. `checked` is the box state per option (the first `checked.length`
    * options are the boxes; any after them, e.g. "Chat about this", are plain options), and
@@ -675,6 +682,8 @@ export type Command =
       /** The operator's own answer, typed into a `freeText` request's row (instead of an option). */
       text?: string;
     })
+  /** Move a multi-question ask one step back or on (Left / Right). The request is replaced by the next step's. */
+  | (CommandBase & { type: "runtime-request.navigate"; requestId: string; direction: "back" | "next" })
   | (CommandBase & { type: "thread.permissionMode.set"; threadId: string; mode: string; confirmBypass?: boolean })
   | (CommandBase & { type: "thread.model.set"; threadId: string; model: string })
   | (CommandBase & { type: "project.create"; cwd: string; label?: string })
@@ -708,6 +717,7 @@ export const COMMAND_TYPES = [
   "queue.resume",
   "run.interrupt",
   "runtime-request.respond",
+  "runtime-request.navigate",
   "thread.permissionMode.set",
   "thread.model.set",
   "project.create",
