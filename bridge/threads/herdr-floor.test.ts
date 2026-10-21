@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { HerdrClient } from "../herdr-client.ts";
 import { createV2Gate, HERDR_FLOOR, meetsFloor, parseHerdrVersion } from "./herdr-floor.ts";
@@ -106,5 +108,15 @@ describe("HerdrClient.serverVersion", () => {
       throw new Error("herdr session.snapshot: timed out after 2000ms");
     };
     await expect(client.serverVersion()).rejects.toThrow("timed out");
+  });
+});
+
+describe("the advertised floor (spec 4.1)", () => {
+  // The marketplace floor and the runtime floor disagreed once (0.7.0 vs 0.9.0). Pin them together.
+  test("herdr-plugin.toml's min_herdr_version is not below HERDR_FLOOR", () => {
+    const toml = readFileSync(join(import.meta.dir, "../../herdr-plugin.toml"), "utf8");
+    const min = /^min_herdr_version\s*=\s*"([^"]+)"/m.exec(toml)?.[1];
+    expect(min).toBeDefined();
+    expect(meetsFloor(min!)).toBe(true);
   });
 });
