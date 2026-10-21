@@ -36,9 +36,18 @@ async function gzipBase64(data: unknown): Promise<string> {
   return btoa(binary);
 }
 
-/** Let the async decode run under the fake clock until `pred` holds (or ~200 ms of ticks). */
+/**
+ * Let the async gzip decode run until `pred` holds. `DecompressionStream` is native: its callback
+ * lands on a real macrotask, which the fake clock does not flush. Advance the fake clock AND give
+ * the real queue one turn each pass, so the test does not depend on timing under a loaded CI runner.
+ */
 async function until(pred: () => boolean): Promise<void> {
-  for (let i = 0; i < 200 && !pred(); i++) await vi.advanceTimersByTimeAsync(1);
+  for (let i = 0; i < 200 && !pred(); i++) {
+    await vi.advanceTimersByTimeAsync(1);
+    vi.useRealTimers();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    vi.useFakeTimers();
+  }
 }
 
 describe("thread stream", () => {
