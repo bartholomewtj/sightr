@@ -1,5 +1,7 @@
 // T34/T35: what the header's subagents button remembers per thread, on this device.
 //
+//  - `hideFinished`: the list shows only running agents ("Hide finished" / "Show finished"). Nothing is
+//    removed: the header button's counts still cover every agent, and showing brings them back.
 //  - `seen`: the finishes the operator has looked at, as `<agent key>|<phase>`. An agent that is done,
 //    failed or stopped and not in `seen` puts the unread dot on the button; opening the sheet marks them all.
 //
@@ -11,7 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { ThreadAgent } from "./subagentGroups";
 
-const KEY = (kind: "seen" | "baseline", threadId: string) => `sightr:v2:subagents-${kind}:${threadId}`;
+const KEY = (kind: "hide-finished" | "seen" | "baseline", threadId: string) => `sightr:v2:subagents-${kind}:${threadId}`;
 
 /** Most entries kept per thread (a long thread's record must not grow without end). */
 const MAX_KEPT = 400;
@@ -31,6 +33,23 @@ function writeBaseline(threadId: string, at: number): void {
     window.localStorage.setItem(KEY("baseline", threadId), String(at));
   } catch {
     /* blocked: the bar works, it just forgets */
+  }
+}
+
+function readHideFinished(threadId: string): boolean {
+  try {
+    return window.localStorage.getItem(KEY("hide-finished", threadId)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeHideFinished(threadId: string, hide: boolean): void {
+  try {
+    if (hide) window.localStorage.setItem(KEY("hide-finished", threadId), "1");
+    else window.localStorage.removeItem(KEY("hide-finished", threadId));
+  } catch {
+    /* blocked: it works, it just forgets */
   }
 }
 
@@ -67,6 +86,13 @@ export function newestItemAtOf(items: Readonly<Record<string, { updatedAt?: numb
 }
 
 export interface SubagentBarState {
+  /** The agents the list shows: all of them, or only the running ones while finished are hidden. */
+  listed: ThreadAgent[];
+  hideFinished: boolean;
+  /** Flip between showing finished agents in the list and hiding them. */
+  toggleHideFinished: () => void;
+  /** Agents that are done, failed or stopped. */
+  finishedCount: number;
   /** Finished agents (done, failed, stopped) the operator has not looked at yet. */
   unseen: ThreadAgent[];
   /** Any unseen agent failed: the dot is the destructive colour. */
@@ -81,11 +107,13 @@ export function useSubagentBarState(
   /** The time of the thread's newest item as loaded now (any kind), or null while nothing is loaded. */
   newestItemAt: number | null,
 ): SubagentBarState {
+  const [hideFinished, setHideFinished] = useState<boolean>(() => readHideFinished(threadId));
   const [seen, setSeen] = useState<Set<string>>(() => new Set(read("seen", threadId) ?? []));
   const [baseline, setBaseline] = useState<number | null>(() => readBaseline(threadId));
 
   // A different thread: load its record.
   useEffect(() => {
+    setHideFinished(readHideFinished(threadId));
     setSeen(new Set(read("seen", threadId) ?? []));
     setBaseline(readBaseline(threadId));
   }, [threadId]);
@@ -98,6 +126,7 @@ export function useSubagentBarState(
   }, [baseline, newestItemAt, threadId]);
 
   const finished = useMemo(() => agents.filter((a) => a.phase !== "running"), [agents]);
+  const listed = useMemo(() => (hideFinished ? agents.filter((a) => a.phase === "running") : [...agents]), [agents, hideFinished]);
   const unseen = useMemo(
     () => (baseline === null ? [] : finished.filter((a) => a.lastAt > baseline && !seen.has(seenKeyOf(a)))),
     [finished, seen, baseline],
@@ -120,5 +149,20 @@ export function useSubagentBarState(
     });
   }, [finished, threadId]);
 
-  return { unseen, unseenFailed: unseen.some((a) => a.phase === "failed"), markSeen };
+  const toggleHideFinished = useCallback(() => {
+    setHideFinished((prev) => {
+      writeHideFinished(threadId, !prev);
+      return !prev;
+    });
+  }, [threadId]);
+
+  return {
+    listed,
+    hideFinished,
+    toggleHideFinished,
+    finishedCount: finished.length,
+    unseen,
+    unseenFailed: unseen.some((a) => a.phase === "failed"),
+    markSeen,
+  };
 }

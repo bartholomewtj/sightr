@@ -1,5 +1,5 @@
 // T35: the header's subagents button: absent with no agents, a running badge, the unread dot, and the sheet
-// listing every agent (finished ones too) with each agent's own view over it.
+// listing every agent (finished ones too, with Hide/Show finished) with each agent's own view over it.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -98,6 +98,35 @@ describe("ThreadSubagentsButton", () => {
     expect(sheet.querySelector("[data-thread-subagents-line]")).toHaveTextContent("1 running · 1 done");
     const rows = within(within(sheet).getByRole("list", { name: "All subagents" })).getAllByRole("button");
     expect(rows.map((r) => r.getAttribute("aria-label"))).toEqual(["Fix PR #1153, Running", "Survey src, Completed"]);
+  });
+
+  it("Hide finished leaves only running agents in the list; Show finished brings them back; it is remembered", () => {
+    setItems(finished(), running());
+    const { unmount } = render(<ThreadSubagentsButton threadId={T} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Subagents:/ }));
+    expect(screen.getByRole("button", { name: "Survey src, Completed" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hide finished" }));
+    expect(screen.queryByRole("button", { name: "Survey src, Completed" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Fix PR #1153, Running" })).toBeInTheDocument();
+    // Nothing is removed: the count line still covers every agent.
+    expect(document.querySelector("[data-thread-subagents-line]")).toHaveTextContent("1 running · 1 done");
+    expect(screen.getByRole("button", { name: "Show finished (1)" })).toHaveAttribute("aria-pressed", "true");
+    unmount();
+    render(<ThreadSubagentsButton threadId={T} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Subagents:/ }));
+    expect(screen.queryByRole("button", { name: "Survey src, Completed" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show finished (1)" }));
+    expect(screen.getByRole("button", { name: "Survey src, Completed" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hide finished" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("with finished hidden and nothing running, the list says so and the toggle is still there", () => {
+    setItems(finished());
+    render(<ThreadSubagentsButton threadId={T} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Subagents:/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide finished" }));
+    expect(document.querySelector("[data-subagents-none-running]")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Show finished (1)" })).toBeInTheDocument();
   });
 
   it("an agent that finishes while the sheet is closed puts a dot on the button; opening the sheet clears it", () => {

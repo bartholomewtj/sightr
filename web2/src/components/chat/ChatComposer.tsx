@@ -110,7 +110,6 @@ import { ReviewCommentsBar } from "./ReviewCommentsBar";
 import { searchSlashCommandItems } from "./composerSlashCommandSearch";
 import { QueuedRunsControl, type QueuedRunsControlHandle } from "./QueuedRunsControl";
 import { activeComposerTasks, latestRunError } from "./ComposerStatus.logic";
-import { ComposerSubagentsBar } from "./ComposerSubagentsBar";
 import { ComposerTasksBadge, ComposerTasksSheet } from "./ComposerTasksBadge";
 import { ContextWindowMeter } from "./ContextWindowMeter";
 import { contextWindowSnapshot, manualCompactionCommand } from "./ContextWindowMeter.logic";
@@ -786,7 +785,6 @@ export function ChatComposer({ threadId }: { threadId: string }) {
           onEditQueued={editQueued}
           onCancelEdit={cancelEdit}
         />
-        <ComposerSubagentsBar threadId={threadId} items={items} />
         {tasks ? (
           <>
             <ComposerTasksBadge expanded={tasksOpen} onToggle={() => setTasksOpen((open) => !open)} progress={tasks.progress} steps={tasks.steps} />
