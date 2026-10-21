@@ -3,7 +3,7 @@
 // Collapsed: a strip with the counts and, for a running agent whose log can be read, what it is doing now.
 // A dot on the bar says an agent finished or failed since the list was last open. Tapped: the strip
 // expands in place into a list of every agent the thread has run (running first, then newest), with
-// Clear finished. Tapping an agent opens its own view (`SubagentAgentSheet`: live transcript and details).
+// Hide finished / Show finished. Tapping an agent opens its own view (`SubagentAgentSheet`: live transcript and details).
 // Hidden when the thread has no subagents. The chat's own subagent cards are unchanged.
 
 import type { TurnItem } from "@shared/v2/contracts";
@@ -155,14 +155,19 @@ export const ComposerSubagentsBar = memo(function ComposerSubagentsBar({
             <div className="flex items-center justify-between gap-2 px-2 pb-0.5">
               <span className="min-w-0 truncate text-2xs text-muted-foreground">{line}</span>
               {bar.finishedCount > 0 ? (
-                <Button size="xs" variant="ghost" onClick={bar.clearFinished} data-subagents-clear="">
-                  Clear finished
+                <Button size="xs" variant="ghost" onClick={bar.toggleHideFinished} aria-pressed={bar.hideFinished} data-subagents-hide-finished="">
+                  {bar.hideFinished ? `Show finished (${bar.finishedCount})` : "Hide finished"}
                 </Button>
               ) : null}
             </div>
+            {bar.listed.length === 0 ? (
+              <p className="px-2 py-2 text-2xs text-muted-foreground" data-subagents-none-running="">
+                Nothing is running. Finished agents are hidden.
+              </p>
+            ) : null}
             <ComposerBanner.Scroll className="overflow-x-hidden">
               <ul role="list" aria-label="Subagents" className="grid grid-cols-[minmax(0,1fr)] gap-px">
-                {visible.map((agent) => (
+                {bar.listed.map((agent) => (
                   <AgentRow key={agent.key} threadId={threadId} agent={agent} listOpen={expanded} onOpen={() => setDetailKey(agent.key)} />
                 ))}
               </ul>
