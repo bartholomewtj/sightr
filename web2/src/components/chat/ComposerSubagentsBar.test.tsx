@@ -1,6 +1,6 @@
-// T34: the subagent bar above the composer: counts and newest activity, the unread dot, the list, Clear
-// finished, and the agent's own view.
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+// T34/T35: the card above the composer: only running agents, only while one runs; counts and newest
+// activity, the list of running agents, and the agent's own view.
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TurnItem } from "@shared/v2/contracts";
@@ -75,86 +75,42 @@ describe("ComposerSubagentsBar", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("collapsed: the counts, and a running agent's newest action from its own log", async () => {
+  it("is absent when every agent has finished", () => {
+    fakeBridge();
+    render(<ComposerSubagentsBar threadId={T} items={byId(finished(), finished("Other", "cccc-3"))} />);
+    expect(document.querySelector("[data-composer-subagents-bar]")).toBeNull();
+  });
+
+  it("collapsed: the running count, and a running agent's newest action from its own log; finished agents are not counted", async () => {
     fakeBridge();
     render(<ComposerSubagentsBar threadId={T} items={byId(running(), finished())} />);
-    const toggle = screen.getByRole("button", { name: /^Subagents: 1 running · 1 done/ });
+    const toggle = screen.getByRole("button", { name: "Subagents: 1 running" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(document.querySelector("[data-composer-subagents-count]")).toHaveTextContent("1 running");
     await waitFor(() => expect(document.querySelector("[data-composer-subagents-line]")).toHaveTextContent("Running: git status"));
   });
 
-  it("expands in place to every agent, running first, finished ones dimmed", async () => {
+  it("expands in place to the running agents only", async () => {
     fakeBridge();
     render(<ComposerSubagentsBar threadId={T} items={byId(finished(), running())} />);
     fireEvent.click(screen.getByRole("button", { name: /^Subagents:/ }));
     const list = screen.getByRole("list", { name: "Subagents" });
     const rows = within(list).getAllByRole("button");
-    expect(rows.map((r) => r.getAttribute("aria-label"))).toEqual(["Fix PR #1153, Running", "Survey src, Completed"]);
+    expect(rows.map((r) => r.getAttribute("aria-label"))).toEqual(["Fix PR #1153, Running"]);
+    expect(screen.queryByRole("button", { name: /Hide finished|Show finished/ })).toBeNull();
     await waitFor(() => expect(within(list).getByText("Running: git status")).toBeInTheDocument());
   });
 
-  it("Hide finished leaves only the running agents in the list; Show finished brings them back; it is remembered", () => {
-    fakeBridge();
-    const items = byId(finished(), running());
-    const { unmount } = render(<ComposerSubagentsBar threadId={T} items={items} />);
-    fireEvent.click(screen.getByRole("button", { name: /^Subagents:/ }));
-    expect(screen.getByRole("button", { name: "Survey src, Completed" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Hide finished" }));
-    expect(screen.queryByRole("button", { name: "Survey src, Completed" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Fix PR #1153, Running" })).toBeInTheDocument();
-    // Nothing is removed: the strip still counts every agent.
-    expect(screen.getByRole("button", { name: /^Subagents: 1 running · 1 done/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Show finished (1)" })).toHaveAttribute("aria-pressed", "true");
-    unmount();
-    render(<ComposerSubagentsBar threadId={T} items={items} />);
-    fireEvent.click(screen.getByRole("button", { name: /^Subagents:/ }));
-    expect(screen.queryByRole("button", { name: "Survey src, Completed" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show finished (1)" }));
-    expect(screen.getByRole("button", { name: "Survey src, Completed" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Hide finished" })).toHaveAttribute("aria-pressed", "false");
-  });
-
-  it("with finished hidden and nothing running, the list says so and the toggle is still there", () => {
-    fakeBridge();
-    render(<ComposerSubagentsBar threadId={T} items={byId(finished())} />);
-    fireEvent.click(screen.getByRole("button", { name: /^Subagents:/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Hide finished" }));
-    expect(document.querySelector("[data-subagents-none-running]")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Show finished (1)" })).toBeInTheDocument();
-  });
-
-  it("an agent that finishes while the list is closed puts a dot on the bar; opening the list clears it", () => {
+  it("goes away the moment the last running agent finishes, and no dot is left on it", () => {
     fakeBridge();
     const launch = running();
     const { rerender } = render(<ComposerSubagentsBar threadId={T} items={byId(launch)} />);
-    expect(document.querySelector("[data-subagents-unseen]")).toBeNull();
-    // It finishes (the later call lands with the report).
+    fireEvent.click(screen.getByRole("button", { name: /^Subagents:/ }));
+    expect(screen.getByRole("list", { name: "Subagents" })).toBeInTheDocument();
     const done = agent({ subagentId: "aaaa-1", agentStatus: "completed", result: "All good.", status: "completed" });
     rerender(<ComposerSubagentsBar threadId={T} items={byId(launch, done)} />);
-    expect(document.querySelector("[data-subagents-unseen='done']")).not.toBeNull();
-    expect(screen.getByRole("button", { name: /1 finished since you last looked/ })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /^Subagents:/ }));
+    expect(document.querySelector("[data-composer-subagents-bar]")).toBeNull();
     expect(document.querySelector("[data-subagents-unseen]")).toBeNull();
-  });
-
-  it("history is not news: finished agents on first sight of a thread show no dot; a failure is red", () => {
-    fakeBridge();
-    const { rerender } = render(<ComposerSubagentsBar threadId={T} items={byId(finished())} />);
-    expect(document.querySelector("[data-subagents-unseen]")).toBeNull();
-    const failed = agent({ title: "Broken", subagentId: "cccc-3", agentStatus: "error", status: "failed", result: "boom" });
-    rerender(<ComposerSubagentsBar threadId={T} items={byId(finished(), failed)} />);
-    expect(document.querySelector("[data-subagents-unseen='failed']")).not.toBeNull();
-  });
-
-  it("older runs that load after the first render are history, not news", () => {
-    fakeBridge();
-    const older = finished("Old survey", "old-1"); // logged before anything the first render has
-    const launch = running();
-    const { rerender } = render(<ComposerSubagentsBar threadId={T} items={byId(launch)} />);
-    rerender(<ComposerSubagentsBar threadId={T} items={byId(older, launch)} />);
-    expect(document.querySelector("[data-subagents-unseen]")).toBeNull();
-    expect(screen.getByRole("button", { name: /^Subagents: 1 running · 1 done$/ })).toBeInTheDocument();
   });
 
   it("a tapped agent opens its own view: a running one on the live transcript, with a way back to the list", async () => {
@@ -178,16 +134,16 @@ describe("ComposerSubagentsBar", () => {
     expect(screen.getByRole("list", { name: "Subagents" })).toBeInTheDocument();
   });
 
-  it("a finished agent opens on its details, with the result card; one with no log says so", async () => {
+  it("an agent being watched stays open after it finishes, even though the card is gone", async () => {
     fakeBridge();
-    render(<ComposerSubagentsBar threadId={T} items={byId(finished())} />);
+    const launch = running();
+    const { rerender } = render(<ComposerSubagentsBar threadId={T} items={byId(launch)} />);
     fireEvent.click(screen.getByRole("button", { name: /^Subagents:/ }));
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Survey src, Completed" }));
-    });
-    const sheet = document.querySelector("[data-subagent-agent-sheet]") as HTMLElement;
-    expect(within(sheet).queryByRole("tab")).toBeNull();
-    expect(sheet.querySelector("[data-subagent-result]")).toHaveTextContent("Two files.");
-    expect(sheet.querySelector("[data-agent-no-transcript]")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Fix PR #1153, Running" }));
+    await waitFor(() => expect(document.querySelector("[data-subagent-agent-sheet]")).not.toBeNull());
+    const done = agent({ subagentId: "aaaa-1", agentStatus: "completed", result: "All good.", status: "completed" });
+    rerender(<ComposerSubagentsBar threadId={T} items={byId(launch, done)} />);
+    expect(document.querySelector("[data-composer-subagents-bar]")).toBeNull();
+    expect(document.querySelector("[data-subagent-agent-sheet]")).not.toBeNull();
   });
 });

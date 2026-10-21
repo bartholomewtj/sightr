@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 
 import { ChatComposer } from "~/components/chat/ChatComposer";
 import { ChatHeader } from "~/components/chat/ChatHeader";
+import { ThreadSubagentsButton } from "~/components/chat/ThreadSubagentsButton";
 import { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { TimelineFind } from "~/components/chat/ThreadFindBar";
 import { openThreadFind } from "~/components/chat/useThreadFind";
@@ -112,6 +113,7 @@ function ThreadRouteView() {
             <SearchIcon />
           </Button>
         ) : null}
+        {!missing ? <ThreadSubagentsButton threadId={threadId} /> : null}
         {!missing ? <PanelToolbar cli={cli} /> : null}
         {/* Syncing is a thin line on the header's bottom edge, not a word in the title row: at 360 px a
             word there squeezed the title to a few letters. */}
