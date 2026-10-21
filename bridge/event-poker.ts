@@ -16,10 +16,11 @@ export type Subscription = { type: string; pane_id?: string };
 // Global events that change what Sightr's snapshot renders. We deliberately DROP layout.*,
 // worktree.*, pane.scroll_changed and pane.output_matched — none of them alter the herd view we
 // poll for, so subscribing would only add pokes that re-fetch identical state. Also NO
-// workspace.moved / tab.moved: they're new in herdr 0.7.2, and one unknown subscription type
-// rejects the whole subscribe — which would keep the stream permanently down on exactly the older
-// servers the session.snapshot fallback supports. Moves are rare and the safety-net poll covers
-// them within one SIGHTR_POLL_IDLE_MS.
+// workspace.moved / tab.moved: they're new in herdr 0.7.2, and moves are rare and covered by the
+// safety-net poll within one SIGHTR_POLL_IDLE_MS. This is the starting set, not a hard limit: a
+// server that rejects an unknown type has just that type dropped and the stream reconnected
+// (dropRejectedSubscription), so a future Herdr adding or retiring a type can never leave the stream
+// permanently down on the older servers the session.snapshot fallback supports.
 const GLOBAL_SUBSCRIPTIONS: readonly string[] = [
   "workspace.created",
   "workspace.updated",
@@ -79,6 +80,10 @@ export class EventPoker<H = ReturnType<typeof setTimeout>> {
   private readonly backoff: number[];
   private readonly clock: PokerClock<H>;
   private agentPanes: string[] = [];
+  // Subscription types (and pane ids) a server rejected, remembered for this process so the set
+  // converges: one unknown type must not cost the whole event stream. See `dropRejectedSubscription`.
+  private readonly droppedTypes = new Set<string>();
+  private readonly droppedPanes = new Set<string>();
   private started = false;
   private healthy = false;
   private backoffIdx = 0;
@@ -145,7 +150,7 @@ export class EventPoker<H = ReturnType<typeof setTimeout>> {
   }
 
   private connect(): void {
-    const subs = buildSubscriptions(this.agentPanes);
+    const subs = this.subscriptions();
     const handle = this.client.subscribeEvents({
       subscriptions: subs,
       onUp: () => {
@@ -171,10 +176,59 @@ export class EventPoker<H = ReturnType<typeof setTimeout>> {
         this.stream = null;
         this.clearStableTimer();
         this.setHealthy(false, subs.length, reason);
-        if (this.started) this.scheduleReconnect();
+        if (!this.started) return;
+        // A server that rejects one subscription type must not cost the whole stream: drop just
+        // that type and reconnect at once, so the subscription set converges. Anything else is an
+        // ordinary drop and takes the backoff.
+        if (this.dropRejectedSubscription(reason)) this.connect();
+        else this.scheduleReconnect();
       },
     });
     this.stream = handle;
+  }
+
+  /** The subscriptions to ask for now: everything in the base set this server has not rejected. */
+  private subscriptions(): Subscription[] {
+    return buildSubscriptions(this.agentPanes).filter((s) =>
+      s.type === "pane.agent_status_changed"
+        ? s.pane_id !== undefined && !this.droppedPanes.has(s.pane_id)
+        : !this.droppedTypes.has(s.type),
+    );
+  }
+
+  /**
+   * When `events.subscribe` is refused because one subscription is unknown, remember that type and
+   * reconnect without it. Returns true when something new was dropped, so the caller reconnects at
+   * once instead of backing off; false (a socket error, an ack timeout, or a repeat of a type already
+   * dropped) leaves the ordinary path alone.
+   */
+  private dropRejectedSubscription(reason: string): boolean {
+    if (!/invalid_request|unknown variant|unknown (?:or )?invalid subscription/i.test(reason)) {
+      return false;
+    }
+    const subs = buildSubscriptions(this.agentPanes);
+    // The longest matching type wins, so `pane.agent_status_changed` is never shadowed by a prefix.
+    let match: Subscription | null = null;
+    for (const s of subs) {
+      if (reason.includes(s.type) && (match === null || s.type.length > match.type.length)) match = s;
+    }
+    if (match === null) return false;
+    if (match.type === "pane.agent_status_changed") {
+      const named =
+        match.pane_id !== undefined && reason.includes(match.pane_id) ? match.pane_id : undefined;
+      const before = this.droppedPanes.size;
+      if (named !== undefined) this.droppedPanes.add(named);
+      else for (const s of subs) if (s.type === "pane.agent_status_changed" && s.pane_id) this.droppedPanes.add(s.pane_id);
+      if (this.droppedPanes.size === before) return false;
+      console.log(
+        `[events] dropping unknown pane subscription ${named !== undefined ? named : "(every pane)"}`,
+      );
+      return true;
+    }
+    if (this.droppedTypes.has(match.type)) return false;
+    this.droppedTypes.add(match.type);
+    console.log(`[events] dropping unknown subscription type ${match.type}`);
+    return true;
   }
 
   private reconnect(): void {
