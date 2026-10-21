@@ -3,7 +3,8 @@
 // The button is absent while the thread has no subagents. It shows how many are running (a badge) and a dot
 // when one finished or failed since the sheet was last open (red for a failure; the memory is per thread, per
 // device: `useSubagentBarState`). Tapped, it opens a sheet (bottom on a phone, side on desktop) listing all
-// of the thread's loaded agents, running first and then newest, finished ones dimmed. A row opens that agent's
+// of the thread's loaded agents, running first and then newest, finished ones dimmed, with Hide finished /
+// Show finished (remembered per thread on this device). A row opens that agent's
 // own view (`SubagentAgentSheet`) over the list; its back arrow returns here.
 
 import { BotIcon } from "lucide-react";
@@ -25,7 +26,7 @@ export function ThreadSubagentsButton({ threadId }: { threadId: string }) {
   const layout = useLayout();
   const agents = useMemo(() => deriveThreadAgents(items), [items]);
   const newestItemAt = useMemo(() => newestItemAtOf(items), [items]);
-  const { unseen, unseenFailed, markSeen } = useSubagentBarState(threadId, agents, newestItemAt);
+  const { listed, hideFinished, toggleHideFinished, finishedCount, unseen, unseenFailed, markSeen } = useSubagentBarState(threadId, agents, newestItemAt);
   const [open, setOpen] = useState(false);
   const [detailKey, setDetailKey] = useState<string | null>(null);
   useSheetHistory(open, () => setOpen(false));
@@ -90,10 +91,20 @@ export function ThreadSubagentsButton({ threadId }: { threadId: string }) {
                   {line}
                 </SheetDescription>
               </div>
+              {finishedCount > 0 ? (
+                <Button size="xs" variant="ghost" onClick={toggleHideFinished} aria-pressed={hideFinished} data-subagents-hide-finished="">
+                  {hideFinished ? `Show finished (${finishedCount})` : "Hide finished"}
+                </Button>
+              ) : null}
             </header>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-1.5">
+              {listed.length === 0 ? (
+                <p className="px-2 py-2 text-2xs text-muted-foreground" data-subagents-none-running="">
+                  Nothing is running. Finished agents are hidden.
+                </p>
+              ) : null}
               <ul role="list" aria-label="All subagents" className="grid grid-cols-[minmax(0,1fr)] gap-px">
-                {agents.map((agent) => (
+                {listed.map((agent) => (
                   <SubagentAgentRow key={agent.key} threadId={threadId} agent={agent} listOpen={open} onOpen={() => setDetailKey(agent.key)} />
                 ))}
               </ul>

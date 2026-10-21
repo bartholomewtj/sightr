@@ -36,3 +36,8 @@ Tests: `ComposerSubagentsBar.test.tsx` (strip, activity, list order, Hide/Show f
 - **Header button** (`ThreadSubagentsButton`, in the thread route's header before the panel toolbar): absent while the thread has no subagents. Badge = running count; dot = finished/failed since the sheet was last open (red for failure), using `useSubagentBarState` (now `unseen`/`markSeen` only; the hide-finished memory is dropped). Opens a sheet (bottom on a phone, side on desktop) with every loaded agent of this thread, running first then newest, finished dimmed, each with its status. A row opens `SubagentAgentSheet` over it; Back returns to the list.
 - Shared row: `SubagentAgentRow`. Tests: `ComposerSubagentsBar.test.tsx`, `ThreadSubagentsButton.test.tsx`. Not checked in a real 390 px page: the header now carries one more icon button (the title loses about 32 px).
 
+## Amendment 2, 21 Oct 2026 (Bart): the card above the composer is removed
+
+- `ComposerSubagentsBar` and its test are deleted; nothing sits above the composer for subagents. The chat's own subagent cards (T32) are unchanged.
+- The header button's sheet (T35 above) gains **Hide finished / Show finished** (`useSubagentBarState` again holds `hideFinished`, per thread on this device, `sightr:v2:subagents-hide-finished:<thread>`). While hidden the list shows only running agents; the header counts still cover every agent.
+
