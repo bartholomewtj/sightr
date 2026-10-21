@@ -140,7 +140,9 @@ describe("entryItems", () => {
     expect(claude[0]).toMatchObject({ type: "subagent", transcript: true });
     expect(claude[1]).not.toHaveProperty("transcript"); // a synthetic key names no file
     const pi = entryItems(entry({ parts: [sub({ agentId: "p-1" }), sub({ agentId: "p-1", transcriptPath: "C:\s\tasks\a.jsonl" })] }), { ...CTX, harness: "pi" });
-    expect(pi[0]).not.toHaveProperty("transcript"); // launched, never checked: no path yet
+    expect(pi[0]).not.toHaveProperty("transcript"); // a call with no brief and no path (a bare check) names no log
+    const launched = entryItems(entry({ parts: [sub({ agentId: "p-2", prompt: "Do the thing." })] }), { ...CTX, harness: "pi" });
+    expect(launched[0]).toMatchObject({ transcript: true }); // a launch: its log is found by the brief
     expect(pi[1]).toMatchObject({ transcript: true, transcriptPath: "C:\s\tasks\a.jsonl" });
   });
 
