@@ -90,7 +90,7 @@ product since. It does not track collie.
 |---|---|
 | Windows 10 or 11 | Task Scheduler supervisor, PowerShell launcher, `icacls` hardening, named-pipe socket |
 | [Bun](https://bun.sh) | The only runtime. Bridge, control script and web build all run on it |
-| [Herdr](https://herdr.dev) 0.7.0 or newer | Provides the agent control socket. 0.7.2 or newer enables session snapshots |
+| [Herdr](https://herdr.dev) 0.9.0 or newer | Provides the agent control socket and the v2 app's session/event API. Below 0.9.0 the bridge still runs v1, but every `/api/v2/*` route answers 503 `herdr-too-old` |
 | Git | Only for a local checkout install and for `update` |
 | [Tailscale](https://tailscale.com) | Recommended. Gives the private HTTPS URL and the identity header. Optional with `SIGHTR_SKIP_SERVE=1` and your own proxy |
 
@@ -383,6 +383,7 @@ outcome is appended to the audit log.
 | `docs/adr/` | Architecture decision records. Code comments cite them by number (`ADR 0009`) |
 | `CONTEXT.md` | Agent map: where to go, standing rules |
 | `docs/ARCHITECTURE.md`, `docs/HARNESS_CONTRIBUTING.md` | Stubs pointing at this README |
+| `docs/ARCHITECTURE-ASSESSMENT.md`, `docs/WINDOWS-SMOKE-CHECKLIST.md` | The forward plan; the manual release pass for the Windows-only surface CI cannot test |
 | `docs/HERDR_API.md` | The Herdr socket protocol facts the bridge relies on |
 | `docs/specs/` | Implementable slices. Catalog: [`docs/specs/README.md`](docs/specs/README.md) |
 
@@ -417,7 +418,8 @@ bun run build                  # typecheck both, build web/dist
 - **CI** (`.github/workflows/ci.yml`) runs on push to `main` and on pull requests: frozen installs,
   the version gate, typecheck and tests for root and web, then the web build. It only reads the repo.
   `.github/workflows/pages.yml` compiles Archify JSON to HTML and publishes GitHub Pages (set the
-  Pages source to GitHub Actions).
+  Pages source to GitHub Actions). CI is ubuntu-only; run `docs/WINDOWS-SMOKE-CHECKLIST.md` on the
+  host before a release.
 - **Vite dev from another device.** `SIGHTR_DEV_TARGET` points the proxy at a bridge;
   `SIGHTR_DEV_HOSTS` adds Host names the dev server accepts.
 
