@@ -166,12 +166,10 @@ function SubagentRow({ item }: { item: Extract<TurnItem, { type: "subagent" }> }
       </button>
       {open ? (
         <div className="ms-10 me-2 mb-2 space-y-2 text-xs" data-subagent-detail="">
-          {facts.length > 0 || item.agentStatus ? (
-            <p className="wrap-anywhere text-muted-foreground">
-              {[status.label, ...facts].join(" · ")}
-              {item.subagentId && !item.subagentId.includes(":") ? <span className="font-mono"> · {item.subagentId}</span> : null}
-            </p>
-          ) : null}
+          <p className="wrap-anywhere text-muted-foreground">
+            {[status.label, ...facts].join(" · ")}
+            {item.subagentId && !item.subagentId.includes(":") ? <span className="font-mono"> · {item.subagentId}</span> : null}
+          </p>
           {item.prompt.trim() ? (
             <details className="rounded-md border border-border/60 bg-card/50 px-2 py-1">
               <summary className="cursor-pointer py-1 text-muted-foreground pointer-coarse:min-h-11 pointer-coarse:py-3">Prompt</summary>
@@ -182,6 +180,15 @@ function SubagentRow({ item }: { item: Extract<TurnItem, { type: "subagent" }> }
             <div className="max-h-[min(28rem,60dvh)] overflow-y-auto rounded-md border border-border/60 bg-card/50 p-2 wrap-anywhere">
               <ChatMarkdown text={result} isStreaming={false} headingLevelOffset={3} lineBreaks />
             </div>
+          ) : null}
+          {!item.prompt.trim() && !result ? (
+            // A call that only asks for an agent's state (Pi's `get_subagent_result`) carries no brief,
+            // and while it waits there is no report: say so, or the open row is a blank gap.
+            <p className="text-2xs text-muted-foreground italic" data-subagent-empty="">
+              {item.status === "running"
+                ? "Waiting for this agent's report. It shows here when the agent finishes."
+                : "The journal has no brief or report for this agent."}
+            </p>
           ) : null}
           {item.truncated ? (
             <p className="text-2xs text-muted-foreground italic">The journal cut this; the full text is in the agent's own log.</p>

@@ -29,6 +29,10 @@ export interface FreeTextIO {
 export type FreeTextResult = RecipeResult & { typed?: boolean };
 
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
+// A wrapped editor line can lose the space at its wrap in the read ("very" + "complex"), so the check
+// also takes the two texts with every space removed: still exactly our words, in order.
+const squash = (s: string) => s.replace(/\s+/g, "");
+const sameText = (shown: string, ours: string) => norm(shown) === norm(ours) || squash(shown) === squash(ours);
 const sameRow = (a: FreeTextRow, b: FreeTextRow) => a.identity === b.identity;
 
 export async function freeTextRecipe(io: FreeTextIO, text: string): Promise<FreeTextResult> {
@@ -50,7 +54,7 @@ export async function freeTextRecipe(io: FreeTextIO, text: string): Promise<Free
 
   const typed = await io.type(text);
   if (typed.status !== "sent") return typed;
-  const landed = await pollModel(io, first, (m) => sameRow(m, first) && m.ready && norm(m.text) === norm(text), sameRow);
+  const landed = await pollModel(io, first, (m) => sameRow(m, first) && m.ready && sameText(m.text, text), sameRow);
   if (landed !== "ok") {
     return {
       status: "error",

@@ -171,6 +171,28 @@ describe("structured items in the timeline", () => {
     expect(screen.getByRole("button", { name: "Check the docs, Running in the background" })).toBeInTheDocument();
   });
 
+  it("a subagent row with no brief and no report still opens to something", async () => {
+    // Pi's `get_subagent_result` while it waits: only an agent id, no prompt, no result, no status word.
+    const sub = item("s:0", {
+      type: "subagent",
+      title: "fd9eec52-cc41-447",
+      subagentId: "fd9eec52-cc41-447",
+      origin: "provider_native",
+      driver: "pi",
+      providerInstanceId: "pi",
+      childThreadId: null,
+      prompt: "",
+      result: null,
+      status: "running",
+    });
+    await show([user("u:0", "go", inRun), sub, assistant("b:0", "ok", inRun)], [run("r1")]);
+    fireEvent.click(screen.getByRole("button", { name: /fd9eec52-cc41-447, Running/ }));
+    await settle();
+    const detail = document.querySelector("[data-subagent-detail]") as HTMLElement;
+    expect(detail).toHaveTextContent("fd9eec52-cc41-447");
+    expect(detail).toHaveTextContent("Waiting for this agent's report");
+  });
+
   it("draws the journal's interrupt as T3's divider, with no second Stopped notice", async () => {
     const stop = item("x:0", { type: "run_interrupt_result", message: "Stopped by the user" });
     await show([user("u:0", "go", inRun), stop], [run("r1", { status: "interrupted" })]);
