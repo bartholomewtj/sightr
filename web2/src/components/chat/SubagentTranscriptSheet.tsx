@@ -152,7 +152,8 @@ export function TranscriptItem({ item, first }: { item: TurnItem; first: boolean
   }
 }
 
-function TranscriptBody({ threadId, itemId, title, statusLabel, running, onClose }: SubagentTranscriptSheetProps) {
+/** The live list: items, follow-the-end, the unavailable and loading states. Fills the height it is given. */
+export function TranscriptPane({ threadId, itemId, running }: { threadId: string; itemId: string; running: boolean }) {
   const { view, loading, error } = useSubagentTranscript(threadId, itemId, { enabled: true, live: running });
   const scroller = useRef<HTMLDivElement | null>(null);
   const [following, setFollowing] = useState(true);
@@ -175,6 +176,31 @@ function TranscriptBody({ threadId, itemId, title, statusLabel, running, onClose
   };
 
   return (
+    <div className="relative min-h-0 flex-1">
+      <div ref={scroller} onScroll={onScroll} className="h-full space-y-1.5 overflow-y-auto overscroll-y-contain px-2 py-3" data-transcript-scroll="">
+        {view?.cutHead ? (
+          <p className="px-1 pb-1 text-2xs text-muted-foreground italic">Earlier steps are cut; this starts partway through the agent's log.</p>
+        ) : null}
+        {view?.items.map((item, i) => <TranscriptItem key={item.id} item={item} first={i === 0} />)}
+        {loading && !view ? <p className="px-2 text-xs text-muted-foreground">Loading…</p> : null}
+        {error && !view ? (
+          <p className="px-2 text-xs text-muted-foreground" data-transcript-error="">
+            {error.unavailable ? transcriptUnavailableText(error.reason) : "The agent's log could not be loaded. Retrying."}
+          </p>
+        ) : null}
+        {view && view.items.length === 0 ? <p className="px-2 text-xs text-muted-foreground">Nothing in the agent's log yet.</p> : null}
+      </div>
+      {!following && view ? (
+        <Button size="sm" variant="secondary" className="absolute bottom-2 left-1/2 -translate-x-1/2 shadow-md" onClick={jump} data-transcript-jump="">
+          <ArrowDownIcon /> {running ? "Follow live" : "Jump to end"}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function TranscriptBody({ threadId, itemId, title, statusLabel, running, onClose }: SubagentTranscriptSheetProps) {
+  return (
     <div className="flex min-h-0 flex-1 flex-col pb-[max(0.5rem,env(safe-area-inset-bottom))]">
       <header className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
         <BotIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
@@ -189,26 +215,7 @@ function TranscriptBody({ threadId, itemId, title, statusLabel, running, onClose
           <XIcon />
         </Button>
       </header>
-      <div className="relative min-h-0 flex-1">
-        <div ref={scroller} onScroll={onScroll} className="h-full space-y-1.5 overflow-y-auto overscroll-y-contain px-2 py-3" data-transcript-scroll="">
-          {view?.cutHead ? (
-            <p className="px-1 pb-1 text-2xs text-muted-foreground italic">Earlier steps are cut; this starts partway through the agent's log.</p>
-          ) : null}
-          {view?.items.map((item, i) => <TranscriptItem key={item.id} item={item} first={i === 0} />)}
-          {loading && !view ? <p className="px-2 text-xs text-muted-foreground">Loading…</p> : null}
-          {error && !view ? (
-            <p className="px-2 text-xs text-muted-foreground" data-transcript-error="">
-              {error.unavailable ? transcriptUnavailableText(error.reason) : "The agent's log could not be loaded. Retrying."}
-            </p>
-          ) : null}
-          {view && view.items.length === 0 ? <p className="px-2 text-xs text-muted-foreground">Nothing in the agent's log yet.</p> : null}
-        </div>
-        {!following && view ? (
-          <Button size="sm" variant="secondary" className="absolute bottom-2 left-1/2 -translate-x-1/2 shadow-md" onClick={jump} data-transcript-jump="">
-            <ArrowDownIcon /> {running ? "Follow live" : "Jump to end"}
-          </Button>
-        ) : null}
-      </div>
+      <TranscriptPane threadId={threadId} itemId={itemId} running={running} />
     </div>
   );
 }
