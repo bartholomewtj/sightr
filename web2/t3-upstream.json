@@ -1643,6 +1643,76 @@
       "verdict": "skip",
       "reason": "Native caret and selection classes for a comment box inside Pierre's contentEditable annotation slot (#17554); Sightr's DiffCommentEditor/DiffCommentAnnotation are a plain textarea and a note row outside any contentEditable, so the native caret already shows (T29 pattern rows)",
       "date": "2026-10-19"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/MarkdownDetails.tsx",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "verdict": "skip",
+      "reason": "Rendered from raw HTML (rehype-raw); Sightr turns HTML into text (no-injection rule), so a details node is never produced",
+      "date": "2026-10-21"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/MarkdownMath.tsx",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "verdict": "skip",
+      "reason": "Sightr renders math with remark-math + rehype-katex; no lazy KaTeX component is ported",
+      "date": "2026-10-21"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/MathTypeset.tsx",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "verdict": "skip",
+      "reason": "Same: KaTeX is loaded through rehype-katex, not a per-formula lazy component",
+      "date": "2026-10-21"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/MarkdownExternalLink.tsx",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "verdict": "skip",
+      "reason": "Sightr's anchor handler already opens safe http(s)/mailto links; no separate component",
+      "date": "2026-10-21"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/markdownFindContext.ts",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "verdict": "skip",
+      "reason": "Find-in-thread reveal for markdown internals; not taken",
+      "date": "2026-10-21"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/markdownActionFailure.ts",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "verdict": "skip",
+      "reason": "Host-specific copy-failure reporting; Sightr uses its own toast",
+      "date": "2026-10-21"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/markdownFragments.ts",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "verdict": "skip",
+      "reason": "T3's incremental/streaming markdown fragmentation; not taken",
+      "date": "2026-10-21"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/markdownHast.logic.ts",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "verdict": "skip",
+      "reason": "Helpers for T3's renderer context (citations, file chips); not taken",
+      "date": "2026-10-21"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/ComposerAttachmentStrip.tsx",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "verdict": "defer",
+      "reason": "T3's attachment strip (video thumbnails, upload retry animations); Sightr's own chips cover T12 for now",
+      "date": "2026-10-21"
+    },
+    {
+      "upstream": "apps/web/src/components/chat/TimelineMinimap.tsx",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "verdict": "defer",
+      "reason": "Timeline minimap; desktop-oriented, revisit with the next timeline pass",
+      "date": "2026-10-21"
     }
   ]
 }
