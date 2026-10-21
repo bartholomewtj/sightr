@@ -120,6 +120,84 @@ async function piPath(mainLog: string, recorded: string | undefined): Promise<st
   return containedRealpath(recorded, dirname(mainLog));
 }
 
+// Pi names an agent's log only in a later `get_subagent_result`, but the log exists from the launch and its
+// first user message is the brief. Until a check names it, find it by that: a `tasks/` log that starts with
+// the launch's prompt and began at about the launch time (two agents can share one prompt).
+const BRIEF_CHARS = 160;
+const BRIEF_PROBE_BYTES = 64 * 1024;
+const TASK_FILES_SCANNED = 80;
+/** A task log is created within this long of the launch call being logged (earlier ones are other agents'). */
+const LAUNCH_SLACK_MS = 120_000;
+
+const flat = (s: string) => s.replace(/\s+/g, " ").trim();
+
+/** `2026-10-21T01-37-06-210Z_<uuid>.jsonl` → epoch ms, or null. */
+export function taskFileTime(name: string): number | null {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z_/.exec(name);
+  if (!m) return null;
+  const ms = Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z`);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** The text of the first user message in the first bytes of a Pi log, or null. */
+export function firstUserText(head: string): string | null {
+  for (const line of head.split("\n")) {
+    if (!line.includes('"user"')) continue;
+    try {
+      const m = (JSON.parse(line) as { message?: { role?: string; content?: unknown } }).message;
+      if (m?.role !== "user") continue;
+      if (typeof m.content === "string") return m.content;
+      if (Array.isArray(m.content)) {
+        return m.content.map((b) => (b && typeof b === "object" && typeof (b as { text?: unknown }).text === "string" ? (b as { text: string }).text : "")).join("");
+      }
+    } catch {
+      /* a clipped or partial line */
+    }
+  }
+  return null;
+}
+
+async function piPathByBrief(mainLog: string, prompt: string, launchedAt: number): Promise<string | null> {
+  const want = flat(prompt).slice(0, BRIEF_CHARS);
+  if (want === "") return null;
+  const projectDir = dirname(mainLog);
+  const own = basename(mainLog, ".jsonl");
+  let sessions: string[];
+  try {
+    sessions = (await readdir(projectDir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name);
+  } catch {
+    return null;
+  }
+  sessions.sort((a, b) => (a === own ? -1 : b === own ? 1 : 0)); // this session's agents first
+  let best: { path: string; gap: number } | null = null;
+  for (const session of sessions) {
+    const dir = join(projectDir, session, "tasks");
+    let names: string[];
+    try {
+      names = await readdir(dir);
+    } catch {
+      continue;
+    }
+    const recent = names
+      .filter((n) => n.toLowerCase().endsWith(".jsonl"))
+      .map((n) => ({ n, t: taskFileTime(n) }))
+      .filter((x): x is { n: string; t: number } => x.t !== null && x.t >= launchedAt - LAUNCH_SLACK_MS)
+      .sort((a, b) => a.t - b.t)
+      .slice(0, TASK_FILES_SCANNED);
+    for (const { n, t } of recent) {
+      const gap = Math.abs(t - launchedAt);
+      if (best !== null && gap >= best.gap) continue;
+      const head = await Bun.file(join(dir, n)).slice(0, BRIEF_PROBE_BYTES).text().catch(() => "");
+      const first = firstUserText(head);
+      if (first !== null && flat(first).startsWith(want)) {
+        const real = await containedRealpath(join(dir, n), projectDir);
+        if (real) best = { path: real, gap };
+      }
+    }
+  }
+  return best?.path ?? null;
+}
+
 function toItems(entries: readonly TranscriptEntry[], item: SubagentItem, running: boolean, now: number): TurnItem[] {
   const out: TurnItem[] = [];
   for (const entry of entries) {
@@ -199,6 +277,10 @@ export function createTranscriptReader(deps: TranscriptDeps): TranscriptReader {
       } else if (harness === "pi") {
         const recorded = [...same].reverse().find((i) => i.transcriptPath)?.transcriptPath;
         path = await piPath(mainLog, recorded);
+        if (path === null && recorded === undefined) {
+          const launch = same.find((i) => i.prompt.trim() !== "");
+          if (launch) path = await piPathByBrief(mainLog, launch.prompt, launch.createdAt);
+        }
       } else {
         return missing("unsupported-harness");
       }

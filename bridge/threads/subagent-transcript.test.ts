@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import type { TurnItem } from "../../shared/v2/contracts.ts";
 import { CAN_SYMLINK } from "../platform-support.ts";
-import { createTranscriptReader, latestActivity, type TranscriptBody } from "./subagent-transcript.ts";
+import { createTranscriptReader, firstUserText, latestActivity, taskFileTime, type TranscriptBody } from "./subagent-transcript.ts";
 
 let root: string;
 let project: string; // the thread's own log directory
@@ -182,6 +182,62 @@ describe("Pi agent logs", () => {
     expect(body.items).toHaveLength(2);
     expect(body.cutHead).toBe(true);
     expect(body.items.map((i) => i.ordinal)).toEqual([1, 2]); // keeps its place in the log, not renumbered
+  });
+});
+
+describe("Pi agent never checked: found by its brief", () => {
+  const piRow = (id: string, message: Record<string, unknown>) => ({ type: "message", id, parentId: null, timestamp: "2026-10-21T01:00:00.000Z", message });
+  const task = (name: string, brief: string, said: string) =>
+    writeFile(join(project, MAIN, "tasks", name), jl(piRow("u", { role: "user", content: [{ type: "text", text: brief }] }), piRow("a", { role: "assistant", content: [{ type: "text", text: said }] })));
+  const brief = "Review PR #704 for the strip. Read-only. Report blocking findings.";
+
+  beforeAll(async () => {
+    await task("2026-10-21T01-37-06-210Z_aaaa.jsonl", brief, "first agent");
+    await task("2026-10-21T01-50-00-000Z_bbbb.jsonl", brief, "second agent");
+    await task("2026-10-21T01-51-00-000Z_cccc.jsonl", "Something else entirely.", "unrelated");
+  });
+
+  const launch = (at: string, prompt = brief) => subagent("s1", { driver: "pi", subagentId: "fd9e-1", prompt, createdAt: Date.parse(at), agentStatus: "background" });
+  const said = async (item: TurnItem) => {
+    const body = (await full(reader([item]), "s1")) as Extract<TranscriptBody, { items: TurnItem[] }>;
+    return body.items.find((i) => i.type === "assistant_message") as { text: string } | undefined;
+  };
+
+  test("two agents with one prompt: the log that began nearest the launch is this agent's", async () => {
+    expect((await said(launch("2026-10-21T01:37:07Z")))?.text).toBe("first agent");
+    expect((await said(launch("2026-10-21T01:50:01Z")))?.text).toBe("second agent");
+  });
+
+  test("a prompt that no log starts with finds nothing", async () => {
+    const res = await reader([launch("2026-10-21T01:50:01Z", "A brief nobody was given.")]).load("t1", "s1", {});
+    expect(res).toEqual({ ok: false, status: 404, reason: "no-transcript" });
+  });
+
+  test("logs that began long before the launch are other agents'", async () => {
+    const res = await reader([launch("2026-10-21T05:00:00Z")]).load("t1", "s1", {});
+    expect(res.ok).toBe(false);
+  });
+
+  test("a recorded path wins over matching by brief", async () => {
+    const item = subagent("s1", { driver: "pi", subagentId: "fd9e-1", prompt: brief, createdAt: Date.parse("2026-10-21T01:37:07Z"), transcriptPath: join(project, MAIN, "tasks", "2026-10-21T01-50-00-000Z_bbbb.jsonl") });
+    expect((await said(item))?.text).toBe("second agent");
+  });
+});
+
+describe("task file names", () => {
+  test("taskFileTime reads the creation time from the name", () => {
+    expect(taskFileTime("2026-10-21T01-37-06-210Z_01a15c1a.jsonl")).toBe(Date.parse("2026-10-21T01:37:06.210Z"));
+    expect(taskFileTime("t_1.jsonl")).toBeNull();
+  });
+  test("firstUserText reads the first user message, string or blocks", () => {
+    const row = (content: unknown) => JSON.stringify({ type: "message", message: { role: "user", content } });
+    expect(firstUserText(`{"type":"session"}
+${row("hello")}
+`)).toBe("hello");
+    expect(firstUserText(`${row([{ type: "text", text: "a" }, { type: "text", text: "b" }])}
+`)).toBe("ab");
+    expect(firstUserText(`{"type":"session"}
+`)).toBeNull();
   });
 });
 
