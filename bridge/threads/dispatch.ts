@@ -22,6 +22,7 @@ import {
   openRunIsMaintenance,
   queueEvent,
   REAL_TIMERS,
+  unheldRow,
   type DeliverResult,
   type DrainTimers,
   type QueueDrainer,
@@ -618,11 +619,7 @@ export function createDispatcher(deps: DispatchDeps): Dispatcher {
     if (thread.shelf === "archived") return conflict("thread-archived");
     const rows = store.listQueued(thread.id);
     if (!rows.some((r) => r.state === "held")) return commit([], ctx, thread.id);
-    const next = rows.map((r): QueuedMessage => {
-      if (r.state !== "held") return r;
-      const { heldReason: _reason, ...rest } = r;
-      return { ...rest, state: "queued" };
-    });
+    const next = rows.map((r): QueuedMessage => (r.state === "held" ? unheldRow(r) : r));
     const out = commit([queueEvent(thread.id, next, "resumed")], ctx, thread.id);
     drainer.kick(thread.id);
     return out;

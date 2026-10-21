@@ -19,6 +19,7 @@ import {
   permissionModeOptions,
   permissionModeRefusalText,
   promptLengthMessage,
+  queueAutoResumeText,
   queueHeldSummary,
   resolveComposerButtons,
   resolveEnterAction,
@@ -202,6 +203,12 @@ describe("small rules", () => {
     expect(queueHeldSummary([row({ state: "held", heldReason: "restart" })])).toEqual({ held: true, restart: true, resumable: true });
     expect(queueHeldSummary([row({ state: "held", heldReason: "pane-closed" })]).resumable).toBe(false);
     expect(queueHeldSummary([row({})]).held).toBe(false);
+  });
+
+  it("queueAutoResumeText counts the messages the bridge put back", () => {
+    expect(queueAutoResumeText(1)).toBe("A queued message resumed automatically after the restart.");
+    expect(queueAutoResumeText(3)).toBe("3 queued messages resumed automatically after the restart.");
+    expect(queueAutoResumeText(0)).toBe("Queued messages resumed automatically after the restart.");
   });
 
   it("firstLine", () => {

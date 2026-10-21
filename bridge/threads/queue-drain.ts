@@ -14,10 +14,19 @@ import type { ThreadStore } from "./store.ts";
 // (the status goes `working` and comes back, or T03 ends a run) before it takes the next row. If no
 // run shows within RUN_WAIT_MS (a turn too quick for a poll to see), the next row may go.
 //
+// A restart holds every row (the pane may be mid-run, and a `sending` row's text may be in the box).
+// The hold lifts itself, with `queue.updated {change: "resumed", reason: "auto"}`, as soon as the
+// thread rests and no dialog is open: the hold is a safety catch, not the operator's decision, and
+// they can still lift it sooner with `queue.resume`.
+//
 // It never reads harness ids: a thread with `capabilities.canQueueDrain` false has no queue.
 
 /** A back-off (composer not on screen, pane busy, a failed send) tries again this long after. */
 export const DRAIN_RETRY_MS = 5_000;
+/** The hold a bridge start puts on every row; it lifts itself once the pane rests (see `start`). */
+export const RESTART_HOLD_REASON = "restart";
+/** The reason on the `queue.updated` a restart hold lifts itself with: no operator asked for it. */
+export const AUTO_RESUME_REASON = "auto";
 /** After a send, how long to wait for its run to show before the next row may go anyway. */
 export const RUN_WAIT_MS = 20_000;
 /** This many failed sends of one row in a row hold it. */
@@ -98,7 +107,7 @@ export type Deliver = (
 ) => Promise<DeliverResult>;
 
 export interface QueueDrainerDeps {
-  store: Pick<ThreadStore, "append" | "onCommitted" | "getThread" | "listQueued">;
+  store: Pick<ThreadStore, "append" | "onCommitted" | "getThread" | "listQueued" | "pendingRequests">;
   deliver: Deliver;
   /** Is the thread's composer on screen right now? Null when the pane is gone. */
   composerReady: (thread: ServerThread) => Promise<boolean | null>;
@@ -111,7 +120,10 @@ export interface QueueDrainerDeps {
 export type SettleWait = "settled" | "timeout" | "gone";
 
 export interface QueueDrainer {
-  /** Hold every queued or sending row (a restart), then follow status events. */
+  /**
+   * Hold every queued or sending row (a restart), then follow status events. Each held thread is
+   * tried at once: a queue the operator had not paused resumes by itself once the pane rests.
+   */
   start(): void;
   stop(): void;
   /** Try the thread's queue now (a row was added, resumed, reordered or edited). */
@@ -153,6 +165,12 @@ export function queueEvent(
 /** A row taken off the send path and kept for the operator to resume or cancel. */
 export function heldRow(row: QueuedMessage, reason: string): QueuedMessage {
   return { ...row, state: "held", heldReason: reason };
+}
+
+/** A held row back on the send path: the operator resumed it, or the restart hold lifted itself. */
+export function unheldRow(row: QueuedMessage): QueuedMessage {
+  const { heldReason: _reason, ...rest } = row;
+  return { ...rest, state: "queued" };
 }
 
 interface DrainState {
@@ -268,6 +286,34 @@ export function createQueueDrainer(deps: QueueDrainerDeps): QueueDrainer {
     return rows.flatMap((r) => (r.id !== id ? [r] : next ? [next] : []));
   };
 
+  /**
+   * The hold a bridge start puts on every row lifts itself once the pane is idle and no dialog is
+   * open: the same conditions the drainer waits for before a send, so nothing is ever typed into a
+   * running agent or a dialog. The hold was a safety catch, not a decision to keep the messages.
+   * The operator can still resume by hand (`queue.resume`); this only saves them the tap. The
+   * `resumed` event (with `reason: "auto"`) is what the client shows as a notice.
+   */
+  const resumeRestartHold = async (thread: ServerThread): Promise<void> => {
+    // A dialog on screen is not a settled thread in every harness: wait for the answer.
+    if (store.pendingRequests().some((r) => r.threadId === thread.id)) return;
+    const ready = await composerReady(thread);
+    if (ready === null) return;
+    if (!ready) {
+      backOff(thread.id);
+      return;
+    }
+    // The world may have moved while the pane was read.
+    const fresh = store.getThread(thread.id);
+    if (!fresh || fresh.shelf === "archived" || !isSettled(fresh.status) || states.get(thread.id)?.awaiting) return;
+    if (store.pendingRequests().some((r) => r.threadId === thread.id)) return;
+    const rows = store.listQueued(thread.id);
+    if (!rows.some((r) => r.state === "held" && r.heldReason === RESTART_HOLD_REASON)) return;
+    store.append([
+      queueEvent(thread.id, rows.map((r) => (r.state === "held" && r.heldReason === RESTART_HOLD_REASON ? unheldRow(r) : r)), "resumed", AUTO_RESUME_REASON),
+    ]);
+    // The `resumed` event schedules the pass that sends the first row.
+  };
+
   const pass = async (threadId: string): Promise<void> => {
     const thread = store.getThread(threadId);
     if (!thread || thread.shelf === "archived") return;
@@ -277,6 +323,10 @@ export function createQueueDrainer(deps: QueueDrainerDeps): QueueDrainer {
     const rows = store.listQueued(threadId);
     // A row in flight (a steer, or a send this bridge is still making) goes first; nothing overtakes it.
     if (rows.some((r) => r.state === "sending")) return;
+    if (rows.some((r) => r.state === "held" && r.heldReason === RESTART_HOLD_REASON)) {
+      await resumeRestartHold(thread);
+      return;
+    }
     const row = rows.find((r) => r.state === "queued");
     if (!row) {
       s.failures = 0;
@@ -419,6 +469,13 @@ export function createQueueDrainer(deps: QueueDrainerDeps): QueueDrainer {
             if (!stopped) holdClosed(threadId);
           });
           break;
+        case "runtime-request.updated":
+          // A dialog that closes is the moment a restart-held queue may go. (A pass that found a
+          // pending request waits without a retry timer, so this event is what tries it again.)
+          if (e.payload.request.status !== "pending") {
+            void Promise.resolve().then(() => schedule(threadId));
+          }
+          break;
         case "queue.updated": {
           const change = e.payload.change;
           if (change === "added" || change === "resumed" || change === "reordered" || change === "edited") {
@@ -436,18 +493,25 @@ export function createQueueDrainer(deps: QueueDrainerDeps): QueueDrainer {
     start() {
       if (!stopped) return;
       stopped = false;
-      // After a restart nothing is sent until the operator resumes. A row that was `sending` at the
-      // crash is ambiguous (the text may be in the box), and so are queued rows the operator may have
-      // stopped caring about; both wait.
+      // Every row is held first, so nothing can be typed at once into a pane that may be mid-run. A
+      // row that was `sending` at the crash is ambiguous (the text may be in the box), and so are
+      // queued rows; the hold lifts itself as soon as the pane proves to be resting (resumeRestartHold),
+      // and the operator can lift it sooner with `queue.resume`.
       const byThread = new Map<string, QueuedMessage[]>();
       for (const row of store.listQueued()) byThread.set(row.threadId, [...(byThread.get(row.threadId) ?? []), row]);
       for (const [threadId, rows] of byThread) {
         if (!rows.some((r) => r.state !== "held")) continue;
         try {
-          store.append([queueEvent(threadId, rows.map((r) => (r.state === "held" ? r : heldRow(r, "restart"))), "held", "restart")]);
+          store.append([
+            queueEvent(threadId, rows.map((r) => (r.state === "held" ? r : heldRow(r, RESTART_HOLD_REASON))), "held", RESTART_HOLD_REASON),
+          ]);
         } catch (err) {
           log(`[threads] could not hold the queue of ${threadId}: ${(err as Error).message}`);
+          continue;
         }
+        // The hold events were appended before the listener below was attached, so the pass that
+        // lifts the hold is queued here by hand.
+        void Promise.resolve().then(() => schedule(threadId));
       }
       unsubscribe = store.onCommitted(onEvents);
     },

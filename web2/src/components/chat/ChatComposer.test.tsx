@@ -365,6 +365,53 @@ describe("ChatComposer: the queued list", () => {
     await waitFor(() => expect(commands("queue.resume")).toEqual([expect.objectContaining({ threadId: "t1" })]));
   });
 
+  it("after an automatic resume: a dismissible notice says the queue went by itself", () => {
+    show({ queue: [row("q1", { state: "held", heldReason: "restart" }), row("q2", { position: 1, state: "held", heldReason: "restart" })] });
+    expect(screen.getByText("Paused after restart")).toBeInTheDocument();
+
+    // What the bridge sends when its restart hold lifts itself once the pane rests.
+    const current = useThreadStore.getState().current!;
+    act(() => {
+      useThreadStore.setState({
+        current: applyThreadEvent(current, {
+          sequence: 2,
+          threadId: "t1",
+          type: "queue.updated",
+          payload: { messages: [row("q1"), row("q2", { position: 1 })], change: "resumed", reason: "auto" },
+          ts: 2,
+        }),
+      });
+    });
+
+    expect(screen.getByText("2 queued messages resumed automatically after the restart.")).toBeInTheDocument();
+    // Nothing is paused any more: the rows are queued again.
+    expect(screen.queryByText("Paused after restart")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText("2 queued messages resumed automatically after the restart.")).toBeNull();
+    expect(useThreadStore.getState().current?.queueAutoResume).toBeNull();
+    // The queue itself is untouched by the dismissal.
+    expect(useThreadStore.getState().current?.queue.map((q) => q.id)).toEqual(["q1", "q2"]);
+  });
+
+  it("a manual resume carries no notice (only the bridge's own lift does)", () => {
+    show({ queue: [row("q1", { state: "held", heldReason: "restart" })] });
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    const current = useThreadStore.getState().current!;
+    act(() => {
+      useThreadStore.setState({
+        current: applyThreadEvent(current, {
+          sequence: 3,
+          threadId: "t1",
+          type: "queue.updated",
+          payload: { messages: [row("q1")], change: "resumed" },
+          ts: 3,
+        }),
+      });
+    });
+    expect(screen.queryByText(/resumed automatically/)).toBeNull();
+  });
+
   it("a message the bridge dropped says so", () => {
     show({ queue: [row("q1", { state: "held", heldReason: "pane-closed" })] });
     expect(screen.getByText("Not sent: pane closed")).toBeInTheDocument();

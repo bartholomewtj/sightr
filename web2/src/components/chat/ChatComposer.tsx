@@ -14,6 +14,7 @@ import {
   CircleCheckIcon,
   ImageIcon,
   KeyboardIcon,
+  ListOrderedIcon,
   Loader2Icon,
   LockIcon,
   PaperclipIcon,
@@ -69,7 +70,7 @@ import {
   type AttachmentChip,
 } from "@/state/composer";
 import { V2CommandError } from "@/stream/commands";
-import { useBridgeInfo, useStreamHealth, useThread } from "@/stream/stores";
+import { dismissQueueAutoResume, useBridgeInfo, useStreamHealth, useThread } from "@/stream/stores";
 import { Button } from "../ui/button";
 import {
   composerMaxHeight,
@@ -81,6 +82,7 @@ import {
   permissionModeOptions,
   permissionModeRefusalText,
   promptLengthMessage,
+  queueAutoResumeText,
   resolveComposerButtons,
   resolveEnterAction,
   slashQuery,
@@ -748,6 +750,17 @@ export function ChatComposer({ threadId }: { threadId: string }) {
   }
   if (linkLost) {
     banners.push({ id: "link", variant: "error", priority: "urgent", icon: <WifiOffIcon />, title: "Not connected. Sending is paused." });
+  }
+  // Phase 5.3: the bridge lifted the post-restart hold by itself once the pane rested. The queue is
+  // no longer paused, so this says what happened rather than offering a Resume; Dismiss clears it.
+  if (state?.queueAutoResume) {
+    banners.push({
+      id: "queue-auto-resume",
+      variant: "info",
+      icon: <ListOrderedIcon />,
+      title: queueAutoResumeText(state.queueAutoResume.count),
+      onDismiss: () => dismissQueueAutoResume(threadId),
+    });
   }
 
   const statusText = armed ? `Destructive: ${armed}. Tap Confirm to send.` : (buttons.primary.reason ?? "");

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { NO_CAPABILITIES, type QueuedMessage, type ThreadStatus } from "../../shared/v2/contracts.ts";
+import { NO_CAPABILITIES, type QueuedMessage, type RuntimeRequest, type ThreadEvent, type ThreadStatus } from "../../shared/v2/contracts.ts";
 import type { AgentStatus } from "../../shared/wire.ts";
 import type { HerdrClient } from "../herdr-client.ts";
 import { StateEngine, STATUS_HOLD_MS } from "../state-engine.ts";
@@ -8,6 +8,7 @@ import { createProject, createThread, thread } from "../test/thread-fixtures.ts"
 import { createHerdIngestor } from "./herd-ingest.ts";
 import {
   createQueueDrainer,
+  DRAIN_RETRY_MS,
   isNativeMaintenanceCommand,
   normalizeQueue,
   openRunIsMaintenance,
@@ -120,6 +121,75 @@ describe("normalizeQueue", () => {
     ]);
   });
 });
+
+function pendingRequest(): RuntimeRequest {
+  return {
+    id: "req1",
+    threadId: "t1",
+    kind: "permission",
+    prompt: "Run ls?",
+    options: [{ label: "Yes", keys: ["1"] }],
+    status: "pending",
+    bindingHash: "b",
+    createdAt: T0,
+    updatedAt: T0,
+  };
+}
+
+/**
+ * A drainer whose store already holds rows, as it does after a bridge restart: `start()` holds every
+ * row, and the tests watch what lifts the hold.
+ */
+function restartRig(rows: QueuedMessage[], opts: { status?: ThreadStatus; pending?: RuntimeRequest; ready?: boolean } = {}) {
+  const store = openThreadStore(":memory:", { now: () => T0, log: () => {} });
+  store.append([createProject(), createThread(thread("t1", { status: opts.status ?? "idle", capabilities: CAPS }))]);
+  store.append([queueEvent("t1", rows, "added")]);
+  if (opts.pending) store.append([{ type: "runtime-request.updated", threadId: "t1", payload: { request: opts.pending } }]);
+  const sent: string[] = [];
+  let ready = opts.ready ?? true;
+  const timers = new FakeTimers();
+  const events: ThreadEvent[] = [];
+  const off = store.onCommitted((batch) => events.push(...batch));
+  const drainer = createQueueDrainer({
+    store,
+    deliver: async (_t, text) => {
+      sent.push(text);
+      return { kind: "sent", events: [] };
+    },
+    composerReady: async () => ready,
+    timers,
+    log: () => {},
+  });
+  drainer.start();
+  cleanups.push(() => {
+    drainer.stop();
+    off();
+    store.close();
+  });
+  // Only the changes that carry a `change` word: the "sending" mark is a plain queue write.
+  const queueChanges = (): { change: string; reason?: string }[] =>
+    events.flatMap((e) =>
+      e.type === "queue.updated" && e.payload.change
+        ? [{ change: e.payload.change, ...(e.payload.reason ? { reason: e.payload.reason } : {}) }]
+        : [],
+    );
+  return {
+    store,
+    drainer,
+    sent,
+    timers,
+    events,
+    changes: queueChanges,
+    queue: () => store.listQueued("t1"),
+    setReady: (v: boolean) => {
+      ready = v;
+    },
+    async setStatus(s: ThreadStatus) {
+      store.append([{ type: "thread.updated", threadId: "t1", payload: { patch: { status: s }, at: T0 } }]);
+      await flush(drainer);
+    },
+  };
+}
 
 const userItem = (id: string, runId: string | null, text: string, attachments: QueuedMessage["attachments"] = []) => ({
   type: "turn-item.updated" as const,
@@ -247,6 +317,77 @@ describe("QueueDrainer", () => {
     const c = r.drainer.waitSettled("t1", 1000);
     r.store.append([{ type: "thread.archived", threadId: "t1", payload: { reason: "pane-closed", at: T0 } }]);
     expect(await c).toBe("gone");
+  });
+});
+
+describe("restart auto-resume (Phase 5.3)", () => {
+  test("a held queue lifts itself once the pane rests, with `resumed` reason `auto`, then drains", async () => {
+    const r = restartRig([row("a", 0), row("b", 1)], { status: "idle" });
+    await flush(r.drainer);
+    expect(r.changes()).toEqual([
+      { change: "held", reason: "restart" },
+      { change: "resumed", reason: "auto" },
+      { change: "sent" },
+    ]);
+    expect(r.sent).toEqual(["text a"]);
+    expect(r.queue().map((q) => [q.id, q.state])).toEqual([["b", "queued"]]);
+    // The next row waits for the run the first one started, as any drained row does.
+    r.timers.advance(60_000);
+    await flush(r.drainer);
+    expect(r.sent).toEqual(["text a", "text b"]);
+  });
+
+  test("only the restart hold lifts: a row held for another reason stays held", async () => {
+    const r = restartRig([row("stalled", 0, { state: "held", heldReason: "stalled" }), row("q", 1)], { status: "idle" });
+    await flush(r.drainer);
+    // `q` lifted itself and went; the stalled row is still held, exactly as the operator left it.
+    expect(r.queue().map((q) => [q.id, q.state, q.heldReason])).toEqual([["stalled", "held", "stalled"]]);
+    expect(r.sent).toEqual(["text q"]);
+    r.timers.advance(60_000);
+    await flush(r.drainer);
+    expect(r.sent).toEqual(["text q"]);
+  });
+
+  test("it stays held while the thread works, and its settle lifts it", async () => {
+    const r = restartRig([row("q", 0)], { status: "working" });
+    await flush(r.drainer);
+    expect(r.queue()).toEqual([expect.objectContaining({ state: "held", heldReason: "restart" })]);
+    expect(r.sent).toEqual([]);
+    r.timers.advance(DRAIN_RETRY_MS * 3);
+    await flush(r.drainer);
+    expect(r.queue()[0]!.state).toBe("held");
+
+    await r.setStatus("done");
+    expect(r.sent).toEqual(["text q"]);
+  });
+
+  test("it stays held while a request is pending, and the answer lifts it", async () => {
+    const r = restartRig([row("q", 0)], { status: "idle", pending: pendingRequest() });
+    await flush(r.drainer);
+    expect(r.queue()).toEqual([expect.objectContaining({ state: "held", heldReason: "restart" })]);
+    expect(r.sent).toEqual([]);
+
+    r.store.append([
+      { type: "runtime-request.updated", threadId: "t1", payload: { request: { ...pendingRequest(), status: "resolved", updatedAt: T0 } } },
+    ]);
+    await flush(r.drainer);
+    expect(r.sent).toEqual(["text q"]);
+  });
+
+  test("a composer that is not on screen backs off and lifts on a later try", async () => {
+    const r = restartRig([row("q", 0)], { status: "idle", ready: false });
+    await flush(r.drainer);
+    expect(r.queue()[0]!.state).toBe("held");
+    expect(r.sent).toEqual([]);
+    r.timers.advance(DRAIN_RETRY_MS);
+    await flush(r.drainer);
+    expect(r.sent).toEqual([]);
+
+    r.setReady(true);
+    r.timers.advance(DRAIN_RETRY_MS);
+    await flush(r.drainer);
+    expect(r.sent).toEqual(["text q"]);
+    expect(r.changes()).toContainEqual({ change: "resumed", reason: "auto" });
   });
 });
 

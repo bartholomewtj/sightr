@@ -198,6 +198,46 @@ describe("applyThreadEvent", () => {
     expect(queued.queue.map((m) => m.id)).toEqual(["q1", "q2"]);
   });
 
+  it("marks a restart hold the bridge lifted by itself, and counts what it put back (Phase 5.3)", () => {
+    const held = (id: string, position: number) => ({
+      id,
+      threadId: "t1",
+      text: id,
+      attachments: [],
+      position,
+      mode: "queue" as const,
+      state: "held" as const,
+      heldReason: "restart",
+      createdAt: 1,
+    });
+    let s = applyThreadEvent(emptyThread("t1"), {
+      sequence: 1,
+      threadId: "t1",
+      type: "queue.updated",
+      payload: { messages: [held("q1", 0), held("q2", 1)], change: "held", reason: "restart" },
+      ts: 1,
+    } satisfies ThreadEvent);
+    const auto = applyThreadEvent(s, {
+      sequence: 2,
+      threadId: "t1",
+      type: "queue.updated",
+      payload: { messages: [{ ...held("q1", 0), state: "queued", heldReason: undefined }, { ...held("q2", 1), state: "queued", heldReason: undefined }], change: "resumed", reason: "auto" },
+      ts: 2,
+    } satisfies ThreadEvent);
+    expect(auto.queueAutoResume).toEqual({ sequence: 2, count: 2 });
+
+    // A manual resume (no `auto`) leaves the notice as it was; a snapshot clears it.
+    const manual = applyThreadEvent(auto, {
+      sequence: 3,
+      threadId: "t1",
+      type: "queue.updated",
+      payload: { messages: [{ ...held("q1", 0), state: "queued", heldReason: undefined }], change: "resumed" },
+      ts: 3,
+    } satisfies ThreadEvent);
+    expect(manual.queueAutoResume).toEqual({ sequence: 2, count: 2 });
+    expect(threadFromSnapshot(threadSnapshot(4, thread("t1")), false).queueAutoResume).toBeNull();
+  });
+
   it("keeps a run's checkpoint through captured, run end, expiry and a repeated start (T31)", () => {
     const run = { id: "r1", threadId: "t1", ordinal: 0, status: "running" as const, startedAt: 1 };
     const checkpoint = { runId: "r1", threadId: "t1", appRunOrdinal: 0, status: "pending" as const, files: [], additions: 0, deletions: 0 };
