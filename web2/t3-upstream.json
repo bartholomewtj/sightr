@@ -325,9 +325,9 @@
     {
       "local": "src/components/ChatMarkdown.tsx",
       "upstream": "apps/web/src/components/ChatMarkdown.tsx",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
       "mode": "adapted",
-      "note": "react-markdown + remark-gfm (+ remark-breaks); no Shiki, Mermaid, raw HTML, images, citations; code-block Wrap lines toggle kept (starts on below sm unless Settings → Display → Code wrapping forces wrap or scroll); file links Sightr's way: path-like inline code opens the Files tab inside a thread (OpenFileLink)"
+      "note": "T35/T36: react-markdown + remark-gfm/breaks + remark-math/rehype-katex; remarkGithubAlerts and markdownListIndentation ported; no raw HTML (Sightr rule); pre/table via chat/Markdown*; markdown file links as chips and http(s)/data:image media inside a thread"
     },
     {
       "local": "src/session-logic.ts",
@@ -395,16 +395,16 @@
     {
       "local": "src/components/chat/ChatComposer.tsx",
       "upstream": "apps/web/src/components/chat/ChatComposer.tsx",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
       "mode": "pattern",
-      "note": "T12: banner stack + queued list above a plain <textarea> (no Tiptap), slash menu, primary actions; the pending request replaces the box; error/usage-limit banners, tasks badge and context meter from structured items"
+      "note": "T12/T37: banner stack + queued list above a plain <textarea> (no Tiptap), slash menu, primary actions; the request panel and the box are both shown, and a send while a request is pending queues"
     },
     {
       "local": "src/components/chat/ChatComposer.logic.ts",
       "upstream": "apps/web/src/components/chat/composerSubmission.ts",
-      "commit": "e3b35d1b2440b104f0bc2e357377c348121234dd",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
       "mode": "pattern",
-      "note": "T12: button table, Enter rules, slash trigger, held-queue wording; uses T3's resolveComposerDispatchMode"
+      "note": "T12/T37: button table (hasRequest -> queue primary), Enter rules, slash trigger, held-queue wording; uses T3's resolveComposerDispatchMode"
     },
     {
       "local": "src/components/chat/ComposerPrimaryActions.tsx",
@@ -1128,6 +1128,90 @@
       "commit": "3a4d118a518a025e44f11248fc4d2c87eb86aa00",
       "mode": "pattern",
       "note": "T29: only the idea of turning a diff comment into context for the composer. T3 builds a Tiptap node (476 lines, Effect schemas, Pierre ranges); Sightr writes plain text into the draft: [review] header, a diff excerpt fence, the note quoted with > , and parses it back. The spec's path apps/web/src/lib/reviewCommentContext.ts is apps/web/src/reviewCommentContext.ts at this commit. T3's fnv1a32 (lib/diffRendering.ts, a skip decision) is not taken; blockHash is a 10-line FNV-1a"
+    },
+    {
+      "local": "src/t3/shared/markdownGithubAlerts.ts",
+      "upstream": "packages/shared/src/markdownGithubAlerts.ts",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "mode": "adapted"
+    },
+    {
+      "local": "src/t3/shared/markdownListIndentation.ts",
+      "upstream": "packages/shared/src/markdownListIndentation.ts",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "mode": "adapted"
+    },
+    {
+      "local": "src/components/chat/MarkdownCodeBlock.logic.ts",
+      "upstream": "apps/web/src/components/chat/MarkdownCodeBlock.logic.ts",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "mode": "adapted"
+    },
+    {
+      "local": "src/components/chat/MarkdownCodeBlock.tsx",
+      "upstream": "apps/web/src/components/chat/MarkdownCodeBlock.tsx",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "mode": "adapted"
+    },
+    {
+      "local": "src/components/chat/MarkdownMermaidCodeBlock.tsx",
+      "upstream": "apps/web/src/components/chat/MarkdownMermaidCodeBlock.tsx",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "mode": "adapted"
+    },
+    {
+      "local": "src/components/chat/MermaidDiagram.tsx",
+      "upstream": "apps/web/src/components/chat/MermaidDiagram.tsx",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "mode": "adapted"
+    },
+    {
+      "local": "src/components/chat/MarkdownTable.tsx",
+      "upstream": "apps/web/src/components/chat/MarkdownTable.tsx",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "mode": "adapted"
+    },
+    {
+      "local": "src/lib/markdown-clipboard.ts",
+      "upstream": "apps/web/src/markdown-clipboard.ts",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "mode": "adapted"
+    },
+    {
+      "local": "src/t3/shared/path.ts",
+      "upstream": "packages/shared/src/path.ts",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "mode": "adapted"
+    },
+    {
+      "local": "src/t3/shared/fileLinks.ts",
+      "upstream": "packages/shared/src/fileLinks.ts",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "mode": "adapted"
+    },
+    {
+      "local": "src/t3/shared/markdownLinks.ts",
+      "upstream": "packages/shared/src/markdownLinks.ts",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "mode": "adapted"
+    },
+    {
+      "local": "src/components/chat/MarkdownFileLink.logic.ts",
+      "upstream": "apps/web/src/components/chat/MarkdownFileLink.logic.ts",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "mode": "adapted"
+    },
+    {
+      "local": "src/components/chat/MarkdownFileLink.tsx",
+      "upstream": "apps/web/src/components/chat/MarkdownFileLink.tsx",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "mode": "pattern"
+    },
+    {
+      "local": "src/components/chat/MarkdownMedia.tsx",
+      "upstream": "apps/web/src/components/chat/ChatMarkdownMedia.tsx",
+      "commit": "688ee52f0e8fcc6c0789f82d8145441b6663e7eb",
+      "mode": "pattern"
     }
   ],
   "decisions": [

@@ -493,10 +493,11 @@ describe("ChatComposer: Keys pad", () => {
 
 // ── Request panel ───────────────────────────────────────────────────────────────────────────────
 
-describe("ChatComposer: a pending request replaces the box", () => {
+describe("ChatComposer: a pending request keeps the box usable (T37)", () => {
   it("permission: options as buttons, destructive last and two taps, busy until it leaves pending", async () => {
     show({ thread: { status: "approval" }, requests: [request()] });
-    expect(screen.queryByLabelText("Message")).toBeNull();
+    // T37: the box stays under the request panel, so the next message can be queued.
+    expect(screen.getByLabelText("Message")).toBeInTheDocument();
     const panel = screen.getByRole("region", { name: "The agent is asking" });
     const buttons = within(panel).getAllByRole("button");
     expect(buttons.map((b) => b.textContent)).toEqual(["Yes", "No"]);
@@ -509,6 +510,14 @@ describe("ChatComposer: a pending request replaces the box", () => {
     patchThread((s) => ({ requests: { r1: { ...s.requests.r1!, status: "resolved" } } }));
     await waitFor(() => expect(screen.getByLabelText("Message")).toBeInTheDocument());
     expect(screen.queryByText("Answered elsewhere.")).toBeNull();
+  });
+
+  it("sending while a request is pending queues the message, never steering (T37)", async () => {
+    show({ thread: { status: "approval" }, requests: [request()] });
+    type("keep going");
+    expect(primary()?.getAttribute("data-primary-kind")).toBe("queue");
+    fireEvent.click(primary()!);
+    await waitFor(() => expect(commands("message.dispatch")[0]).toMatchObject({ text: "keep going", mode: "queue" }));
   });
 
   it("question with options posts the picked option", async () => {

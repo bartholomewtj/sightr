@@ -86,9 +86,22 @@ describe("resolveComposerButtons: the button table", () => {
     expect(none.stop).toBe(false);
   });
 
-  it("a pending request owns the area", () => {
-    expect(resolveComposerButtons(input("approval", { hasRequest: true })).requestPanel).toBe(true);
-    expect(resolveComposerButtons(input("input", { hasRequest: true, hasText: true })).requestPanel).toBe(true);
+  it("a pending request keeps the box usable: the primary queues (T37)", () => {
+    const empty = resolveComposerButtons(input("approval", { hasRequest: true }));
+    expect(empty.requestPanel).toBe(true);
+    expect(empty.primary).toMatchObject({ kind: "queue", label: "Queue", disabled: false });
+    expect(empty.primary.reason).toBe("The agent is asking; type a message to queue it.");
+    const typed = resolveComposerButtons(input("input", { hasRequest: true, hasText: true }));
+    expect(typed.requestPanel).toBe(true);
+    expect(typed.primary.kind).toBe("queue");
+    expect(typed.primary.reason).toBe("The agent is asking; your message waits in the queue.");
+    expect(typed.stop).toBe(false);
+  });
+
+  it("a pending request on a thread that cannot queue stays disabled (T37)", () => {
+    const b = resolveComposerButtons(input("approval", { hasRequest: true, hasText: true }, NO_CAPABILITIES));
+    expect(b.requestPanel).toBe(true);
+    expect(b.primary).toMatchObject({ kind: "send", disabled: true });
   });
 
   it("pane gone, read-only device and a lost link disable Send with the reason", () => {

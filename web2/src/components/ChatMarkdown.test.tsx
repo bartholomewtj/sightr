@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { setViewportWidth } from "@/test/media";
 
 import ChatMarkdown from "./ChatMarkdown";
+import { OpenFileThreadContext } from "./right-panel/OpenFileLink";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -104,5 +105,50 @@ describe("ChatMarkdown (T11)", () => {
   it("renders GFM tables in a scroll container", () => {
     const { container } = render(<ChatMarkdown text={"| a | b |\n|---|---|\n| 1 | 2 |"} />);
     expect(container.querySelector(".chat-markdown-table-container table")).not.toBeNull();
+  });
+});
+
+describe("ChatMarkdown (T35/T36)", () => {
+  it("typesets inline and display math with KaTeX", () => {
+    const { container } = render(<ChatMarkdown text={"Inline $x^2$ and:\n\n$$\ny = mx + b\n$$"} />);
+    expect(container.querySelectorAll(".katex").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("keeps the raw TeX when KaTeX cannot parse the formula", () => {
+    const { container } = render(<ChatMarkdown text={"$\\frac{1}{$"} />);
+    expect(container.textContent).toContain("\\frac");
+  });
+
+  it("tags a GitHub alert blockquote", () => {
+    const { container } = render(<ChatMarkdown text={"> [!WARNING]\n> careful"} />);
+    expect(container.querySelector("blockquote[data-alert='warning']")).not.toBeNull();
+  });
+
+  it("renders a mermaid fence as a diagram block with a Show code toggle", () => {
+    const { container } = render(<ChatMarkdown text={"```mermaid\ngraph TD;A-->B;\n```"} />);
+    expect(container.querySelector("[data-language='mermaid']")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Show code" })).toBeInTheDocument();
+  });
+
+  it("renders an embedded https image as lazy media", () => {
+    const { container } = render(<ChatMarkdown text={"![shot](https://example.com/shot.png)"} />);
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img).toHaveAttribute("loading", "lazy");
+  });
+
+  it("opens a workspace-path link as a file chip inside a thread", () => {
+    render(
+      <OpenFileThreadContext.Provider value="thread-1">
+        <ChatMarkdown text={"[main.go](web2/src/main.go)"} />
+      </OpenFileThreadContext.Provider>,
+    );
+    expect(screen.getByRole("button", { name: "main.go" })).toBeInTheDocument();
+  });
+
+  it("keeps a workspace-path link as text outside a thread", () => {
+    const { container } = render(<ChatMarkdown text={"[main.go](web2/src/main.go)"} />);
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.textContent).toContain("main.go");
   });
 });

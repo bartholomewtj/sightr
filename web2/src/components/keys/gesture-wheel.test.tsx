@@ -109,7 +109,7 @@ describe("GestureWheel in the composer", () => {
     await waitFor(() => expect(document.querySelector("[data-keys-dock]")).not.toBeNull());
   });
 
-  it("is not there while a request is pending (the panel owns the area), nor on a desktop", () => {
+  it("stays while a request is pending (T37, the box stays usable), but not on a desktop", () => {
     const pending: RuntimeRequest = {
       id: "r1",
       threadId: "t1",
@@ -122,7 +122,7 @@ describe("GestureWheel in the composer", () => {
       updatedAt: 1,
     };
     const { unmount } = show([pending]);
-    expect(screen.queryByRole("button", { name: "Shortcut wheel" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Shortcut wheel" })).toBeInTheDocument();
     unmount();
     setViewportWidth(1280);
     show();

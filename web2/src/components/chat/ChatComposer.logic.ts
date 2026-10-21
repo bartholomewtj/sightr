@@ -27,7 +27,7 @@ export interface ComposerButtons {
   primary: PrimaryAction;
   /** A Stop button beside Queue/Steer. */
   stop: boolean;
-  /** The request panel owns the area: no box, no buttons. */
+  /** The request panel is shown; the box stays beside it (T37), and its primary queues. */
   requestPanel: boolean;
 }
 
@@ -81,7 +81,28 @@ export function workingMode(
 export function resolveComposerButtons(input: ButtonInput): ComposerButtons {
   const none = { stop: false, requestPanel: false };
   const { thread } = input;
-  if (input.hasRequest) return { primary: disabledSend(null), stop: false, requestPanel: true };
+  if (input.hasRequest) {
+    // T37 (T3 #21503): the agent asks, but the box stays usable. A send here is a queued message:
+    // `start`/`steer` are refused by the bridge while a dialog is open (`needs-response`), and a
+    // steer's interrupt key would cancel the dialog. The request is never answered or declined by a
+    // send; the queue drains once the operator answers and the run rests.
+    const canQueue = followUpCapabilities(input.thread?.capabilities).queue;
+    if (!canQueue) return { ...none, primary: disabledSend("Answer the agent above."), requestPanel: true };
+    return {
+      primary: {
+        kind: "queue",
+        label: "Queue",
+        disabled: input.busy || input.uploading,
+        reason: input.uploading
+          ? "Waiting for uploads…"
+          : input.hasText
+            ? "The agent is asking; your message waits in the queue."
+            : "The agent is asking; type a message to queue it.",
+      },
+      stop: false,
+      requestPanel: true,
+    };
+  }
   if (!thread) return { ...none, primary: disabledSend("Loading the thread…") };
   if (thread.shelf === "archived") return { ...none, primary: disabledSend("The pane is gone.") };
   if (input.readOnly) return { ...none, primary: disabledSend("This device is read-only.") };

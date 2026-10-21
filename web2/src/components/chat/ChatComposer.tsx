@@ -468,7 +468,9 @@ export function ChatComposer({ threadId }: { threadId: string }) {
 
   async function send(message: string, alternateMode: boolean, opts: { skipGuard?: boolean } = {}): Promise<void> {
     const b = resolveComposerButtons({ ...buttonInput, hasText: true, alternate: alternateMode });
-    if (b.requestPanel || b.primary.disabled || b.primary.kind === "stop" || b.primary.kind === "update") return;
+    // T37: `b.requestPanel` no longer blocks a send — while the agent asks, the primary is `queue`,
+    // so the message waits for the operator to answer instead of being refused.
+    if (b.primary.disabled || b.primary.kind === "stop" || b.primary.kind === "update") return;
     if (!opts.skipGuard) {
       const reason = isDestructiveInput(message);
       if (reason && armed !== reason) {
@@ -833,8 +835,9 @@ export function ChatComposer({ threadId }: { threadId: string }) {
               />
             )}
           </section>
-        ) : (
-          <>
+        ) : null}
+        {/* T37: the box stays under the request panel, so the next message can be written and queued. */}
+        <>
             {keysOpen && layout === "phone" && paneId ? (
               <div data-keys-dock="true" className="rounded-xl border bg-card p-1.5">
                 <NavTray
@@ -1044,8 +1047,7 @@ export function ChatComposer({ threadId }: { threadId: string }) {
                 />
               </div>
             </div>
-          </>
-        )}
+        </>
       </div>
       {expanded ? <ExpandedImageDialog preview={expanded} onClose={closeImage} /> : null}
     </div>
