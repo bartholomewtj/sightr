@@ -29,3 +29,10 @@ Agents of runs that are not loaded (history paging) are not in the list; the bar
 ## Done when
 
 Tests: `ComposerSubagentsBar.test.tsx` (strip, activity, list order, Hide/Show finished and its memory, dot on finish and on failure, no dot for history, detail view and back, finished agent on details), `subagentGroups.test.ts` (`deriveThreadAgents`). Checked in a 390 px page on a real thread.
+
+## Amendment, 21 Oct 2026 (Bart): card = running only; header button = everything
+
+- **Card above the composer** (`ComposerSubagentsBar`): shows only running agents and only while at least one runs; it disappears at once when none does. Strip: "Subagents", the lead running agent's newest action or "N running". Expanded: the running agents only. No Hide/Show finished toggle, no dot. An agent opened from it stays open if it finishes meanwhile.
+- **Header button** (`ThreadSubagentsButton`, in the thread route's header before the panel toolbar): absent while the thread has no subagents. Badge = running count; dot = finished/failed since the sheet was last open (red for failure), using `useSubagentBarState` (now `unseen`/`markSeen` only; the hide-finished memory is dropped). Opens a sheet (bottom on a phone, side on desktop) with every loaded agent of this thread, running first then newest, finished dimmed, each with its status. A row opens `SubagentAgentSheet` over it; Back returns to the list.
+- Shared row: `SubagentAgentRow`. Tests: `ComposerSubagentsBar.test.tsx`, `ThreadSubagentsButton.test.tsx`. Not checked in a real 390 px page: the header now carries one more icon button (the title loses about 32 px).
+
