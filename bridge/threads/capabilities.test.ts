@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { AGENTS, capabilitiesFor, SHELL_CAPABILITIES } from "../../shared/agents.ts";
 import { NO_CAPABILITIES, type ThreadCapabilities } from "../../shared/v2/contracts.ts";
-import { composerFor } from "../../web/src/lib/harness/composer-kit.ts";
+import { composerFor } from "../../shared/harness/composer-kit.ts";
 
 // The capability table (T08). Each row is what a thread of that harness may be asked to do live; a
 // flag turns on only after a live check, so this pins the table as it was verified.
