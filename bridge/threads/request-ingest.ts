@@ -9,7 +9,7 @@ import type { SleepFn } from "../pane-write-routes.ts";
 import type { AgentView, EngineSnapshot, StateEngine } from "../state-engine.ts";
 import type { EventDraft, ServerThread } from "./events.ts";
 import { requestEvents } from "./request-items.ts";
-import { createRespondHandler, DIALOG_READ_LINES, type RespondHandler } from "./respond.ts";
+import { createNavigateHandler, createRespondHandler, DIALOG_READ_LINES, type NavigateHandler, type RespondHandler } from "./respond.ts";
 import type { ThreadStore } from "./store.ts";
 
 // Request ingest (T04): a thread that waits on the operator (`input` / `approval`, herdr `blocked`)
@@ -64,6 +64,8 @@ export interface RequestIngestor {
   poll(): Promise<void>;
   /** `runtime-request.respond` (T05 calls it). */
   respond: RespondHandler;
+  /** `runtime-request.navigate`: Left / Right on a multi-question ask. */
+  navigate: NavigateHandler;
   /** Resolves when every queued pass has finished (tests). */
   settled(): Promise<void>;
 }
@@ -185,6 +187,7 @@ export function createRequestIngestor(deps: RequestIngestorDeps): RequestIngesto
       ...(parsed.via ? { via: parsed.via } : {}),
       ...(parsed.decision ? { decision: parsed.decision } : {}),
       ...(parsed.steps ? { steps: parsed.steps } : {}),
+      ...(parsed.steps && parsed.navigable ? { navigable: true } : {}),
       ...(parsed.multiSelect ? { multiSelect: parsed.multiSelect } : {}),
       ...(parsed.preview ? { preview: parsed.preview } : {}),
       ...(parsed.answers ? { answers: parsed.answers } : {}),
@@ -235,6 +238,21 @@ export function createRequestIngestor(deps: RequestIngestorDeps): RequestIngesto
     onResolved: (request) => resolvedAt.set(request.threadId, { hash: request.bindingHash, at: now() }),
   });
 
+  const navigate = createNavigateHandler({
+    store,
+    herdr,
+    cfg: deps.cfg,
+    queue,
+    ...(deps.audit ? { audit: deps.audit } : {}),
+    now,
+    ...(deps.sleep ? { sleep: deps.sleep } : {}),
+    // The old step must not reopen from a read taken before the terminal redraws; the new one opens at once.
+    onNavigated: (request) => {
+      resolvedAt.set(request.threadId, { hash: request.bindingHash, at: now() });
+      void schedule(request.threadId);
+    },
+  });
+
   return {
     start() {
       if (unsubscribe.length > 0) return;
@@ -252,6 +270,7 @@ export function createRequestIngestor(deps: RequestIngestorDeps): RequestIngesto
     },
     poll,
     respond,
+    navigate,
     async settled() {
       while (chains.size > 0) await Promise.all([...chains.values()]);
     },

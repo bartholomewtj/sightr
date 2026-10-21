@@ -248,6 +248,23 @@ describe("parseDialog — kinds and fields", () => {
     expect(bound.at(-1)).toMatch(/^↑4 ↓443 .*1\.1%\/1\.0M \(auto\)/);
   });
 
+  it("a Pi multi-question card: the picked row's ✓ rides along, and the steps can be walked", () => {
+    const picked = raw("pi--ask-wizard-q1.txt").replace("2. Green", "2. Green ✓");
+    const p = parseDialog("pi", picked)!;
+    expect(p.options.map((o) => [o.label, o.chosen === true])).toEqual([
+      ["Red", false],
+      ["Green", true],
+      ["Blue", false],
+    ]);
+    expect(p.navigable).toBe(true);
+    // The same card with nothing picked is a different screen, so a different request.
+    expect(parseDialog("pi", raw("pi--ask-wizard-q1.txt"))!.boundText).not.toBe(p.boundText);
+    // The review step can go back too.
+    expect(parseDialog("pi", raw("pi--ask-wizard-submit.txt"))!.navigable).toBe(true);
+    // A single question has no steps to walk.
+    expect(parseDialog("pi", raw("pi--ask-radio-recommended.txt"))!.navigable).toBeUndefined();
+  });
+
   it("a checkbox question carries its boxes, the advance label and Chat about this", () => {
     const p = parseDialog("claude", raw("claude--select-multiselect-checked.txt"))!;
     expect(p.multiSelect).toEqual({ checked: [false, true, true, false], advanceLabel: "Submit" });

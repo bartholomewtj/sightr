@@ -693,6 +693,68 @@ describe("T17 — wizard asks", () => {
   });
 });
 
+describe("runtime-request.navigate", () => {
+  const navigate = (r: Rig, requestId: string, direction: "back" | "next", commandId?: string) =>
+    r.ingestor.navigate({ requestId, direction }, commandId ? { commandId } : {});
+
+  test("Pi: Right on a step sends one key, answers nothing, expires the request and opens the next step's", async () => {
+    const r = rig({ agent: "pi", screen: fixture("pi--ask-wizard-q1.txt") });
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+    expect(req.navigable).toBe(true);
+    // The terminal moves to the next tab when the key lands.
+    r.pane.onKey = () => {
+      r.pane.screen = fixture("pi--ask-wizard-q2.txt");
+    };
+    const res = await navigate(r, req.id, "next", "cmd-nav");
+    expect(res).toMatchObject({ ok: true, request: { status: "expired" } });
+    expect(r.pane.keyWrites).toEqual([["Right"]]);
+    expect(r.store.getRequest(req.id)).toMatchObject({ status: "expired" });
+    expect(r.store.getRequest(req.id)!.optionIndex).toBeUndefined();
+    await r.ingestor.settled();
+    const fresh = r.pending();
+    expect(fresh).toHaveLength(1);
+    expect(fresh[0]!.id).not.toBe(req.id);
+    expect(fresh[0]!.steps?.find((s) => s.current)?.label).not.toBe(req.steps?.find((s) => s.current)?.label);
+  });
+
+  test("Back sends Left", async () => {
+    const r = rig({ agent: "pi", screen: fixture("pi--ask-wizard-q2.txt") });
+    await r.ingestor.poll();
+    expect(await navigate(r, r.pending()[0]!.id, "back")).toMatchObject({ ok: true });
+    expect(r.pane.keyWrites).toEqual([["Left"]]);
+  });
+
+  test("a stale screen: nothing is sent and the request expires", async () => {
+    const r = rig({ agent: "pi", screen: fixture("pi--ask-wizard-q1.txt") });
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+    r.pane.screen = fixture("pi--ask-wizard-q2.txt");
+    expect(await navigate(r, req.id, "next")).toMatchObject({ ok: false, code: "prompt-changed" });
+    expect(r.pane.keyWrites).toEqual([]);
+    expect(r.store.getRequest(req.id)!.status).toBe("expired");
+  });
+
+  test("refused: a card with no steps, a bad direction, an unknown request", async () => {
+    const r = rig({ agent: "pi", screen: fixture("pi--ask-radio-recommended.txt") });
+    await r.ingestor.poll();
+    const req = r.pending()[0]!;
+    expect(await navigate(r, req.id, "next")).toMatchObject({ ok: false, code: "invalid", reason: "not-navigable" });
+    expect(await navigate(r, "nope", "next")).toMatchObject({ ok: false, code: "not_found" });
+    const w = rig({ agent: "pi", screen: fixture("pi--ask-wizard-q1.txt") });
+    await w.ingestor.poll();
+    expect(await navigate(w, w.pending()[0]!.id, "up" as "next")).toMatchObject({ ok: false, code: "invalid", reason: "bad-direction" });
+    expect(r.pane.keyWrites).toEqual([]);
+    expect(w.pane.keyWrites).toEqual([]);
+  });
+
+  test("Pi's picked rows are published as chosen", async () => {
+    const r = rig({ agent: "pi", screen: fixture("pi--ask-wizard-q1.txt").replace("2. Green", "2. Green ✓") });
+    await r.ingestor.poll();
+    expect(r.pending()[0]!.options.map((o) => o.chosen === true)).toEqual([false, true, false]);
+  });
+});
+
 describe("T17 — preview selects", () => {
   const PREVIEW = fixture("claude--select-preview.txt");
   /** The preview screen with the ❯ pointer moved from Boxy to Rounded. */

@@ -25,7 +25,15 @@ import {
   requestOptionValue,
   requestQuestion,
 } from "@shared/v2/request-question";
-import { RESPONDING_ADVANCE, RESPONDING_TEXT, respondToRequest, respondWithText } from "@/state/composer";
+import {
+  navigateRequest,
+  RESPONDING_ADVANCE,
+  RESPONDING_BACK,
+  RESPONDING_NEXT,
+  RESPONDING_TEXT,
+  respondToRequest,
+  respondWithText,
+} from "@/state/composer";
 import { cn } from "~/lib/utils";
 import {
   derivePendingUserInputProgress,
@@ -173,6 +181,33 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     return () => document.removeEventListener("keydown", handler);
   }, [digitTargets, locked, pick]);
 
+  // Left / Right walk the ask's steps without answering (the terminal's own keys). The stepper's
+  // chevrons do the same; the arrows are for a keyboard, and never fire while typing.
+  const navigable = request.navigable === true && request.steps !== undefined && request.steps.length > 0;
+  const atFirstStep = !review && (request.steps?.[0]?.current ?? false);
+  const navigate = useCallback(
+    (direction: "back" | "next") => {
+      if (locked || timer.current !== null) return;
+      void navigateRequest(request.threadId, request.id, direction);
+    },
+    [locked, request.id, request.threadId],
+  );
+  useEffect(() => {
+    if (!navigable || locked) return;
+    const handler = (event: globalThis.KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+      if (target instanceof HTMLElement && target.closest('[contenteditable]:not([contenteditable="false"])')) return;
+      if (event.key === "ArrowLeft" ? atFirstStep : review) return;
+      event.preventDefault();
+      navigate(event.key === "ArrowLeft" ? "back" : "next");
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [atFirstStep, locked, navigable, navigate, review]);
+
   // The boxes (or every option) first, destructive rows last (T12: never first).
   const order = options.map((option, index) => ({ option, index }));
   const rows = [...order.filter((o) => !o.option.destructive), ...order.filter((o) => o.option.destructive)];
@@ -187,7 +222,15 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
           {question.header !== "Question" ? <span className="truncate text-muted-foreground">{question.header}</span> : null}
           {pendingCount > 1 ? <span className="ml-auto tabular-nums text-muted-foreground">1/{pendingCount}</span> : null}
         </div>
-        {request.steps && request.steps.length > 0 ? <ComposerPendingUserInputStepper steps={request.steps} review={review} /> : null}
+        {request.steps && request.steps.length > 0 ? (
+          <ComposerPendingUserInputStepper
+            steps={request.steps}
+            review={review}
+            locked={locked}
+            busy={respondingIndex === RESPONDING_BACK ? "back" : respondingIndex === RESPONDING_NEXT ? "next" : null}
+            {...(navigable ? { onBack: () => navigate("back"), onNext: () => navigate("next") } : {})}
+          />
+        ) : null}
         <p className="max-h-40 overflow-auto whitespace-pre-wrap text-sm text-foreground" tabIndex={0} aria-label="Question">
           {request.prompt}
         </p>
@@ -208,7 +251,9 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               const box = multi && index < boxes;
               const destructive = option.destructive === true;
               const isArmed = armed === index;
-              const isSelected = box ? selected.has(requestOptionValue(index)) : optimistic === index || (!multi && selected.has(requestOptionValue(index)));
+              const isSelected = box
+                ? selected.has(requestOptionValue(index))
+                : optimistic === index || option.chosen === true || (!multi && selected.has(requestOptionValue(index)));
               const busy = respondingIndex === index;
               const shortcut = !destructive && (box || !multi) && index < 9 ? index + 1 : null;
               const previewLines = request.preview && request.preview.optionIndex === index ? request.preview.lines : null;
@@ -258,7 +303,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                     {busy ? (
                       <Loader2Icon className="size-4 shrink-0 animate-spin" aria-label="Sending" />
                     ) : !box && isSelected ? (
-                      <CheckIcon className="size-3.5 shrink-0 text-you" aria-hidden="true" />
+                      <CheckIcon className="size-3.5 shrink-0 text-you" aria-label="Selected" />
                     ) : shortcut !== null ? (
                       <kbd
                         aria-hidden="true"

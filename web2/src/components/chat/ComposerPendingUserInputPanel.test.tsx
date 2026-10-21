@@ -168,6 +168,82 @@ describe("ComposerPendingUserInputPanel — wizard steps", () => {
     await waitFor(() => expect(responds()).toEqual([expect.objectContaining({ requestId: "r1", optionIndex: 1 })]));
   });
 
+  const nav = () => posts.filter((p) => p.type === "runtime-request.navigate");
+  const walkable = (over: Partial<RuntimeRequest> = {}) =>
+    question({
+      prompt: "Which crust?",
+      options: [
+        { label: "Thin", keys: ["Enter"] },
+        { label: "Deep", keys: ["Down", "Enter"], chosen: true },
+      ],
+      navigable: true,
+      steps: [
+        { label: "Toppings", answered: true, current: false },
+        { label: "Crust", answered: false, current: true },
+      ],
+      ...over,
+    });
+
+  it("shows which option the terminal has picked", () => {
+    show(walkable());
+    expect(within(panel()).getByRole("button", { name: /Deep/ })).toHaveAttribute("data-selected", "true");
+    expect(within(panel()).getByRole("button", { name: /Thin/ })).not.toHaveAttribute("data-selected");
+    expect(within(panel()).getByLabelText("Selected")).toBeInTheDocument();
+  });
+
+  it("Back and Next chevrons walk the steps without answering", async () => {
+    show(walkable());
+    fireEvent.click(within(panel()).getByRole("button", { name: "Next question" }));
+    await waitFor(() => expect(nav()).toEqual([expect.objectContaining({ requestId: "r1", direction: "next" })]));
+    expect(responds()).toEqual([]);
+  });
+
+  it("Back goes to the previous question; the arrow keys do the same", async () => {
+    show(walkable());
+    fireEvent.click(within(panel()).getByRole("button", { name: "Previous question" }));
+    await waitFor(() => expect(nav()).toEqual([expect.objectContaining({ direction: "back" })]));
+  });
+
+  it("ArrowRight walks on, but never while typing in a field", async () => {
+    show(walkable({ freeText: true }));
+    fireEvent.keyDown(within(panel()).getByPlaceholderText("Your answer"), { key: "ArrowRight" });
+    expect(nav()).toEqual([]);
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    await waitFor(() => expect(nav()).toEqual([expect.objectContaining({ direction: "next" })]));
+  });
+
+  it("the first question has no Back, the Submit step has no Next", () => {
+    const first = show(
+      walkable({
+        steps: [
+          { label: "Toppings", answered: false, current: true },
+          { label: "Crust", answered: false, current: false },
+        ],
+      }),
+    );
+    expect(within(panel()).getByRole("button", { name: "Previous question" })).toBeDisabled();
+    expect(within(panel()).getByRole("button", { name: "Next question" })).toBeEnabled();
+    first.unmount();
+    show(
+      walkable({
+        prompt: "Review your answers",
+        options: [{ label: "Submit", keys: ["Enter"] }],
+        answers: [{ question: "Toppings", answer: "Ham" }],
+        steps: [
+          { label: "Toppings", answered: true, current: false },
+          { label: "Crust", answered: true, current: false },
+        ],
+      }),
+    );
+    expect(within(panel()).getByRole("button", { name: "Previous question" })).toBeEnabled();
+    expect(within(panel()).getByRole("button", { name: /Next/ })).toBeDisabled();
+  });
+
+  it("a card that is not navigable draws no chevrons", () => {
+    show(walkable({ navigable: undefined }));
+    expect(within(panel()).queryByRole("button", { name: "Next question" })).toBeNull();
+  });
+
   it("the review lists the answers, Submit answers, Cancel needs two taps", async () => {
     show(
       question({

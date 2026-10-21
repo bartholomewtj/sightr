@@ -38,7 +38,7 @@ import type { EventDraft, ServerThread } from "./events.ts";
 import type { HerdIngestor } from "./herd-ingest.ts";
 import { HERDR_FLOOR, type V2Gate } from "./herdr-floor.ts";
 import type { ThreadWatchers } from "./journal-ingest.ts";
-import type { RespondHandler } from "./respond.ts";
+import type { NavigateHandler, RespondHandler, RespondResult } from "./respond.ts";
 import { requestEvents } from "./request-items.ts";
 import { clampSearchLimit } from "./search.ts";
 import { decodeHistoryCursor, type ThreadStore } from "./store.ts";
@@ -124,22 +124,39 @@ export function respondEffect(respond: RespondHandler): EffectHandler {
       },
       { commandId: ctx.commandId, receiptResult: ctx.receipt.result },
     );
-    if (result.ok) return { ok: true, sequence: result.sequence, threadId: result.request.threadId };
-    switch (result.code) {
-      case "not_found":
-        return { ok: false, status: 404, code: "not_found", error: result.reason };
-      case "invalid":
-        return { ok: false, status: 400, code: "invalid", error: result.reason };
-      case "conflict":
-        return { ok: false, status: 409, code: "conflict", error: result.reason };
-      case "prompt-changed":
-        return { ok: false, status: 409, code: "prompt-changed", error: result.reason, afterWork: true };
-      case "busy":
-        return { ok: false, status: 503, code: "busy", error: "pane busy" };
-      case "failed":
-        return { ok: false, status: 502, code: "failed", error: result.reason };
-    }
+    return respondOutcome(result);
   };
+}
+
+/** `runtime-request.navigate` → the navigate handler (Left / Right on a multi-question ask). */
+export function navigateEffect(navigate: NavigateHandler): EffectHandler {
+  return async (command, ctx) => {
+    if (command.type !== "runtime-request.navigate") return { ok: false, status: 400, code: "invalid", error: "wrong-type" };
+    return respondOutcome(
+      await navigate(
+        { requestId: command.requestId, direction: command.direction },
+        { commandId: ctx.commandId, receiptResult: ctx.receipt.result },
+      ),
+    );
+  };
+}
+
+function respondOutcome(result: RespondResult): EffectOutcome {
+  if (result.ok) return { ok: true, sequence: result.sequence, threadId: result.request.threadId };
+  switch (result.code) {
+    case "not_found":
+      return { ok: false, status: 404, code: "not_found", error: result.reason };
+    case "invalid":
+      return { ok: false, status: 400, code: "invalid", error: result.reason };
+    case "conflict":
+      return { ok: false, status: 409, code: "conflict", error: result.reason };
+    case "prompt-changed":
+      return { ok: false, status: 409, code: "prompt-changed", error: result.reason, afterWork: true };
+    case "busy":
+      return { ok: false, status: 503, code: "busy", error: "pane busy" };
+    case "failed":
+      return { ok: false, status: 502, code: "failed", error: result.reason };
+  }
 }
 
 // ── Deps ─────────────────────────────────────────────────────────────────────────────────────────
@@ -242,6 +259,7 @@ const COMMAND_FIELDS: Partial<Record<CommandType, Record<string, FieldKind>>> = 
   "project.rename": { projectId: "string", label: "string" },
   "project.checkpoints.set": { projectId: "string", enabled: "boolean" },
   "runtime-request.respond": { requestId: "string", optionIndex: "number?", optionIndices: "numbers?", text: "string?" },
+  "runtime-request.navigate": { requestId: "string", direction: "string" },
 };
 
 /** Why `body` is not a well-formed `type` command, or null. */
