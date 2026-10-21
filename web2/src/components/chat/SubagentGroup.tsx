@@ -222,7 +222,7 @@ function Clamped({ children, long, label }: { children: React.ReactNode; long: b
   );
 }
 
-function SubagentDetail(props: {
+export function SubagentDetail(props: {
   item: SubagentItem;
   status: string;
   facts: string[];
@@ -230,15 +230,17 @@ function SubagentDetail(props: {
   result: string;
   failed: boolean;
   running: boolean;
-  /** Opens the agent's own conversation; null when its log cannot be opened. */
+  /** Opens the agent's own conversation; null when its log cannot be opened (or the view has it beside it). */
   onWatch: (() => void) | null;
+  /** In its own view (the bar's detail sheet) rather than indented under a row of the card. */
+  flush?: boolean;
 }) {
-  const { item, status, facts, id, result, failed, running, onWatch } = props;
+  const { item, status, facts, id, result, failed, running, onWatch, flush = false } = props;
   const prompt = item.prompt.trim();
   const longBrief = prompt.length > 240 || prompt.split("\n").length > 4;
   const longResult = result.length > 420 || result.split("\n").length > 8;
   return (
-    <div className="space-y-2.5 px-3 pb-3 ps-11 text-xs" data-subagent-detail="">
+    <div className={cn("space-y-2.5 text-xs", flush ? "px-3 py-3" : "px-3 pb-3 ps-11")} data-subagent-detail="">
       <p className="wrap-anywhere text-muted-foreground">
         {[status, ...facts].join(" · ")}
         {id ? <span className="font-mono"> · {id}</span> : null}

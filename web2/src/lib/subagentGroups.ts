@@ -186,3 +186,44 @@ export function sameSubagents(a: readonly SubagentItem[] | undefined, b: readonl
     );
   });
 }
+
+// ── The whole thread's agents, for the bottom bar (T34) ─────────────────────────────────────────
+
+export interface ThreadAgent {
+  /** The agent's id, or the item id of one that has only the journal's synthetic key. Stable across updates. */
+  readonly key: string;
+  /** All the agent's items merged (`mergeSubagentItems`). */
+  readonly item: SubagentItem;
+  readonly phase: SubagentPhase;
+  /** When the agent's newest call was logged: orders the list. */
+  readonly lastAt: number;
+}
+
+/**
+ * Every subagent of a thread, one entry per agent: running ones first, then the rest, each newest first.
+ * `items` is the thread's loaded items (any order); only runs that are loaded are known.
+ */
+export function deriveThreadAgents(items: Readonly<Record<string, TurnItem>> | readonly TurnItem[] | undefined): ThreadAgent[] {
+  if (!items) return [];
+  const list = (Array.isArray(items) ? [...items] : Object.values(items)) as TurnItem[];
+  const subs = list.filter((i): i is SubagentItem => i.type === "subagent").sort((a, b) => a.ordinal - b.ordinal);
+  const byKey = new Map<string, SubagentItem[]>();
+  for (const item of subs) {
+    const key = realAgentId(item) ?? item.id;
+    const group = byKey.get(key);
+    if (group) group.push(item);
+    else byKey.set(key, [item]);
+  }
+  const agents: ThreadAgent[] = [];
+  for (const [key, group] of byKey) {
+    const merged = mergeSubagentItems(group);
+    const lastAt = Math.max(...group.map((i) => i.updatedAt ?? i.createdAt));
+    agents.push({ key, item: merged, phase: subagentPhase(merged), lastAt });
+  }
+  agents.sort((a, b) => {
+    const ar = a.phase === "running" ? 0 : 1;
+    const br = b.phase === "running" ? 0 : 1;
+    return ar - br || b.lastAt - a.lastAt;
+  });
+  return agents;
+}

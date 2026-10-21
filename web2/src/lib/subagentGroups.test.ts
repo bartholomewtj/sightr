@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   countSubagents,
+  deriveThreadAgents,
   mergeSubagentItems,
   planSubagentGroups,
   sameSubagents,
@@ -143,5 +144,22 @@ describe("sameSubagents", () => {
     expect(sameSubagents([a], [{ ...a }])).toBe(true);
     expect(sameSubagents([a], [{ ...a, progress: "now" }])).toBe(false);
     expect(sameSubagents([a], [])).toBe(false);
+  });
+});
+
+describe("deriveThreadAgents", () => {
+  it("one entry per agent across runs, running first then newest, launch details kept", () => {
+    const old = agent({ subagentId: "aaaa", title: "Old one", agentStatus: "completed", result: "done", runId: "r1", updatedAt: 10, ordinal: 1 });
+    const launch = agent({ subagentId: ID, title: "Fix PR", prompt: "Fix it.", agentStatus: "background", runId: "r1", updatedAt: 20, ordinal: 2 });
+    const check = agent({ subagentId: ID, title: ID, agentStatus: "running", runId: "r2", updatedAt: 90, ordinal: 3 });
+    const recent = agent({ subagentId: "bbbb", title: "Recent", agentStatus: "completed", runId: "r2", updatedAt: 50, ordinal: 4 });
+    const agents = deriveThreadAgents({ [old.id]: old, [recent.id]: recent, [check.id]: check, [launch.id]: launch });
+    expect(agents.map((a) => a.key)).toEqual([ID, "bbbb", "aaaa"]);
+    expect(agents[0]).toMatchObject({ phase: "running", item: { title: "Fix PR", prompt: "Fix it." }, lastAt: 90 });
+    expect(agents.map((a) => a.phase)).toEqual(["running", "done", "done"]);
+  });
+  it("nothing in, nothing out", () => {
+    expect(deriveThreadAgents(undefined)).toEqual([]);
+    expect(deriveThreadAgents({})).toEqual([]);
   });
 });
