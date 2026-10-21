@@ -472,6 +472,10 @@ export type TurnItem =
       model?: string | null;
       /** Sightr: the harness's own status word (`completed`, `running`, `background`, `async_launched`, …). */
       agentStatus?: string;
+      /** Sightr (T33): the agent's own conversation can be opened (`GET …/item/:itemId/transcript`). */
+      transcript?: true;
+      /** Sightr (T33): Pi's own log of the agent. Bridge-side input to that route; a client never sends it. */
+      transcriptPath?: string;
       durationMs?: number;
       /** Sightr: the harness's token count, as it formats it ("94.1k") or as a number string. */
       tokens?: string;
@@ -872,6 +876,10 @@ export const v2HistoryPath = (threadId: string): string => `${v2ThreadPath(threa
 /** An item's attachment bytes (an image), by its index in the item's `attachments`. */
 export const v2AttachmentPath = (threadId: string, itemId: string, index: number): string =>
   `${v2ThreadPath(threadId)}/item/${encodeURIComponent(itemId)}/attachment/${index}`;
+
+/** A subagent's own conversation (T33): `?size=<last size>` for a cheap poll, `?latest=1` for its newest line. */
+export const v2TranscriptPath = (threadId: string, itemId: string): string =>
+  `${v2ThreadPath(threadId)}/item/${encodeURIComponent(itemId)}/transcript`;
 
 /** A resume longer than this many events gets a snapshot instead of a replay. */
 export const V2_REPLAY_LIMIT = 128;

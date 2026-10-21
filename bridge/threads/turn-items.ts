@@ -326,6 +326,9 @@ export function entryItems(entry: TranscriptEntry, ctx: ItemContext): TurnItemDr
         ...(detail.model ? { model: detail.model } : {}),
         ...(detail.status ? { agentStatus: detail.status } : {}),
         ...(detail.progress ? { progress: detail.progress } : {}),
+        ...(detail.transcriptPath ? { transcriptPath: detail.transcriptPath } : {}),
+        // Claude keeps every agent's log beside the session's, named by its id; Pi names the file in a check's details.
+        ...(detail.transcriptPath || (ctx.harness === "claude" && detail.agentId) ? { transcript: true as const } : {}),
         ...(detail.durationMs !== undefined ? { durationMs: detail.durationMs } : {}),
         ...(detail.tokens ? { tokens: detail.tokens } : {}),
         ...(detail.toolUses !== undefined ? { toolUses: detail.toolUses } : {}),

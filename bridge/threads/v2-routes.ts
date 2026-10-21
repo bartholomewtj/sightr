@@ -40,6 +40,7 @@ import { HERDR_FLOOR, type V2Gate } from "./herdr-floor.ts";
 import type { ThreadWatchers } from "./journal-ingest.ts";
 import type { NavigateHandler, RespondHandler, RespondResult } from "./respond.ts";
 import { requestEvents } from "./request-items.ts";
+import { createTranscriptReader, TRANSCRIPT_ROUTE, type TranscriptReader } from "./subagent-transcript.ts";
 import { clampSearchLimit } from "./search.ts";
 import { decodeHistoryCursor, type ThreadStore } from "./store.ts";
 
@@ -832,6 +833,23 @@ export function createV2Routes(deps: V2RoutesDeps): V2Routes {
     return attachmentResponse(await attachments!.load(threadId, itemId, index));
   }
 
+  const transcripts: TranscriptReader | null = store ? createTranscriptReader({ store }) : null;
+
+  /** T33: a subagent's own conversation, `?size=<last size>` for a cheap poll, `?latest=1` for its newest line. */
+  async function transcriptRoute(req: Request, url: URL, threadId: string, itemId: string): Promise<Response> {
+    const denied = guard(req, cfg, "read");
+    if (denied) return denied;
+    const off = refusal();
+    if (off) return respondJson(off, req);
+    const rawSize = url.searchParams.get("size");
+    const size = rawSize === null ? undefined : Number(rawSize);
+    if (size !== undefined && !(Number.isInteger(size) && size >= 0)) return respondJson(refuse(400, "invalid", "bad-size"), req);
+    const latest = url.searchParams.get("latest") === "1";
+    const result = await transcripts!.load(threadId, itemId, { ...(size !== undefined ? { size } : {}), latest });
+    if (!result.ok) return respondJson(refuse(result.status, "not_found", result.reason), req);
+    return json(result.body, req.headers.get("accept-encoding"));
+  }
+
   const methodNotAllowed = () => Promise.resolve(text("method not allowed", 405));
 
   return {
@@ -847,6 +865,14 @@ export function createV2Routes(deps: V2RoutesDeps): V2Routes {
         const itemId = decodePathSegment(a[2]!);
         if (threadId === null || itemId === null) return Promise.resolve(text("bad id", 400));
         return attachmentRoute(req, threadId, itemId, Number(a[3]));
+      }
+      const t = TRANSCRIPT_ROUTE.exec(pathname);
+      if (t) {
+        if (req.method !== "GET") return methodNotAllowed();
+        const threadId = decodePathSegment(t[1]!);
+        const itemId = decodePathSegment(t[2]!);
+        if (threadId === null || itemId === null) return Promise.resolve(text("bad id", 400));
+        return transcriptRoute(req, url, threadId, itemId);
       }
       const m = THREAD_ROUTE.exec(pathname);
       if (m) {

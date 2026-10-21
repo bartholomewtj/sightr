@@ -1,6 +1,6 @@
 # T33 — Subagent transcript: tap an agent in the panel and watch what it is doing
 
-Status: draft, 21 Oct 2026 (interview with Bart: "full live transcript"). Depends on: T32 (one item per agent, grouped panel). Pi and Claude.
+Status: built 21 Oct 2026 (interview with Bart: "full live transcript"). Depends on: T32 (one item per agent, grouped panel). Pi and Claude.
 
 ## Source (checked on this PC, 21 Oct)
 
@@ -23,3 +23,11 @@ Large transcripts (the Pi task files sampled are 0.6–1.1 MB): paging and a cap
 ## Done when
 
 A running Pi subagent and a running Claude subagent each show new lines in the open view within ~3 s; a finished one opens with its whole transcript; a path outside the harness root is refused (test); suites and typechecks pass; checked in a 390 px page.
+
+## Build amendments
+
+- **Route:** `GET /api/v2/thread/:threadId/item/:itemId/transcript[?size=<n>|?latest=1]` (`bridge/threads/subagent-transcript.ts`). The client names an item; the bridge finds the agent's other items by `subagentId`, takes Claude's log path from the agent id (strict `[A-Za-z0-9_-]{1,64}`, under the session directory, or a sibling session's after `/clear`) and Pi's from the `transcriptPath` a check recorded on any of the agent's items. Both must be `.jsonl` files whose real path lies inside the thread's own log directory. Reads the newest 2 MiB (256 KiB for `?latest`), returns at most 300 items; ordinals keep their place in the log.
+- **Item fields:** `subagent.transcript?: true` (the log can be opened) and `transcriptPath?` (Pi's, bridge-side input, never sent back). Claude's `transcript` is set from the agent id alone; Pi's only once a check has named the file, so a never-checked Pi agent has no Watch button.
+- **Polling, not a stream event.** The spec's `subagent.activity` hint was not built: an open view re-reads every 2 s (`?size=` makes an unchanged log a tiny answer), and a running agent's closed row asks `?latest=1` every 6 s while on screen and visible.
+- **Viewer:** its own read-only list in `SubagentTranscriptSheet.tsx`, not `MessagesTimeline` (which is tied to the thread store, find and history). A tool call is a one-line row that opens to the main timeline's `ToolItemDetail`. Bottom sheet on a phone with a history entry (Back closes), side sheet on desktop; follows the end while running, scrolling up leaves follow mode.
+- Not built: steering, and Codex/Grok logs.

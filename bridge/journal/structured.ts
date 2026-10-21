@@ -233,6 +233,7 @@ export function subagentDetail(fields: {
   prompt?: unknown;
   status?: unknown;
   progress?: unknown;
+  transcriptPath?: unknown;
   model?: unknown;
   durationMs?: unknown;
   tokens?: unknown;
@@ -255,6 +256,8 @@ export function subagentDetail(fields: {
   if (status) detail.status = status;
   const progress = str(fields.progress);
   if (progress) detail.progress = progress.length > 200 ? `${progress.slice(0, 200)}…` : progress;
+  const transcriptPath = str(fields.transcriptPath);
+  if (transcriptPath) detail.transcriptPath = transcriptPath;
   const model = str(fields.model);
   if (model) detail.model = model;
   const durationMs = num(fields.durationMs);

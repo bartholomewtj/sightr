@@ -167,6 +167,8 @@ export type TranscriptToolDetail =
       status?: string;
       /** What a running agent says it is doing now (Pi's "Progress:" line), e.g. "thinking… · 15 turns". */
       progress?: string;
+      /** Pi: where the agent's own session log is (bridge-side only; the client never sends it back). */
+      transcriptPath?: string;
       model?: string;
       durationMs?: number;
       tokens?: string;

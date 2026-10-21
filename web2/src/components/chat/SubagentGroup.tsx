@@ -6,7 +6,7 @@
 // Phone pass: rows are 44 px targets on a coarse pointer; nothing here needs hover.
 
 import type { TurnItem } from "@shared/v2/contracts";
-import { BotIcon, ChevronRightIcon } from "lucide-react";
+import { BotIcon, ChevronRightIcon, ListTreeIcon } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -16,10 +16,14 @@ import {
   type SubagentItem,
   type SubagentPhase,
 } from "~/lib/subagentGroups";
+import { useSubagentActivity } from "~/lib/subagentTranscript";
 import { cn } from "~/lib/utils";
 import { formatDuration } from "~/session-logic";
 import ChatMarkdown from "../ChatMarkdown";
+import { Button } from "../ui/button";
+import { useOpenFileThread } from "../right-panel/OpenFileLink";
 import { MessageCopyButton } from "./MessageCopyButton";
+import { SubagentTranscriptSheet } from "./SubagentTranscriptSheet";
 
 const PHASE_VISUALS: Record<SubagentPhase, { dotClass: string; label: string }> = {
   running: { dotClass: "bg-info", label: "Running" },
@@ -110,6 +114,8 @@ export function SubagentGroupRow({ agents }: { agents: readonly SubagentItem[] }
 
 function SubagentAgentRow({ item, defaultOpen }: { item: SubagentItem; defaultOpen: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [watching, setWatching] = useState(false);
+  const threadId = useOpenFileThread();
   const phase = subagentPhase(item);
   const status = subagentStatusLabel(item);
   const failed = phase === "failed";
@@ -117,9 +123,14 @@ function SubagentAgentRow({ item, defaultOpen }: { item: SubagentItem; defaultOp
   const result = item.result?.trim() ?? "";
   const name = subagentName(item);
   const facts = subagentFacts(item);
+  // T33: a running agent whose log can be opened says what it is doing now, from that log.
+  const canWatch = item.transcript === true && threadId !== null;
+  const activity = useSubagentActivity(threadId, item.id, canWatch && running);
   // The row's second line: what it is doing now, else the report's first words, else the brief's.
   const line = running
-    ? item.progress?.trim() || plainDetail(item.prompt) || "Working…"
+    ? activity
+      ? `${activity.label}: ${activity.text}`
+      : item.progress?.trim() || plainDetail(item.prompt) || "Working…"
     : result
       ? plainDetail(result)
       : plainDetail(item.prompt);
@@ -163,7 +174,29 @@ function SubagentAgentRow({ item, defaultOpen }: { item: SubagentItem; defaultOp
           className={cn("size-3.5 shrink-0 text-muted-foreground/60 transition-transform duration-200 motion-reduce:transition-none", open && "rotate-90")}
         />
       </button>
-      {open ? <SubagentDetail item={item} status={status.label} facts={facts} id={id} result={result} failed={failed} running={running} /> : null}
+      {open ? (
+        <SubagentDetail
+          item={item}
+          status={status.label}
+          facts={facts}
+          id={id}
+          result={result}
+          failed={failed}
+          running={running}
+          onWatch={canWatch ? () => setWatching(true) : null}
+        />
+      ) : null}
+      {canWatch ? (
+        <SubagentTranscriptSheet
+          threadId={threadId}
+          itemId={item.id}
+          title={name}
+          statusLabel={status.label}
+          running={running}
+          open={watching}
+          onClose={() => setWatching(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -197,8 +230,10 @@ function SubagentDetail(props: {
   result: string;
   failed: boolean;
   running: boolean;
+  /** Opens the agent's own conversation; null when its log cannot be opened. */
+  onWatch: (() => void) | null;
 }) {
-  const { item, status, facts, id, result, failed, running } = props;
+  const { item, status, facts, id, result, failed, running, onWatch } = props;
   const prompt = item.prompt.trim();
   const longBrief = prompt.length > 240 || prompt.split("\n").length > 4;
   const longResult = result.length > 420 || result.split("\n").length > 8;
@@ -208,6 +243,11 @@ function SubagentDetail(props: {
         {[status, ...facts].join(" · ")}
         {id ? <span className="font-mono"> · {id}</span> : null}
       </p>
+      {onWatch ? (
+        <Button size="sm" variant="outline" onClick={onWatch} className="pointer-coarse:min-h-11" data-subagent-watch="">
+          <ListTreeIcon /> {running ? "Watch live" : "Open transcript"}
+        </Button>
+      ) : null}
       {prompt ? (
         <section aria-label="Brief" data-subagent-brief="">
           <h4 className="mb-1 text-2xs font-medium tracking-wide text-muted-foreground uppercase">Brief</h4>
