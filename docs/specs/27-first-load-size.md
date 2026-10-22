@@ -1,7 +1,7 @@
 # 27 — The first thread open is not 1.7 MB of bundle
 
-Status: open. Written 22 Oct 2026 from the Phase 1 live check (spec 26). Part of the responsiveness
-work in [`../ARCHITECTURE-ASSESSMENT.md`](../ARCHITECTURE-ASSESSMENT.md).
+Status: done — #143, merged 22 Oct 2026. Written 22 Oct 2026 from the Phase 1 live check (spec 26).
+Part of the responsiveness work in [`../ARCHITECTURE-ASSESSMENT.md`](../ARCHITECTURE-ASSESSMENT.md).
 
 ## Problem
 
@@ -56,5 +56,7 @@ Over 4G that is the delay.
   sub-threshold file are not compressed; the memo returns identical bytes on a second request.
 - `web2/src/components/ChatMarkdown.test.tsx`: math still typesets (now after the lazy load), an
   unparsable formula keeps its raw TeX, and text with no formula never touches KaTeX.
-- Live: `curl` the built chunks and the thread route before/after; the closure goes 1,725 KB raw →
-  1,463 KB raw and 467 KB gzipped.
+- Live (22 Oct 2026): the thread route's static closure is 1,463 KB raw → **467 KB gzipped** (was
+  1,725 KB raw, uncompressed); `itemJump` alone is 471 KB raw → 147 KB gzipped, served with
+  `Content-Encoding: gzip` and `Vary: accept-encoding`; KaTeX is its own 268 KB lazy chunk, outside the
+  closure. The FL snapshot frame stays 137,789 B.
