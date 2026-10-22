@@ -59,3 +59,7 @@ jobs:
         run: cd web2 && bun run test
       - name: Build (web2)
         run: cd web2 && bun run build
+      # Phase 1's exit criterion (#155): fail when the thread route's eager closure grows past its
+      # documented ceiling (scripts/web2-budget.ts). Runs on the built tree, same job, no new runner.
+      - name: Bundle budget (web2)
+        run: bun scripts/web2-budget.ts
