@@ -32,6 +32,7 @@ One spec = one run. Do not implement a sibling spec in the same run. Numbers mat
 | 25 | [25-slow-herdr-poll.md](25-slow-herdr-poll.md) | — | Done — branch `fix/slow-herdr-poll`: one late poll absorbed (`herdr.slow`), two in a row or a socket error flip. Not a council slice | One slow Herdr poll flips the link to disconnected |
 | 26 | [26-bounded-thread-snapshot.md](26-bounded-thread-snapshot.md) | — | Done — #136 + #138; live-verified 22 Oct 2026. Phase 1 of the architecture plan; writes ADR 0028. Not a council slice | A thread opens on a bounded snapshot, not the whole recent thread |
 | 27 | [27-first-load-size.md](27-first-load-size.md) | — | Done — #143; live-verified 22 Oct 2026. Phase 1 live check follow-up. Not a council slice | Static assets gzip; KaTeX loads only for a formula |
+| 28 | [28-bridge-free-of-web.md](28-bridge-free-of-web.md) | — | Open — Phase 2.1 slice 2 of the architecture plan (#145). Not a council slice | The bridge stops importing `web/` |
 
 ## Rules for every slice
 
