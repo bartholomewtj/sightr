@@ -310,9 +310,9 @@ describe("pollModel", () => {
 
 describe("dialog-recipes — leaf", () => {
   it("imports only the neutral model modules (the bridge imports it at runtime)", () => {
-    const src = readFileSync(join(import.meta.dirname, "dialog-recipes.ts"), "utf8");
+    const src = readFileSync(join(import.meta.dirname, "..", "..", "..", "shared", "harness", "dialog-recipes.ts"), "utf8");
     const specs = [...src.matchAll(/^\s*import\s[^;]*?\sfrom\s+["']([^"']+)["']/gms)].map((m) => m[1]);
     expect(specs.length).toBeGreaterThan(0);
-    for (const spec of specs) expect(spec).toMatch(/^\.\/harness\/[a-z-]+-model$/);
+    for (const spec of specs) expect(spec).toMatch(/^\.\/[a-z-]+-model$/);
   });
 });

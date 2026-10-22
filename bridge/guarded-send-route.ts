@@ -8,7 +8,7 @@ import { json, requireJsonBody, text } from "./responses.ts";
 import { effectiveSettings } from "./runtime-settings.ts";
 import type { AgentView, StateEngine } from "./state-engine.ts";
 import { parseLines } from "../shared/harness/blocks.ts";
-import { runGuardedSend, type GuardedSendIo, type ReplyOutcome, type WriteResult } from "../web/src/lib/guarded-send.ts";
+import { runGuardedSend, type GuardedSendIo, type ReplyOutcome, type WriteResult } from "../shared/harness/guarded-send.ts";
 import { composerFor, type ComposerKit } from "../shared/harness/composer-kit.ts";
 import type { StyledLine } from "../shared/harness/blocks.ts";
 

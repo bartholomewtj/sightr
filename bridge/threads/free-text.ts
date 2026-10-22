@@ -1,5 +1,5 @@
-import { pollModel, type RecipeResult, type Sleep } from "../../web/src/lib/dialog-recipes.ts";
-import type { FreeTextRow } from "../../web/src/lib/harness/dialog-kit.ts";
+import { pollModel, type RecipeResult, type Sleep } from "../../shared/harness/dialog-recipes.ts";
+import type { FreeTextRow } from "../../shared/harness/dialog-kit.ts";
 
 // The operator's own answer to a question, typed into the dialog's free-text row ("Type something.")
 // by `runtime-request.respond` with `text` (respond.ts). The row and its walk are the adapter's

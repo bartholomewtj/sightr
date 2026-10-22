@@ -1,5 +1,5 @@
 import type { ThreadStatus } from "../../shared/v2/contracts.ts";
-import { detectsCompaction, isCompactingScreen } from "../../web/src/lib/harness/dialog-sniff.ts";
+import { detectsCompaction, isCompactingScreen } from "../../shared/harness/dialog-sniff.ts";
 import type { HerdrClient } from "../herdr-client.ts";
 import type { EngineSnapshot, StateEngine } from "../state-engine.ts";
 import type { ServerThread } from "./events.ts";
