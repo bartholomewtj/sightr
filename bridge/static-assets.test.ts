@@ -8,6 +8,7 @@ import {
   BUILD_HEADER,
   buildId,
   buildIdFor,
+  __clearStaticGzipCache,
   RETIRE_WORKER_JS,
   serveStatic,
   staticTree,
@@ -38,6 +39,8 @@ beforeAll(() => {
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 const get = (path: string, d: StaticDirs = dirs, c: Config = cfg, search = "") => serveStatic(path, "localhost", c, d, search);
+const getEnc = (path: string, accept: string | null, d: StaticDirs = dirs, c: Config = cfg) =>
+  serveStatic(path, "localhost", c, d, "", accept);
 
 describe("staticTree", () => {
   test("splits /v1 off and strips the prefix; everything else is web2's", () => {
@@ -181,5 +184,56 @@ describe("SIGHTR_UI=v1 rollback", () => {
     expect(RETIRE_WORKER_JS).toContain("unregister()");
     expect(RETIRE_WORKER_JS).not.toContain("fetch");
     expect((await get("/assets/a.js", dirs, rollback)).status).toBe(200);
+  });
+});
+
+describe("static gzip", () => {
+  // A dist tree is text-heavy; served raw a cold thread open pulled ~1.7 MB. Big enough to clear the
+  // threshold, and the same bytes every run so the body check is exact.
+  const big = 'console.log("a chunk of compressible javascript");\n'.repeat(120);
+
+  beforeAll(() => {
+    writeFileSync(join(dirs.web2, "assets", "big.js"), big);
+    writeFileSync(join(dirs.web2, "assets", "small.js"), "x");
+    writeFileSync(join(dirs.web2, "assets", "pic.png"), "x".repeat(4000));
+    __clearStaticGzipCache();
+  });
+
+  test("gzips a compressible asset when the client accepts gzip", async () => {
+    const res = await getEnc("/assets/big.js", "gzip, br");
+    expect(res.headers.get("content-encoding")).toBe("gzip");
+    expect(res.headers.get("vary")).toBe("accept-encoding");
+    // The immutable cache header and the build stamp survive compression.
+    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(res.headers.get(BUILD_HEADER)).toBe("v2-build");
+    const body = new Uint8Array(await res.arrayBuffer());
+    expect(new TextDecoder().decode(Bun.gunzipSync(body))).toBe(big);
+  });
+
+  test("leaves the same asset uncompressed without the header, still varying", async () => {
+    const res = await getEnc("/assets/big.js", null);
+    expect(res.headers.get("content-encoding")).toBeNull();
+    expect(res.headers.get("vary")).toBe("accept-encoding");
+    expect(await res.text()).toBe(big);
+  });
+
+  test("does not gzip a type that is already compressed", async () => {
+    const res = await getEnc("/assets/pic.png", "gzip");
+    expect(res.headers.get("content-encoding")).toBeNull();
+    expect(res.headers.get("vary")).toBeNull();
+    expect((await res.arrayBuffer()).byteLength).toBe(4000);
+  });
+
+  test("does not gzip below the threshold", async () => {
+    const res = await getEnc("/assets/small.js", "gzip");
+    expect(res.headers.get("content-encoding")).toBeNull();
+    expect(res.headers.get("vary")).toBe("accept-encoding");
+    expect(await res.text()).toBe("x");
+  });
+
+  test("a gzipped asset is memoised, not re-zipped per request", async () => {
+    const first = new Uint8Array(await (await getEnc("/assets/big.js", "gzip")).arrayBuffer());
+    const second = new Uint8Array(await (await getEnc("/assets/big.js", "gzip")).arrayBuffer());
+    expect(second).toEqual(first);
   });
 });

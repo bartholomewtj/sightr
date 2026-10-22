@@ -303,7 +303,7 @@ export function startServer(opts: {
       if (isReservedAuthPath(pathname)) return reservedAuthPlaceholder();
 
       // ── Static PWA (with SPA fallback) ───────────────────────────────────
-      return serveStatic(pathname, req.headers.get("host") ?? "", cfg, undefined, url.search);
+      return serveStatic(pathname, req.headers.get("host") ?? "", cfg, undefined, url.search, req.headers.get("accept-encoding"));
     },
   });
 

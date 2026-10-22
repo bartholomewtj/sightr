@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { setViewportWidth } from "@/test/media";
@@ -109,14 +109,21 @@ describe("ChatMarkdown (T11)", () => {
 });
 
 describe("ChatMarkdown (T35/T36)", () => {
-  it("typesets inline and display math with KaTeX", () => {
+  it("typesets inline and display math with KaTeX", async () => {
     const { container } = render(<ChatMarkdown text={"Inline $x^2$ and:\n\n$$\ny = mx + b\n$$"} />);
-    expect(container.querySelectorAll(".katex").length).toBeGreaterThanOrEqual(2);
+    // KaTeX loads lazily (spec 27), so it arrives a microtask after the raw-TeX fallback.
+    await waitFor(() => expect(container.querySelectorAll(".katex").length).toBeGreaterThanOrEqual(2));
   });
 
-  it("keeps the raw TeX when KaTeX cannot parse the formula", () => {
+  it("keeps the raw TeX when KaTeX cannot parse the formula", async () => {
     const { container } = render(<ChatMarkdown text={"$\\frac{1}{$"} />);
-    expect(container.textContent).toContain("\\frac");
+    await waitFor(() => expect(container.textContent).toContain("\\frac"));
+  });
+
+  it("renders text with no formula without touching KaTeX", () => {
+    const { container } = render(<ChatMarkdown text={"plain text, 100% fine, no math"} />);
+    expect(container.querySelectorAll(".katex").length).toBe(0);
+    expect(container.textContent).toContain("plain text, 100% fine, no math");
   });
 
   it("tags a GitHub alert blockquote", () => {

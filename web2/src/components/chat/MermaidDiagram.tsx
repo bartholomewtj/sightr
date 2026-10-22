@@ -13,6 +13,8 @@
 // suspended tree under this repo's jsdom tests; a thrown promise does, in both environments.)
 import { useMemo } from "react";
 
+import { suspendOn } from "~/lib/suspend";
+
 type Pele = typeof import("pele/lazy");
 type DiagramType = import("pele/lazy").DiagramType;
 
@@ -91,28 +93,6 @@ function sanitizeSvgMarkup(svg: string): string {
   if (parsed.querySelector("parsererror")) return "";
   scrub(root);
   return root.outerHTML;
-}
-
-type TrackedPromise<T> = Promise<T> & { status?: "pending" | "fulfilled" | "rejected"; value?: T };
-
-/** Suspend on `promise` (React's classic pattern): throw while pending, rethrow a rejection. */
-function suspendOn<T>(promise: Promise<T>): T {
-  const tracked = promise as TrackedPromise<T>;
-  if (tracked.status === undefined) {
-    tracked.status = "pending";
-    tracked.then(
-      (value) => {
-        tracked.status = "fulfilled";
-        tracked.value = value;
-      },
-      () => {
-        tracked.status = "rejected";
-      },
-    );
-  }
-  if (tracked.status === "pending") throw tracked;
-  if (tracked.status === "rejected") throw new Error("the diagram renderer failed to load");
-  return tracked.value as T;
 }
 
 /** A mermaid source rendered by pele. Throw-or-suspend only: the caller owns the fallback. */

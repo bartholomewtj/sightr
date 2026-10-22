@@ -20,15 +20,15 @@
 //   is `data-thread-find-ignore`, as upstream's.
 // - Workspace file links, Sightr's way: inside a thread (OpenFileThreadContext), inline code that reads
 //   as a file path is a button that opens it in the Files tab, and a markdown link to one is a chip.
-import { createContext, memo, useContext, useMemo, type ComponentProps } from "react";
+import { createContext, memo, Suspense, useContext, useMemo, type ComponentProps } from "react";
 import type { PluggableList } from "unified";
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
 
 import { cn } from "~/lib/utils";
+import { suspendOn } from "~/lib/suspend";
 import { remarkGithubAlerts } from "~/t3/shared/markdownGithubAlerts";
 import { remarkNormalizeListItemIndentation } from "~/t3/shared/markdownListIndentation";
 
@@ -72,12 +72,32 @@ const MATH_HINT = /\$|\\\(|\\\[|`{3,}\s*math\b/;
 const REMARK_BASE = [remarkGfm, remarkGithubAlerts, remarkNormalizeListItemIndentation, remarkHtmlAsText];
 const REMARK_BASE_BREAKS = [remarkGfm, remarkBreaks, remarkGithubAlerts, remarkNormalizeListItemIndentation, remarkHtmlAsText];
 
-/** A formula KaTeX cannot parse (`throwOnError: false`) keeps its raw TeX rather than breaking the reply. */
-const REHYPE_PLUGINS: PluggableList = [[rehypeKatex, { throwOnError: false, strict: false }]];
+/**
+ * KaTeX is ~266 KB raw and only a message that holds a formula needs it, so `rehype-katex` is loaded
+ * on first use instead of being imported into the thread route's chunk (spec 27). A formula KaTeX
+ * cannot parse (`throwOnError: false`) keeps its raw TeX rather than breaking the reply.
+ */
+let rehypeMathLoad: Promise<PluggableList> | null = null;
+function loadRehypeMath(): Promise<PluggableList> {
+  if (!rehypeMathLoad) {
+    const load = import("rehype-katex").then(
+      (m) => [[m.default, { throwOnError: false, strict: false }]] as PluggableList,
+    );
+    // A rejected module stays rejected in the ESM cache; forget it so a remount tries again.
+    void load.catch(() => {
+      if (rehypeMathLoad === load) rehypeMathLoad = null;
+    });
+    rehypeMathLoad = load;
+  }
+  return rehypeMathLoad;
+}
 
-function remarkPluginsFor(lineBreaks: boolean, text: string): PluggableList {
+/** No rehype plugins: the raw-TeX fallback while KaTeX loads, and the path for text without math. */
+const NO_REHYPE: PluggableList = [];
+
+function remarkPluginsFor(lineBreaks: boolean, math: boolean): PluggableList {
   const base = lineBreaks ? REMARK_BASE_BREAKS : REMARK_BASE;
-  return MATH_HINT.test(text) ? [[remarkMath, { singleDollarTextMath: true }], ...base] : base;
+  return math ? [[remarkMath, { singleDollarTextMath: true }], ...base] : base;
 }
 
 const SAFE_LINK = /^(?:https?:\/\/[a-z0-9]|mailto:)/i;
@@ -189,9 +209,23 @@ function chatMarkdownComponents(offset: number): Components {
   return components;
 }
 
-function ChatMarkdown({ text, className, lineBreaks = false, isStreaming = false, headingLevelOffset = 0 }: ChatMarkdownProps) {
+interface MarkdownBodyProps extends ChatMarkdownProps {
+  /** Parse `$…$` / `$$…$$` (and the other math forms) and typeset with KaTeX. */
+  math: boolean;
+  rehypePlugins: PluggableList;
+}
+
+function MarkdownBody({
+  text,
+  className,
+  lineBreaks = false,
+  isStreaming = false,
+  headingLevelOffset = 0,
+  math,
+  rehypePlugins,
+}: MarkdownBodyProps) {
   const components = useMemo(() => chatMarkdownComponents(headingLevelOffset), [headingLevelOffset]);
-  const remarkPlugins = useMemo(() => remarkPluginsFor(lineBreaks, text), [lineBreaks, text]);
+  const remarkPlugins = useMemo(() => remarkPluginsFor(lineBreaks, math), [lineBreaks, math]);
   return (
     <div
       className={cn(
@@ -203,7 +237,7 @@ function ChatMarkdown({ text, className, lineBreaks = false, isStreaming = false
       <MarkdownTextContext value={text}>
         <ReactMarkdown
           remarkPlugins={remarkPlugins}
-          rehypePlugins={REHYPE_PLUGINS}
+          rehypePlugins={rehypePlugins}
           skipHtml={false}
           components={components}
         >
@@ -211,6 +245,24 @@ function ChatMarkdown({ text, className, lineBreaks = false, isStreaming = false
         </ReactMarkdown>
       </MarkdownTextContext>
     </div>
+  );
+}
+
+/** The math path: suspends until KaTeX has loaded, then typesets. The caller owns the fallback. */
+function MathMarkdown(props: ChatMarkdownProps) {
+  const rehypePlugins = suspendOn(loadRehypeMath());
+  return <MarkdownBody {...props} math rehypePlugins={rehypePlugins} />;
+}
+
+function ChatMarkdown(props: ChatMarkdownProps) {
+  // The common case: no formula in the text, so KaTeX is neither loaded nor suspended on. While a
+  // formula's KaTeX loads, the fallback is the same body without math, so the raw TeX shows rather
+  // than a blank reply.
+  if (!MATH_HINT.test(props.text)) return <MarkdownBody {...props} math={false} rehypePlugins={NO_REHYPE} />;
+  return (
+    <Suspense fallback={<MarkdownBody {...props} math={false} rehypePlugins={NO_REHYPE} />}>
+      <MathMarkdown {...props} />
+    </Suspense>
   );
 }
 
