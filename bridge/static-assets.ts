@@ -195,12 +195,48 @@ behind your own reverse proxy</em> in the README.</p>
   );
 }
 
+/**
+ * Extensions whose bytes gzip well. Anything else a dist tree holds (png, ico, woff2, wasm) is
+ * already compressed, so re-gzipping spends CPU to add bytes. `.map` is in so a source map, when a
+ * build ships one, is not sent raw.
+ */
+const COMPRESSIBLE_EXT = new Set([".js", ".mjs", ".css", ".html", ".svg", ".json", ".webmanifest", ".map", ".txt"]);
+
+/** Below this, deflate's overhead and the extra header bytes outweigh the saving. */
+const STATIC_GZIP_MIN_BYTES = 1024;
+
+// Gzipped bytes per file, keyed by absolute path and invalidated by mtime. Hashed assets are
+// content-addressed and immutable, so this is one gzip per build; index.html and sw.js are mutable
+// and small, so the mtime guard keeps them honest. Bounded because a rebuild mints new hashed names
+// and the old entries would otherwise never leave.
+const GZIP_CACHE_MAX = 256;
+const gzipCache = new Map<string, { mtime: number; bytes: Uint8Array<ArrayBuffer> }>();
+
+async function gzipCached(full: string, file: Bun.BunFile): Promise<Uint8Array<ArrayBuffer>> {
+  const mtime = file.lastModified;
+  const hit = gzipCache.get(full);
+  if (hit && hit.mtime === mtime) return hit.bytes;
+  const bytes = Bun.gzipSync(await file.bytes());
+  if (gzipCache.size >= GZIP_CACHE_MAX) {
+    const oldest = gzipCache.keys().next();
+    if (!oldest.done) gzipCache.delete(oldest.value);
+  }
+  gzipCache.set(full, { mtime, bytes });
+  return bytes;
+}
+
+/** Test helper: drop the gzip memo so a rewritten fixture is re-read. */
+export function __clearStaticGzipCache(): void {
+  gzipCache.clear();
+}
+
 export async function serveStatic(
   pathname: string,
   host: string,
   cfg: Config,
   dirs: StaticDirs = DEFAULT_DIRS,
   search = "",
+  acceptEncoding: string | null = null,
 ): Promise<Response> {
   // The Host allowlist, which every /api/* route gets via guard() → checkAccess. The static route
   // was the last one that skipped it, so with SIGHTR_PUBLIC_HOSTS set a rebound DNS name was still
@@ -257,6 +293,16 @@ export async function serveStatic(
   if (ext === ".html") headers["content-security-policy"] = CSP;
   // `/sw.js` is web2's worker at the URL and scope v1's had, so an installed PWA updates in place.
   if (rel === "sw.js") headers["service-worker-allowed"] = v1 ? "/v1/" : "/";
+  // A dist tree is text-heavy and was served raw, so a cold thread open pulled ~1.7 MB over 4G.
+  // Gzip it (cached by mtime) when the client asks and the type is worth compressing; `vary` goes on
+  // either way so no shared cache hands a gzipped body to a client that cannot read it.
+  if (COMPRESSIBLE_EXT.has(ext)) {
+    headers["vary"] = "accept-encoding";
+    if ((acceptEncoding ?? "").includes("gzip") && file.size >= STATIC_GZIP_MIN_BYTES) {
+      headers["content-encoding"] = "gzip";
+      return secure(new Response(await gzipCached(full, file), { headers }));
+    }
+  }
   return secure(new Response(file, { headers }));
 }
 
