@@ -11,7 +11,7 @@ import { paneKey, PaneBusyError, type PaneQueue } from "../pane-queue.ts";
 import { sendKeysPaced, type SleepFn } from "../pane-write-routes.ts";
 import { failureText } from "../responses.ts";
 import type { StateEngine } from "../state-engine.ts";
-import { detectsBackgroundAgents, detectsCompaction, isCompactingScreen, isWaitingBackgroundScreen } from "../../web/src/lib/harness/dialog-sniff.ts";
+import { detectsBackgroundAgents, detectsCompaction, isCompactingScreen, isWaitingBackgroundScreen } from "../../shared/harness/dialog-sniff.ts";
 import { COMPACTION_READ_LINES } from "./compaction-watch.ts";
 import type { EventDraft, ServerThread } from "./events.ts";
 import type { JournalIngestor } from "./journal-ingest.ts";

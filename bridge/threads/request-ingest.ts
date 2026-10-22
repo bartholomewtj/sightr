@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { RuntimeRequest, RuntimeRequestKind, ThreadStatus } from "../../shared/v2/contracts.ts";
-import { parseDialog } from "../../web/src/lib/harness/dialog-kit.ts";
+import { parseDialog } from "../../shared/harness/dialog-kit.ts";
 import type { AuditLog } from "../audit.ts";
 import type { Config } from "../config.ts";
 import type { HerdrClient } from "../herdr-client.ts";

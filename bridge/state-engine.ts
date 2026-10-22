@@ -17,7 +17,7 @@ import {
   type BeaconIdentity,
 } from "./beacon/decorate.ts";
 import { readBeacons, type BeaconSweepDeps } from "./beacon/reader.ts";
-import { hasBlockingDialog, sniffsDialogsAt } from "../web/src/lib/harness/dialog-sniff.ts";
+import { hasBlockingDialog, sniffsDialogsAt } from "../shared/harness/dialog-sniff.ts";
 
 export interface AgentView extends PaneCommon {
   agentSession?: AgentSessionRef;

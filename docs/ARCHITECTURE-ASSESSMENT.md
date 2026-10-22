@@ -87,10 +87,10 @@ CHANGELOG has its Unreleased line.
 | Phase | Status | Issue |
 |---|---|---|
 | 1 Responsiveness & scale | **Done** — live-verified 22 Oct; specs 26, 27 | — |
-| 1 leftover — a bundle/perf budget | Open | #155 |
+| 1 leftover — a bundle/perf budget | Done — #155 | — |
 | 2.1 slice 1 — `shared/harness/` (39 modules) | Done — #141 | — |
-| 2.1 slice 2 — the last four modules | **Next** — spec 28 | #145 |
-| 2.2 retire v1 | Open — blocked by 2.1 slice 2 | #146 |
+| 2.1 slice 2 — the last four modules | Done — #145, spec 28 | — |
+| 2.2 retire v1 | Open | #146 |
 | 3 T3 cadence — baseline, bulk re-sync, sync-debt | Open | #147 |
 | 3b React Compiler re-measure | Open | #148 |
 | 4.1 Herdr floor advertised | Done — #137 | — |
@@ -106,10 +106,10 @@ CHANGELOG has its Unreleased line.
 
 ### Order and dependencies
 
-1. **#155** (perf budget) — small and independent; first, so nothing else can regress the bundle.
-2. **#145** (2.1 slice 2) — no deps; unblocks #146.
+1. **#155** (perf budget) — done: `scripts/web2-budget.ts`, run in CI after the web2 build.
+2. **#145** (2.1 slice 2) — done: `grep -r "../web/" bridge/` is empty; unblocks #146.
 3. **#147 / #148** (Phase 3) — independent of Phase 2. #148 is a spike that may end in a formalised skip.
-4. **#146** (retire v1) — blocked by #145; the largest single change (deletes ~431 files).
+4. **#146** (retire v1) — unblocked by #145; the largest single change (deletes ~431 files).
 5. **#149, #150, #151, #152, #154** — independent; any order.
 6. **#153** (coverage) — after #146, so it does not write tests for code being deleted.
 
@@ -126,18 +126,19 @@ need anything beyond the checkout.
   assets and made KaTeX lazy: the thread-route closure is 1,463 KB raw / **467 KB gzipped** (was
   1,725 KB raw, uncompressed).
 
-**Left over — the exit criterion "a regression is caught by a perf budget" (#155).** The snapshot cap
-and the static-gzip path have functional tests, but nothing fails CI when the bundle grows. Add a
-build-time budget over `web2/dist` (raw + gzip, at least for the thread-route closure) with a
-documented ceiling, and keep the snapshot-frame size assertion. CI already builds both apps, so this
-is a check inside the existing job, not a new one.
+**Done — the exit criterion "a regression is caught by a perf budget" (#155).** `scripts/web2-budget.ts`
+walks the thread route's eager import closure (the entry plus the `_chat.thread._threadId` chunk,
+static imports only) and fails CI past a documented raw/gzip ceiling; it runs in the existing job
+after the web2 build (`bun run budget:web2`). The snapshot frame stays bounded by
+`bridge/v2-routes.test.ts`.
 
 ### Phase 2 — One front end
 
-**2.1 slice 2 — the last four `web/` modules (#145, spec 28).**
+**2.1 slice 2 — the last four `web/` modules (#145, spec 28) — done.**
 
 Slice 1 (#141) moved 39 React-free modules into `shared/harness/` and left one-line re-exports at the
-old paths. Four remain, and the bridge imports all four at runtime:
+old paths. Four remained, and the bridge imported all four at runtime (and each one's full closure,
+19 modules in the end, plus `sw-routes.ts`, which a bridge contract test still read):
 
 | Module | Bridge importers |
 |---|---|

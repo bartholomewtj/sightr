@@ -6,9 +6,9 @@ import {
   previewSelectRecipe,
   type RecipeIO,
   type RecipeResult,
-} from "../../web/src/lib/dialog-recipes.ts";
+} from "../../shared/harness/dialog-recipes.ts";
 import type { DialogKind, DialogModels } from "../../shared/harness/dialog-contract.ts";
-import { dialogModel, dialogRegion, freeTextModel } from "../../web/src/lib/harness/dialog-kit.ts";
+import { dialogModel, dialogRegion, freeTextModel } from "../../shared/harness/dialog-kit.ts";
 import { SILENT_AUDIT, type AuditDetail, type AuditLog } from "../audit.ts";
 import type { Config } from "../config.ts";
 import type { HerdrClient } from "../herdr-client.ts";

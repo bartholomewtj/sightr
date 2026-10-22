@@ -1,6 +1,6 @@
 # 28 — The bridge stops importing `web/`
 
-Status: open. Written 22 Oct 2026 as Phase 2.1 slice 2 of the plan in
+Status: done — #145. Written 22 Oct 2026 as Phase 2.1 slice 2 of the plan in
 [`../ARCHITECTURE-ASSESSMENT.md`](../ARCHITECTURE-ASSESSMENT.md) (issue #145). Slice 1 (#141) moved 39
 modules into `shared/harness/`; this is the last four, and after it the bridge imports nothing from
 `web/`, which unblocks Phase 2.2 (retire v1, #146).
@@ -45,3 +45,16 @@ re-exports at the old paths. The same four are still where they were:
 - A conformance test over `shared/harness/` that fails on a forbidden import.
 - Root `bun run test` (typecheck + bridge + scripts + shared) and the web2 suite stay green.
 - Exit: `grep -r "../web/" bridge/` is empty.
+
+## As built
+
+Landed: the four named modules, their full closure (19 modules — the adapter internals
+`agy/index`, `agy/prompt-select`, `claude/{index,menu,multi-select,permission-subject,preview-select,prompt-select,wizard}`,
+`cursor/index`, `grok/index`, `pi/{index,ask}`, `harness/types.ts`, `no-echo.ts`), and `sw-routes.ts`
+(it was still imported by `bridge/auth-path-contract.test.ts`, so the exit grep would otherwise fail).
+Each old path is the one-line `export *` shim slice 1 left; the bridge importers named above and that
+test now point at `shared/harness/`. The conformance guard is `scripts/shared-harness-imports.ts`
+(+ test) — kept in `scripts/` because web2's tsc compiles `shared/` but has no `bun:test` types. The
+one web-side guard that read the module's own source (`web/src/lib/dialog-recipes.test.ts`) now reads
+it at its shared path. Rebuilt web2: the thread-route closure is unchanged (29 files, 1,692 KB raw /
+507 KB gzip), so #155's budget still passes.
