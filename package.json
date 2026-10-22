@@ -11,6 +11,7 @@
     "build": "bun run typecheck && cd web && bun install && bun run typecheck && bun run build && cd ../web2 && bun install && bun run typecheck && bun run build",
     "build:web": "cd web && bun run build",
     "build:web2": "cd web2 && bun run build",
+    "budget:web2": "bun scripts/web2-budget.ts",
     "web:dev": "cd web && bun run dev",
     "web2:dev": "cd web2 && bun run dev",
     "test": "bun run typecheck && bun test ./bridge ./scripts ./shared",
